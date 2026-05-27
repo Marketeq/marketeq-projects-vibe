@@ -13,7 +13,9 @@ export interface ContractTaskDTO {
 export const getTasksForContract = async (
   contractId: string
 ): Promise<ContractTaskDTO[]> => {
-  const res = await AxiosRequest.get(`/tasks/contract/${encodeURIComponent(contractId)}`)
+  const res = await AxiosRequest.get(
+    `/tasks/contract/${encodeURIComponent(contractId)}`
+  )
   return Array.isArray(res.data) ? res.data : []
 }
 

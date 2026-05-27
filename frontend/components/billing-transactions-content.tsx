@@ -37,7 +37,9 @@ export function BillingTransactionsContent() {
     <section className="rounded-lg border border-gray-200 bg-white">
       <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold text-dark-blue-400">Recent Transactions</h2>
+          <h2 className="text-base font-semibold text-dark-blue-400">
+            Recent Transactions
+          </h2>
           <p className="mt-1 text-sm text-gray-500">
             Track membership charges, top-ups, and scheduled billing activity.
           </p>
@@ -62,16 +64,22 @@ export function BillingTransactionsContent() {
             </div>
 
             <div>
-              <p className="text-sm font-medium text-dark-blue-400">{transaction.type}</p>
+              <p className="text-sm font-medium text-dark-blue-400">
+                {transaction.type}
+              </p>
               <p className="mt-1 text-sm text-gray-500">{transaction.method}</p>
             </div>
 
             <div>
-              <p className="text-sm font-medium text-dark-blue-400">{transaction.date}</p>
+              <p className="text-sm font-medium text-dark-blue-400">
+                {transaction.date}
+              </p>
             </div>
 
             <div>
-              <p className="text-sm font-medium text-dark-blue-400">{transaction.amount}</p>
+              <p className="text-sm font-medium text-dark-blue-400">
+                {transaction.amount}
+              </p>
             </div>
 
             <div className="flex md:justify-end">

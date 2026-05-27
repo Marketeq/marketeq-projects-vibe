@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/utils/functions"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
 
 export interface SearchResult {
   id: string
@@ -25,18 +25,40 @@ interface TaskSearchProps {
 
 function SearchIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+    >
       <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M13.5 13.5L17 17"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
 
 function ClearIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+    >
       <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M5.5 5.5l5 5M10.5 5.5l-5 5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
@@ -60,11 +82,15 @@ export function TaskSearch({
         <div className="flex h-11 w-full items-center gap-2 rounded-lg border border-primary-300 bg-primary-25 px-3">
           <SearchIcon className="h-4 w-4 text-primary-400 shrink-0" />
           <Avatar size="xs">
-            <AvatarImage src={selectedResult.avatarSrc} alt={selectedResult.taskName} />
+            <AvatarImage
+              src={selectedResult.avatarSrc}
+              alt={selectedResult.taskName}
+            />
             <AvatarFallback>{selectedResult.taskName.charAt(0)}</AvatarFallback>
           </Avatar>
           <span className="text-sm text-dark-blue-500 truncate flex-1">
-            {selectedResult.taskName}, {selectedResult.contractName}, @{selectedResult.clientHandle}
+            {selectedResult.taskName}, {selectedResult.contractName}, @
+            {selectedResult.clientHandle}
           </span>
           <button
             onClick={onClear}
@@ -125,8 +151,8 @@ export function TaskSearch({
               </Avatar>
               <div className="text-left min-w-0">
                 <p className="text-sm text-dark-blue-500 truncate">
-                  <span className="font-semibold">{result.taskName}</span>
-                  , {result.contractName}
+                  <span className="font-semibold">{result.taskName}</span>,{" "}
+                  {result.contractName}
                 </p>
                 <p className="text-xs text-gray-500">@{result.clientHandle}</p>
               </div>

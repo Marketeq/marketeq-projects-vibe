@@ -6,10 +6,6 @@ import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
-import { Bubble, YourBubble } from "./message-components"
-import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
-import { loadDraft, saveDraft, clearDraft } from "../lib/drafts"
-import { subscribeMessagingEvents } from "@/utils/messagingBroadcast"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -19,6 +15,7 @@ import {
   toPxIfNumber,
 } from "@/utils/functions"
 import { useControllableState, useIsomorphicLayoutEffect } from "@/utils/hooks"
+import { subscribeMessagingEvents } from "@/utils/messagingBroadcast"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useAblyPresence } from "@/utils/useAblyPresence"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -55,6 +52,8 @@ import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
 import { User } from "@/types/user"
+import { Spinner } from "@/components/ui/spinner/spinner"
+import { toast } from "@/components/ui/toast/use-toast"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { EmojiPicker, type Result as TenorGif } from "@/components/emoji-picker"
@@ -94,21 +93,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
-import { toast } from "@/components/ui/toast/use-toast"
-import { useFileUpload } from "../hooks/use-file-upload"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 import {
   openDropboxChooser,
   openGoogleDrivePicker,
 } from "../hooks/use-cloud-picker"
-import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
-import { BlockReportDialog } from "./block-report-dialog"
-import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useEditMessage } from "../hooks/use-edit-message"
+import { useFileUpload } from "../hooks/use-file-upload"
+import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
 import { useThreadActions } from "../hooks/use-thread-actions"
+import { clearDraft, loadDraft, saveDraft } from "../lib/drafts"
+import { BlockReportDialog } from "./block-report-dialog"
 import { ForwardMessageDialog } from "./forward-message-dialog"
+import { Bubble, YourBubble } from "./message-components"
+import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
 
 interface ChatsProps {
   selectedConversation: Conversation | null
@@ -195,9 +195,15 @@ const formatDateSeparator = (iso: string): string => {
 }
 
 const DateSeparator = ({ label }: { label: string }) => (
-  <div className="flex items-center gap-x-3 py-1" role="separator" aria-label={label}>
+  <div
+    className="flex items-center gap-x-3 py-1"
+    role="separator"
+    aria-label={label}
+  >
     <div className="h-px flex-1 bg-gray-200" />
-    <span className="text-[11px] font-medium text-gray-500 shrink-0">{label}</span>
+    <span className="text-[11px] font-medium text-gray-500 shrink-0">
+      {label}
+    </span>
     <div className="h-px flex-1 bg-gray-200" />
   </div>
 )
@@ -254,7 +260,8 @@ export function Chats({
   const threadSpam = !!(selectedConversation as any)?.isSpam
   const threadUnread = !!(selectedConversation as any)?.markedUnread
   const [starredOverride, setStarredOverride] = useState<boolean | null>(null)
-  const threadStarred = starredOverride ?? !!(selectedConversation as any)?.isStarred
+  const threadStarred =
+    starredOverride ?? !!(selectedConversation as any)?.isStarred
   const threadActions = useThreadActions(jwtToken)
 
   const handleOpenForward = useCallback((msg: Message) => {
@@ -262,7 +269,8 @@ export function Chats({
     setForwardOpen(true)
   }, [])
 
-  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
+  const [currentUser, setCurrentUser] =
+    useState<ReturnType<typeof getCurrentUser>>(null)
   useEffect(() => {
     const base = getCurrentUser()
     if (base && currentUserProfile?.username) {
@@ -425,7 +433,12 @@ export function Chats({
       }
     })()
     return () => ac.abort()
-  }, [selectedConversation?.id, selectedConversation?.isGroup, privateKey, jwtToken])
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.isGroup,
+    privateKey,
+    jwtToken,
+  ])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
   const handleAddUser = async (userId: string) => {
@@ -502,7 +515,9 @@ export function Chats({
     try {
       const picker =
         provider === "google-drive" ? openGoogleDrivePicker : openDropboxChooser
-      const files = await picker((count) => setCloudFetching({ provider, count }))
+      const files = await picker((count) =>
+        setCloudFetching({ provider, count })
+      )
       if (files.length > 0) {
         addFiles(files)
       }
@@ -514,7 +529,11 @@ export function Chats({
   }
 
   const providerLabel = (p: "google-drive" | "dropbox" | "onedrive") =>
-    p === "google-drive" ? "Google Drive" : p === "dropbox" ? "Dropbox" : "OneDrive"
+    p === "google-drive"
+      ? "Google Drive"
+      : p === "dropbox"
+        ? "Dropbox"
+        : "OneDrive"
 
   // Format file size helper
   const formatFileSize = (bytes: number): string => {
@@ -548,8 +567,11 @@ export function Chats({
   // a user is online unless they're in the same thread channel right now —
   // which broke the avatar dot in 99% of cases. Online status now comes from
   // the global presence:online channel via useOnlineUsers().
-  const { members: presentMembers, sendTyping, typingUserIds } =
-    useAblyPresence(selectedConversation?.id ?? "")
+  const {
+    members: presentMembers,
+    sendTyping,
+    typingUserIds,
+  } = useAblyPresence(selectedConversation?.id ?? "")
   const { isOnline } = useOnlineUsers()
 
   // 2.1) local messages state for optimistic updates
@@ -787,7 +809,7 @@ export function Chats({
                   existing.senderId === m.senderId &&
                   (existing.status === "sending" ||
                     existing.status === "optimistic-offline") &&
-                  (existing.content ?? "") === (m.content ?? ""),
+                  (existing.content ?? "") === (m.content ?? "")
               )
               if (tempIdx !== -1) {
                 next = next.map((existing, i) => (i === tempIdx ? m : existing))
@@ -834,7 +856,10 @@ export function Chats({
 
   const handleLocalDelete = useCallback(
     (messageId: string) => {
-      updateMessage(messageId, { isDeleted: true, deletedAt: Date.now() } as any)
+      updateMessage(messageId, {
+        isDeleted: true,
+        deletedAt: Date.now(),
+      } as any)
       setTimeout(() => {
         setLocalMsgs((prev) => prev.map((m) => m))
       }, 30000)
@@ -844,14 +869,23 @@ export function Chats({
 
   const handleLocalRestore = useCallback(
     (messageId: string) => {
-      updateMessage(messageId, { isDeleted: false, deletedAt: undefined } as any)
+      updateMessage(messageId, {
+        isDeleted: false,
+        deletedAt: undefined,
+      } as any)
     },
     [updateMessage]
   )
 
   // Ably incoming edit: decrypt + patch local state
   const handleIncomingEdit = useCallback(
-    async (incoming: { id: string; ciphertext?: string; senderId: string; threadId: string; edited?: boolean }) => {
+    async (incoming: {
+      id: string
+      ciphertext?: string
+      senderId: string
+      threadId: string
+      edited?: boolean
+    }) => {
       let plain = ""
       try {
         const key = loadKey(incoming.threadId)
@@ -942,15 +976,13 @@ export function Chats({
       const params = pendingSendsRef.current.get(tempId)
       if (!params) return
       setLocalMsgs((prev) =>
-        prev.map((m) =>
-          m.id === tempId ? { ...m, status: "sending" } : m,
-        ),
+        prev.map((m) => (m.id === tempId ? { ...m, status: "sending" } : m))
       )
       try {
         const saved = await send(
           params.threadId,
           params.content,
-          params.replyToId,
+          params.replyToId
         )
         const msg = (saved as any).data ?? saved
         let displayContent = msg.content
@@ -969,7 +1001,7 @@ export function Chats({
             return prev.filter((m) => m.id !== tempId)
           }
           return prev.map((m) =>
-            m.id === tempId ? { ...msg, content: displayContent } : m,
+            m.id === tempId ? { ...msg, content: displayContent } : m
           )
         })
         onIndexNewMessage?.({
@@ -983,19 +1015,19 @@ export function Chats({
       } catch {
         setLocalMsgs((prev) =>
           prev.map((m) =>
-            m.id === tempId ? { ...m, status: "failed-send" } : m,
-          ),
+            m.id === tempId ? { ...m, status: "failed-send" } : m
+          )
         )
       }
     },
-    [send, onIndexNewMessage],
+    [send, onIndexNewMessage]
   )
 
   const retryOptimistic = useCallback(
     (tempId: string) => {
       void attemptOptimisticSend(tempId)
     },
-    [attemptOptimisticSend],
+    [attemptOptimisticSend]
   )
 
   const discardOptimistic = useCallback((tempId: string) => {
@@ -1044,10 +1076,9 @@ export function Chats({
               selectedConversation.id,
             content: displayContent,
             messageType: result.message.messageType ?? "file",
-            attachments:
-              result.message.attachments?.length
-                ? result.message.attachments
-                : [result.attachment],
+            attachments: result.message.attachments?.length
+              ? result.message.attachments
+              : [result.attachment],
           },
         ]
       })
@@ -1121,8 +1152,7 @@ export function Chats({
         const status = err?.status ?? err?.response?.status
         if (
           status === 404 ||
-          (typeof err?.message === "string" &&
-            err.message.includes("404"))
+          (typeof err?.message === "string" && err.message.includes("404"))
         ) {
           setCounterpartDeleted(true)
           setReceiverUser(deletedPlaceholder)
@@ -1152,14 +1182,14 @@ export function Chats({
             const uploaded = await uploadFile(
               selectedConversation.id,
               file,
-              i === 0 ? caption : undefined,
+              i === 0 ? caption : undefined
             )
             if (abortRecord.aborted) {
               const abortedId = uploaded.message.id
               recentlyAbortedMessageIdsRef.current.add(abortedId)
               setTimeout(
                 () => recentlyAbortedMessageIdsRef.current.delete(abortedId),
-                30_000,
+                30_000
               )
               apiFetch(`/v1/messages/${abortedId}`, {
                 method: "DELETE",
@@ -1178,7 +1208,9 @@ export function Chats({
         sendTyping(false)
         setReplyingTo(null)
         if (currentUser?.id) {
-          clearDraft(selectedConversation.id, currentUser.id).catch(() => undefined)
+          clearDraft(selectedConversation.id, currentUser.id).catch(
+            () => undefined
+          )
         }
         return
       }
@@ -1217,7 +1249,9 @@ export function Chats({
       sendTyping(false)
       setReplyingTo(null)
       if (currentUser?.id) {
-        clearDraft(selectedConversation.id, currentUser.id).catch(() => undefined)
+        clearDraft(selectedConversation.id, currentUser.id).catch(
+          () => undefined
+        )
       }
 
       if (!isOnline) {
@@ -1225,11 +1259,7 @@ export function Chats({
       }
 
       try {
-        const saved = await send(
-          selectedConversation.id,
-          content,
-          replyToId,
-        )
+        const saved = await send(selectedConversation.id, content, replyToId)
         const msg = (saved as any).data ?? saved
         let displayContent = msg.content
         try {
@@ -1247,7 +1277,7 @@ export function Chats({
             return prev.filter((m) => m.id !== tempId)
           }
           return prev.map((m) =>
-            m.id === tempId ? { ...msg, content: displayContent } : m,
+            m.id === tempId ? { ...msg, content: displayContent } : m
           )
         })
         onIndexNewMessage?.({
@@ -1262,8 +1292,8 @@ export function Chats({
         console.error("Send failed", err)
         setLocalMsgs((prev) =>
           prev.map((m) =>
-            m.id === tempId ? { ...m, status: "failed-send" } : m,
-          ),
+            m.id === tempId ? { ...m, status: "failed-send" } : m
+          )
         )
       }
     } catch (err) {
@@ -1448,7 +1478,11 @@ export function Chats({
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
         let key: Uint8Array | null = null
-        try { key = loadKey(convId) } catch { /* no key */ }
+        try {
+          key = loadKey(convId)
+        } catch {
+          /* no key */
+        }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
             // Backend column is `pinned`; Bubble reads `isPinned`. Normalize.
@@ -1457,9 +1491,13 @@ export function Chats({
               isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
             }
             if (!m.ciphertext) return normalized
-            if (!key) return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
+            if (!key)
+              return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             try {
-              return { ...normalized, content: await decryptAES(m.ciphertext, key) }
+              return {
+                ...normalized,
+                content: await decryptAES(m.ciphertext, key),
+              }
             } catch {
               return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             }
@@ -1540,7 +1578,9 @@ export function Chats({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
         <Mail05 className="size-10 stroke-[1.5]" />
-        <p className="text-sm font-medium">Select a conversation to start messaging</p>
+        <p className="text-sm font-medium">
+          Select a conversation to start messaging
+        </p>
       </div>
     )
   }
@@ -1556,7 +1596,7 @@ export function Chats({
 
   // First-name-only display (per design)
   const fullName = selectedConversation?.isGroup
-    ? selectedConversation.group?.name ?? "Unnamed Group"
+    ? (selectedConversation.group?.name ?? "Unnamed Group")
     : counterpartDeleted
       ? "Account no longer available"
       : receiverUser.firstName?.trim() ||
@@ -1590,13 +1630,13 @@ export function Chats({
               alt={
                 selectedConversation?.isGroup
                   ? selectedConversation?.group?.name || "Group"
-                  : receiverUser.username ?? ""
+                  : (receiverUser.username ?? "")
               }
             />
             <AvatarFallback>
               {selectedConversation?.isGroup
-                ? selectedConversation?.group?.name?.[0] ?? "G"
-                : receiverUser.username?.[0] ?? ""}
+                ? (selectedConversation?.group?.name?.[0] ?? "G")
+                : (receiverUser.username?.[0] ?? "")}
             </AvatarFallback>
           </Avatar>
 
@@ -1618,7 +1658,9 @@ export function Chats({
                       const others = presentMembers.filter(
                         (m) => m.clientId !== currentUser?.id
                       ).length
-                      return others > 0 ? `${others} active now` : "No one active"
+                      return others > 0
+                        ? `${others} active now`
+                        : "No one active"
                     })()
                   : isOnline(receiverUser.id)
                     ? "Active now"
@@ -1629,8 +1671,7 @@ export function Chats({
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
                   <span className="text-sm text-dark-blue-400">
-                    {receiverUser.recentJobTitle ||
-                      receiverUser.jobTitles?.[0]}
+                    {receiverUser.recentJobTitle || receiverUser.jobTitles?.[0]}
                   </span>
                 </>
               ) : null}
@@ -1652,13 +1693,21 @@ export function Chats({
             {/* Local shadow override: primitive's arbitrary-value shadow is
                 malformed (Tailwind drops it); patching the primitive would
                 regress ~20 other pages where the no-shadow is established. */}
-            <ToggleGroupItem value="Messages" className="data-[state=on]:shadow-sm">
+            <ToggleGroupItem
+              value="Messages"
+              className="data-[state=on]:shadow-sm"
+            >
               Messages
             </ToggleGroupItem>
-            <ToggleGroupItem value="Pinned" className="data-[state=on]:shadow-sm">
+            <ToggleGroupItem
+              value="Pinned"
+              className="data-[state=on]:shadow-sm"
+            >
               Pinned
               {(() => {
-                const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
+                const count = localMsgs.filter(
+                  (m) => m.pinned || m.isPinned
+                ).length
                 return count > 0 ? (
                   <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-200 text-gray-800 rounded-full">
                     {count}
@@ -1764,10 +1813,13 @@ export function Chats({
                     ;(threadUnread
                       ? threadActions.markRead(selectedConversation.id)
                       : threadActions.markUnread(selectedConversation.id)
-                    ).catch((err) => console.error("mark unread/read failed", err))
+                    ).catch((err) =>
+                      console.error("mark unread/read failed", err)
+                    )
                   }}
                 >
-                  <Mail05 className="size-4" /> {threadUnread ? "Mark as Read" : "Mark Unread"}
+                  <Mail05 className="size-4" />{" "}
+                  {threadUnread ? "Mark as Read" : "Mark Unread"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={(e) => {
@@ -1790,10 +1842,13 @@ export function Chats({
                     ;(threadArchived
                       ? threadActions.unarchive(selectedConversation.id)
                       : threadActions.archive(selectedConversation.id)
-                    ).catch((err) => console.error("archive toggle failed", err))
+                    ).catch((err) =>
+                      console.error("archive toggle failed", err)
+                    )
                   }}
                 >
-                  <Archive className="size-4" /> {threadArchived ? "Unarchive" : "Archive"}
+                  <Archive className="size-4" />{" "}
+                  {threadArchived ? "Unarchive" : "Archive"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -1806,7 +1861,8 @@ export function Chats({
                     ).catch((err) => console.error("spam toggle failed", err))
                   }}
                 >
-                  <AlertTriangle className="size-4" /> {threadSpam ? "Move to Inbox" : "Move to Spam"}
+                  <AlertTriangle className="size-4" />{" "}
+                  {threadSpam ? "Move to Inbox" : "Move to Spam"}
                 </DropdownMenuItem>
                 {!selectedConversation?.isGroup && (
                   <DropdownMenuItem
@@ -1831,11 +1887,15 @@ export function Chats({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <Dialog
+              open={showDeleteConfirm}
+              onOpenChange={setShowDeleteConfirm}
+            >
               <DialogContent className="max-w-[348px] p-7 rounded-xl">
                 <DialogTitle>Delete this chat?</DialogTitle>
                 <DialogDescription className="mt-2">
-                  This chat will be moved to Trash. You can restore it later from the Trash filter.
+                  This chat will be moved to Trash. You can restore it later
+                  from the Trash filter.
                 </DialogDescription>
                 <div className="mt-8 grid grid-cols-2 gap-x-3">
                   <DialogClose asChild>
@@ -1843,13 +1903,15 @@ export function Chats({
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button onClick={() => {
-                    if (!selectedConversation) return
-                    threadActions
-                      .trash(selectedConversation.id)
-                      .catch((err) => console.error("trash failed", err))
-                    setShowDeleteConfirm(false)
-                  }}>
+                  <Button
+                    onClick={() => {
+                      if (!selectedConversation) return
+                      threadActions
+                        .trash(selectedConversation.id)
+                        .catch((err) => console.error("trash failed", err))
+                      setShowDeleteConfirm(false)
+                    }}
+                  >
                     Yes, Delete
                   </Button>
                 </div>
@@ -1871,9 +1933,7 @@ export function Chats({
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button onClick={handleConfirmEditDelete}>
-                    Yes, Delete
-                  </Button>
+                  <Button onClick={handleConfirmEditDelete}>Yes, Delete</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1919,96 +1979,103 @@ export function Chats({
                 <p className="text-sm">No messages yet. Say hello!</p>
               </div>
             )}
-            {!isSwitching && displayedMessages.map((m, i) => {
-              const prev = i > 0 ? displayedMessages[i - 1] : null
-              const showDate =
-                !prev ||
-                !isSameDay(parseISO(m.createdAt), parseISO(prev.createdAt))
-              return (
-                <React.Fragment key={m.id ?? i}>
-                  {showDate && (
-                    <DateSeparator label={formatDateSeparator(m.createdAt)} />
-                  )}
-                  <div
-                    data-message-id={m.id}
-                    className={`flex rounded-lg ${
-                      m.senderId === currentUser.id
-                        ? "justify-end"
-                        : "justify-start"
-                    }`}
-                  >
-                    {m.senderId === currentUser.id ? (
-                      <div className="flex flex-col items-end gap-y-1">
-                        <Bubble
+            {!isSwitching &&
+              displayedMessages.map((m, i) => {
+                const prev = i > 0 ? displayedMessages[i - 1] : null
+                const showDate =
+                  !prev ||
+                  !isSameDay(parseISO(m.createdAt), parseISO(prev.createdAt))
+                return (
+                  <React.Fragment key={m.id ?? i}>
+                    {showDate && (
+                      <DateSeparator label={formatDateSeparator(m.createdAt)} />
+                    )}
+                    <div
+                      data-message-id={m.id}
+                      className={`flex rounded-lg ${
+                        m.senderId === currentUser.id
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      {m.senderId === currentUser.id ? (
+                        <div className="flex flex-col items-end gap-y-1">
+                          <Bubble
+                            message={m}
+                            currentUser={currentUser}
+                            participantUsername={receiverUser.username ?? ""}
+                            participantName={fullName}
+                            onForward={handleOpenForward}
+                            onReply={setReplyingTo}
+                            onEdit={handleStartEdit}
+                            onLocalDelete={handleLocalDelete}
+                            onLocalRestore={handleLocalRestore}
+                            onToggleReaction={handleToggleReaction}
+                            replyToMessage={
+                              m.replyToMessageId
+                                ? (localMessageById.get(m.replyToMessageId) ??
+                                  null)
+                                : null
+                            }
+                          />
+                          {m.status === "optimistic-offline" && (
+                            <div className="flex items-center gap-x-2 text-xs text-amber-600">
+                              <span>
+                                Will send when you&apos;re back online
+                              </span>
+                              <button
+                                type="button"
+                                className="text-gray-500 hover:text-gray-700 hover:underline"
+                                onClick={() => discardOptimistic(m.id)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                          {m.status === "failed-send" && (
+                            <div className="flex items-center gap-x-2 text-xs text-error-600">
+                              <span>Failed to send</span>
+                              <button
+                                type="button"
+                                className="font-semibold text-primary-500 hover:underline"
+                                onClick={() => retryOptimistic(m.id)}
+                              >
+                                Retry
+                              </button>
+                              <button
+                                type="button"
+                                className="text-gray-500 hover:text-gray-700 hover:underline"
+                                onClick={() => discardOptimistic(m.id)}
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <YourBubble
                           message={m}
                           currentUser={currentUser}
-                          participantUsername={receiverUser.username ?? ""}
-                          participantName={fullName}
                           onForward={handleOpenForward}
                           onReply={setReplyingTo}
-                          onEdit={handleStartEdit}
-                          onLocalDelete={handleLocalDelete}
-                          onLocalRestore={handleLocalRestore}
                           onToggleReaction={handleToggleReaction}
                           replyToMessage={
                             m.replyToMessageId
-                              ? localMessageById.get(m.replyToMessageId) ?? null
+                              ? (localMessageById.get(m.replyToMessageId) ??
+                                null)
                               : null
                           }
+                          participantName={fullName}
+                          participantUsername={receiverUser.username ?? ""}
+                          participantAvatarUrl={
+                            receiverUser.avatarUrl ?? undefined
+                          }
                         />
-                        {m.status === "optimistic-offline" && (
-                          <div className="flex items-center gap-x-2 text-xs text-amber-600">
-                            <span>Will send when you&apos;re back online</span>
-                            <button
-                              type="button"
-                              className="text-gray-500 hover:text-gray-700 hover:underline"
-                              onClick={() => discardOptimistic(m.id)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                        {m.status === "failed-send" && (
-                          <div className="flex items-center gap-x-2 text-xs text-error-600">
-                            <span>Failed to send</span>
-                            <button
-                              type="button"
-                              className="font-semibold text-primary-500 hover:underline"
-                              onClick={() => retryOptimistic(m.id)}
-                            >
-                              Retry
-                            </button>
-                            <button
-                              type="button"
-                              className="text-gray-500 hover:text-gray-700 hover:underline"
-                              onClick={() => discardOptimistic(m.id)}
-                            >
-                              Discard
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <YourBubble
-                        message={m}
-                        currentUser={currentUser}
-                        onForward={handleOpenForward}
-                        onReply={setReplyingTo}
-                        onToggleReaction={handleToggleReaction}
-                        replyToMessage={
-                          m.replyToMessageId
-                            ? localMessageById.get(m.replyToMessageId) ?? null
-                            : null
-                        }
-                        participantName={fullName}
-                        participantUsername={receiverUser.username ?? ""}
-                        participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
-                      />
-                    )}
-                  </div>
-                </React.Fragment>
-              )
-            })}
+                      )}
+                    </div>
+                  </React.Fragment>
+                )
+              })}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
@@ -2050,7 +2117,12 @@ export function Chats({
           <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-primary-600">
-                Replying to {replyingTo.senderId === currentUser?.id ? "yourself" : (receiverUser?.firstName || receiverUser?.username || "Unknown")}
+                Replying to{" "}
+                {replyingTo.senderId === currentUser?.id
+                  ? "yourself"
+                  : receiverUser?.firstName ||
+                    receiverUser?.username ||
+                    "Unknown"}
               </p>
               <p className="text-xs text-gray-500 truncate">
                 {replyingTo.content || "Encrypted message"}
@@ -2125,7 +2197,7 @@ export function Chats({
                       .getElementById(
                         uploadModalMode === "image"
                           ? "image-file-input"
-                          : "desktop-file-input",
+                          : "desktop-file-input"
                       )
                       ?.click()
                   }
@@ -2268,7 +2340,7 @@ export function Chats({
                         const uploaded = await uploadFile(
                           selectedConversation.id,
                           file,
-                          undefined,
+                          undefined
                         )
                         if (abortRecord.aborted) {
                           const abortedId = uploaded.message.id
@@ -2276,9 +2348,9 @@ export function Chats({
                           setTimeout(
                             () =>
                               recentlyAbortedMessageIdsRef.current.delete(
-                                abortedId,
+                                abortedId
                               ),
-                            30_000,
+                            30_000
                           )
                           apiFetch(`/v1/messages/${abortedId}`, {
                             method: "DELETE",
@@ -2402,201 +2474,220 @@ export function Chats({
         )}
 
         <div className="p-3 flex min-h-[68px] items-end gap-x-3">
-        {/* Emoji + File + Upload */}
-        <div className="flex items-center gap-x-1">
-          <EmojiPicker onEmojiSelect={handleEmojiSelect} onGifSelect={handleGifSelect}>
-            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-              <Smile className="size-[22px]" />
-            </IconButton>
-          </EmojiPicker>
-
-          <IconButton
-            visual="gray"
-            variant="ghost"
-            size="lg"
-            className="rounded-full"
-            onClick={() => setUploadModalMode("image")}
-          >
-            <Image03 className="size-[22px]" />
-          </IconButton>
-          {/* // Updated attachment dropdown with file input */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-                <Attachment01 className="size-[22px]" />
+          {/* Emoji + File + Upload */}
+          <div className="flex items-center gap-x-1">
+            <EmojiPicker
+              onEmojiSelect={handleEmojiSelect}
+              onGifSelect={handleGifSelect}
+            >
+              <IconButton
+                visual="gray"
+                variant="ghost"
+                size="lg"
+                className="rounded-full"
+              >
+                <Smile className="size-[22px]" />
               </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[212px]">
-              <DropdownMenuItem onClick={() => setUploadModalMode("file")}>
-                <UploadCloud className="size-6" /> Upload from Desktop
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCloudPick("dropbox")}>
-                <DropboxBrand className="size-6" /> Upload via Dropbox
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCloudPick("google-drive")}>
-                <GoogleDrive1Brand className="size-6" /> Upload via Google Drive
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCloudPick("onedrive")}>
-                <MsOnedriveBrand className="size-6" /> Upload via OneDrive
-              </DropdownMenuItem>
-              <DropdownMenuArrow className="fill-white" />
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </EmojiPicker>
 
-          {/* Hidden file inputs */}
-          <input
-            id="desktop-file-input"
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.mp4,.mov"
-            multiple
-          />
-          <input
-            id="image-file-input"
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept="image/*"
-            multiple
-          />
-        </div>
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="lg"
+              className="rounded-full"
+              onClick={() => setUploadModalMode("image")}
+            >
+              <Image03 className="size-[22px]" />
+            </IconButton>
+            {/* // Updated attachment dropdown with file input */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  visual="gray"
+                  variant="ghost"
+                  size="lg"
+                  className="rounded-full"
+                >
+                  <Attachment01 className="size-[22px]" />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[212px]">
+                <DropdownMenuItem onClick={() => setUploadModalMode("file")}>
+                  <UploadCloud className="size-6" /> Upload from Desktop
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleCloudPick("dropbox")}>
+                  <DropboxBrand className="size-6" /> Upload via Dropbox
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleCloudPick("google-drive")}
+                >
+                  <GoogleDrive1Brand className="size-6" /> Upload via Google
+                  Drive
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleCloudPick("onedrive")}>
+                  <MsOnedriveBrand className="size-6" /> Upload via OneDrive
+                </DropdownMenuItem>
+                <DropdownMenuArrow className="fill-white" />
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-        {/* Text area + send - Updated */}
-        <InputGroup className="flex-auto w-[calc(100%-164px)]">
-          <Textarea
-            ref={composerRef}
-            placeholder={
-              counterpartDeleted
-                ? "You can no longer reply"
-                : editingMessage
-                  ? "Edit message..."
-                  : selectedFiles.length > 0
-                    ? "Add a message (optional)..."
-                    : "Send message..."
-            }
-            disabled={counterpartDeleted}
-            className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
-              editingMessage
-                ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
-                : "pr-11"
-            }`}
-            rows={1}
-            value={textareaValue}
-            onChange={(e) => {
-              setTextareaValue(e.target.value)
-              if (e.target.value.length > 0) sendTyping(true)
-              else sendTyping(false)
-            }}
-            onBlur={() => sendTyping(false)}
-            onPaste={(e) => {
-              const pasted = e.clipboardData.getData("text")
-              if (!pasted) return
-              const target = e.currentTarget
-              const selStart = target.selectionStart ?? textareaValue.length
-              const selEnd = target.selectionEnd ?? textareaValue.length
-              const projected =
-                textareaValue.slice(0, selStart) +
-                pasted +
-                textareaValue.slice(selEnd)
-              if (projected.length <= COMPOSER_MAX_CHARS) return
-              e.preventDefault()
-              const room = COMPOSER_MAX_CHARS - (textareaValue.length - (selEnd - selStart))
-              const truncated = pasted.slice(0, Math.max(0, room))
-              const next =
-                textareaValue.slice(0, selStart) +
-                truncated +
-                textareaValue.slice(selEnd)
-              setTextareaValue(next)
-              toast({
-                title: `Pasted content was truncated to ${COMPOSER_MAX_CHARS.toLocaleString()} characters`,
-              })
-            }}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return
-              if (editingMessage) {
-                if (e.key === "Escape") {
-                  e.preventDefault()
-                  handleCancelEdit()
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSaveEdit()
-                }
-                return
+            {/* Hidden file inputs */}
+            <input
+              id="desktop-file-input"
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.mp4,.mov"
+              multiple
+            />
+            <input
+              id="image-file-input"
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+              accept="image/*"
+              multiple
+            />
+          </div>
+
+          {/* Text area + send - Updated */}
+          <InputGroup className="flex-auto w-[calc(100%-164px)]">
+            <Textarea
+              ref={composerRef}
+              placeholder={
+                counterpartDeleted
+                  ? "You can no longer reply"
+                  : editingMessage
+                    ? "Edit message..."
+                    : selectedFiles.length > 0
+                      ? "Add a message (optional)..."
+                      : "Send message..."
               }
-              if (e.key === "Enter" && !e.shiftKey) {
+              disabled={counterpartDeleted}
+              className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
+                editingMessage
+                  ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
+                  : "pr-11"
+              }`}
+              rows={1}
+              value={textareaValue}
+              onChange={(e) => {
+                setTextareaValue(e.target.value)
+                if (e.target.value.length > 0) sendTyping(true)
+                else sendTyping(false)
+              }}
+              onBlur={() => sendTyping(false)}
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData("text")
+                if (!pasted) return
+                const target = e.currentTarget
+                const selStart = target.selectionStart ?? textareaValue.length
+                const selEnd = target.selectionEnd ?? textareaValue.length
+                const projected =
+                  textareaValue.slice(0, selStart) +
+                  pasted +
+                  textareaValue.slice(selEnd)
+                if (projected.length <= COMPOSER_MAX_CHARS) return
                 e.preventDefault()
-                handleSendMessage()
-              }
-            }}
-          />
-          <InputRightElement
-            className={
-              editingMessage
-                ? "!w-[120px] justify-end items-end pb-2"
-                : "items-end pb-2"
-            }
-          >
-            {editingMessage ? (
-              <div className="flex items-center gap-x-3 pr-3">
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700"
-                >
-                  Cancel
-                </button>
-                <span className="h-3 w-px bg-gray-300" aria-hidden />
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  disabled={
-                    !keyReady ||
-                    !!keyError ||
-                    textareaValue.trim() === (editingMessage.content || "").trim()
+                const room =
+                  COMPOSER_MAX_CHARS -
+                  (textareaValue.length - (selEnd - selStart))
+                const truncated = pasted.slice(0, Math.max(0, room))
+                const next =
+                  textareaValue.slice(0, selStart) +
+                  truncated +
+                  textareaValue.slice(selEnd)
+                setTextareaValue(next)
+                toast({
+                  title: `Pasted content was truncated to ${COMPOSER_MAX_CHARS.toLocaleString()} characters`,
+                })
+              }}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return
+                if (editingMessage) {
+                  if (e.key === "Escape") {
+                    e.preventDefault()
+                    handleCancelEdit()
+                  } else if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSaveEdit()
                   }
-                  className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
-                      isUploading || isSending ? "animate-pulse" : ""
-                    }`}
-                    onClick={handleSendMessage}
+                  return
+                }
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendMessage()
+                }
+              }}
+            />
+            <InputRightElement
+              className={
+                editingMessage
+                  ? "!w-[120px] justify-end items-end pb-2"
+                  : "items-end pb-2"
+              }
+            >
+              {editingMessage ? (
+                <div className="flex items-center gap-x-3 pr-3">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <span className="h-3 w-px bg-gray-300" aria-hidden />
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
                     disabled={
-                      (!textareaValue.trim() && selectedFiles.length === 0) ||
-                      isUploading ||
-                      isSending ||
                       !keyReady ||
                       !!keyError ||
-                      counterpartDeleted
+                      textareaValue.trim() ===
+                        (editingMessage.content || "").trim()
                     }
+                    className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
                   >
-                    {isUploading || isSending ? (
-                      <Spinner size={18} strokeWidth={3} />
-                    ) : (
-                      <Send className="size-[18px]" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {isUploading
-                      ? "Uploading..."
-                      : selectedFiles.length > 0
-                        ? "Send files"
-                        : textareaValue
-                          ? "Send message"
-                          : "Type a message or select files"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </InputRightElement>
-        </InputGroup>
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
+                        isUploading || isSending ? "animate-pulse" : ""
+                      }`}
+                      onClick={handleSendMessage}
+                      disabled={
+                        (!textareaValue.trim() && selectedFiles.length === 0) ||
+                        isUploading ||
+                        isSending ||
+                        !keyReady ||
+                        !!keyError ||
+                        counterpartDeleted
+                      }
+                    >
+                      {isUploading || isSending ? (
+                        <Spinner size={18} strokeWidth={3} />
+                      ) : (
+                        <Send className="size-[18px]" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isUploading
+                        ? "Uploading..."
+                        : selectedFiles.length > 0
+                          ? "Send files"
+                          : textareaValue
+                            ? "Send message"
+                            : "Type a message or select files"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </InputRightElement>
+          </InputGroup>
         </div>
       </div>
 
@@ -2615,7 +2706,8 @@ export function Chats({
         onOpenChange={setShowBlockConfirm}
         targetUserId={
           selectedConversation && currentUser?.id
-            ? getOtherParticipantId(selectedConversation, currentUser.id) ?? null
+            ? (getOtherParticipantId(selectedConversation, currentUser.id) ??
+              null)
             : null
         }
         targetDisplayName={

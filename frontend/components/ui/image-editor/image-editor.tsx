@@ -175,20 +175,33 @@ const renderEditedImageFile = async ({
   context.translate(canvasWidth / 2 + offsetX, canvasHeight / 2 + offsetY)
   context.rotate((rotated * Math.PI) / 180)
   context.scale(scale, scale)
-  context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+  context.drawImage(
+    image,
+    -drawWidth / 2,
+    -drawHeight / 2,
+    drawWidth,
+    drawHeight
+  )
 
   const mimeType = getFileMimeType(fileName)
-  const outputFileName = ensureFileExtension(fileName || "edited-image", mimeType)
+  const outputFileName = ensureFileExtension(
+    fileName || "edited-image",
+    mimeType
+  )
 
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((nextBlob) => {
-      if (nextBlob) {
-        resolve(nextBlob)
-        return
-      }
+    canvas.toBlob(
+      (nextBlob) => {
+        if (nextBlob) {
+          resolve(nextBlob)
+          return
+        }
 
-      reject(new Error("Unable to save edited image."))
-    }, mimeType, mimeType === "image/jpeg" ? 0.92 : undefined)
+        reject(new Error("Unable to save edited image."))
+      },
+      mimeType,
+      mimeType === "image/jpeg" ? 0.92 : undefined
+    )
   })
 
   return new File([blob], outputFileName, {

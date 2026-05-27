@@ -135,8 +135,14 @@ export const TagsInputInput = React.forwardRef<
     },
     ref
   ) => {
-    const { inputValue, setInputValue, addValue, clearInputValue, focus, value: currentTags } =
-      useTagsInputContext()
+    const {
+      inputValue,
+      setInputValue,
+      addValue,
+      clearInputValue,
+      focus,
+      value: currentTags,
+    } = useTagsInputContext()
     const onInputValueChangeRef = React.useRef(onInputValueChange)
     const [open, { off, on }] = useToggle(false)
     const isInputValueValid = inputValue !== ""
@@ -157,7 +163,8 @@ export const TagsInputInput = React.forwardRef<
     const exactMatchedOption = options?.find(
       (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
     )
-    const enterOptionValue = exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
+    const enterOptionValue =
+      exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
 
     useUpdateEffect(() => {
       isInputValueValid ? on() : off()
@@ -217,7 +224,9 @@ export const TagsInputInput = React.forwardRef<
                   )}
                   <CommandGroup className="pt-0">
                     {filteredOptions?.map((option) => {
-                      const matchIndex = option.toLowerCase().indexOf(inputValue.toLowerCase())
+                      const matchIndex = option
+                        .toLowerCase()
+                        .indexOf(inputValue.toLowerCase())
                       return (
                         <CommandItem
                           key={option}
@@ -233,7 +242,12 @@ export const TagsInputInput = React.forwardRef<
                             {matchIndex >= 0 ? (
                               <>
                                 {option.slice(0, matchIndex)}
-                                <span className="font-bold">{option.slice(matchIndex, matchIndex + inputValue.length)}</span>
+                                <span className="font-bold">
+                                  {option.slice(
+                                    matchIndex,
+                                    matchIndex + inputValue.length
+                                  )}
+                                </span>
                                 {option.slice(matchIndex + inputValue.length)}
                               </>
                             ) : (

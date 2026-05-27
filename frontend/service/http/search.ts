@@ -1,6 +1,11 @@
 import AxiosRequest from ".."
 
-export type SearchCategory = "all" | "talent" | "teams" | "projects" | "services"
+export type SearchCategory =
+  | "all"
+  | "talent"
+  | "teams"
+  | "projects"
+  | "services"
 
 export interface SearchParams {
   q: string

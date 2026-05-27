@@ -1,6 +1,6 @@
-import AxiosRequest from ".."
 import Cookies from "js-cookie"
 import { getPublicUserUrl } from "@/lib/runtime-urls"
+import AxiosRequest from ".."
 
 const USER_BASE = getPublicUserUrl()
 
@@ -68,7 +68,13 @@ export interface UserProfilePayload {
   role?: string | null
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }> | null
+  jobTitles?: Array<{
+    jobTitle: string
+    clientRate: number
+    earning: number
+    fee: number
+    saveAsDefault: boolean
+  }> | null
   recentJobTitle?: string | null
   userType?: string
   industry?: string

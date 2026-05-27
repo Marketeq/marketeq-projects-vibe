@@ -2,7 +2,10 @@ import * as React from "react"
 import { SVGProps } from "react"
 import { cn } from "@/utils/functions"
 
-export const MarketeqLogo = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
+export const MarketeqLogo = ({
+  className,
+  ...props
+}: SVGProps<SVGSVGElement>) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     className={cn("w-[147px] h-[22px]", className)}

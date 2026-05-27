@@ -8,17 +8,15 @@ import {
   useCategoryPageL3,
 } from "@/src/features/category-pages/hook"
 import { type BlockItem } from "@/src/lib/api/category-pages"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
   getAllFavorites,
   removeFavorite,
 } from "@/src/lib/api/favorites"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
-import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
-import { ListingCard } from "@/components/listing-card"
 import { type TalentUser, talentToCardProps } from "@/src/lib/api/talent-users"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
 import { fromLength } from "@/utils/functions"
 import {
@@ -34,11 +32,15 @@ import {
   Star01,
   Stars02,
 } from "@blend-metrics/icons"
-import { SubcategoryIconTile, resolveUniqueSubcategoryIcons } from "@/lib/subcategory-icon"
-import { CategoryBanner } from "@/components/category-banner"
 import { TabsList, TabsTrigger } from "@radix-ui/react-tabs"
-import { Tabs, TabsContent } from "@/components/ui"
 import { SwiperSlide } from "swiper/react"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
+import {
+  SubcategoryIconTile,
+  resolveUniqueSubcategoryIcons,
+} from "@/lib/subcategory-icon"
+import { CategoryBanner } from "@/components/category-banner"
+import { ListingCard } from "@/components/listing-card"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -48,6 +50,7 @@ import {
   SwiperPrevTrigger,
   SwiperRoot,
 } from "@/components/swiper"
+import { Tabs, TabsContent } from "@/components/ui"
 import {
   Accordion,
   AccordionItem,
@@ -234,325 +237,2295 @@ const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
   research: {
     name: "Research",
     slug: "research",
-    description: "Discover research projects, meet expert analysts, and find the insights you need to succeed.",
+    description:
+      "Discover research projects, meet expert analysts, and find the insights you need to succeed.",
     heroImage: unsplash("1532094349884-543bc11b234d"),
     subcategories: [
-      { name: "Market Research", slug: "market-research", description: "Consumer insights, competitive analysis, and market sizing.", children: c("Market Sizing", "TAM Analysis", "Competitor Mapping", "Pricing Research", "Go-to-Market Research", "Brand Awareness Studies", "Channel Research") },
-      { name: "User Research", slug: "user-research", description: "Usability testing, interviews, and persona development.", children: c("Usability Testing", "User Interviews", "Persona Development", "Journey Mapping", "Card Sorting", "Tree Testing", "Diary Studies") },
-      { name: "Academic Research", slug: "academic-research", description: "Literature reviews, white papers, and scholarly analysis.", children: c("Literature Review", "Systematic Review", "Meta-Analysis", "White Papers", "Thesis Support", "Citation Management", "Peer Review") },
-      { name: "Clinical Research", slug: "clinical-research", description: "Clinical trials, pharma research, and regulatory compliance.", children: c("Clinical Trials", "Protocol Design", "Regulatory Affairs", "Biostatistics", "Patient Recruitment", "Pharmacovigilance", "Medical Writing") },
-      { name: "Consumer Research", slug: "consumer-research", description: "Behavioral analysis, focus groups, and consumer sentiment.", children: c("Focus Groups", "Behavioral Analysis", "Shopper Insights", "Ethnography", "Panel Research", "Customer Segmentation", "Conjoint Analysis") },
-      { name: "Data Analysis", slug: "data-analysis", description: "Statistical analysis, data visualization, and reporting.", children: c("Statistical Modeling", "Regression Analysis", "Time Series", "A/B Test Analysis", "Data Cleaning", "Exploratory Analysis", "Reporting") },
-      { name: "Competitive Intelligence", slug: "competitive-intelligence", description: "Competitor tracking, benchmarking, and strategic insights.", children: c("Benchmarking", "SWOT Analysis", "Patent Research", "Win-Loss Analysis", "Pricing Intelligence", "Product Teardowns", "Feature Comparison") },
-      { name: "Survey Research", slug: "survey-research", description: "Survey design, distribution, response analysis, and insights.", children: c("Survey Design", "Questionnaire Writing", "Sampling Strategy", "Distribution", "Response Analysis", "NPS Surveys", "CSAT Surveys") },
-      { name: "Qualitative Research", slug: "qualitative-research", description: "In-depth interviews, focus groups, and ethnographic studies.", children: c("In-Depth Interviews", "Ethnography", "Grounded Theory", "Content Analysis", "Narrative Analysis", "Phenomenology", "Thematic Coding") },
-      { name: "Sentiment Analysis", slug: "sentiment-analysis", description: "Brand monitoring, social listening, and NLP-powered analysis.", children: c("Social Listening", "Brand Monitoring", "Review Mining", "NLP Models", "Emotion Detection", "Aspect-Based Sentiment", "Trend Detection") },
-      { name: "Industry Analysis", slug: "industry-analysis", description: "Industry benchmarking, KPI analysis, and market positioning.", children: c("Porter's Five Forces", "PESTLE Analysis", "Value Chain Analysis", "Industry Benchmarking", "Market Positioning", "Trend Forecasting", "Vertical Deep Dives") },
+      {
+        name: "Market Research",
+        slug: "market-research",
+        description:
+          "Consumer insights, competitive analysis, and market sizing.",
+        children: c(
+          "Market Sizing",
+          "TAM Analysis",
+          "Competitor Mapping",
+          "Pricing Research",
+          "Go-to-Market Research",
+          "Brand Awareness Studies",
+          "Channel Research"
+        ),
+      },
+      {
+        name: "User Research",
+        slug: "user-research",
+        description: "Usability testing, interviews, and persona development.",
+        children: c(
+          "Usability Testing",
+          "User Interviews",
+          "Persona Development",
+          "Journey Mapping",
+          "Card Sorting",
+          "Tree Testing",
+          "Diary Studies"
+        ),
+      },
+      {
+        name: "Academic Research",
+        slug: "academic-research",
+        description:
+          "Literature reviews, white papers, and scholarly analysis.",
+        children: c(
+          "Literature Review",
+          "Systematic Review",
+          "Meta-Analysis",
+          "White Papers",
+          "Thesis Support",
+          "Citation Management",
+          "Peer Review"
+        ),
+      },
+      {
+        name: "Clinical Research",
+        slug: "clinical-research",
+        description:
+          "Clinical trials, pharma research, and regulatory compliance.",
+        children: c(
+          "Clinical Trials",
+          "Protocol Design",
+          "Regulatory Affairs",
+          "Biostatistics",
+          "Patient Recruitment",
+          "Pharmacovigilance",
+          "Medical Writing"
+        ),
+      },
+      {
+        name: "Consumer Research",
+        slug: "consumer-research",
+        description:
+          "Behavioral analysis, focus groups, and consumer sentiment.",
+        children: c(
+          "Focus Groups",
+          "Behavioral Analysis",
+          "Shopper Insights",
+          "Ethnography",
+          "Panel Research",
+          "Customer Segmentation",
+          "Conjoint Analysis"
+        ),
+      },
+      {
+        name: "Data Analysis",
+        slug: "data-analysis",
+        description: "Statistical analysis, data visualization, and reporting.",
+        children: c(
+          "Statistical Modeling",
+          "Regression Analysis",
+          "Time Series",
+          "A/B Test Analysis",
+          "Data Cleaning",
+          "Exploratory Analysis",
+          "Reporting"
+        ),
+      },
+      {
+        name: "Competitive Intelligence",
+        slug: "competitive-intelligence",
+        description:
+          "Competitor tracking, benchmarking, and strategic insights.",
+        children: c(
+          "Benchmarking",
+          "SWOT Analysis",
+          "Patent Research",
+          "Win-Loss Analysis",
+          "Pricing Intelligence",
+          "Product Teardowns",
+          "Feature Comparison"
+        ),
+      },
+      {
+        name: "Survey Research",
+        slug: "survey-research",
+        description:
+          "Survey design, distribution, response analysis, and insights.",
+        children: c(
+          "Survey Design",
+          "Questionnaire Writing",
+          "Sampling Strategy",
+          "Distribution",
+          "Response Analysis",
+          "NPS Surveys",
+          "CSAT Surveys"
+        ),
+      },
+      {
+        name: "Qualitative Research",
+        slug: "qualitative-research",
+        description:
+          "In-depth interviews, focus groups, and ethnographic studies.",
+        children: c(
+          "In-Depth Interviews",
+          "Ethnography",
+          "Grounded Theory",
+          "Content Analysis",
+          "Narrative Analysis",
+          "Phenomenology",
+          "Thematic Coding"
+        ),
+      },
+      {
+        name: "Sentiment Analysis",
+        slug: "sentiment-analysis",
+        description:
+          "Brand monitoring, social listening, and NLP-powered analysis.",
+        children: c(
+          "Social Listening",
+          "Brand Monitoring",
+          "Review Mining",
+          "NLP Models",
+          "Emotion Detection",
+          "Aspect-Based Sentiment",
+          "Trend Detection"
+        ),
+      },
+      {
+        name: "Industry Analysis",
+        slug: "industry-analysis",
+        description:
+          "Industry benchmarking, KPI analysis, and market positioning.",
+        children: c(
+          "Porter's Five Forces",
+          "PESTLE Analysis",
+          "Value Chain Analysis",
+          "Industry Benchmarking",
+          "Market Positioning",
+          "Trend Forecasting",
+          "Vertical Deep Dives"
+        ),
+      },
     ],
   },
   "software-development": {
     name: "Software Development",
     slug: "software-development",
-    description: "Discover exciting projects, meet talented teams, and find the skills you need to succeed.",
+    description:
+      "Discover exciting projects, meet talented teams, and find the skills you need to succeed.",
     heroImage: unsplash("1461749280684-dccba630e2f6"),
     subcategories: [
-      { name: "Front-end Development", slug: "front-end-development", description: "Create the interface that users interact with directly.", children: c("React", "Vue.js", "Angular", "Next.js", "Svelte", "TypeScript", "CSS & Tailwind", "Accessibility") },
-      { name: "Back-end Development", slug: "back-end-development", description: "Build the server logic, APIs, and databases.", children: c("Node.js", "Python & Django", "Ruby on Rails", "Go", "Java & Spring", "GraphQL APIs", "REST APIs", "Database Design") },
-      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform mobile applications.", children: c("iOS Swift", "Android Kotlin", "React Native", "Flutter", "Ionic", "Mobile UI Kits", "App Store Optimization", "Push Notifications") },
-      { name: "DevOps & Cloud", slug: "devops-cloud", description: "Infrastructure, CI/CD, and cloud deployment.", children: c("AWS", "Google Cloud", "Azure", "Kubernetes", "Docker", "Terraform", "CI/CD Pipelines", "Observability") },
-      { name: "Blockchain", slug: "blockchain", description: "Smart contracts, DeFi, and Web3 development.", children: c("Solidity", "Smart Contract Audits", "DeFi Protocols", "NFT Platforms", "Ethereum", "Solana", "Layer 2", "Wallet Integration") },
-      { name: "QA & Testing", slug: "qa-testing", description: "Automated testing, QA strategy, and release quality.", children: c("Manual QA", "Test Automation", "Cypress", "Playwright", "Load Testing", "Security Testing", "Mobile QA") },
-      { name: "Game Development", slug: "game-development", description: "Unity, Unreal, and indie game development.", children: c("Unity", "Unreal Engine", "Godot", "Game Design", "Mobile Games", "Multiplayer Backends", "Game Art") },
-      { name: "AI & Machine Learning", slug: "ai-ml", description: "LLM apps, fine-tuning, and ML pipelines.", children: c("LLM Apps", "Prompt Engineering", "Fine-Tuning", "RAG Systems", "MLOps", "Computer Vision", "Recommendation Systems") },
-      { name: "Embedded & IoT", slug: "embedded-iot", description: "Firmware, edge devices, and connected hardware.", children: c("Firmware", "Arduino", "Raspberry Pi", "ESP32", "Edge AI", "IoT Gateways", "Protocol Integration") },
-      { name: "Desktop Development", slug: "desktop-development", description: "Native and cross-platform desktop apps.", children: c("Electron Apps", "Tauri", ".NET Desktop", "macOS Native", "Windows Native", "Qt", "Linux GTK") },
-      { name: "Security Engineering", slug: "security-engineering", description: "Pentesting, audits, and secure coding practices.", children: c("Penetration Testing", "Secure Code Review", "Threat Modeling", "SOC 2 Prep", "Vulnerability Management", "Cloud Security", "AppSec") },
-      { name: "API & Integrations", slug: "api-integrations", description: "Third-party integrations, webhooks, and middleware.", children: c("Stripe Integration", "Salesforce Integration", "Zapier & Make", "Webhooks", "OAuth Flows", "iPaaS", "Middleware") },
+      {
+        name: "Front-end Development",
+        slug: "front-end-development",
+        description: "Create the interface that users interact with directly.",
+        children: c(
+          "React",
+          "Vue.js",
+          "Angular",
+          "Next.js",
+          "Svelte",
+          "TypeScript",
+          "CSS & Tailwind",
+          "Accessibility"
+        ),
+      },
+      {
+        name: "Back-end Development",
+        slug: "back-end-development",
+        description: "Build the server logic, APIs, and databases.",
+        children: c(
+          "Node.js",
+          "Python & Django",
+          "Ruby on Rails",
+          "Go",
+          "Java & Spring",
+          "GraphQL APIs",
+          "REST APIs",
+          "Database Design"
+        ),
+      },
+      {
+        name: "Mobile Development",
+        slug: "mobile-development",
+        description: "Native and cross-platform mobile applications.",
+        children: c(
+          "iOS Swift",
+          "Android Kotlin",
+          "React Native",
+          "Flutter",
+          "Ionic",
+          "Mobile UI Kits",
+          "App Store Optimization",
+          "Push Notifications"
+        ),
+      },
+      {
+        name: "DevOps & Cloud",
+        slug: "devops-cloud",
+        description: "Infrastructure, CI/CD, and cloud deployment.",
+        children: c(
+          "AWS",
+          "Google Cloud",
+          "Azure",
+          "Kubernetes",
+          "Docker",
+          "Terraform",
+          "CI/CD Pipelines",
+          "Observability"
+        ),
+      },
+      {
+        name: "Blockchain",
+        slug: "blockchain",
+        description: "Smart contracts, DeFi, and Web3 development.",
+        children: c(
+          "Solidity",
+          "Smart Contract Audits",
+          "DeFi Protocols",
+          "NFT Platforms",
+          "Ethereum",
+          "Solana",
+          "Layer 2",
+          "Wallet Integration"
+        ),
+      },
+      {
+        name: "QA & Testing",
+        slug: "qa-testing",
+        description: "Automated testing, QA strategy, and release quality.",
+        children: c(
+          "Manual QA",
+          "Test Automation",
+          "Cypress",
+          "Playwright",
+          "Load Testing",
+          "Security Testing",
+          "Mobile QA"
+        ),
+      },
+      {
+        name: "Game Development",
+        slug: "game-development",
+        description: "Unity, Unreal, and indie game development.",
+        children: c(
+          "Unity",
+          "Unreal Engine",
+          "Godot",
+          "Game Design",
+          "Mobile Games",
+          "Multiplayer Backends",
+          "Game Art"
+        ),
+      },
+      {
+        name: "AI & Machine Learning",
+        slug: "ai-ml",
+        description: "LLM apps, fine-tuning, and ML pipelines.",
+        children: c(
+          "LLM Apps",
+          "Prompt Engineering",
+          "Fine-Tuning",
+          "RAG Systems",
+          "MLOps",
+          "Computer Vision",
+          "Recommendation Systems"
+        ),
+      },
+      {
+        name: "Embedded & IoT",
+        slug: "embedded-iot",
+        description: "Firmware, edge devices, and connected hardware.",
+        children: c(
+          "Firmware",
+          "Arduino",
+          "Raspberry Pi",
+          "ESP32",
+          "Edge AI",
+          "IoT Gateways",
+          "Protocol Integration"
+        ),
+      },
+      {
+        name: "Desktop Development",
+        slug: "desktop-development",
+        description: "Native and cross-platform desktop apps.",
+        children: c(
+          "Electron Apps",
+          "Tauri",
+          ".NET Desktop",
+          "macOS Native",
+          "Windows Native",
+          "Qt",
+          "Linux GTK"
+        ),
+      },
+      {
+        name: "Security Engineering",
+        slug: "security-engineering",
+        description: "Pentesting, audits, and secure coding practices.",
+        children: c(
+          "Penetration Testing",
+          "Secure Code Review",
+          "Threat Modeling",
+          "SOC 2 Prep",
+          "Vulnerability Management",
+          "Cloud Security",
+          "AppSec"
+        ),
+      },
+      {
+        name: "API & Integrations",
+        slug: "api-integrations",
+        description: "Third-party integrations, webhooks, and middleware.",
+        children: c(
+          "Stripe Integration",
+          "Salesforce Integration",
+          "Zapier & Make",
+          "Webhooks",
+          "OAuth Flows",
+          "iPaaS",
+          "Middleware"
+        ),
+      },
     ],
   },
   "design-creative": {
     name: "Design & Creative",
     slug: "design-creative",
-    description: "Find creative talent for branding, UI/UX, illustration, and visual storytelling.",
+    description:
+      "Find creative talent for branding, UI/UX, illustration, and visual storytelling.",
     heroImage: unsplash("1558655146-9f40138edfeb"),
     subcategories: [
-      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", children: c("Wireframing", "Prototyping", "Interaction Design", "Usability Testing", "Design Systems", "Mobile UX", "Web UX") },
-      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", children: c("Flyers & Posters", "Business Cards", "Ad Creatives", "Infographics", "Merch Design", "Social Graphics", "Brochures") },
-      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", children: c("Editorial Illustration", "Character Design", "Icon Sets", "Digital Painting", "Comic Art", "Children's Illustration", "Technical Illustration") },
-      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", children: c("Explainer Videos", "Logo Animation", "Lottie Animations", "Kinetic Typography", "VFX", "Title Sequences", "Motion Branding") },
-      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", children: c("Logo Design", "Brand Guidelines", "Style Guides", "Rebranding", "Naming", "Visual Identity", "Brand Strategy") },
-      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", children: c("Landing Pages", "Marketing Sites", "E-commerce Design", "Portfolio Sites", "Webflow Sites", "WordPress Themes") },
-      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems.", children: c("SaaS Dashboards", "Mobile Apps", "Admin Panels", "Design Systems", "Onboarding Flows", "Data Visualization") },
-      { name: "3D & Animation", slug: "3d-animation", description: "3D modeling, rendering, and animation.", children: c("3D Modeling", "Product Rendering", "Character Animation", "Environment Design", "AR/VR Assets", "Motion Capture") },
-      { name: "Photography", slug: "photography", description: "Product, lifestyle, and commercial photography.", children: c("Product Photography", "Lifestyle Shoots", "Headshots", "Event Photography", "Real Estate", "Food Photography", "Photo Retouching") },
-      { name: "Video Production", slug: "video-production", description: "Shooting, editing, and post-production.", children: c("Video Editing", "Color Grading", "Cinematography", "Documentary", "Music Videos", "Corporate Video", "Sound Design") },
-      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations.", children: c("Pitch Decks", "Investor Decks", "Sales Decks", "Keynote Templates", "Google Slides", "Webinar Slides") },
-      { name: "Print & Packaging", slug: "print-packaging", description: "Brochures, labels, and packaging design.", children: c("Magazine Layout", "Book Design", "Box Design", "Label Design", "Poster Design", "Annual Reports") },
+      {
+        name: "UI/UX Design",
+        slug: "ui-ux-design",
+        description: "User interface and experience design for web and mobile.",
+        children: c(
+          "Wireframing",
+          "Prototyping",
+          "Interaction Design",
+          "Usability Testing",
+          "Design Systems",
+          "Mobile UX",
+          "Web UX"
+        ),
+      },
+      {
+        name: "Graphic Design",
+        slug: "graphic-design",
+        description: "Visual branding, print design, and marketing materials.",
+        children: c(
+          "Flyers & Posters",
+          "Business Cards",
+          "Ad Creatives",
+          "Infographics",
+          "Merch Design",
+          "Social Graphics",
+          "Brochures"
+        ),
+      },
+      {
+        name: "Illustration",
+        slug: "illustration",
+        description: "Custom illustrations, icons, and digital art.",
+        children: c(
+          "Editorial Illustration",
+          "Character Design",
+          "Icon Sets",
+          "Digital Painting",
+          "Comic Art",
+          "Children's Illustration",
+          "Technical Illustration"
+        ),
+      },
+      {
+        name: "Motion Design",
+        slug: "motion-design",
+        description: "Animations, motion graphics, and video effects.",
+        children: c(
+          "Explainer Videos",
+          "Logo Animation",
+          "Lottie Animations",
+          "Kinetic Typography",
+          "VFX",
+          "Title Sequences",
+          "Motion Branding"
+        ),
+      },
+      {
+        name: "Brand Identity",
+        slug: "brand-identity",
+        description: "Logo design, brand guidelines, and visual systems.",
+        children: c(
+          "Logo Design",
+          "Brand Guidelines",
+          "Style Guides",
+          "Rebranding",
+          "Naming",
+          "Visual Identity",
+          "Brand Strategy"
+        ),
+      },
+      {
+        name: "Web Design",
+        slug: "web-design",
+        description: "Landing pages, marketing sites, and full website design.",
+        children: c(
+          "Landing Pages",
+          "Marketing Sites",
+          "E-commerce Design",
+          "Portfolio Sites",
+          "Webflow Sites",
+          "WordPress Themes"
+        ),
+      },
+      {
+        name: "Product Design",
+        slug: "product-design",
+        description: "End-to-end digital product design and design systems.",
+        children: c(
+          "SaaS Dashboards",
+          "Mobile Apps",
+          "Admin Panels",
+          "Design Systems",
+          "Onboarding Flows",
+          "Data Visualization"
+        ),
+      },
+      {
+        name: "3D & Animation",
+        slug: "3d-animation",
+        description: "3D modeling, rendering, and animation.",
+        children: c(
+          "3D Modeling",
+          "Product Rendering",
+          "Character Animation",
+          "Environment Design",
+          "AR/VR Assets",
+          "Motion Capture"
+        ),
+      },
+      {
+        name: "Photography",
+        slug: "photography",
+        description: "Product, lifestyle, and commercial photography.",
+        children: c(
+          "Product Photography",
+          "Lifestyle Shoots",
+          "Headshots",
+          "Event Photography",
+          "Real Estate",
+          "Food Photography",
+          "Photo Retouching"
+        ),
+      },
+      {
+        name: "Video Production",
+        slug: "video-production",
+        description: "Shooting, editing, and post-production.",
+        children: c(
+          "Video Editing",
+          "Color Grading",
+          "Cinematography",
+          "Documentary",
+          "Music Videos",
+          "Corporate Video",
+          "Sound Design"
+        ),
+      },
+      {
+        name: "Presentation Design",
+        slug: "presentation-design",
+        description: "Pitch decks, keynote slides, and investor presentations.",
+        children: c(
+          "Pitch Decks",
+          "Investor Decks",
+          "Sales Decks",
+          "Keynote Templates",
+          "Google Slides",
+          "Webinar Slides"
+        ),
+      },
+      {
+        name: "Print & Packaging",
+        slug: "print-packaging",
+        description: "Brochures, labels, and packaging design.",
+        children: c(
+          "Magazine Layout",
+          "Book Design",
+          "Box Design",
+          "Label Design",
+          "Poster Design",
+          "Annual Reports"
+        ),
+      },
     ],
   },
   design: {
     name: "Design",
     slug: "design",
-    description: "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
+    description:
+      "Find world-class designers for branding, product, web, UX, illustration, and everything in between.",
     heroImage: unsplash("1558655146-9f40138edfeb"),
     subcategories: [
-      { name: "UI/UX Design", slug: "ui-ux-design", description: "User interface and experience design for web and mobile.", children: c("Wireframing", "Prototyping", "Interaction Design", "Usability Testing", "Information Architecture", "Mobile UX", "Web UX", "Accessibility") },
-      { name: "Web Design", slug: "web-design", description: "Landing pages, marketing sites, and full website design.", children: c("Landing Pages", "Marketing Sites", "E-commerce Design", "Portfolio Sites", "Blog Design", "Webflow Sites", "WordPress Themes") },
-      { name: "Product Design", slug: "product-design", description: "End-to-end digital product design and design systems.", children: c("SaaS Dashboards", "Mobile Apps", "Admin Panels", "Design Systems", "Onboarding Flows", "Data Visualization", "B2B Products") },
-      { name: "Graphic Design", slug: "graphic-design", description: "Visual branding, print design, and marketing materials.", children: c("Flyers & Posters", "Business Cards", "Ad Creatives", "Infographics", "Merch Design", "Social Graphics", "Brochures") },
-      { name: "Brand Identity", slug: "brand-identity", description: "Logo design, brand guidelines, and visual systems.", children: c("Logo Design", "Brand Guidelines", "Style Guides", "Rebranding", "Naming", "Visual Identity", "Brand Strategy") },
-      { name: "Illustration", slug: "illustration", description: "Custom illustrations, icons, and digital art.", children: c("Editorial Illustration", "Character Design", "Icon Sets", "Digital Painting", "Comic Art", "Children's Illustration", "Technical Illustration") },
-      { name: "Motion Design", slug: "motion-design", description: "Animations, motion graphics, and video effects.", children: c("Explainer Videos", "Logo Animation", "Lottie Animations", "Kinetic Typography", "VFX", "Title Sequences", "Motion Branding") },
-      { name: "3D Design", slug: "3d-design", description: "3D modeling, rendering, and immersive visuals.", children: c("3D Modeling", "Product Rendering", "Architectural Viz", "Character Modeling", "Environment Design", "AR/VR Assets", "3D Printing") },
-      { name: "Packaging Design", slug: "packaging-design", description: "Product packaging, labels, and unboxing experiences.", children: c("Box Design", "Label Design", "Bottle Design", "Food Packaging", "Cosmetic Packaging", "Dieline Design", "Unboxing Experience") },
-      { name: "Presentation Design", slug: "presentation-design", description: "Pitch decks, keynote slides, and investor presentations.", children: c("Pitch Decks", "Investor Decks", "Sales Decks", "Keynote Templates", "Google Slides", "Conference Talks", "Webinar Slides") },
-      { name: "Print Design", slug: "print-design", description: "Brochures, posters, magazines, and print collateral.", children: c("Magazine Layout", "Book Design", "Catalog Design", "Poster Design", "Brochure Design", "Annual Reports", "Stationery") },
-      { name: "Design Systems", slug: "design-systems", description: "Component libraries, tokens, and scalable UI foundations.", children: c("Component Libraries", "Design Tokens", "Figma Libraries", "Storybook Setup", "Accessibility Audit", "Theming", "Documentation") },
+      {
+        name: "UI/UX Design",
+        slug: "ui-ux-design",
+        description: "User interface and experience design for web and mobile.",
+        children: c(
+          "Wireframing",
+          "Prototyping",
+          "Interaction Design",
+          "Usability Testing",
+          "Information Architecture",
+          "Mobile UX",
+          "Web UX",
+          "Accessibility"
+        ),
+      },
+      {
+        name: "Web Design",
+        slug: "web-design",
+        description: "Landing pages, marketing sites, and full website design.",
+        children: c(
+          "Landing Pages",
+          "Marketing Sites",
+          "E-commerce Design",
+          "Portfolio Sites",
+          "Blog Design",
+          "Webflow Sites",
+          "WordPress Themes"
+        ),
+      },
+      {
+        name: "Product Design",
+        slug: "product-design",
+        description: "End-to-end digital product design and design systems.",
+        children: c(
+          "SaaS Dashboards",
+          "Mobile Apps",
+          "Admin Panels",
+          "Design Systems",
+          "Onboarding Flows",
+          "Data Visualization",
+          "B2B Products"
+        ),
+      },
+      {
+        name: "Graphic Design",
+        slug: "graphic-design",
+        description: "Visual branding, print design, and marketing materials.",
+        children: c(
+          "Flyers & Posters",
+          "Business Cards",
+          "Ad Creatives",
+          "Infographics",
+          "Merch Design",
+          "Social Graphics",
+          "Brochures"
+        ),
+      },
+      {
+        name: "Brand Identity",
+        slug: "brand-identity",
+        description: "Logo design, brand guidelines, and visual systems.",
+        children: c(
+          "Logo Design",
+          "Brand Guidelines",
+          "Style Guides",
+          "Rebranding",
+          "Naming",
+          "Visual Identity",
+          "Brand Strategy"
+        ),
+      },
+      {
+        name: "Illustration",
+        slug: "illustration",
+        description: "Custom illustrations, icons, and digital art.",
+        children: c(
+          "Editorial Illustration",
+          "Character Design",
+          "Icon Sets",
+          "Digital Painting",
+          "Comic Art",
+          "Children's Illustration",
+          "Technical Illustration"
+        ),
+      },
+      {
+        name: "Motion Design",
+        slug: "motion-design",
+        description: "Animations, motion graphics, and video effects.",
+        children: c(
+          "Explainer Videos",
+          "Logo Animation",
+          "Lottie Animations",
+          "Kinetic Typography",
+          "VFX",
+          "Title Sequences",
+          "Motion Branding"
+        ),
+      },
+      {
+        name: "3D Design",
+        slug: "3d-design",
+        description: "3D modeling, rendering, and immersive visuals.",
+        children: c(
+          "3D Modeling",
+          "Product Rendering",
+          "Architectural Viz",
+          "Character Modeling",
+          "Environment Design",
+          "AR/VR Assets",
+          "3D Printing"
+        ),
+      },
+      {
+        name: "Packaging Design",
+        slug: "packaging-design",
+        description: "Product packaging, labels, and unboxing experiences.",
+        children: c(
+          "Box Design",
+          "Label Design",
+          "Bottle Design",
+          "Food Packaging",
+          "Cosmetic Packaging",
+          "Dieline Design",
+          "Unboxing Experience"
+        ),
+      },
+      {
+        name: "Presentation Design",
+        slug: "presentation-design",
+        description: "Pitch decks, keynote slides, and investor presentations.",
+        children: c(
+          "Pitch Decks",
+          "Investor Decks",
+          "Sales Decks",
+          "Keynote Templates",
+          "Google Slides",
+          "Conference Talks",
+          "Webinar Slides"
+        ),
+      },
+      {
+        name: "Print Design",
+        slug: "print-design",
+        description: "Brochures, posters, magazines, and print collateral.",
+        children: c(
+          "Magazine Layout",
+          "Book Design",
+          "Catalog Design",
+          "Poster Design",
+          "Brochure Design",
+          "Annual Reports",
+          "Stationery"
+        ),
+      },
+      {
+        name: "Design Systems",
+        slug: "design-systems",
+        description:
+          "Component libraries, tokens, and scalable UI foundations.",
+        children: c(
+          "Component Libraries",
+          "Design Tokens",
+          "Figma Libraries",
+          "Storybook Setup",
+          "Accessibility Audit",
+          "Theming",
+          "Documentation"
+        ),
+      },
     ],
   },
   marketing: {
     name: "Marketing",
     slug: "marketing",
-    description: "Grow your brand with expert marketers, strategists, and campaign specialists.",
+    description:
+      "Grow your brand with expert marketers, strategists, and campaign specialists.",
     heroImage: unsplash("1557838923-2985c318be48"),
     subcategories: [
-      { name: "Digital Marketing", slug: "digital-marketing", description: "SEO, SEM, social media, and online advertising.", children: c("Google Ads", "Meta Ads", "TikTok Ads", "LinkedIn Ads", "Display Advertising", "Retargeting", "Programmatic", "Affiliate Marketing") },
-      { name: "Content Marketing", slug: "content-marketing", description: "Blog posts, whitepapers, and content strategy.", children: c("Blog Writing", "Whitepapers", "Case Studies", "E-books", "Content Strategy", "Editorial Calendars", "SEO Content") },
-      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy.", children: c("Campaign Design", "Newsletter Setup", "Drip Automation", "Transactional Emails", "List Segmentation", "A/B Testing", "Deliverability") },
-      { name: "Social Media", slug: "social-media", description: "Social strategy, community management, and growth.", children: c("Instagram Growth", "TikTok Strategy", "LinkedIn B2B", "Community Management", "Influencer Outreach", "Content Calendars", "Social Analytics") },
-      { name: "Analytics & SEO", slug: "analytics-seo", description: "Performance tracking, keyword research, and optimization.", children: c("Keyword Research", "On-Page SEO", "Technical SEO", "Link Building", "GA4 Setup", "Tag Manager", "Conversion Tracking") },
-      { name: "Brand Marketing", slug: "brand-marketing", description: "Brand positioning, storytelling, and campaigns.", children: c("Brand Positioning", "Messaging Frameworks", "Storytelling", "Campaign Strategy", "Brand Audits", "Tone of Voice") },
-      { name: "Growth Marketing", slug: "growth-marketing", description: "Experimentation, funnels, and conversion optimization.", children: c("Funnel Optimization", "A/B Testing", "Activation", "Retention", "Referral Loops", "PLG Strategy") },
-      { name: "Performance Marketing", slug: "performance-marketing", description: "Paid acquisition and ROAS optimization.", children: c("Paid Search", "Paid Social", "Creative Testing", "Attribution", "LTV Modeling", "ROAS Optimization") },
-      { name: "Influencer Marketing", slug: "influencer-marketing", description: "Influencer sourcing, outreach, and campaign management.", children: c("Creator Sourcing", "Outreach", "Contract Negotiation", "Campaign Management", "UGC Campaigns", "Affiliate Programs") },
-      { name: "PR & Communications", slug: "pr-communications", description: "Press, media relations, and corporate comms.", children: c("Press Releases", "Media Relations", "Crisis Comms", "Investor Relations", "Internal Comms", "Speechwriting") },
-      { name: "Product Marketing", slug: "product-marketing", description: "Launches, positioning, and GTM for product teams.", children: c("Launch Plans", "Positioning", "Messaging", "Competitive Analysis", "Sales Enablement", "Customer Research") },
-      { name: "Event Marketing", slug: "event-marketing", description: "Conferences, webinars, and activations.", children: c("Conference Planning", "Webinars", "Trade Shows", "Field Marketing", "Activations", "Sponsorships") },
+      {
+        name: "Digital Marketing",
+        slug: "digital-marketing",
+        description: "SEO, SEM, social media, and online advertising.",
+        children: c(
+          "Google Ads",
+          "Meta Ads",
+          "TikTok Ads",
+          "LinkedIn Ads",
+          "Display Advertising",
+          "Retargeting",
+          "Programmatic",
+          "Affiliate Marketing"
+        ),
+      },
+      {
+        name: "Content Marketing",
+        slug: "content-marketing",
+        description: "Blog posts, whitepapers, and content strategy.",
+        children: c(
+          "Blog Writing",
+          "Whitepapers",
+          "Case Studies",
+          "E-books",
+          "Content Strategy",
+          "Editorial Calendars",
+          "SEO Content"
+        ),
+      },
+      {
+        name: "Email Marketing",
+        slug: "email-marketing",
+        description: "Campaigns, automation, and newsletter strategy.",
+        children: c(
+          "Campaign Design",
+          "Newsletter Setup",
+          "Drip Automation",
+          "Transactional Emails",
+          "List Segmentation",
+          "A/B Testing",
+          "Deliverability"
+        ),
+      },
+      {
+        name: "Social Media",
+        slug: "social-media",
+        description: "Social strategy, community management, and growth.",
+        children: c(
+          "Instagram Growth",
+          "TikTok Strategy",
+          "LinkedIn B2B",
+          "Community Management",
+          "Influencer Outreach",
+          "Content Calendars",
+          "Social Analytics"
+        ),
+      },
+      {
+        name: "Analytics & SEO",
+        slug: "analytics-seo",
+        description:
+          "Performance tracking, keyword research, and optimization.",
+        children: c(
+          "Keyword Research",
+          "On-Page SEO",
+          "Technical SEO",
+          "Link Building",
+          "GA4 Setup",
+          "Tag Manager",
+          "Conversion Tracking"
+        ),
+      },
+      {
+        name: "Brand Marketing",
+        slug: "brand-marketing",
+        description: "Brand positioning, storytelling, and campaigns.",
+        children: c(
+          "Brand Positioning",
+          "Messaging Frameworks",
+          "Storytelling",
+          "Campaign Strategy",
+          "Brand Audits",
+          "Tone of Voice"
+        ),
+      },
+      {
+        name: "Growth Marketing",
+        slug: "growth-marketing",
+        description: "Experimentation, funnels, and conversion optimization.",
+        children: c(
+          "Funnel Optimization",
+          "A/B Testing",
+          "Activation",
+          "Retention",
+          "Referral Loops",
+          "PLG Strategy"
+        ),
+      },
+      {
+        name: "Performance Marketing",
+        slug: "performance-marketing",
+        description: "Paid acquisition and ROAS optimization.",
+        children: c(
+          "Paid Search",
+          "Paid Social",
+          "Creative Testing",
+          "Attribution",
+          "LTV Modeling",
+          "ROAS Optimization"
+        ),
+      },
+      {
+        name: "Influencer Marketing",
+        slug: "influencer-marketing",
+        description: "Influencer sourcing, outreach, and campaign management.",
+        children: c(
+          "Creator Sourcing",
+          "Outreach",
+          "Contract Negotiation",
+          "Campaign Management",
+          "UGC Campaigns",
+          "Affiliate Programs"
+        ),
+      },
+      {
+        name: "PR & Communications",
+        slug: "pr-communications",
+        description: "Press, media relations, and corporate comms.",
+        children: c(
+          "Press Releases",
+          "Media Relations",
+          "Crisis Comms",
+          "Investor Relations",
+          "Internal Comms",
+          "Speechwriting"
+        ),
+      },
+      {
+        name: "Product Marketing",
+        slug: "product-marketing",
+        description: "Launches, positioning, and GTM for product teams.",
+        children: c(
+          "Launch Plans",
+          "Positioning",
+          "Messaging",
+          "Competitive Analysis",
+          "Sales Enablement",
+          "Customer Research"
+        ),
+      },
+      {
+        name: "Event Marketing",
+        slug: "event-marketing",
+        description: "Conferences, webinars, and activations.",
+        children: c(
+          "Conference Planning",
+          "Webinars",
+          "Trade Shows",
+          "Field Marketing",
+          "Activations",
+          "Sponsorships"
+        ),
+      },
     ],
   },
   "data-analytics": {
     name: "Data & Analytics",
     slug: "data-analytics",
-    description: "Turn data into decisions with expert analysts, engineers, and data scientists.",
+    description:
+      "Turn data into decisions with expert analysts, engineers, and data scientists.",
     heroImage: unsplash("1551288049-bebda4e38f71"),
     subcategories: [
-      { name: "Data Engineering", slug: "data-engineering", description: "Pipelines, ETL, and data infrastructure.", children: c("ETL Pipelines", "Airflow", "dbt", "Data Warehousing", "Snowflake", "BigQuery", "Streaming Pipelines", "Data Lakes") },
-      { name: "Data Science", slug: "data-science", description: "Machine learning, modeling, and predictive analytics.", children: c("Predictive Modeling", "Classification", "Clustering", "Recommendation Systems", "NLP", "Computer Vision", "Forecasting", "Feature Engineering") },
-      { name: "Business Intelligence", slug: "business-intelligence", description: "Dashboards, reporting, and KPI tracking.", children: c("Tableau Dashboards", "Power BI", "Looker", "KPI Frameworks", "Executive Reports", "Self-Service BI", "SQL Reporting") },
-      { name: "Data Visualization", slug: "data-visualization", description: "Charts, infographics, and interactive dashboards.", children: c("D3.js Charts", "Interactive Dashboards", "Infographics", "Chart Design", "Data Storytelling", "Geospatial Viz", "Real-Time Dashboards") },
-      { name: "Big Data", slug: "big-data", description: "Large-scale data processing and distributed systems.", children: c("Apache Spark", "Hadoop", "Kafka", "Distributed Storage", "Stream Processing", "Data Partitioning", "Performance Tuning") },
-      { name: "Machine Learning", slug: "machine-learning", description: "Model development, training, and deployment.", children: c("Model Training", "Hyperparameter Tuning", "Model Serving", "Experiment Tracking", "Feature Stores", "Model Evaluation") },
-      { name: "MLOps", slug: "mlops", description: "Productionizing ML with reliable pipelines and monitoring.", children: c("Model Deployment", "Model Monitoring", "Drift Detection", "CI/CD for ML", "Model Registry", "Feature Pipelines") },
-      { name: "Data Strategy", slug: "data-strategy", description: "Data governance, architecture, and roadmaps.", children: c("Data Governance", "Data Catalogs", "Data Architecture", "Data Roadmaps", "Data Maturity Audits", "Privacy Compliance") },
-      { name: "Product Analytics", slug: "product-analytics", description: "Funnels, retention, and product experimentation.", children: c("Event Tracking", "Funnel Analysis", "Retention Analysis", "Cohort Analysis", "Amplitude", "Mixpanel", "Heap") },
-      { name: "Marketing Analytics", slug: "marketing-analytics", description: "Attribution, LTV, and channel performance.", children: c("Multi-Touch Attribution", "LTV Modeling", "Media Mix Modeling", "Channel Analysis", "Cohort Reporting", "Campaign Analytics") },
-      { name: "Finance Analytics", slug: "finance-analytics", description: "Financial reporting, modeling, and forecasting analytics.", children: c("FP&A Modeling", "Revenue Forecasting", "Cohort Economics", "Financial Reporting", "Cash Flow Modeling", "Budget Variance") },
-      { name: "Geospatial Analytics", slug: "geospatial-analytics", description: "Mapping, routing, and location intelligence.", children: c("GIS Analysis", "Mapbox", "Routing", "Geocoding", "Location Intelligence", "Spatial Clustering") },
+      {
+        name: "Data Engineering",
+        slug: "data-engineering",
+        description: "Pipelines, ETL, and data infrastructure.",
+        children: c(
+          "ETL Pipelines",
+          "Airflow",
+          "dbt",
+          "Data Warehousing",
+          "Snowflake",
+          "BigQuery",
+          "Streaming Pipelines",
+          "Data Lakes"
+        ),
+      },
+      {
+        name: "Data Science",
+        slug: "data-science",
+        description: "Machine learning, modeling, and predictive analytics.",
+        children: c(
+          "Predictive Modeling",
+          "Classification",
+          "Clustering",
+          "Recommendation Systems",
+          "NLP",
+          "Computer Vision",
+          "Forecasting",
+          "Feature Engineering"
+        ),
+      },
+      {
+        name: "Business Intelligence",
+        slug: "business-intelligence",
+        description: "Dashboards, reporting, and KPI tracking.",
+        children: c(
+          "Tableau Dashboards",
+          "Power BI",
+          "Looker",
+          "KPI Frameworks",
+          "Executive Reports",
+          "Self-Service BI",
+          "SQL Reporting"
+        ),
+      },
+      {
+        name: "Data Visualization",
+        slug: "data-visualization",
+        description: "Charts, infographics, and interactive dashboards.",
+        children: c(
+          "D3.js Charts",
+          "Interactive Dashboards",
+          "Infographics",
+          "Chart Design",
+          "Data Storytelling",
+          "Geospatial Viz",
+          "Real-Time Dashboards"
+        ),
+      },
+      {
+        name: "Big Data",
+        slug: "big-data",
+        description: "Large-scale data processing and distributed systems.",
+        children: c(
+          "Apache Spark",
+          "Hadoop",
+          "Kafka",
+          "Distributed Storage",
+          "Stream Processing",
+          "Data Partitioning",
+          "Performance Tuning"
+        ),
+      },
+      {
+        name: "Machine Learning",
+        slug: "machine-learning",
+        description: "Model development, training, and deployment.",
+        children: c(
+          "Model Training",
+          "Hyperparameter Tuning",
+          "Model Serving",
+          "Experiment Tracking",
+          "Feature Stores",
+          "Model Evaluation"
+        ),
+      },
+      {
+        name: "MLOps",
+        slug: "mlops",
+        description:
+          "Productionizing ML with reliable pipelines and monitoring.",
+        children: c(
+          "Model Deployment",
+          "Model Monitoring",
+          "Drift Detection",
+          "CI/CD for ML",
+          "Model Registry",
+          "Feature Pipelines"
+        ),
+      },
+      {
+        name: "Data Strategy",
+        slug: "data-strategy",
+        description: "Data governance, architecture, and roadmaps.",
+        children: c(
+          "Data Governance",
+          "Data Catalogs",
+          "Data Architecture",
+          "Data Roadmaps",
+          "Data Maturity Audits",
+          "Privacy Compliance"
+        ),
+      },
+      {
+        name: "Product Analytics",
+        slug: "product-analytics",
+        description: "Funnels, retention, and product experimentation.",
+        children: c(
+          "Event Tracking",
+          "Funnel Analysis",
+          "Retention Analysis",
+          "Cohort Analysis",
+          "Amplitude",
+          "Mixpanel",
+          "Heap"
+        ),
+      },
+      {
+        name: "Marketing Analytics",
+        slug: "marketing-analytics",
+        description: "Attribution, LTV, and channel performance.",
+        children: c(
+          "Multi-Touch Attribution",
+          "LTV Modeling",
+          "Media Mix Modeling",
+          "Channel Analysis",
+          "Cohort Reporting",
+          "Campaign Analytics"
+        ),
+      },
+      {
+        name: "Finance Analytics",
+        slug: "finance-analytics",
+        description:
+          "Financial reporting, modeling, and forecasting analytics.",
+        children: c(
+          "FP&A Modeling",
+          "Revenue Forecasting",
+          "Cohort Economics",
+          "Financial Reporting",
+          "Cash Flow Modeling",
+          "Budget Variance"
+        ),
+      },
+      {
+        name: "Geospatial Analytics",
+        slug: "geospatial-analytics",
+        description: "Mapping, routing, and location intelligence.",
+        children: c(
+          "GIS Analysis",
+          "Mapbox",
+          "Routing",
+          "Geocoding",
+          "Location Intelligence",
+          "Spatial Clustering"
+        ),
+      },
     ],
   },
   writing: {
     name: "Writing & Content",
     slug: "writing",
-    description: "Find skilled writers for copywriting, technical documentation, and creative content.",
+    description:
+      "Find skilled writers for copywriting, technical documentation, and creative content.",
     heroImage: unsplash("1455390582262-044cdead277a"),
     subcategories: [
-      { name: "Copywriting", slug: "copywriting", description: "Marketing copy, ad copy, and persuasive writing.", children: c("Website Copy", "Ad Copy", "Sales Pages", "Product Descriptions", "Taglines", "Email Copy", "Brand Voice") },
-      { name: "Technical Writing", slug: "technical-writing", description: "Documentation, API guides, and knowledge bases.", children: c("API Documentation", "Developer Guides", "Knowledge Bases", "User Manuals", "Release Notes", "Tutorials", "Architecture Docs") },
-      { name: "Creative Writing", slug: "creative-writing", description: "Storytelling, scripts, and editorial content.", children: c("Short Stories", "Screenwriting", "Video Scripts", "Podcast Scripts", "Children's Books", "Fiction Editing", "Ghostwriting") },
-      { name: "Translation", slug: "translation", description: "Localization, multilingual content, and transcription.", children: c("Website Localization", "App Localization", "Subtitling", "Transcription", "Document Translation", "Legal Translation", "Marketing Translation") },
-      { name: "Editing & Proofreading", slug: "editing-proofreading", description: "Quality assurance for written content.", children: c("Copyediting", "Line Editing", "Developmental Editing", "Proofreading", "Fact Checking", "Style Guide Enforcement", "Academic Editing") },
-      { name: "Content Strategy", slug: "content-strategy", description: "Editorial planning, content audits, and messaging.", children: c("Content Audits", "Editorial Calendars", "Style Guides", "Messaging Frameworks", "Topic Clusters", "Content Governance") },
-      { name: "SEO Writing", slug: "seo-writing", description: "Keyword-optimized content built to rank.", children: c("Blog Articles", "Pillar Pages", "Product SEO", "Keyword Research", "Content Briefs", "Internal Linking") },
-      { name: "Ghostwriting", slug: "ghostwriting", description: "Thought leadership, books, and bylines.", children: c("Thought Leadership", "LinkedIn Posts", "Book Writing", "Memoirs", "Speeches", "Executive Bylines") },
-      { name: "Scriptwriting", slug: "scriptwriting", description: "Scripts for video, podcast, and broadcast.", children: c("YouTube Scripts", "Podcast Scripts", "Explainer Scripts", "TV Scripts", "Film Scripts", "Ad Scripts") },
-      { name: "Academic & Research Writing", slug: "academic-research-writing", description: "Research papers, theses, and journal submissions.", children: c("Research Papers", "Thesis Writing", "Literature Reviews", "Journal Submissions", "Grant Proposals", "Dissertation Support") },
-      { name: "Grant & Proposal Writing", slug: "grant-proposal-writing", description: "RFPs, grants, and winning business proposals.", children: c("Grant Applications", "RFP Responses", "Business Proposals", "Fundraising Letters", "Case Statements", "Sponsorship Proposals") },
-      { name: "UX Writing", slug: "ux-writing", description: "Microcopy for interfaces, onboarding, and error states.", children: c("Microcopy", "Onboarding Copy", "Error Messages", "Notifications", "Empty States", "In-Product Education") },
+      {
+        name: "Copywriting",
+        slug: "copywriting",
+        description: "Marketing copy, ad copy, and persuasive writing.",
+        children: c(
+          "Website Copy",
+          "Ad Copy",
+          "Sales Pages",
+          "Product Descriptions",
+          "Taglines",
+          "Email Copy",
+          "Brand Voice"
+        ),
+      },
+      {
+        name: "Technical Writing",
+        slug: "technical-writing",
+        description: "Documentation, API guides, and knowledge bases.",
+        children: c(
+          "API Documentation",
+          "Developer Guides",
+          "Knowledge Bases",
+          "User Manuals",
+          "Release Notes",
+          "Tutorials",
+          "Architecture Docs"
+        ),
+      },
+      {
+        name: "Creative Writing",
+        slug: "creative-writing",
+        description: "Storytelling, scripts, and editorial content.",
+        children: c(
+          "Short Stories",
+          "Screenwriting",
+          "Video Scripts",
+          "Podcast Scripts",
+          "Children's Books",
+          "Fiction Editing",
+          "Ghostwriting"
+        ),
+      },
+      {
+        name: "Translation",
+        slug: "translation",
+        description: "Localization, multilingual content, and transcription.",
+        children: c(
+          "Website Localization",
+          "App Localization",
+          "Subtitling",
+          "Transcription",
+          "Document Translation",
+          "Legal Translation",
+          "Marketing Translation"
+        ),
+      },
+      {
+        name: "Editing & Proofreading",
+        slug: "editing-proofreading",
+        description: "Quality assurance for written content.",
+        children: c(
+          "Copyediting",
+          "Line Editing",
+          "Developmental Editing",
+          "Proofreading",
+          "Fact Checking",
+          "Style Guide Enforcement",
+          "Academic Editing"
+        ),
+      },
+      {
+        name: "Content Strategy",
+        slug: "content-strategy",
+        description: "Editorial planning, content audits, and messaging.",
+        children: c(
+          "Content Audits",
+          "Editorial Calendars",
+          "Style Guides",
+          "Messaging Frameworks",
+          "Topic Clusters",
+          "Content Governance"
+        ),
+      },
+      {
+        name: "SEO Writing",
+        slug: "seo-writing",
+        description: "Keyword-optimized content built to rank.",
+        children: c(
+          "Blog Articles",
+          "Pillar Pages",
+          "Product SEO",
+          "Keyword Research",
+          "Content Briefs",
+          "Internal Linking"
+        ),
+      },
+      {
+        name: "Ghostwriting",
+        slug: "ghostwriting",
+        description: "Thought leadership, books, and bylines.",
+        children: c(
+          "Thought Leadership",
+          "LinkedIn Posts",
+          "Book Writing",
+          "Memoirs",
+          "Speeches",
+          "Executive Bylines"
+        ),
+      },
+      {
+        name: "Scriptwriting",
+        slug: "scriptwriting",
+        description: "Scripts for video, podcast, and broadcast.",
+        children: c(
+          "YouTube Scripts",
+          "Podcast Scripts",
+          "Explainer Scripts",
+          "TV Scripts",
+          "Film Scripts",
+          "Ad Scripts"
+        ),
+      },
+      {
+        name: "Academic & Research Writing",
+        slug: "academic-research-writing",
+        description: "Research papers, theses, and journal submissions.",
+        children: c(
+          "Research Papers",
+          "Thesis Writing",
+          "Literature Reviews",
+          "Journal Submissions",
+          "Grant Proposals",
+          "Dissertation Support"
+        ),
+      },
+      {
+        name: "Grant & Proposal Writing",
+        slug: "grant-proposal-writing",
+        description: "RFPs, grants, and winning business proposals.",
+        children: c(
+          "Grant Applications",
+          "RFP Responses",
+          "Business Proposals",
+          "Fundraising Letters",
+          "Case Statements",
+          "Sponsorship Proposals"
+        ),
+      },
+      {
+        name: "UX Writing",
+        slug: "ux-writing",
+        description: "Microcopy for interfaces, onboarding, and error states.",
+        children: c(
+          "Microcopy",
+          "Onboarding Copy",
+          "Error Messages",
+          "Notifications",
+          "Empty States",
+          "In-Product Education"
+        ),
+      },
     ],
   },
   "business-consulting": {
     name: "Business & Consulting",
     slug: "business-consulting",
-    description: "Strategic advice, project management, and operational expertise for your business.",
+    description:
+      "Strategic advice, project management, and operational expertise for your business.",
     heroImage: unsplash("1454165804606-c3d57bc86b40"),
     subcategories: [
-      { name: "Strategy Consulting", slug: "strategy-consulting", description: "Business strategy, go-to-market, and growth planning.", children: c("Go-to-Market", "Growth Strategy", "Business Model Design", "Competitive Strategy", "Vision & Mission", "Strategic Planning", "OKR Design") },
-      { name: "Project Management", slug: "project-management", description: "Agile, Scrum, and project delivery.", children: c("Agile Coaching", "Scrum Master", "Kanban", "PMO Setup", "Project Recovery", "Roadmap Planning", "Risk Management") },
-      { name: "Financial Consulting", slug: "financial-consulting", description: "Financial modeling, budgeting, and forecasting.", children: c("Financial Modeling", "Budgeting", "Forecasting", "Valuation", "Cap Tables", "Fundraising", "Unit Economics") },
-      { name: "HR & Recruiting", slug: "hr-recruiting", description: "Talent acquisition, org design, and people ops.", children: c("Technical Recruiting", "Executive Search", "Org Design", "Compensation Planning", "Onboarding Programs", "HR Policies", "Performance Management") },
-      { name: "Legal & Compliance", slug: "legal-compliance", description: "Contracts, regulatory compliance, and legal ops.", children: c("Contract Drafting", "IP & Trademarks", "Privacy & GDPR", "Terms of Service", "NDA Templates", "Regulatory Filings", "Compliance Audits") },
-      { name: "Operations Consulting", slug: "operations-consulting", description: "Process design, supply chain, and efficiency.", children: c("Process Optimization", "Supply Chain", "Lean Six Sigma", "SOP Development", "Workflow Automation", "Vendor Management") },
-      { name: "Sales Consulting", slug: "sales-consulting", description: "Sales strategy, enablement, and revenue ops.", children: c("Sales Playbooks", "CRM Implementation", "Sales Enablement", "Outbound Strategy", "Revenue Operations", "Pipeline Management") },
-      { name: "Customer Success", slug: "customer-success", description: "Onboarding, retention, and account management programs.", children: c("Onboarding Programs", "Retention Strategy", "QBR Frameworks", "Health Scoring", "Playbook Design", "CS Tooling") },
-      { name: "Business Analysis", slug: "business-analysis", description: "Requirements gathering and process modeling.", children: c("Requirements Gathering", "Process Mapping", "Gap Analysis", "Stakeholder Interviews", "Use Case Modeling", "BPMN Diagrams") },
-      { name: "Change Management", slug: "change-management", description: "Transformation programs and org change.", children: c("Org Transformation", "Change Communications", "Training Programs", "Adoption Strategy", "Culture Change", "Executive Alignment") },
-      { name: "Accounting & Bookkeeping", slug: "accounting-bookkeeping", description: "Bookkeeping, tax, and accounting services.", children: c("Bookkeeping", "Tax Preparation", "Month-End Close", "Payroll", "AP/AR Management", "QuickBooks Setup") },
-      { name: "Executive Coaching", slug: "executive-coaching", description: "Leadership development and executive coaching.", children: c("Leadership Coaching", "Founder Coaching", "Team Coaching", "Conflict Resolution", "Career Coaching", "360 Reviews") },
+      {
+        name: "Strategy Consulting",
+        slug: "strategy-consulting",
+        description: "Business strategy, go-to-market, and growth planning.",
+        children: c(
+          "Go-to-Market",
+          "Growth Strategy",
+          "Business Model Design",
+          "Competitive Strategy",
+          "Vision & Mission",
+          "Strategic Planning",
+          "OKR Design"
+        ),
+      },
+      {
+        name: "Project Management",
+        slug: "project-management",
+        description: "Agile, Scrum, and project delivery.",
+        children: c(
+          "Agile Coaching",
+          "Scrum Master",
+          "Kanban",
+          "PMO Setup",
+          "Project Recovery",
+          "Roadmap Planning",
+          "Risk Management"
+        ),
+      },
+      {
+        name: "Financial Consulting",
+        slug: "financial-consulting",
+        description: "Financial modeling, budgeting, and forecasting.",
+        children: c(
+          "Financial Modeling",
+          "Budgeting",
+          "Forecasting",
+          "Valuation",
+          "Cap Tables",
+          "Fundraising",
+          "Unit Economics"
+        ),
+      },
+      {
+        name: "HR & Recruiting",
+        slug: "hr-recruiting",
+        description: "Talent acquisition, org design, and people ops.",
+        children: c(
+          "Technical Recruiting",
+          "Executive Search",
+          "Org Design",
+          "Compensation Planning",
+          "Onboarding Programs",
+          "HR Policies",
+          "Performance Management"
+        ),
+      },
+      {
+        name: "Legal & Compliance",
+        slug: "legal-compliance",
+        description: "Contracts, regulatory compliance, and legal ops.",
+        children: c(
+          "Contract Drafting",
+          "IP & Trademarks",
+          "Privacy & GDPR",
+          "Terms of Service",
+          "NDA Templates",
+          "Regulatory Filings",
+          "Compliance Audits"
+        ),
+      },
+      {
+        name: "Operations Consulting",
+        slug: "operations-consulting",
+        description: "Process design, supply chain, and efficiency.",
+        children: c(
+          "Process Optimization",
+          "Supply Chain",
+          "Lean Six Sigma",
+          "SOP Development",
+          "Workflow Automation",
+          "Vendor Management"
+        ),
+      },
+      {
+        name: "Sales Consulting",
+        slug: "sales-consulting",
+        description: "Sales strategy, enablement, and revenue ops.",
+        children: c(
+          "Sales Playbooks",
+          "CRM Implementation",
+          "Sales Enablement",
+          "Outbound Strategy",
+          "Revenue Operations",
+          "Pipeline Management"
+        ),
+      },
+      {
+        name: "Customer Success",
+        slug: "customer-success",
+        description: "Onboarding, retention, and account management programs.",
+        children: c(
+          "Onboarding Programs",
+          "Retention Strategy",
+          "QBR Frameworks",
+          "Health Scoring",
+          "Playbook Design",
+          "CS Tooling"
+        ),
+      },
+      {
+        name: "Business Analysis",
+        slug: "business-analysis",
+        description: "Requirements gathering and process modeling.",
+        children: c(
+          "Requirements Gathering",
+          "Process Mapping",
+          "Gap Analysis",
+          "Stakeholder Interviews",
+          "Use Case Modeling",
+          "BPMN Diagrams"
+        ),
+      },
+      {
+        name: "Change Management",
+        slug: "change-management",
+        description: "Transformation programs and org change.",
+        children: c(
+          "Org Transformation",
+          "Change Communications",
+          "Training Programs",
+          "Adoption Strategy",
+          "Culture Change",
+          "Executive Alignment"
+        ),
+      },
+      {
+        name: "Accounting & Bookkeeping",
+        slug: "accounting-bookkeeping",
+        description: "Bookkeeping, tax, and accounting services.",
+        children: c(
+          "Bookkeeping",
+          "Tax Preparation",
+          "Month-End Close",
+          "Payroll",
+          "AP/AR Management",
+          "QuickBooks Setup"
+        ),
+      },
+      {
+        name: "Executive Coaching",
+        slug: "executive-coaching",
+        description: "Leadership development and executive coaching.",
+        children: c(
+          "Leadership Coaching",
+          "Founder Coaching",
+          "Team Coaching",
+          "Conflict Resolution",
+          "Career Coaching",
+          "360 Reviews"
+        ),
+      },
     ],
   },
   development: {
     name: "Development",
     slug: "development",
-    description: "Build software with expert engineers across web, mobile, cloud, and emerging tech.",
+    description:
+      "Build software with expert engineers across web, mobile, cloud, and emerging tech.",
     heroImage: unsplash("1461749280684-dccba630e2f6"),
     subcategories: [
-      { name: "Web Development", slug: "web-development", description: "Full-stack web apps, marketing sites, and SaaS platforms.", children: c("React", "Next.js", "Vue.js", "Angular", "Svelte", "Node.js", "Ruby on Rails", "Django") },
-      { name: "Mobile Development", slug: "mobile-development", description: "Native and cross-platform iOS and Android apps.", children: c("iOS Swift", "Android Kotlin", "React Native", "Flutter", "Ionic", "Mobile UI Kits", "App Store Optimization", "Push Notifications") },
-      { name: "Backend Development", slug: "backend-development", description: "APIs, microservices, and server-side architecture.", children: c("REST APIs", "GraphQL APIs", "Microservices", "Database Design", "Node.js", "Python", "Go", "Java") },
-      { name: "Frontend Development", slug: "frontend-development", description: "User interfaces, animations, and accessibility.", children: c("React", "Vue.js", "Angular", "TypeScript", "CSS & Tailwind", "Animations", "Accessibility", "Performance") },
-      { name: "Cloud & DevOps", slug: "cloud-devops", description: "Infrastructure, CI/CD, and cloud deployment.", children: c("AWS", "Google Cloud", "Azure", "Kubernetes", "Docker", "Terraform", "CI/CD Pipelines", "Observability") },
-      { name: "Game Development", slug: "game-development", description: "Unity, Unreal, and indie game development.", children: c("Unity", "Unreal Engine", "Godot", "Game Design", "Mobile Games", "Multiplayer Backends", "Game Art") },
-      { name: "AI & Machine Learning", slug: "ai-ml", description: "LLM apps, fine-tuning, and ML pipelines.", children: c("LLM Apps", "Prompt Engineering", "Fine-Tuning", "RAG Systems", "MLOps", "Computer Vision", "Recommendation Systems") },
-      { name: "Blockchain & Web3", slug: "blockchain-web3", description: "Smart contracts, DeFi, and NFT platforms.", children: c("Solidity", "Smart Contract Audits", "DeFi Protocols", "NFT Platforms", "Ethereum", "Solana", "Wallet Integration") },
-      { name: "Embedded & IoT", slug: "embedded-iot", description: "Firmware, edge devices, and connected hardware.", children: c("Firmware", "Arduino", "Raspberry Pi", "ESP32", "Edge AI", "IoT Gateways", "Protocol Integration") },
-      { name: "Desktop Apps", slug: "desktop-apps", description: "Native and cross-platform desktop apps.", children: c("Electron Apps", "Tauri", ".NET Desktop", "macOS Native", "Windows Native", "Qt", "Linux GTK") },
-      { name: "API & Integrations", slug: "api-integrations", description: "Third-party integrations, webhooks, and middleware.", children: c("Stripe Integration", "Salesforce Integration", "Zapier & Make", "Webhooks", "OAuth Flows", "iPaaS", "Middleware") },
-      { name: "E-commerce Development", slug: "ecommerce-development", description: "Shopify, WooCommerce, and custom storefronts.", children: c("Shopify", "WooCommerce", "BigCommerce", "Magento", "Custom Storefronts", "Headless Commerce", "Payment Integration") },
+      {
+        name: "Web Development",
+        slug: "web-development",
+        description:
+          "Full-stack web apps, marketing sites, and SaaS platforms.",
+        children: c(
+          "React",
+          "Next.js",
+          "Vue.js",
+          "Angular",
+          "Svelte",
+          "Node.js",
+          "Ruby on Rails",
+          "Django"
+        ),
+      },
+      {
+        name: "Mobile Development",
+        slug: "mobile-development",
+        description: "Native and cross-platform iOS and Android apps.",
+        children: c(
+          "iOS Swift",
+          "Android Kotlin",
+          "React Native",
+          "Flutter",
+          "Ionic",
+          "Mobile UI Kits",
+          "App Store Optimization",
+          "Push Notifications"
+        ),
+      },
+      {
+        name: "Backend Development",
+        slug: "backend-development",
+        description: "APIs, microservices, and server-side architecture.",
+        children: c(
+          "REST APIs",
+          "GraphQL APIs",
+          "Microservices",
+          "Database Design",
+          "Node.js",
+          "Python",
+          "Go",
+          "Java"
+        ),
+      },
+      {
+        name: "Frontend Development",
+        slug: "frontend-development",
+        description: "User interfaces, animations, and accessibility.",
+        children: c(
+          "React",
+          "Vue.js",
+          "Angular",
+          "TypeScript",
+          "CSS & Tailwind",
+          "Animations",
+          "Accessibility",
+          "Performance"
+        ),
+      },
+      {
+        name: "Cloud & DevOps",
+        slug: "cloud-devops",
+        description: "Infrastructure, CI/CD, and cloud deployment.",
+        children: c(
+          "AWS",
+          "Google Cloud",
+          "Azure",
+          "Kubernetes",
+          "Docker",
+          "Terraform",
+          "CI/CD Pipelines",
+          "Observability"
+        ),
+      },
+      {
+        name: "Game Development",
+        slug: "game-development",
+        description: "Unity, Unreal, and indie game development.",
+        children: c(
+          "Unity",
+          "Unreal Engine",
+          "Godot",
+          "Game Design",
+          "Mobile Games",
+          "Multiplayer Backends",
+          "Game Art"
+        ),
+      },
+      {
+        name: "AI & Machine Learning",
+        slug: "ai-ml",
+        description: "LLM apps, fine-tuning, and ML pipelines.",
+        children: c(
+          "LLM Apps",
+          "Prompt Engineering",
+          "Fine-Tuning",
+          "RAG Systems",
+          "MLOps",
+          "Computer Vision",
+          "Recommendation Systems"
+        ),
+      },
+      {
+        name: "Blockchain & Web3",
+        slug: "blockchain-web3",
+        description: "Smart contracts, DeFi, and NFT platforms.",
+        children: c(
+          "Solidity",
+          "Smart Contract Audits",
+          "DeFi Protocols",
+          "NFT Platforms",
+          "Ethereum",
+          "Solana",
+          "Wallet Integration"
+        ),
+      },
+      {
+        name: "Embedded & IoT",
+        slug: "embedded-iot",
+        description: "Firmware, edge devices, and connected hardware.",
+        children: c(
+          "Firmware",
+          "Arduino",
+          "Raspberry Pi",
+          "ESP32",
+          "Edge AI",
+          "IoT Gateways",
+          "Protocol Integration"
+        ),
+      },
+      {
+        name: "Desktop Apps",
+        slug: "desktop-apps",
+        description: "Native and cross-platform desktop apps.",
+        children: c(
+          "Electron Apps",
+          "Tauri",
+          ".NET Desktop",
+          "macOS Native",
+          "Windows Native",
+          "Qt",
+          "Linux GTK"
+        ),
+      },
+      {
+        name: "API & Integrations",
+        slug: "api-integrations",
+        description: "Third-party integrations, webhooks, and middleware.",
+        children: c(
+          "Stripe Integration",
+          "Salesforce Integration",
+          "Zapier & Make",
+          "Webhooks",
+          "OAuth Flows",
+          "iPaaS",
+          "Middleware"
+        ),
+      },
+      {
+        name: "E-commerce Development",
+        slug: "ecommerce-development",
+        description: "Shopify, WooCommerce, and custom storefronts.",
+        children: c(
+          "Shopify",
+          "WooCommerce",
+          "BigCommerce",
+          "Magento",
+          "Custom Storefronts",
+          "Headless Commerce",
+          "Payment Integration"
+        ),
+      },
     ],
   },
   testing: {
     name: "Testing & QA",
     slug: "testing",
-    description: "Ship with confidence — manual QA, test automation, and release quality at every layer.",
+    description:
+      "Ship with confidence — manual QA, test automation, and release quality at every layer.",
     heroImage: unsplash("1454165804606-c3d57bc86b40"),
     subcategories: [
-      { name: "Manual QA", slug: "manual-qa", description: "Exploratory testing, regression, and release QA.", children: c("Exploratory Testing", "Regression Testing", "Release QA", "Bug Reporting", "Cross-Browser Testing", "Mobile QA") },
-      { name: "Test Automation", slug: "test-automation", description: "Automated end-to-end and integration suites.", children: c("Cypress", "Playwright", "Selenium", "WebdriverIO", "TestCafe", "Puppeteer", "Robot Framework") },
-      { name: "Performance Testing", slug: "performance-testing", description: "Load, stress, and capacity testing.", children: c("Load Testing", "Stress Testing", "k6", "JMeter", "Gatling", "Lighthouse Audits", "APM Setup") },
-      { name: "Security Testing", slug: "security-testing", description: "Pentesting, vulnerability scans, and AppSec.", children: c("Penetration Testing", "Vulnerability Scanning", "OWASP Top 10", "API Security", "Mobile AppSec", "Static Analysis") },
-      { name: "API Testing", slug: "api-testing", description: "REST, GraphQL, and contract testing.", children: c("REST Testing", "GraphQL Testing", "Postman Collections", "Contract Testing", "Pact", "Schema Validation") },
-      { name: "Mobile Testing", slug: "mobile-testing", description: "iOS and Android test strategy and automation.", children: c("iOS Testing", "Android Testing", "Appium", "Detox", "Espresso", "XCUITest", "Device Labs") },
-      { name: "Accessibility Testing", slug: "accessibility-testing", description: "WCAG audits and assistive-tech compatibility.", children: c("WCAG Audits", "Screen Reader Testing", "Keyboard Navigation", "axe Audits", "Section 508", "ADA Compliance") },
-      { name: "Usability Testing", slug: "usability-testing", description: "User testing, moderated sessions, and UX validation.", children: c("Moderated Sessions", "Unmoderated Testing", "User Interviews", "First-Click Testing", "Task Completion", "Remote Testing") },
-      { name: "QA Strategy", slug: "qa-strategy", description: "Test planning, QA process, and team coaching.", children: c("Test Planning", "QA Process Design", "Test Case Management", "QA Coaching", "Shift-Left Testing", "Quality Metrics") },
-      { name: "CI/CD Quality Gates", slug: "ci-cd-quality-gates", description: "Build pipelines, test gating, and release checks.", children: c("GitHub Actions", "GitLab CI", "CircleCI", "Jenkins", "Test Reporting", "Coverage Gates", "Flaky Test Triage") },
+      {
+        name: "Manual QA",
+        slug: "manual-qa",
+        description: "Exploratory testing, regression, and release QA.",
+        children: c(
+          "Exploratory Testing",
+          "Regression Testing",
+          "Release QA",
+          "Bug Reporting",
+          "Cross-Browser Testing",
+          "Mobile QA"
+        ),
+      },
+      {
+        name: "Test Automation",
+        slug: "test-automation",
+        description: "Automated end-to-end and integration suites.",
+        children: c(
+          "Cypress",
+          "Playwright",
+          "Selenium",
+          "WebdriverIO",
+          "TestCafe",
+          "Puppeteer",
+          "Robot Framework"
+        ),
+      },
+      {
+        name: "Performance Testing",
+        slug: "performance-testing",
+        description: "Load, stress, and capacity testing.",
+        children: c(
+          "Load Testing",
+          "Stress Testing",
+          "k6",
+          "JMeter",
+          "Gatling",
+          "Lighthouse Audits",
+          "APM Setup"
+        ),
+      },
+      {
+        name: "Security Testing",
+        slug: "security-testing",
+        description: "Pentesting, vulnerability scans, and AppSec.",
+        children: c(
+          "Penetration Testing",
+          "Vulnerability Scanning",
+          "OWASP Top 10",
+          "API Security",
+          "Mobile AppSec",
+          "Static Analysis"
+        ),
+      },
+      {
+        name: "API Testing",
+        slug: "api-testing",
+        description: "REST, GraphQL, and contract testing.",
+        children: c(
+          "REST Testing",
+          "GraphQL Testing",
+          "Postman Collections",
+          "Contract Testing",
+          "Pact",
+          "Schema Validation"
+        ),
+      },
+      {
+        name: "Mobile Testing",
+        slug: "mobile-testing",
+        description: "iOS and Android test strategy and automation.",
+        children: c(
+          "iOS Testing",
+          "Android Testing",
+          "Appium",
+          "Detox",
+          "Espresso",
+          "XCUITest",
+          "Device Labs"
+        ),
+      },
+      {
+        name: "Accessibility Testing",
+        slug: "accessibility-testing",
+        description: "WCAG audits and assistive-tech compatibility.",
+        children: c(
+          "WCAG Audits",
+          "Screen Reader Testing",
+          "Keyboard Navigation",
+          "axe Audits",
+          "Section 508",
+          "ADA Compliance"
+        ),
+      },
+      {
+        name: "Usability Testing",
+        slug: "usability-testing",
+        description: "User testing, moderated sessions, and UX validation.",
+        children: c(
+          "Moderated Sessions",
+          "Unmoderated Testing",
+          "User Interviews",
+          "First-Click Testing",
+          "Task Completion",
+          "Remote Testing"
+        ),
+      },
+      {
+        name: "QA Strategy",
+        slug: "qa-strategy",
+        description: "Test planning, QA process, and team coaching.",
+        children: c(
+          "Test Planning",
+          "QA Process Design",
+          "Test Case Management",
+          "QA Coaching",
+          "Shift-Left Testing",
+          "Quality Metrics"
+        ),
+      },
+      {
+        name: "CI/CD Quality Gates",
+        slug: "ci-cd-quality-gates",
+        description: "Build pipelines, test gating, and release checks.",
+        children: c(
+          "GitHub Actions",
+          "GitLab CI",
+          "CircleCI",
+          "Jenkins",
+          "Test Reporting",
+          "Coverage Gates",
+          "Flaky Test Triage"
+        ),
+      },
     ],
   },
   security: {
     name: "Security",
     slug: "security",
-    description: "Harden applications, infrastructure, and processes with expert security practitioners.",
+    description:
+      "Harden applications, infrastructure, and processes with expert security practitioners.",
     heroImage: unsplash("1518770660439-4636190af475"),
     subcategories: [
-      { name: "Application Security", slug: "application-security", description: "Secure coding, code review, and AppSec programs.", children: c("Secure Code Review", "Threat Modeling", "SAST", "DAST", "Dependency Scanning", "Secret Scanning", "AppSec Programs") },
-      { name: "Penetration Testing", slug: "penetration-testing", description: "Red team, external, and internal pentests.", children: c("Web Pentesting", "API Pentesting", "Mobile Pentesting", "Network Pentesting", "Red Team Exercises", "Social Engineering") },
-      { name: "Cloud Security", slug: "cloud-security", description: "AWS, GCP, Azure configuration and posture.", children: c("AWS Security", "GCP Security", "Azure Security", "IAM Design", "CSPM", "CNAPP", "Kubernetes Hardening") },
-      { name: "Compliance & Audits", slug: "compliance-audits", description: "SOC 2, ISO 27001, HIPAA, PCI, and more.", children: c("SOC 2 Prep", "ISO 27001", "HIPAA", "PCI DSS", "GDPR", "FedRAMP", "Audit Remediation") },
-      { name: "Identity & Access", slug: "identity-access", description: "SSO, MFA, RBAC, and identity architecture.", children: c("SSO Integration", "MFA Rollout", "RBAC Design", "OAuth/OIDC", "SAML", "Zero Trust", "Identity Federation") },
-      { name: "Incident Response", slug: "incident-response", description: "IR planning, tabletop exercises, and forensics.", children: c("IR Playbooks", "Tabletop Exercises", "Forensics", "Breach Response", "Post-Incident Review", "Threat Hunting") },
-      { name: "Security Operations", slug: "security-operations", description: "SOC, SIEM, detection engineering, and monitoring.", children: c("SIEM Setup", "Detection Engineering", "SOC Operations", "Alert Tuning", "Log Pipelines", "Threat Intelligence") },
-      { name: "DevSecOps", slug: "devsecops", description: "Security in CI/CD and developer workflows.", children: c("CI/CD Security", "Container Scanning", "IaC Scanning", "Policy as Code", "Supply Chain Security", "SBOM") },
-      { name: "Network Security", slug: "network-security", description: "Firewalls, segmentation, VPNs, and zero trust.", children: c("Firewall Design", "Network Segmentation", "VPN Setup", "IDS/IPS", "Zero Trust Networking", "DDoS Protection") },
-      { name: "Security Training", slug: "security-training", description: "Secure coding and awareness training.", children: c("Secure Coding Training", "Phishing Simulations", "Awareness Programs", "Tabletop Training", "Workshop Delivery") },
+      {
+        name: "Application Security",
+        slug: "application-security",
+        description: "Secure coding, code review, and AppSec programs.",
+        children: c(
+          "Secure Code Review",
+          "Threat Modeling",
+          "SAST",
+          "DAST",
+          "Dependency Scanning",
+          "Secret Scanning",
+          "AppSec Programs"
+        ),
+      },
+      {
+        name: "Penetration Testing",
+        slug: "penetration-testing",
+        description: "Red team, external, and internal pentests.",
+        children: c(
+          "Web Pentesting",
+          "API Pentesting",
+          "Mobile Pentesting",
+          "Network Pentesting",
+          "Red Team Exercises",
+          "Social Engineering"
+        ),
+      },
+      {
+        name: "Cloud Security",
+        slug: "cloud-security",
+        description: "AWS, GCP, Azure configuration and posture.",
+        children: c(
+          "AWS Security",
+          "GCP Security",
+          "Azure Security",
+          "IAM Design",
+          "CSPM",
+          "CNAPP",
+          "Kubernetes Hardening"
+        ),
+      },
+      {
+        name: "Compliance & Audits",
+        slug: "compliance-audits",
+        description: "SOC 2, ISO 27001, HIPAA, PCI, and more.",
+        children: c(
+          "SOC 2 Prep",
+          "ISO 27001",
+          "HIPAA",
+          "PCI DSS",
+          "GDPR",
+          "FedRAMP",
+          "Audit Remediation"
+        ),
+      },
+      {
+        name: "Identity & Access",
+        slug: "identity-access",
+        description: "SSO, MFA, RBAC, and identity architecture.",
+        children: c(
+          "SSO Integration",
+          "MFA Rollout",
+          "RBAC Design",
+          "OAuth/OIDC",
+          "SAML",
+          "Zero Trust",
+          "Identity Federation"
+        ),
+      },
+      {
+        name: "Incident Response",
+        slug: "incident-response",
+        description: "IR planning, tabletop exercises, and forensics.",
+        children: c(
+          "IR Playbooks",
+          "Tabletop Exercises",
+          "Forensics",
+          "Breach Response",
+          "Post-Incident Review",
+          "Threat Hunting"
+        ),
+      },
+      {
+        name: "Security Operations",
+        slug: "security-operations",
+        description: "SOC, SIEM, detection engineering, and monitoring.",
+        children: c(
+          "SIEM Setup",
+          "Detection Engineering",
+          "SOC Operations",
+          "Alert Tuning",
+          "Log Pipelines",
+          "Threat Intelligence"
+        ),
+      },
+      {
+        name: "DevSecOps",
+        slug: "devsecops",
+        description: "Security in CI/CD and developer workflows.",
+        children: c(
+          "CI/CD Security",
+          "Container Scanning",
+          "IaC Scanning",
+          "Policy as Code",
+          "Supply Chain Security",
+          "SBOM"
+        ),
+      },
+      {
+        name: "Network Security",
+        slug: "network-security",
+        description: "Firewalls, segmentation, VPNs, and zero trust.",
+        children: c(
+          "Firewall Design",
+          "Network Segmentation",
+          "VPN Setup",
+          "IDS/IPS",
+          "Zero Trust Networking",
+          "DDoS Protection"
+        ),
+      },
+      {
+        name: "Security Training",
+        slug: "security-training",
+        description: "Secure coding and awareness training.",
+        children: c(
+          "Secure Coding Training",
+          "Phishing Simulations",
+          "Awareness Programs",
+          "Tabletop Training",
+          "Workshop Delivery"
+        ),
+      },
     ],
   },
   maintenance: {
     name: "Maintenance & Support",
     slug: "maintenance",
-    description: "Keep your product healthy, up-to-date, and reliable with ongoing support and maintenance.",
+    description:
+      "Keep your product healthy, up-to-date, and reliable with ongoing support and maintenance.",
     heroImage: unsplash("1517245386807-bb43f82c33c4"),
     subcategories: [
-      { name: "Bug Fixes", slug: "bug-fixes", description: "Triage and fix bugs across web, mobile, and backend.", children: c("Web Bug Fixes", "Mobile Bug Fixes", "Backend Bug Fixes", "CSS Issues", "Cross-Browser Fixes", "Hotfix Support") },
-      { name: "Dependency Updates", slug: "dependency-updates", description: "Package upgrades, security patches, and migrations.", children: c("NPM Upgrades", "Python Upgrades", "Framework Migrations", "Security Patching", "Breaking Change Fixes", "Lockfile Audits") },
-      { name: "Performance Tuning", slug: "performance-tuning", description: "Frontend, backend, and database optimization.", children: c("Frontend Perf", "Backend Perf", "Database Tuning", "Caching Strategy", "CDN Setup", "Core Web Vitals") },
-      { name: "Refactoring", slug: "refactoring", description: "Code cleanup, tech debt, and architecture updates.", children: c("Code Cleanup", "Tech Debt Paydown", "Architecture Refactor", "Test Coverage", "Legacy Modernization", "Module Splitting") },
-      { name: "WordPress Maintenance", slug: "wordpress-maintenance", description: "WordPress updates, backups, and security.", children: c("Plugin Updates", "Core Updates", "Backups", "Malware Removal", "Theme Customization", "Speed Optimization") },
-      { name: "Shopify Maintenance", slug: "shopify-maintenance", description: "Theme updates, app integrations, and store health.", children: c("Theme Updates", "App Integrations", "Liquid Edits", "Checkout Fixes", "Performance Audits", "SEO Fixes") },
-      { name: "Server & Uptime", slug: "server-uptime", description: "Monitoring, on-call, and infrastructure support.", children: c("Uptime Monitoring", "On-Call Support", "Log Monitoring", "Alerting Setup", "Incident Response", "Backup Strategy") },
-      { name: "Database Maintenance", slug: "database-maintenance", description: "Index tuning, migrations, and backup strategy.", children: c("Index Tuning", "Query Optimization", "Backup Strategy", "Migrations", "Replication Setup", "Disaster Recovery") },
-      { name: "Content Updates", slug: "content-updates", description: "Ongoing content, copy, and media updates.", children: c("Copy Edits", "Image Updates", "Landing Page Updates", "Blog Uploads", "Translation Updates", "CMS Updates") },
-      { name: "Legacy Code Rescue", slug: "legacy-code-rescue", description: "Rescue, document, and modernize legacy codebases.", children: c("Codebase Audits", "Documentation Writing", "Dependency Rescue", "Modernization Plans", "Test Suite Recovery", "Developer Onboarding") },
+      {
+        name: "Bug Fixes",
+        slug: "bug-fixes",
+        description: "Triage and fix bugs across web, mobile, and backend.",
+        children: c(
+          "Web Bug Fixes",
+          "Mobile Bug Fixes",
+          "Backend Bug Fixes",
+          "CSS Issues",
+          "Cross-Browser Fixes",
+          "Hotfix Support"
+        ),
+      },
+      {
+        name: "Dependency Updates",
+        slug: "dependency-updates",
+        description: "Package upgrades, security patches, and migrations.",
+        children: c(
+          "NPM Upgrades",
+          "Python Upgrades",
+          "Framework Migrations",
+          "Security Patching",
+          "Breaking Change Fixes",
+          "Lockfile Audits"
+        ),
+      },
+      {
+        name: "Performance Tuning",
+        slug: "performance-tuning",
+        description: "Frontend, backend, and database optimization.",
+        children: c(
+          "Frontend Perf",
+          "Backend Perf",
+          "Database Tuning",
+          "Caching Strategy",
+          "CDN Setup",
+          "Core Web Vitals"
+        ),
+      },
+      {
+        name: "Refactoring",
+        slug: "refactoring",
+        description: "Code cleanup, tech debt, and architecture updates.",
+        children: c(
+          "Code Cleanup",
+          "Tech Debt Paydown",
+          "Architecture Refactor",
+          "Test Coverage",
+          "Legacy Modernization",
+          "Module Splitting"
+        ),
+      },
+      {
+        name: "WordPress Maintenance",
+        slug: "wordpress-maintenance",
+        description: "WordPress updates, backups, and security.",
+        children: c(
+          "Plugin Updates",
+          "Core Updates",
+          "Backups",
+          "Malware Removal",
+          "Theme Customization",
+          "Speed Optimization"
+        ),
+      },
+      {
+        name: "Shopify Maintenance",
+        slug: "shopify-maintenance",
+        description: "Theme updates, app integrations, and store health.",
+        children: c(
+          "Theme Updates",
+          "App Integrations",
+          "Liquid Edits",
+          "Checkout Fixes",
+          "Performance Audits",
+          "SEO Fixes"
+        ),
+      },
+      {
+        name: "Server & Uptime",
+        slug: "server-uptime",
+        description: "Monitoring, on-call, and infrastructure support.",
+        children: c(
+          "Uptime Monitoring",
+          "On-Call Support",
+          "Log Monitoring",
+          "Alerting Setup",
+          "Incident Response",
+          "Backup Strategy"
+        ),
+      },
+      {
+        name: "Database Maintenance",
+        slug: "database-maintenance",
+        description: "Index tuning, migrations, and backup strategy.",
+        children: c(
+          "Index Tuning",
+          "Query Optimization",
+          "Backup Strategy",
+          "Migrations",
+          "Replication Setup",
+          "Disaster Recovery"
+        ),
+      },
+      {
+        name: "Content Updates",
+        slug: "content-updates",
+        description: "Ongoing content, copy, and media updates.",
+        children: c(
+          "Copy Edits",
+          "Image Updates",
+          "Landing Page Updates",
+          "Blog Uploads",
+          "Translation Updates",
+          "CMS Updates"
+        ),
+      },
+      {
+        name: "Legacy Code Rescue",
+        slug: "legacy-code-rescue",
+        description: "Rescue, document, and modernize legacy codebases.",
+        children: c(
+          "Codebase Audits",
+          "Documentation Writing",
+          "Dependency Rescue",
+          "Modernization Plans",
+          "Test Suite Recovery",
+          "Developer Onboarding"
+        ),
+      },
     ],
   },
   "digital-marketing": {
     name: "Digital Marketing",
     slug: "digital-marketing",
-    description: "Acquire customers and grow revenue with expert digital marketers and performance specialists.",
+    description:
+      "Acquire customers and grow revenue with expert digital marketers and performance specialists.",
     heroImage: unsplash("1557838923-2985c318be48"),
     subcategories: [
-      { name: "Paid Search", slug: "paid-search", description: "Google Ads, Bing Ads, and search campaign management.", children: c("Google Ads", "Bing Ads", "Shopping Ads", "Performance Max", "Keyword Research", "Bid Management", "Ad Copy Testing") },
-      { name: "Paid Social", slug: "paid-social", description: "Meta, TikTok, LinkedIn, and social ad campaigns.", children: c("Meta Ads", "TikTok Ads", "LinkedIn Ads", "Pinterest Ads", "Snapchat Ads", "Creative Testing", "Audience Research") },
-      { name: "SEO", slug: "seo", description: "On-page, technical, and link-building SEO.", children: c("Keyword Research", "On-Page SEO", "Technical SEO", "Link Building", "Local SEO", "SEO Audits", "Content Optimization") },
-      { name: "Content Marketing", slug: "content-marketing", description: "Blogs, ebooks, and content strategy.", children: c("Blog Writing", "Whitepapers", "Case Studies", "E-books", "Content Strategy", "Editorial Calendars", "SEO Content") },
-      { name: "Email Marketing", slug: "email-marketing", description: "Campaigns, automation, and newsletter strategy.", children: c("Campaign Design", "Newsletter Setup", "Drip Automation", "Transactional Emails", "List Segmentation", "A/B Testing", "Deliverability") },
-      { name: "Social Media Management", slug: "social-media-management", description: "Organic social, community, and content planning.", children: c("Instagram Growth", "TikTok Strategy", "LinkedIn B2B", "Community Management", "Influencer Outreach", "Content Calendars", "Social Analytics") },
-      { name: "Influencer Marketing", slug: "influencer-marketing", description: "Influencer sourcing, outreach, and campaign ops.", children: c("Creator Sourcing", "Outreach", "Contract Negotiation", "Campaign Management", "UGC Campaigns", "Affiliate Programs") },
-      { name: "Conversion Optimization", slug: "conversion-optimization", description: "Landing pages, A/B testing, and funnel optimization.", children: c("Landing Page Optimization", "A/B Testing", "Funnel Analysis", "Heatmaps", "Session Recordings", "CRO Strategy") },
-      { name: "Analytics & Reporting", slug: "analytics-reporting", description: "GA4, attribution, dashboards, and reporting.", children: c("GA4 Setup", "Tag Manager", "Attribution", "Dashboards", "KPI Reporting", "Data Studio", "Looker Studio") },
-      { name: "Marketing Automation", slug: "marketing-automation", description: "HubSpot, Marketo, and lifecycle automation.", children: c("HubSpot Workflows", "Marketo", "Pardot", "Braze", "Customer.io", "Lifecycle Campaigns", "Lead Scoring") },
-      { name: "Affiliate Marketing", slug: "affiliate-marketing", description: "Affiliate program setup and partner management.", children: c("Program Setup", "Partner Recruitment", "Commission Design", "Tracking Setup", "Partner Management", "Fraud Detection") },
-      { name: "Video Marketing", slug: "video-marketing", description: "YouTube strategy, video ads, and short-form content.", children: c("YouTube Strategy", "Video Ads", "Shorts & Reels", "Video SEO", "Scriptwriting", "Thumbnail Design") },
+      {
+        name: "Paid Search",
+        slug: "paid-search",
+        description: "Google Ads, Bing Ads, and search campaign management.",
+        children: c(
+          "Google Ads",
+          "Bing Ads",
+          "Shopping Ads",
+          "Performance Max",
+          "Keyword Research",
+          "Bid Management",
+          "Ad Copy Testing"
+        ),
+      },
+      {
+        name: "Paid Social",
+        slug: "paid-social",
+        description: "Meta, TikTok, LinkedIn, and social ad campaigns.",
+        children: c(
+          "Meta Ads",
+          "TikTok Ads",
+          "LinkedIn Ads",
+          "Pinterest Ads",
+          "Snapchat Ads",
+          "Creative Testing",
+          "Audience Research"
+        ),
+      },
+      {
+        name: "SEO",
+        slug: "seo",
+        description: "On-page, technical, and link-building SEO.",
+        children: c(
+          "Keyword Research",
+          "On-Page SEO",
+          "Technical SEO",
+          "Link Building",
+          "Local SEO",
+          "SEO Audits",
+          "Content Optimization"
+        ),
+      },
+      {
+        name: "Content Marketing",
+        slug: "content-marketing",
+        description: "Blogs, ebooks, and content strategy.",
+        children: c(
+          "Blog Writing",
+          "Whitepapers",
+          "Case Studies",
+          "E-books",
+          "Content Strategy",
+          "Editorial Calendars",
+          "SEO Content"
+        ),
+      },
+      {
+        name: "Email Marketing",
+        slug: "email-marketing",
+        description: "Campaigns, automation, and newsletter strategy.",
+        children: c(
+          "Campaign Design",
+          "Newsletter Setup",
+          "Drip Automation",
+          "Transactional Emails",
+          "List Segmentation",
+          "A/B Testing",
+          "Deliverability"
+        ),
+      },
+      {
+        name: "Social Media Management",
+        slug: "social-media-management",
+        description: "Organic social, community, and content planning.",
+        children: c(
+          "Instagram Growth",
+          "TikTok Strategy",
+          "LinkedIn B2B",
+          "Community Management",
+          "Influencer Outreach",
+          "Content Calendars",
+          "Social Analytics"
+        ),
+      },
+      {
+        name: "Influencer Marketing",
+        slug: "influencer-marketing",
+        description: "Influencer sourcing, outreach, and campaign ops.",
+        children: c(
+          "Creator Sourcing",
+          "Outreach",
+          "Contract Negotiation",
+          "Campaign Management",
+          "UGC Campaigns",
+          "Affiliate Programs"
+        ),
+      },
+      {
+        name: "Conversion Optimization",
+        slug: "conversion-optimization",
+        description: "Landing pages, A/B testing, and funnel optimization.",
+        children: c(
+          "Landing Page Optimization",
+          "A/B Testing",
+          "Funnel Analysis",
+          "Heatmaps",
+          "Session Recordings",
+          "CRO Strategy"
+        ),
+      },
+      {
+        name: "Analytics & Reporting",
+        slug: "analytics-reporting",
+        description: "GA4, attribution, dashboards, and reporting.",
+        children: c(
+          "GA4 Setup",
+          "Tag Manager",
+          "Attribution",
+          "Dashboards",
+          "KPI Reporting",
+          "Data Studio",
+          "Looker Studio"
+        ),
+      },
+      {
+        name: "Marketing Automation",
+        slug: "marketing-automation",
+        description: "HubSpot, Marketo, and lifecycle automation.",
+        children: c(
+          "HubSpot Workflows",
+          "Marketo",
+          "Pardot",
+          "Braze",
+          "Customer.io",
+          "Lifecycle Campaigns",
+          "Lead Scoring"
+        ),
+      },
+      {
+        name: "Affiliate Marketing",
+        slug: "affiliate-marketing",
+        description: "Affiliate program setup and partner management.",
+        children: c(
+          "Program Setup",
+          "Partner Recruitment",
+          "Commission Design",
+          "Tracking Setup",
+          "Partner Management",
+          "Fraud Detection"
+        ),
+      },
+      {
+        name: "Video Marketing",
+        slug: "video-marketing",
+        description: "YouTube strategy, video ads, and short-form content.",
+        children: c(
+          "YouTube Strategy",
+          "Video Ads",
+          "Shorts & Reels",
+          "Video SEO",
+          "Scriptwriting",
+          "Thumbnail Design"
+        ),
+      },
     ],
   },
 }
 
 // ── Technologies per category (logos served via cdn.simpleicons.org) ──
-interface TechItem { name: string; slug: string }
+interface TechItem {
+  name: string
+  slug: string
+}
 
 const CATEGORY_TECHNOLOGIES: Record<string, TechItem[]> = {
   design: [
-    { name: "Figma", slug: "figma" }, { name: "Sketch", slug: "sketch" },
-    { name: "Adobe XD", slug: "adobexd" }, { name: "Photoshop", slug: "adobephotoshop" },
-    { name: "Illustrator", slug: "adobeillustrator" }, { name: "InDesign", slug: "adobeindesign" },
-    { name: "After Effects", slug: "adobeaftereffects" }, { name: "Framer", slug: "framer" },
-    { name: "InVision", slug: "invision" }, { name: "Webflow", slug: "webflow" },
-    { name: "Blender", slug: "blender" }, { name: "Canva", slug: "canva" },
+    { name: "Figma", slug: "figma" },
+    { name: "Sketch", slug: "sketch" },
+    { name: "Adobe XD", slug: "adobexd" },
+    { name: "Photoshop", slug: "adobephotoshop" },
+    { name: "Illustrator", slug: "adobeillustrator" },
+    { name: "InDesign", slug: "adobeindesign" },
+    { name: "After Effects", slug: "adobeaftereffects" },
+    { name: "Framer", slug: "framer" },
+    { name: "InVision", slug: "invision" },
+    { name: "Webflow", slug: "webflow" },
+    { name: "Blender", slug: "blender" },
+    { name: "Canva", slug: "canva" },
   ],
   "design-creative": [
-    { name: "Figma", slug: "figma" }, { name: "Sketch", slug: "sketch" },
-    { name: "Adobe XD", slug: "adobexd" }, { name: "Photoshop", slug: "adobephotoshop" },
-    { name: "Illustrator", slug: "adobeillustrator" }, { name: "InDesign", slug: "adobeindesign" },
-    { name: "After Effects", slug: "adobeaftereffects" }, { name: "Framer", slug: "framer" },
-    { name: "InVision", slug: "invision" }, { name: "Webflow", slug: "webflow" },
-    { name: "Blender", slug: "blender" }, { name: "Canva", slug: "canva" },
+    { name: "Figma", slug: "figma" },
+    { name: "Sketch", slug: "sketch" },
+    { name: "Adobe XD", slug: "adobexd" },
+    { name: "Photoshop", slug: "adobephotoshop" },
+    { name: "Illustrator", slug: "adobeillustrator" },
+    { name: "InDesign", slug: "adobeindesign" },
+    { name: "After Effects", slug: "adobeaftereffects" },
+    { name: "Framer", slug: "framer" },
+    { name: "InVision", slug: "invision" },
+    { name: "Webflow", slug: "webflow" },
+    { name: "Blender", slug: "blender" },
+    { name: "Canva", slug: "canva" },
   ],
   "software-development": [
-    { name: "React", slug: "react" }, { name: "Vue.js", slug: "vuedotjs" },
-    { name: "Angular", slug: "angular" }, { name: "Next.js", slug: "nextdotjs" },
-    { name: "Node.js", slug: "nodedotjs" }, { name: "TypeScript", slug: "typescript" },
-    { name: "Python", slug: "python" }, { name: "Go", slug: "go" },
-    { name: "Rust", slug: "rust" }, { name: "Docker", slug: "docker" },
-    { name: "Kubernetes", slug: "kubernetes" }, { name: "PostgreSQL", slug: "postgresql" },
+    { name: "React", slug: "react" },
+    { name: "Vue.js", slug: "vuedotjs" },
+    { name: "Angular", slug: "angular" },
+    { name: "Next.js", slug: "nextdotjs" },
+    { name: "Node.js", slug: "nodedotjs" },
+    { name: "TypeScript", slug: "typescript" },
+    { name: "Python", slug: "python" },
+    { name: "Go", slug: "go" },
+    { name: "Rust", slug: "rust" },
+    { name: "Docker", slug: "docker" },
+    { name: "Kubernetes", slug: "kubernetes" },
+    { name: "PostgreSQL", slug: "postgresql" },
   ],
   "data-analytics": [
-    { name: "Python", slug: "python" }, { name: "R", slug: "r" },
-    { name: "Tableau", slug: "tableau" }, { name: "Power BI", slug: "powerbi" },
-    { name: "Apache Spark", slug: "apachespark" }, { name: "Snowflake", slug: "snowflake" },
-    { name: "Databricks", slug: "databricks" }, { name: "Jupyter", slug: "jupyter" },
-    { name: "Pandas", slug: "pandas" }, { name: "TensorFlow", slug: "tensorflow" },
-    { name: "PyTorch", slug: "pytorch" }, { name: "PostgreSQL", slug: "postgresql" },
+    { name: "Python", slug: "python" },
+    { name: "R", slug: "r" },
+    { name: "Tableau", slug: "tableau" },
+    { name: "Power BI", slug: "powerbi" },
+    { name: "Apache Spark", slug: "apachespark" },
+    { name: "Snowflake", slug: "snowflake" },
+    { name: "Databricks", slug: "databricks" },
+    { name: "Jupyter", slug: "jupyter" },
+    { name: "Pandas", slug: "pandas" },
+    { name: "TensorFlow", slug: "tensorflow" },
+    { name: "PyTorch", slug: "pytorch" },
+    { name: "PostgreSQL", slug: "postgresql" },
   ],
   marketing: [
-    { name: "Google Analytics", slug: "googleanalytics" }, { name: "HubSpot", slug: "hubspot" },
-    { name: "Mailchimp", slug: "mailchimp" }, { name: "Google Ads", slug: "googleads" },
-    { name: "Meta", slug: "meta" }, { name: "Salesforce", slug: "salesforce" },
-    { name: "Semrush", slug: "semrush" }, { name: "Ahrefs", slug: "ahrefs" },
-    { name: "Hootsuite", slug: "hootsuite" }, { name: "Zapier", slug: "zapier" },
-    { name: "Canva", slug: "canva" }, { name: "Notion", slug: "notion" },
+    { name: "Google Analytics", slug: "googleanalytics" },
+    { name: "HubSpot", slug: "hubspot" },
+    { name: "Mailchimp", slug: "mailchimp" },
+    { name: "Google Ads", slug: "googleads" },
+    { name: "Meta", slug: "meta" },
+    { name: "Salesforce", slug: "salesforce" },
+    { name: "Semrush", slug: "semrush" },
+    { name: "Ahrefs", slug: "ahrefs" },
+    { name: "Hootsuite", slug: "hootsuite" },
+    { name: "Zapier", slug: "zapier" },
+    { name: "Canva", slug: "canva" },
+    { name: "Notion", slug: "notion" },
   ],
   writing: [
-    { name: "Google Docs", slug: "googledocs" }, { name: "Notion", slug: "notion" },
-    { name: "Grammarly", slug: "grammarly" }, { name: "WordPress", slug: "wordpress" },
-    { name: "Medium", slug: "medium" }, { name: "Substack", slug: "substack" },
-    { name: "Ghost", slug: "ghost" }, { name: "Contentful", slug: "contentful" },
-    { name: "Dropbox Paper", slug: "dropbox" }, { name: "Evernote", slug: "evernote" },
-    { name: "Obsidian", slug: "obsidian" }, { name: "Scribd", slug: "scribd" },
+    { name: "Google Docs", slug: "googledocs" },
+    { name: "Notion", slug: "notion" },
+    { name: "Grammarly", slug: "grammarly" },
+    { name: "WordPress", slug: "wordpress" },
+    { name: "Medium", slug: "medium" },
+    { name: "Substack", slug: "substack" },
+    { name: "Ghost", slug: "ghost" },
+    { name: "Contentful", slug: "contentful" },
+    { name: "Dropbox Paper", slug: "dropbox" },
+    { name: "Evernote", slug: "evernote" },
+    { name: "Obsidian", slug: "obsidian" },
+    { name: "Scribd", slug: "scribd" },
   ],
   research: [
-    { name: "Python", slug: "python" }, { name: "R", slug: "r" },
-    { name: "Jupyter", slug: "jupyter" }, { name: "Tableau", slug: "tableau" },
-    { name: "Pandas", slug: "pandas" }, { name: "Kaggle", slug: "kaggle" },
-    { name: "Google Scholar", slug: "googlescholar" }, { name: "Mendeley", slug: "mendeley" },
-    { name: "Zotero", slug: "zotero" }, { name: "Overleaf", slug: "overleaf" },
-    { name: "LaTeX", slug: "latex" }, { name: "ORCID", slug: "orcid" },
+    { name: "Python", slug: "python" },
+    { name: "R", slug: "r" },
+    { name: "Jupyter", slug: "jupyter" },
+    { name: "Tableau", slug: "tableau" },
+    { name: "Pandas", slug: "pandas" },
+    { name: "Kaggle", slug: "kaggle" },
+    { name: "Google Scholar", slug: "googlescholar" },
+    { name: "Mendeley", slug: "mendeley" },
+    { name: "Zotero", slug: "zotero" },
+    { name: "Overleaf", slug: "overleaf" },
+    { name: "LaTeX", slug: "latex" },
+    { name: "ORCID", slug: "orcid" },
   ],
   "business-consulting": [
-    { name: "Excel", slug: "microsoftexcel" }, { name: "PowerPoint", slug: "microsoftpowerpoint" },
-    { name: "Notion", slug: "notion" }, { name: "Salesforce", slug: "salesforce" },
-    { name: "HubSpot", slug: "hubspot" }, { name: "Slack", slug: "slack" },
-    { name: "Asana", slug: "asana" }, { name: "Trello", slug: "trello" },
-    { name: "Jira", slug: "jira" }, { name: "Monday", slug: "mondaydotcom" },
-    { name: "Airtable", slug: "airtable" }, { name: "Zoom", slug: "zoom" },
+    { name: "Excel", slug: "microsoftexcel" },
+    { name: "PowerPoint", slug: "microsoftpowerpoint" },
+    { name: "Notion", slug: "notion" },
+    { name: "Salesforce", slug: "salesforce" },
+    { name: "HubSpot", slug: "hubspot" },
+    { name: "Slack", slug: "slack" },
+    { name: "Asana", slug: "asana" },
+    { name: "Trello", slug: "trello" },
+    { name: "Jira", slug: "jira" },
+    { name: "Monday", slug: "mondaydotcom" },
+    { name: "Airtable", slug: "airtable" },
+    { name: "Zoom", slug: "zoom" },
   ],
 }
 
@@ -659,7 +2632,10 @@ export default function Projects() {
   const scrollSubcategories = useCallback((direction: "prev" | "next") => {
     const el = subcategoryScrollRef.current
     if (!el) return
-    el.scrollBy({ left: direction === "next" ? el.clientWidth : -el.clientWidth, behavior: "smooth" })
+    el.scrollBy({
+      left: direction === "next" ? el.clientWidth : -el.clientWidth,
+      behavior: "smooth",
+    })
   }, [])
 
   const browseTypeScrollRef = useRef<HTMLDivElement>(null)
@@ -670,21 +2646,28 @@ export default function Projects() {
     const el = browseTypeScrollRef.current
     if (!el) return
     setCanScrollPrevBrowseType(el.scrollLeft > 0)
-    setCanScrollNextBrowseType(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+    setCanScrollNextBrowseType(
+      el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+    )
   }, [])
 
   useEffect(() => {
     const el = browseTypeScrollRef.current
     if (!el) return
     updateScrollStateBrowseType()
-    el.addEventListener("scroll", updateScrollStateBrowseType, { passive: true })
+    el.addEventListener("scroll", updateScrollStateBrowseType, {
+      passive: true,
+    })
     return () => el.removeEventListener("scroll", updateScrollStateBrowseType)
   }, [updateScrollStateBrowseType])
 
   const scrollBrowseType = useCallback((direction: "prev" | "next") => {
     const el = browseTypeScrollRef.current
     if (!el) return
-    el.scrollBy({ left: direction === "next" ? el.clientWidth : -el.clientWidth, behavior: "smooth" })
+    el.scrollBy({
+      left: direction === "next" ? el.clientWidth : -el.clientWidth,
+      behavior: "smooth",
+    })
   }, [])
 
   const skillsScrollRef = useRef<HTMLDivElement>(null)
@@ -709,7 +2692,10 @@ export default function Projects() {
   const scrollSkills = useCallback((direction: "prev" | "next") => {
     const el = skillsScrollRef.current
     if (!el) return
-    el.scrollBy({ left: direction === "next" ? el.clientWidth : -el.clientWidth, behavior: "smooth" })
+    el.scrollBy({
+      left: direction === "next" ? el.clientWidth : -el.clientWidth,
+      behavior: "smooth",
+    })
   }, [])
 
   // ✅ Extract l1, l2, l3
@@ -745,8 +2731,7 @@ export default function Projects() {
         slug: "_browse",
         description: "",
         heroImage: unsplash("1519389950473-47ba0277781c"),
-        subcategories: ROOT_L1_SLUGS
-          .map((slug) => CATEGORY_TAXONOMY[slug])
+        subcategories: ROOT_L1_SLUGS.map((slug) => CATEGORY_TAXONOMY[slug])
           .filter(Boolean)
           .map((cat) => ({
             name: cat.name,
@@ -758,12 +2743,27 @@ export default function Projects() {
     }
     return getCategoryMeta(l1 ?? "")
   }, [l1, rootBrowseMode])
-  const l2Meta = useMemo(() => l2 ? (l1Meta.subcategories.find((s) => s.slug === l2) ?? { name: slugToTitle(l2), slug: l2, description: "" }) : null, [l1Meta, l2])
-  const l3Meta = useMemo(() => l3 ? { name: slugToTitle(l3), slug: l3, description: "" } : null, [l3])
+  const l2Meta = useMemo(
+    () =>
+      l2
+        ? (l1Meta.subcategories.find((s) => s.slug === l2) ?? {
+            name: slugToTitle(l2),
+            slug: l2,
+            description: "",
+          })
+        : null,
+    [l1Meta, l2]
+  )
+  const l3Meta = useMemo(
+    () => (l3 ? { name: slugToTitle(l3), slug: l3, description: "" } : null),
+    [l3]
+  )
 
   // The "current" category is the deepest level
   const currentName = l3Meta?.name ?? l2Meta?.name ?? l1Meta.name
-  const currentDescription = (l2Meta && "description" in l2Meta ? l2Meta.description : null) ?? l1Meta.description
+  const currentDescription =
+    (l2Meta && "description" in l2Meta ? l2Meta.description : null) ??
+    l1Meta.description
 
   /**
    * Label used in section headers ("Top ___ Projects", "Recommended ___",
@@ -852,10 +2852,19 @@ export default function Projects() {
     if (!l2 && !l3 && l1Meta.subcategories.length > 0) {
       return l1Meta.subcategories.map((s) => ({ ...s, uuid: s.slug }))
     }
-    if (l2 && !l3 && l2Meta && "children" in l2Meta && l2Meta.children && l2Meta.children.length > 0) {
+    if (
+      l2 &&
+      !l3 &&
+      l2Meta &&
+      "children" in l2Meta &&
+      l2Meta.children &&
+      l2Meta.children.length > 0
+    ) {
       return l2Meta.children.map((s) => ({ ...s, uuid: s.slug }))
     }
-    const apiChildren = (pageData?.children ?? []).filter((ch: any) => ch && ch.name && ch.slug)
+    const apiChildren = (pageData?.children ?? []).filter(
+      (ch: any) => ch && ch.name && ch.slug
+    )
     if (apiChildren.length > 0) return apiChildren
     return []
   }, [pageData?.children, l1Meta.subcategories, l2Meta, l2, l3])
@@ -903,13 +2912,25 @@ export default function Projects() {
   }, [])
 
   // Helper to toggle favorites on any card
-  const handleFavoriteToggle = async (itemId: string, type: "project" | "service" | "team" | "talent", newPressed: boolean) => {
+  const handleFavoriteToggle = async (
+    itemId: string,
+    type: "project" | "service" | "team" | "talent",
+    newPressed: boolean
+  ) => {
     // Optimistic update — toggle immediately, persist in background
     if (newPressed) {
-      setFavoritedItems((prev) => { const next = new Set(prev); next.add(itemId); return next })
+      setFavoritedItems((prev) => {
+        const next = new Set(prev)
+        next.add(itemId)
+        return next
+      })
       await addFavorite({ type, itemId })
     } else {
-      setFavoritedItems((prev) => { const next = new Set(prev); next.delete(itemId); return next })
+      setFavoritedItems((prev) => {
+        const next = new Set(prev)
+        next.delete(itemId)
+        return next
+      })
       const fav = await findFavoriteByItemId(itemId)
       if (fav) await removeFavorite(fav.id)
     }
@@ -941,14 +2962,15 @@ export default function Projects() {
         // Fetch real talent users from the public talent listing endpoint.
         // We prefer talents with both an avatar AND a username so the card
         // hover-state and "View profile" link both work.
-        const usersRes = await fetch(`${apiBase}/talent/users`).catch(() => null)
+        const usersRes = await fetch(`${apiBase}/talent/users`).catch(
+          () => null
+        )
         if (usersRes?.ok) {
           const users = await usersRes.json()
           const rich = users.filter((u: any) => u.username && u.avatarUrl)
           const fallback = users.filter((u: any) => u.username)
           setTalentUsers(rich.length > 0 ? rich : fallback)
         }
-
       } catch {
         // Services unavailable — cards will use placeholder data
       }
@@ -962,7 +2984,11 @@ export default function Projects() {
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px]">
           <CategoryBanner
-            image={heroBannerFor(l1Meta.slug, l2Meta?.slug ?? "", l3Meta?.slug ?? "")}
+            image={heroBannerFor(
+              l1Meta.slug,
+              l2Meta?.slug ?? "",
+              l3Meta?.slug ?? ""
+            )}
             alt={`${currentName} banner`}
             title={pageKind === "show-all" ? currentName : sectionLabel}
             description={
@@ -981,23 +3007,35 @@ export default function Projects() {
                 <NextLink href="/">
                   <Home03 className="size-[18px] text-white opacity-60" />
                 </NextLink>
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  /
+                </span>
                 {pageKind === "show-all" ? (
                   <>
-                    <NextLink href={`/c/${l1Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                    <NextLink
+                      href={`/c/${l1Meta.slug}`}
+                      className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
+                    >
                       {l1Meta.name}
                     </NextLink>
                     {l2Meta && (
                       <>
-                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                        <NextLink href={`/c/${l1Meta.slug}/${l2Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                          /
+                        </span>
+                        <NextLink
+                          href={`/c/${l1Meta.slug}/${l2Meta.slug}`}
+                          className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
+                        >
                           {l2Meta.name}
                         </NextLink>
                       </>
                     )}
                     {l3Meta && (
                       <>
-                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                          /
+                        </span>
                         <span className="text-xs leading-6 font-semibold text-white">
                           {l3Meta.name}
                         </span>
@@ -1008,7 +3046,10 @@ export default function Projects() {
                   <>
                     {/* Entity root — links to /projects, /services, etc. */}
                     {l2Meta || l3Meta ? (
-                      <NextLink href={`/${pageKind}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                      <NextLink
+                        href={`/${pageKind}`}
+                        className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
+                      >
                         {sectionLabel}
                       </NextLink>
                     ) : (
@@ -1019,17 +3060,27 @@ export default function Projects() {
                     {/* L1 shown only when drilling into L2/L3 */}
                     {(l2Meta || l3Meta) && (
                       <>
-                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                        <NextLink href={`/${pageKind}/${l1Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                          /
+                        </span>
+                        <NextLink
+                          href={`/${pageKind}/${l1Meta.slug}`}
+                          className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
+                        >
                           {l1Meta.name}
                         </NextLink>
                       </>
                     )}
                     {l2Meta && (
                       <>
-                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                          /
+                        </span>
                         {l3Meta ? (
-                          <NextLink href={`/${pageKind}/${l1Meta.slug}/${l2Meta.slug}`} className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity">
+                          <NextLink
+                            href={`/${pageKind}/${l1Meta.slug}/${l2Meta.slug}`}
+                            className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
+                          >
                             {l2Meta.name}
                           </NextLink>
                         ) : (
@@ -1041,7 +3092,9 @@ export default function Projects() {
                     )}
                     {l3Meta && (
                       <>
-                        <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
+                        <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                          /
+                        </span>
                         <span className="text-xs leading-6 font-semibold text-white">
                           {l3Meta.name}
                         </span>
@@ -1087,11 +3140,23 @@ export default function Projects() {
                 </div>
               </div>
 
-              <div ref={subcategoryScrollRef} className="mt-6 overflow-x-auto overflow-y-visible py-1 -my-1 px-1 -mx-1" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
-                <div className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`} style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}>
+              <div
+                ref={subcategoryScrollRef}
+                className="mt-6 overflow-x-auto overflow-y-visible py-1 -my-1 px-1 -mx-1"
+                style={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                <div
+                  className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`}
+                  style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}
+                >
                   {subcategories.length > 0 ? (
                     (() => {
-                      const iconMap = resolveUniqueSubcategoryIcons(subcategories)
+                      const iconMap =
+                        resolveUniqueSubcategoryIcons(subcategories)
                       return subcategories.map((subcat: any) => (
                         <NextLink
                           key={subcat.uuid ?? subcat.slug}
@@ -1105,14 +3170,21 @@ export default function Projects() {
                           className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
                         >
                           <article>
-                            <SubcategoryIconTile slug={subcat.slug} name={subcat.name} icon={iconMap.get(subcat.slug || subcat.name || "")} />
+                            <SubcategoryIconTile
+                              slug={subcat.slug}
+                              name={subcat.name}
+                              icon={iconMap.get(
+                                subcat.slug || subcat.name || ""
+                              )}
+                            />
 
                             <div className="mt-5">
                               <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
                                 {subcat.name}
                               </h1>
                               <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
-                                {subcat.description || `Explore ${subcat.name} category`}
+                                {subcat.description ||
+                                  `Explore ${subcat.name} category`}
                               </p>
                             </div>
                           </article>
@@ -1141,18 +3213,20 @@ export default function Projects() {
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {["Projects", "Services", "Teams", "Talent"].map((tab) => (
-                        <Badge
-                          key={tab}
-                          variant="circular"
-                          visual="gray"
-                          size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                          asChild
-                        >
-                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                        </Badge>
-                      ))}
+                      {["Projects", "Services", "Teams", "Talent"].map(
+                        (tab) => (
+                          <Badge
+                            key={tab}
+                            variant="circular"
+                            visual="gray"
+                            size="lg"
+                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            asChild
+                          >
+                            <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                          </Badge>
+                        )
+                      )}
                     </TabsList>
 
                     <div className="flex items-center gap-x-3">
@@ -1178,7 +3252,10 @@ export default function Projects() {
                   </div>
 
                   <div className="mt-6">
-                    <TabsContent className="gap-5 flex items-center" value="Projects">
+                    <TabsContent
+                      className="gap-5 flex items-center"
+                      value="Projects"
+                    >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         {(listingsProjects.length > 0
                           ? listingsProjects.slice(0, 8)
@@ -1186,52 +3263,118 @@ export default function Projects() {
                             ? displayedProjects.slice(0, 6)
                             : fromLength(6)
                         ).map((item: any, idx: number) => {
-                          const project = (listingsProjects.length > 0 || displayedProjects.length > 0) ? item : null
+                          const project =
+                            listingsProjects.length > 0 ||
+                            displayedProjects.length > 0
+                              ? item
+                              : null
                           const key = project?.id ?? idx
                           return (
                             <SwiperSlide className="w-[355px]" key={key}>
                               <ListingCard
                                 kind="project"
                                 id={project?.id ?? `mock-${idx}`}
-                                title={project?.title || "The Ultimate Mobile App Experience"}
-                                description={project?.summary || project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
-                                mediaUrl={project?.mediaUrls?.[0] || project?.coverImage || project?.thumbnail || "/dashboard.png"}
+                                title={
+                                  project?.title ||
+                                  "The Ultimate Mobile App Experience"
+                                }
+                                description={
+                                  project?.summary ||
+                                  project?.description?.slice(0, 120) ||
+                                  "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                                }
+                                mediaUrl={
+                                  project?.mediaUrls?.[0] ||
+                                  project?.coverImage ||
+                                  project?.thumbnail ||
+                                  "/dashboard.png"
+                                }
                                 budget={`$${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget`}
                                 rating={Number(project?.rating) || 4.9}
                                 reviewCount={project?.reviewCount || 5}
-                                href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}
+                                href={
+                                  project
+                                    ? buildProjectUrl(
+                                        currentCategoryPath,
+                                        project.slug,
+                                        project.id
+                                      )
+                                    : listingHref("projects")
+                                }
                                 avatarsSlot={
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
+                                        <AvatarGroup
+                                          max={5}
+                                          size="sm"
+                                          excess
+                                          excessClassName="border-gray-300 text-gray-500"
+                                        >
                                           {fromLength(6).map((k) => (
-                                            <Avatar key={k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
-                                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                                            <Avatar
+                                              key={k}
+                                              size="sm"
+                                              className="border-2 border-white hover:ring-0 active:ring-0"
+                                            >
+                                              <AvatarImage
+                                                src="/woman.jpg"
+                                                alt="Woman"
+                                              />
                                               <AvatarFallback>W</AvatarFallback>
                                             </Avatar>
                                           ))}
                                         </AvatarGroup>
                                       </TooltipTrigger>
-                                      <TooltipContent className="p-0 max-w-[262px]" size="md">
-                                        <ScrollArea className="h-[192px] p-3" scrollBar={<ScrollBar className="w-4 p-1" thumbClassName="bg-white/20" />}>
+                                      <TooltipContent
+                                        className="p-0 max-w-[262px]"
+                                        size="md"
+                                      >
+                                        <ScrollArea
+                                          className="h-[192px] p-3"
+                                          scrollBar={
+                                            <ScrollBar
+                                              className="w-4 p-1"
+                                              thumbClassName="bg-white/20"
+                                            />
+                                          }
+                                        >
                                           <div className="space-y-3 pr-5">
                                             {fromLength(4).map((k) => (
-                                              <div key={k} className="flex items-center gap-x-[18px]">
+                                              <div
+                                                key={k}
+                                                className="flex items-center gap-x-[18px]"
+                                              >
                                                 <div className="flex items-center gap-x-2 flex-auto">
                                                   <Avatar>
-                                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                                    <AvatarFallback>W</AvatarFallback>
+                                                    <AvatarImage
+                                                      src="/woman.jpg"
+                                                      alt="Woman"
+                                                    />
+                                                    <AvatarFallback>
+                                                      W
+                                                    </AvatarFallback>
                                                   </Avatar>
                                                   <div className="flex flex-col flex-auto">
                                                     <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">Sevil</span>
-                                                      <span className="text-[10px] leading-none font-light text-white">@designsuperstar23</span>
+                                                      <span className="text-xs leading-5 font-semibold text-white">
+                                                        Sevil
+                                                      </span>
+                                                      <span className="text-[10px] leading-none font-light text-white">
+                                                        @designsuperstar23
+                                                      </span>
                                                     </div>
-                                                    <span className="text-[10px] font-light text-white">Full-stack Developer</span>
+                                                    <span className="text-[10px] font-light text-white">
+                                                      Full-stack Developer
+                                                    </span>
                                                   </div>
                                                 </div>
-                                                <span className="text-sm font-semibold text-white leading-5">$75 <span className="text-[10px] font-light leading-5">/hr</span></span>
+                                                <span className="text-sm font-semibold text-white leading-5">
+                                                  $75{" "}
+                                                  <span className="text-[10px] font-light leading-5">
+                                                    /hr
+                                                  </span>
+                                                </span>
                                               </div>
                                             ))}
                                           </div>
@@ -1242,27 +3385,75 @@ export default function Projects() {
                                 }
                                 favoriteSlot={
                                   <FavoriteRoot
-                                    value={project ? favoritedItems.has(String(project.id)) : false}
-                                    onValueChange={project ? async (pressed) => {
-                                      if (pressed) {
-                                        setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next })
-                                        const result = await addFavorite({ type: "project", itemId: String(project.id) })
-                                        if (!result) setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
-                                      } else {
-                                        setFavoritedItems((prev) => { const next = new Set(prev); next.delete(String(project.id)); return next })
-                                        const fav = await findFavoriteByItemId(String(project.id))
-                                        if (fav) { const ok = await removeFavorite(fav.id); if (!ok) setFavoritedItems((prev) => { const next = new Set(prev); next.add(String(project.id)); return next }) }
-                                      }
-                                    } : undefined}
+                                    value={
+                                      project
+                                        ? favoritedItems.has(String(project.id))
+                                        : false
+                                    }
+                                    onValueChange={
+                                      project
+                                        ? async (pressed) => {
+                                            if (pressed) {
+                                              setFavoritedItems((prev) => {
+                                                const next = new Set(prev)
+                                                next.add(String(project.id))
+                                                return next
+                                              })
+                                              const result = await addFavorite({
+                                                type: "project",
+                                                itemId: String(project.id),
+                                              })
+                                              if (!result)
+                                                setFavoritedItems((prev) => {
+                                                  const next = new Set(prev)
+                                                  next.delete(
+                                                    String(project.id)
+                                                  )
+                                                  return next
+                                                })
+                                            } else {
+                                              setFavoritedItems((prev) => {
+                                                const next = new Set(prev)
+                                                next.delete(String(project.id))
+                                                return next
+                                              })
+                                              const fav =
+                                                await findFavoriteByItemId(
+                                                  String(project.id)
+                                                )
+                                              if (fav) {
+                                                const ok = await removeFavorite(
+                                                  fav.id
+                                                )
+                                                if (!ok)
+                                                  setFavoritedItems((prev) => {
+                                                    const next = new Set(prev)
+                                                    next.add(String(project.id))
+                                                    return next
+                                                  })
+                                              }
+                                            }
+                                          }
+                                        : undefined
+                                    }
                                   >
                                     {({ pressed }) => (
                                       <TooltipProvider delayDuration={75}>
                                         <Tooltip>
                                           <TooltipTrigger asChild>
-                                            <span className="inline-block"><Favorite /></span>
+                                            <span className="inline-block">
+                                              <Favorite />
+                                            </span>
                                           </TooltipTrigger>
                                           <TooltipContent>
-                                            {pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}
+                                            {pressed ? (
+                                              <span className="inline-flex items-center gap-x-1">
+                                                <Check className="size-[15px] shrink-0 text-green-500" />
+                                                Saved
+                                              </span>
+                                            ) : (
+                                              "Save to favorites"
+                                            )}
                                           </TooltipContent>
                                         </Tooltip>
                                       </TooltipProvider>
@@ -1274,7 +3465,10 @@ export default function Projects() {
                           )
                         })}
                         <SwiperSlide className="w-[355px] h-auto">
-                          <NextLink href={listingHref("projects")} className="block h-full">
+                          <NextLink
+                            href={listingHref("projects")}
+                            className="block h-full"
+                          >
                             <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Projects in {currentName}
@@ -1288,38 +3482,97 @@ export default function Projects() {
                       </SwiperContent>
                     </TabsContent>
 
-                    <TabsContent className="gap-5 flex items-center" value="Services">
+                    <TabsContent
+                      className="gap-5 flex items-center"
+                      value="Services"
+                    >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         {(listingsServices.length > 0
                           ? listingsServices.slice(0, 8)
                           : fromLength(8)
                         ).map((item: any, idx: number) => {
-                          const service = listingsServices.length > 0 ? item : null
+                          const service =
+                            listingsServices.length > 0 ? item : null
                           const key = service?.id ?? idx
                           return (
                             <SwiperSlide className="w-[355px]" key={key}>
                               <ListingCard
                                 kind="service"
                                 id={service?.id ?? `mock-${idx}`}
-                                title={service?.title || `Professional ${currentName} Service`}
-                                description={service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}
-                                mediaUrl={service?.mediaUrls?.[0] || "/dashboard.png"}
+                                title={
+                                  service?.title ||
+                                  `Professional ${currentName} Service`
+                                }
+                                description={
+                                  service?.description?.slice(0, 120) ||
+                                  `Professional service offering for ${currentName}. Expert team ready to deliver results.`
+                                }
+                                mediaUrl={
+                                  service?.mediaUrls?.[0] || "/dashboard.png"
+                                }
                                 budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
                                 rating={4.9}
                                 reviewCount={5}
-                                href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")}
-                                collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 4) : []).map((u: any) => u?.avatarUrl || "/woman.jpg")}
-                                favoriteSlot={service ? (
-                                  <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>
-                                    {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
-                                  </FavoriteRoot>
-                                ) : null}
+                                href={
+                                  service
+                                    ? buildServiceUrl(
+                                        currentCategoryPath,
+                                        service.slug,
+                                        service.id
+                                      )
+                                    : listingHref("services")
+                                }
+                                collaborators={(talentUsers.length > 0
+                                  ? talentUsers.slice(0, 4)
+                                  : []
+                                ).map((u: any) => u?.avatarUrl || "/woman.jpg")}
+                                favoriteSlot={
+                                  service ? (
+                                    <FavoriteRoot
+                                      value={favoritedItems.has(
+                                        String(service.id)
+                                      )}
+                                      onValueChange={(pressed) =>
+                                        handleFavoriteToggle(
+                                          String(service.id),
+                                          "service",
+                                          pressed
+                                        )
+                                      }
+                                    >
+                                      {({ pressed }) => (
+                                        <TooltipProvider delayDuration={75}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="inline-block">
+                                                <Favorite />
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              {pressed ? (
+                                                <span className="inline-flex items-center gap-x-1">
+                                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                                  Saved
+                                                </span>
+                                              ) : (
+                                                "Save to favorites"
+                                              )}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                    </FavoriteRoot>
+                                  ) : null
+                                }
                               />
                             </SwiperSlide>
                           )
                         })}
                         <SwiperSlide className="w-[355px] h-auto">
-                          <NextLink href={listingHref("services")} className="block h-full">
+                          <NextLink
+                            href={listingHref("services")}
+                            className="block h-full"
+                          >
                             <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Services in {currentName}
@@ -1333,7 +3586,10 @@ export default function Projects() {
                       </SwiperContent>
                     </TabsContent>
 
-                    <TabsContent className="gap-5 flex items-center" value="Teams">
+                    <TabsContent
+                      className="gap-5 flex items-center"
+                      value="Teams"
+                    >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         {fromLength(8).map((key) => (
                           <SwiperSlide className="w-[355px]" key={key}>
@@ -1348,17 +3604,57 @@ export default function Projects() {
                               locations="UK, USA, Brazil, Philippines, more..."
                               rating={4.7}
                               projectCount={2}
-                              skills={["iOS", "E-commerce", "Mobile Application", "Small Business", "Software Development"]}
-                              memberAvatars={Array.from({ length: 6 }, () => "/woman.jpg")}
-                              previousClientLogos={["/google.png", "/microsoft.png", "/aws.png", "/instagram.png", "/spotify.png"]}
+                              skills={[
+                                "iOS",
+                                "E-commerce",
+                                "Mobile Application",
+                                "Small Business",
+                                "Software Development",
+                              ]}
+                              memberAvatars={Array.from(
+                                { length: 6 },
+                                () => "/woman.jpg"
+                              )}
+                              previousClientLogos={[
+                                "/google.png",
+                                "/microsoft.png",
+                                "/aws.png",
+                                "/instagram.png",
+                                "/spotify.png",
+                              ]}
                               favoriteSlot={
-                                <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                <FavoriteRoot>
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block">
+                                            <Favorite />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (
+                                            <span className="inline-flex items-center gap-x-1">
+                                              <Check className="size-[15px] shrink-0 text-green-500" />
+                                              Saved
+                                            </span>
+                                          ) : (
+                                            "Save to favorites"
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
                               }
                             />
                           </SwiperSlide>
                         ))}
                         <SwiperSlide className="w-[355px] h-auto">
-                          <NextLink href={listingHref("teams")} className="block h-full">
+                          <NextLink
+                            href={listingHref("teams")}
+                            className="block h-full"
+                          >
                             <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Teams in {currentName}
@@ -1372,15 +3668,26 @@ export default function Projects() {
                       </SwiperContent>
                     </TabsContent>
 
-                    <TabsContent className="gap-5 flex items-center" value="Talent">
+                    <TabsContent
+                      className="gap-5 flex items-center"
+                      value="Talent"
+                    >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {talentUsers.slice(0, 8).map((u: TalentUser, idx: number) => (
-                          <SwiperSlide className="w-[355px]" key={u.id}>
-                            <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
-                          </SwiperSlide>
-                        ))}
+                        {talentUsers
+                          .slice(0, 8)
+                          .map((u: TalentUser, idx: number) => (
+                            <SwiperSlide className="w-[355px]" key={u.id}>
+                              <ListingCard
+                                kind="talent"
+                                {...talentToCardProps(u, idx)}
+                              />
+                            </SwiperSlide>
+                          ))}
                         <SwiperSlide className="w-[355px] h-auto">
-                          <NextLink href={listingHref("talent")} className="block h-full">
+                          <NextLink
+                            href={listingHref("talent")}
+                            className="block h-full"
+                          >
                             <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Talent in {currentName}
@@ -1412,7 +3719,10 @@ export default function Projects() {
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      {(subcategories.length > 0
+                        ? subcategories.slice(0, 5)
+                        : [{ name: "All" }]
+                      ).map((sub: any) => (
                         <Badge
                           key={sub.name}
                           variant="circular"
@@ -1427,12 +3737,20 @@ export default function Projects() {
                     </TabsList>
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild>
-                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
                           <ChevronLeft className="size-[18px]" />
                         </IconButton>
                       </SwiperPrevTrigger>
                       <SwiperNextTrigger asChild>
-                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
                           <ChevronRight className="size-[18px]" />
                         </IconButton>
                       </SwiperNextTrigger>
@@ -1440,7 +3758,10 @@ export default function Projects() {
                   </div>
 
                   <div className="mt-6">
-                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                    {(subcategories.length > 0
+                      ? subcategories.slice(0, 5)
+                      : [{ name: "All" }]
+                    ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
@@ -1449,41 +3770,144 @@ export default function Projects() {
                                 {sub.name} Projects
                               </h1>
                               <p className="mt-3 text-lg font-light leading-none text-white">
-                                Discover high-quality {sub.name.toLowerCase()} projects ready to launch.
+                                Discover high-quality {sub.name.toLowerCase()}{" "}
+                                projects ready to launch.
                               </p>
-                              <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8" size="lg">
-                                Explore More <ArrowRight className="size-[15px]" />
+                              <Button
+                                className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8"
+                                size="lg"
+                              >
+                                Explore More{" "}
+                                <ArrowRight className="size-[15px]" />
                               </Button>
                             </article>
                           </SwiperSlide>
                           {fromLength(8).map((idx) => {
                             // Cycle through real listings so every card links to a real project detail page.
-                            const project = listingsProjects.length > 0 ? listingsProjects[idx % listingsProjects.length] : null
-                            const href = project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")
+                            const project =
+                              listingsProjects.length > 0
+                                ? listingsProjects[
+                                    idx % listingsProjects.length
+                                  ]
+                                : null
+                            const href = project
+                              ? buildProjectUrl(
+                                  currentCategoryPath,
+                                  project.slug,
+                                  project.id
+                                )
+                              : listingHref("projects")
                             return (
-                              <SwiperSlide key={project?.id ?? idx} className="w-[355px]">
-                                <NextLink href={href} className="block focus-visible:outline-none">
+                              <SwiperSlide
+                                key={project?.id ?? idx}
+                                className="w-[355px]"
+                              >
+                                <NextLink
+                                  href={href}
+                                  className="block focus-visible:outline-none"
+                                >
                                   <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                                     <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={project?.mediaUrls?.[0] || "/dashboard.png"} alt={project?.title || "Dashboard"} fill sizes="33vw" />
+                                      <NextImage
+                                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                                        src={
+                                          project?.mediaUrls?.[0] ||
+                                          "/dashboard.png"
+                                        }
+                                        alt={project?.title || "Dashboard"}
+                                        fill
+                                        sizes="33vw"
+                                      />
                                     </div>
                                     <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{project?.title || "The Ultimate Mobile App Experience"}</span>
+                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
+                                        {project?.title ||
+                                          "The Ultimate Mobile App Experience"}
+                                      </span>
                                       <div className="inline-flex items-center gap-x-1">
                                         <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
+                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                                          4.9{" "}
+                                          <span className="font-extralight">
+                                            (5)
+                                          </span>
+                                        </span>
                                       </div>
                                     </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{project?.description?.slice(0, 140) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}</p>
+                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                                      {project?.description?.slice(0, 140) ||
+                                        "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                                    </p>
                                     <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {project?.duration || "12 weeks"}</span></div>
-                                      <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget</span></div>
+                                      <div className="flex items-center gap-x-[6.4px]">
+                                        <Clock className="size-[18px] shrink-0 text-primary-500" />
+                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                          Starting from{" "}
+                                          {project?.duration || "12 weeks"}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-x-[6.4px]">
+                                        <Money className="size-[18px] shrink-0 text-primary-500" />
+                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                          $
+                                          {project?.budget
+                                            ? Number(
+                                                project.budget
+                                              ).toLocaleString()
+                                            : "50,000"}{" "}
+                                          budget
+                                        </span>
+                                      </div>
                                     </div>
                                     <div className="mt-5 flex items-end justify-between">
-                                      <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                        {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
+                                      <AvatarGroup
+                                        max={5}
+                                        size="sm"
+                                        excess
+                                        excessClassName="border-gray-300 text-gray-500"
+                                      >
+                                        {(talentUsers.length > 0
+                                          ? talentUsers.slice(0, 6)
+                                          : fromLength(6)
+                                        ).map((u: any, k: number) => (
+                                          <Avatar
+                                            key={u?.id ?? k}
+                                            size="sm"
+                                            className="border-2 border-white hover:ring-0 active:ring-0"
+                                          >
+                                            <AvatarImage
+                                              src={u?.avatarUrl || "/woman.jpg"}
+                                              alt={u?.firstName || "Team"}
+                                            />
+                                            <AvatarFallback>
+                                              {u?.firstName?.[0] || "T"}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        ))}
                                       </AvatarGroup>
-                                      <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                      <FavoriteRoot>
+                                        {({ pressed }) => (
+                                          <TooltipProvider delayDuration={75}>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <span className="inline-block">
+                                                  <Favorite />
+                                                </span>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                {pressed ? (
+                                                  <span className="inline-flex items-center gap-x-1">
+                                                    <Check className="size-[15px] shrink-0 text-green-500" />
+                                                    Saved
+                                                  </span>
+                                                ) : (
+                                                  "Save to favorites"
+                                                )}
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        )}
+                                      </FavoriteRoot>
                                     </div>
                                   </article>
                                 </NextLink>
@@ -1507,12 +3931,20 @@ export default function Projects() {
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                  {pageKind === "show-all" ? `${currentName} Teams` : `Top ${currentName} Teams`}
+                  {pageKind === "show-all"
+                    ? `${currentName} Teams`
+                    : `Top ${currentName} Teams`}
                 </h1>
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
+                      {[
+                        "Featured",
+                        "Newest",
+                        "Most Popular",
+                        "Trending",
+                        "Top-Rated",
+                      ].map((tab) => (
                         <Badge
                           key={tab}
                           variant="circular"
@@ -1526,15 +3958,44 @@ export default function Projects() {
                       ))}
                     </TabsList>
                     <div className="flex items-center gap-x-8">
-                      <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Teams</Button>
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="underline hover:text-dark-blue-400"
+                      >
+                        Explore More Teams
+                      </Button>
                       <div className="flex items-center gap-x-3">
-                        <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                        <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
                       </div>
                     </div>
                   </div>
                   <div className="mt-6">
-                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                    {[
+                      "Featured",
+                      "Newest",
+                      "Most Popular",
+                      "Trending",
+                      "Top-Rated",
+                    ].map((tabValue) => (
                       <TabsContent key={tabValue} value={tabValue}>
                         <SwiperContent slidesPerView={1} spaceBetween={20}>
                           {(() => {
@@ -1559,11 +4020,48 @@ export default function Projects() {
                                       locations="UK, USA, Brazil, Philippines, more..."
                                       rating={4.7}
                                       projectCount={2}
-                                      skills={["iOS", "E-commerce", "Mobile Application", "Small Business", "Software Development"]}
-                                      memberAvatars={Array.from({ length: 6 }, () => "/woman.jpg")}
-                                      previousClientLogos={["/google.png", "/microsoft.png", "/aws.png", "/instagram.png", "/spotify.png"]}
+                                      skills={[
+                                        "iOS",
+                                        "E-commerce",
+                                        "Mobile Application",
+                                        "Small Business",
+                                        "Software Development",
+                                      ]}
+                                      memberAvatars={Array.from(
+                                        { length: 6 },
+                                        () => "/woman.jpg"
+                                      )}
+                                      previousClientLogos={[
+                                        "/google.png",
+                                        "/microsoft.png",
+                                        "/aws.png",
+                                        "/instagram.png",
+                                        "/spotify.png",
+                                      ]}
                                       favoriteSlot={
-                                        <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                        <FavoriteRoot>
+                                          {({ pressed }) => (
+                                            <TooltipProvider delayDuration={75}>
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="inline-block">
+                                                    <Favorite />
+                                                  </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  {pressed ? (
+                                                    <span className="inline-flex items-center gap-x-1">
+                                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                                      Saved
+                                                    </span>
+                                                  ) : (
+                                                    "Save to favorites"
+                                                  )}
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </TooltipProvider>
+                                          )}
+                                        </FavoriteRoot>
                                       }
                                     />
                                   ))}
@@ -1582,15 +4080,33 @@ export default function Projects() {
 
           {/* Popular Searches */}
           <div className="mt-[50px]">
-            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">Popular Searches</h1>
+            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+              Popular Searches
+            </h1>
             <div className="mt-6 flex items-center flex-wrap gap-3">
-              {["API Development", "Cloud Migration", "Data Pipeline", "Machine Learning", "Mobile App", "Web Application", "Microservices", "DevOps", "UI/UX Design", "Database Optimization"].map((term) => (
+              {[
+                "API Development",
+                "Cloud Migration",
+                "Data Pipeline",
+                "Machine Learning",
+                "Mobile App",
+                "Web Application",
+                "Microservices",
+                "DevOps",
+                "UI/UX Design",
+                "Database Optimization",
+              ].map((term) => (
                 <NextLink
                   key={term}
                   href={`/search?q=${encodeURIComponent(term)}&category=${l1Meta.slug}`}
                   className="focus-visible:outline-none"
                 >
-                  <Badge variant="circular" visual="gray" size="lg" className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-200 transition duration-300 cursor-pointer">
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-200 transition duration-300 cursor-pointer"
+                  >
                     {term}
                   </Badge>
                 </NextLink>
@@ -1649,8 +4165,24 @@ export default function Projects() {
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-3">
-                    <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                    <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
                   </div>
                 </div>
                 <div className="mt-6">
@@ -1668,45 +4200,68 @@ export default function Projects() {
                       "Security Audit",
                       "Load Balancing",
                       "Data Backup",
-                    ];
-                    const iconMap = resolveUniqueSubcategoryIcons(browseTypeNames.map((name) => ({ name })));
+                    ]
+                    const iconMap = resolveUniqueSubcategoryIcons(
+                      browseTypeNames.map((name) => ({ name }))
+                    )
                     return (
                       <TabsContent key={tabValue} value={tabValue}>
                         <SwiperContent slidesPerView={1} spaceBetween={20}>
                           {(() => {
-                            const chunks = [];
-                            for (let i = 0; i < browseTypeNames.length; i += 8) {
-                              chunks.push(browseTypeNames.slice(i, i + 8));
+                            const chunks = []
+                            for (
+                              let i = 0;
+                              i < browseTypeNames.length;
+                              i += 8
+                            ) {
+                              chunks.push(browseTypeNames.slice(i, i + 8))
                             }
                             return chunks.map((chunk, page) => (
                               <SwiperSlide key={page}>
                                 <div className="grid grid-cols-4 gap-[15px]">
                                   {chunk.map((name) => (
-                                    <article key={name} className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
-                                      <SubcategoryIconTile name={name} icon={iconMap.get(name)} className="!h-[35px] !w-[35px]" />
+                                    <article
+                                      key={name}
+                                      className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+                                    >
+                                      <SubcategoryIconTile
+                                        name={name}
+                                        icon={iconMap.get(name)}
+                                        className="!h-[35px] !w-[35px]"
+                                      />
                                       <div className="mt-5">
-                                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">{tabValue === "Services" ? "Service" : "DevOps"}</span>
-                                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">{name}</h1>
+                                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">
+                                          {tabValue === "Services"
+                                            ? "Service"
+                                            : "DevOps"}
+                                        </span>
+                                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">
+                                          {name}
+                                        </h1>
                                       </div>
                                       <div className="mt-3 flex flex-col gap-y-2">
                                         <div className="flex items-center gap-x-[6.4px]">
                                           <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                          <span className="font-medium text-sm leading-none text-dark-blue-400">Starting from 12 weeks</span>
+                                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                            Starting from 12 weeks
+                                          </span>
                                         </div>
                                         <div className="flex items-center gap-x-[6.4px]">
                                           <Money className="size-[18px] shrink-0 text-primary-500" />
-                                          <span className="font-medium text-sm leading-none text-dark-blue-400">$50,000 budget</span>
+                                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                            $50,000 budget
+                                          </span>
                                         </div>
                                       </div>
                                     </article>
                                   ))}
                                 </div>
                               </SwiperSlide>
-                            ));
+                            ))
                           })()}
                         </SwiperContent>
                       </TabsContent>
-                    );
+                    )
                   })}
                 </div>
               </SwiperRoot>
@@ -2109,50 +4664,158 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all" ? `Top ${currentName} Projects` : "Top Projects"}
+                {pageKind === "show-all"
+                  ? `Top ${currentName} Projects`
+                  : "Top Projects"}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
                   <TabsList className="flex items-center gap-x-3">
-                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
-                      <Badge key={tab} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                    {[
+                      "Featured",
+                      "Newest",
+                      "Most Popular",
+                      "Trending",
+                      "Top-Rated",
+                    ].map((tab) => (
+                      <Badge
+                        key={tab}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
                       </Badge>
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Projects</Button>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      size="lg"
+                      className="underline hover:text-dark-blue-400"
+                    >
+                      Explore More Projects
+                    </Button>
                     <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                      <SwiperPrevTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
-                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  {[
+                    "Featured",
+                    "Newest",
+                    "Most Popular",
+                    "Trending",
+                    "Top-Rated",
+                  ].map((tabValue) => (
                     <TabsContent key={tabValue} value={tabValue}>
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsProjects.length > 0 ? listingsProjects.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
-                          const project = listingsProjects.length > 0 ? item : null
+                        {(listingsProjects.length > 0
+                          ? listingsProjects.slice(0, 8)
+                          : fromLength(8)
+                        ).map((item: any, idx: number) => {
+                          const project =
+                            listingsProjects.length > 0 ? item : null
                           return (
-                            <SwiperSlide className="w-[355px]" key={project?.id ?? idx}>
+                            <SwiperSlide
+                              className="w-[355px]"
+                              key={project?.id ?? idx}
+                            >
                               <ListingCard
                                 kind="project"
                                 id={project?.id ?? `mock-${idx}`}
-                                title={project?.title || "The Ultimate Mobile App Experience"}
-                                description={project?.description?.slice(0, 120) || "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
-                                mediaUrl={project?.mediaUrls?.[0] || "/dashboard.png"}
+                                title={
+                                  project?.title ||
+                                  "The Ultimate Mobile App Experience"
+                                }
+                                description={
+                                  project?.description?.slice(0, 120) ||
+                                  "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                                }
+                                mediaUrl={
+                                  project?.mediaUrls?.[0] || "/dashboard.png"
+                                }
                                 budget={`$${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget`}
                                 duration={`Starting from ${project?.duration || "12 weeks"}`}
                                 rating={4.9}
                                 reviewCount={5}
-                                href={project ? buildProjectUrl(currentCategoryPath, project.slug, project.id) : listingHref("projects")}
-                                collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 6) : Array(6).fill("/woman.jpg")).map((u: any) => (typeof u === "string" ? u : u?.avatarUrl) || "/woman.jpg")}
-                                favoriteSlot={project ? (
-                                  <FavoriteRoot value={favoritedItems.has(String(project.id))} onValueChange={(pressed) => handleFavoriteToggle(String(project.id), "project", pressed)}>
-                                    {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
-                                  </FavoriteRoot>
-                                ) : null}
+                                href={
+                                  project
+                                    ? buildProjectUrl(
+                                        currentCategoryPath,
+                                        project.slug,
+                                        project.id
+                                      )
+                                    : listingHref("projects")
+                                }
+                                collaborators={(talentUsers.length > 0
+                                  ? talentUsers.slice(0, 6)
+                                  : Array(6).fill("/woman.jpg")
+                                ).map(
+                                  (u: any) =>
+                                    (typeof u === "string"
+                                      ? u
+                                      : u?.avatarUrl) || "/woman.jpg"
+                                )}
+                                favoriteSlot={
+                                  project ? (
+                                    <FavoriteRoot
+                                      value={favoritedItems.has(
+                                        String(project.id)
+                                      )}
+                                      onValueChange={(pressed) =>
+                                        handleFavoriteToggle(
+                                          String(project.id),
+                                          "project",
+                                          pressed
+                                        )
+                                      }
+                                    >
+                                      {({ pressed }) => (
+                                        <TooltipProvider delayDuration={75}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="inline-block">
+                                                <Favorite />
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              {pressed ? (
+                                                <span className="inline-flex items-center gap-x-1">
+                                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                                  Saved
+                                                </span>
+                                              ) : (
+                                                "Save to favorites"
+                                              )}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                    </FavoriteRoot>
+                                  ) : null
+                                }
                               />
                             </SwiperSlide>
                           )
@@ -2169,49 +4832,157 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all" ? `Top ${currentName} Services` : "Top Services"}
+                {pageKind === "show-all"
+                  ? `Top ${currentName} Services`
+                  : "Top Services"}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
                   <TabsList className="flex items-center gap-x-3">
-                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
-                      <Badge key={tab} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                    {[
+                      "Featured",
+                      "Newest",
+                      "Most Popular",
+                      "Trending",
+                      "Top-Rated",
+                    ].map((tab) => (
+                      <Badge
+                        key={tab}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
                       </Badge>
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Services</Button>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      size="lg"
+                      className="underline hover:text-dark-blue-400"
+                    >
+                      Explore More Services
+                    </Button>
                     <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                      <SwiperPrevTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
-                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  {[
+                    "Featured",
+                    "Newest",
+                    "Most Popular",
+                    "Trending",
+                    "Top-Rated",
+                  ].map((tabValue) => (
                     <TabsContent key={tabValue} value={tabValue}>
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
-                          const service = listingsServices.length > 0 ? item : null
+                        {(listingsServices.length > 0
+                          ? listingsServices.slice(0, 8)
+                          : fromLength(8)
+                        ).map((item: any, idx: number) => {
+                          const service =
+                            listingsServices.length > 0 ? item : null
                           return (
-                            <SwiperSlide className="w-[355px]" key={service?.id ?? idx}>
+                            <SwiperSlide
+                              className="w-[355px]"
+                              key={service?.id ?? idx}
+                            >
                               <ListingCard
                                 kind="service"
                                 id={service?.id ?? `mock-${idx}`}
-                                title={service?.title || `Professional ${currentName} Service`}
-                                description={service?.description?.slice(0, 120) || `Professional service offering for ${currentName}. Expert team ready to deliver results.`}
-                                mediaUrl={service?.mediaUrls?.[0] || "/dashboard.png"}
+                                title={
+                                  service?.title ||
+                                  `Professional ${currentName} Service`
+                                }
+                                description={
+                                  service?.description?.slice(0, 120) ||
+                                  `Professional service offering for ${currentName}. Expert team ready to deliver results.`
+                                }
+                                mediaUrl={
+                                  service?.mediaUrls?.[0] || "/dashboard.png"
+                                }
                                 budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
                                 rating={4.9}
                                 reviewCount={5}
-                                href={service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")}
-                                collaborators={(talentUsers.length > 0 ? talentUsers.slice(0, 6) : Array(6).fill("/woman.jpg")).map((u: any) => (typeof u === "string" ? u : u?.avatarUrl) || "/woman.jpg")}
-                                favoriteSlot={service ? (
-                                  <FavoriteRoot value={favoritedItems.has(String(service.id))} onValueChange={(pressed) => handleFavoriteToggle(String(service.id), "service", pressed)}>
-                                    {({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}
-                                  </FavoriteRoot>
-                                ) : null}
+                                href={
+                                  service
+                                    ? buildServiceUrl(
+                                        currentCategoryPath,
+                                        service.slug,
+                                        service.id
+                                      )
+                                    : listingHref("services")
+                                }
+                                collaborators={(talentUsers.length > 0
+                                  ? talentUsers.slice(0, 6)
+                                  : Array(6).fill("/woman.jpg")
+                                ).map(
+                                  (u: any) =>
+                                    (typeof u === "string"
+                                      ? u
+                                      : u?.avatarUrl) || "/woman.jpg"
+                                )}
+                                favoriteSlot={
+                                  service ? (
+                                    <FavoriteRoot
+                                      value={favoritedItems.has(
+                                        String(service.id)
+                                      )}
+                                      onValueChange={(pressed) =>
+                                        handleFavoriteToggle(
+                                          String(service.id),
+                                          "service",
+                                          pressed
+                                        )
+                                      }
+                                    >
+                                      {({ pressed }) => (
+                                        <TooltipProvider delayDuration={75}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="inline-block">
+                                                <Favorite />
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              {pressed ? (
+                                                <span className="inline-flex items-center gap-x-1">
+                                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                                  Saved
+                                                </span>
+                                              ) : (
+                                                "Save to favorites"
+                                              )}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                    </FavoriteRoot>
+                                  ) : null
+                                }
                               />
                             </SwiperSlide>
                           )
@@ -2280,7 +5051,12 @@ export default function Projects() {
                   </Badge>
                 </TabsList>
 
-                <Button size="lg" variant="link" visual="gray" className="hover:text-dark-blue-400">
+                <Button
+                  size="lg"
+                  variant="link"
+                  visual="gray"
+                  className="hover:text-dark-blue-400"
+                >
                   Advanced Filters
                   <ArrowRight className="size-[15px]" />
                 </Button>
@@ -2302,7 +5078,18 @@ export default function Projects() {
                   className="grid grid-cols-5 gap-[15px]"
                   value="Project Type"
                 >
-                  {["Web App", "Mobile App", "Desktop App", "SaaS Platform", "API / Backend", "E-commerce Store", "Landing Page", "Chrome Extension", "CLI Tool", "Game"].map((projectType) => (
+                  {[
+                    "Web App",
+                    "Mobile App",
+                    "Desktop App",
+                    "SaaS Platform",
+                    "API / Backend",
+                    "E-commerce Store",
+                    "Landing Page",
+                    "Chrome Extension",
+                    "CLI Tool",
+                    "Game",
+                  ].map((projectType) => (
                     <NextLink
                       key={projectType}
                       href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
@@ -2318,7 +5105,18 @@ export default function Projects() {
                   className="grid grid-cols-5 gap-[15px]"
                   value="Industry"
                 >
-                  {["Agriculture", "Oil & Gas", "Manufacturing", "Construction", "Utilities", "Retail & Wholesale", "Transportation", "Finance & Banking", "Real Estate", "Healthcare"].map((industry) => (
+                  {[
+                    "Agriculture",
+                    "Oil & Gas",
+                    "Manufacturing",
+                    "Construction",
+                    "Utilities",
+                    "Retail & Wholesale",
+                    "Transportation",
+                    "Finance & Banking",
+                    "Real Estate",
+                    "Healthcare",
+                  ].map((industry) => (
                     <NextLink
                       key={industry}
                       href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
@@ -2359,7 +5157,14 @@ export default function Projects() {
                   className="grid grid-cols-5 gap-[15px]"
                   value="Project Length"
                 >
-                  {["1 - 3 months", "3 - 6 months", "6 - 12 months", "12 - 18 months", "18 - 24 months", "24+ months"].map((duration) => (
+                  {[
+                    "1 - 3 months",
+                    "3 - 6 months",
+                    "6 - 12 months",
+                    "12 - 18 months",
+                    "18 - 24 months",
+                    "24+ months",
+                  ].map((duration) => (
                     <NextLink
                       key={duration}
                       href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
@@ -2375,7 +5180,14 @@ export default function Projects() {
                   className="grid grid-cols-5 gap-[15px]"
                   value="Team Size"
                 >
-                  {["1 - 2 members", "2 - 5 members", "5 - 10 members", "10 - 15 members", "15 - 20 members", "20+ members"].map((size) => (
+                  {[
+                    "1 - 2 members",
+                    "2 - 5 members",
+                    "5 - 10 members",
+                    "10 - 15 members",
+                    "15 - 20 members",
+                    "20+ members",
+                  ].map((size) => (
                     <NextLink
                       key={size}
                       href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
@@ -2395,27 +5207,71 @@ export default function Projects() {
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all" ? `${currentName} All Stars` : "Top Talent"}
+                {pageKind === "show-all"
+                  ? `${currentName} All Stars`
+                  : "Top Talent"}
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
                   <TabsList className="flex items-center gap-x-3">
-                    {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tab) => (
-                      <Badge key={tab} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                    {[
+                      "Featured",
+                      "Newest",
+                      "Most Popular",
+                      "Trending",
+                      "Top-Rated",
+                    ].map((tab) => (
+                      <Badge
+                        key={tab}
+                        variant="circular"
+                        visual="gray"
+                        size="lg"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        asChild
+                      >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
                       </Badge>
                     ))}
                   </TabsList>
                   <div className="flex items-center gap-x-8">
-                    <Button variant="link" visual="gray" size="lg" className="hover:underline hover:text-dark-blue-400">Explore More All Stars</Button>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      size="lg"
+                      className="hover:underline hover:text-dark-blue-400"
+                    >
+                      Explore More All Stars
+                    </Button>
                     <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                      <SwiperPrevTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
-                  {["Featured", "Newest", "Most Popular", "Trending", "Top-Rated"].map((tabValue) => (
+                  {[
+                    "Featured",
+                    "Newest",
+                    "Most Popular",
+                    "Trending",
+                    "Top-Rated",
+                  ].map((tabValue) => (
                     <TabsContent key={tabValue} value={tabValue}>
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         <SwiperSlide className="w-[355px] h-auto">
@@ -2428,22 +5284,34 @@ export default function Projects() {
                                 {currentName} Talent
                               </h1>
                               <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
-                                Find {currentName.toLowerCase()} talent to bring your projects to life.
+                                Find {currentName.toLowerCase()} talent to bring
+                                your projects to life.
                               </p>
                             </div>
                             <div className="flex flex-col gap-y-4">
-                              <Button asChild className="rounded-full bg-white text-[#2459DB] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300" size="lg">
+                              <Button
+                                asChild
+                                className="rounded-full bg-white text-[#2459DB] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300"
+                                size="lg"
+                              >
                                 <NextLink href={listingHref("talent")}>
-                                  Explore More <ArrowRight className="size-[15px] ml-2" />
+                                  Explore More{" "}
+                                  <ArrowRight className="size-[15px] ml-2" />
                                 </NextLink>
                               </Button>
                             </div>
                           </article>
                         </SwiperSlide>
-                        {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
+                        {(talentUsers.length > 0
+                          ? talentUsers.slice(0, 8)
+                          : fromLength(8)
+                        ).map((u: any, idx: number) => (
                           <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
                             {talentUsers.length > 0 ? (
-                              <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                              <ListingCard
+                                kind="talent"
+                                {...talentToCardProps(u, idx)}
+                              />
                             ) : (
                               <ListingCard
                                 kind="talent"
@@ -2494,7 +5362,19 @@ export default function Projects() {
             </div>
 
             <div className="mt-6 flex items-center flex-wrap gap-3">
-              {["JavaScript", "Python", "React", "Node.js", "TypeScript", "AWS", "Docker", "Kubernetes", "GraphQL", "PostgreSQL", "MongoDB"].map((skill) => (
+              {[
+                "JavaScript",
+                "Python",
+                "React",
+                "Node.js",
+                "TypeScript",
+                "AWS",
+                "Docker",
+                "Kubernetes",
+                "GraphQL",
+                "PostgreSQL",
+                "MongoDB",
+              ].map((skill) => (
                 <Badge
                   key={skill}
                   variant="circular"
@@ -2517,22 +5397,58 @@ export default function Projects() {
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
-                        <Badge key={sub.name} variant="circular" visual="gray" size="lg" className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400" asChild>
+                      {(subcategories.length > 0
+                        ? subcategories.slice(0, 5)
+                        : [{ name: "All" }]
+                      ).map((sub: any) => (
+                        <Badge
+                          key={sub.name}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
                         </Badge>
                       ))}
                     </TabsList>
                     <div className="flex items-center gap-x-8">
-                      <Button variant="link" visual="gray" size="lg" className="underline hover:text-dark-blue-400">Explore More Talent</Button>
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="underline hover:text-dark-blue-400"
+                      >
+                        Explore More Talent
+                      </Button>
                       <div className="flex items-center gap-x-3">
-                        <SwiperPrevTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronLeft className="size-[18px]" /></IconButton></SwiperPrevTrigger>
-                        <SwiperNextTrigger asChild><IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined"><ChevronRight className="size-[18px]" /></IconButton></SwiperNextTrigger>
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
                       </div>
                     </div>
                   </div>
                   <div className="mt-6">
-                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                    {(subcategories.length > 0
+                      ? subcategories.slice(0, 5)
+                      : [{ name: "All" }]
+                    ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
@@ -2545,22 +5461,38 @@ export default function Projects() {
                                   New {currentName} Talent
                                 </h1>
                                 <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
-                                  Discover the newest {currentName.toLowerCase()} experts joining our community.
+                                  Discover the newest{" "}
+                                  {currentName.toLowerCase()} experts joining
+                                  our community.
                                 </p>
                               </div>
                               <div className="flex flex-col gap-y-4">
-                                <Button asChild className="rounded-full bg-white text-[#027A48] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300" size="lg">
+                                <Button
+                                  asChild
+                                  className="rounded-full bg-white text-[#027A48] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300"
+                                  size="lg"
+                                >
                                   <NextLink href={listingHref("talent")}>
-                                    Explore More <ArrowRight className="size-[15px] ml-2" />
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
                                   </NextLink>
                                 </Button>
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0 ? talentUsers.slice(0, 8) : fromLength(8)).map((u: any, idx: number) => (
-                            <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
+                          {(talentUsers.length > 0
+                            ? talentUsers.slice(0, 8)
+                            : fromLength(8)
+                          ).map((u: any, idx: number) => (
+                            <SwiperSlide
+                              className="w-[355px]"
+                              key={u?.id ?? idx}
+                            >
                               {talentUsers.length > 0 ? (
-                                <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(u, idx)}
+                                />
                               ) : (
                                 <ListingCard
                                   kind="talent"
@@ -2593,14 +5525,22 @@ export default function Projects() {
               </h1>
 
               <NextLink href="/technologies">
-                <Button size="lg" variant="link" visual="gray" className="hover:text-dark-blue-400">
+                <Button
+                  size="lg"
+                  variant="link"
+                  visual="gray"
+                  className="hover:text-dark-blue-400"
+                >
                   View All technologies <ArrowRight className="size-[15px]" />
                 </Button>
               </NextLink>
             </div>
 
             <div className="gap-[15px] mt-6 grid grid-cols-6">
-              {(CATEGORY_TECHNOLOGIES[l1Meta.slug] ?? CATEGORY_TECHNOLOGIES["software-development"]).map((tech) => (
+              {(
+                CATEGORY_TECHNOLOGIES[l1Meta.slug] ??
+                CATEGORY_TECHNOLOGIES["software-development"]
+              ).map((tech) => (
                 <NextLink
                   key={tech.slug}
                   href={`/search?skill=${encodeURIComponent(tech.name)}`}
@@ -2616,7 +5556,9 @@ export default function Projects() {
                       className="size-7 shrink-0 object-contain"
                       loading="lazy"
                     />
-                    <h1 className="text-xs font-medium leading-none text-dark-blue-400 text-center">{tech.name}</h1>
+                    <h1 className="text-xs font-medium leading-none text-dark-blue-400 text-center">
+                      {tech.name}
+                    </h1>
                   </article>
                 </NextLink>
               ))}
@@ -2638,16 +5580,20 @@ export default function Projects() {
                 </h1>
 
                 <p className="text-xl mt-2 font-light leading-none text-white">
-                  Discover {sectionLabel.toLowerCase()} experts and projects tailored
-                  to your goals.
+                  Discover {sectionLabel.toLowerCase()} experts and projects
+                  tailored to your goals.
                 </p>
 
-                <Button asChild className="rounded-full bg-white text-dark-blue-400 mt-[50px]" size="lg">
+                <Button
+                  asChild
+                  className="rounded-full bg-white text-dark-blue-400 mt-[50px]"
+                  size="lg"
+                >
                   <NextLink href={listingHref("projects")}>
-                    Explore {sectionLabel} <ArrowRight className="size-[15px]" />
+                    Explore {sectionLabel}{" "}
+                    <ArrowRight className="size-[15px]" />
                   </NextLink>
                 </Button>
-
               </div>
             </div>
           </div>
@@ -2661,7 +5607,10 @@ export default function Projects() {
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                      {(subcategories.length > 0
+                        ? subcategories.slice(0, 5)
+                        : [{ name: "All" }]
+                      ).map((sub: any) => (
                         <Badge
                           key={sub.name}
                           variant="circular"
@@ -2676,12 +5625,20 @@ export default function Projects() {
                     </TabsList>
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild>
-                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
                           <ChevronLeft className="size-[18px]" />
                         </IconButton>
                       </SwiperPrevTrigger>
                       <SwiperNextTrigger asChild>
-                        <IconButton className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400" visual="gray" variant="outlined">
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
                           <ChevronRight className="size-[18px]" />
                         </IconButton>
                       </SwiperNextTrigger>
@@ -2689,7 +5646,10 @@ export default function Projects() {
                   </div>
 
                   <div className="mt-6">
-                    {(subcategories.length > 0 ? subcategories.slice(0, 5) : [{ name: "All" }]).map((sub: any) => (
+                    {(subcategories.length > 0
+                      ? subcategories.slice(0, 5)
+                      : [{ name: "All" }]
+                    ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
@@ -2698,42 +5658,140 @@ export default function Projects() {
                                 Cybersecurity Services
                               </h1>
                               <p className="mt-3 text-lg font-light leading-none text-white">
-                                Explore cloud computing services tailored to meet your unique business needs.
+                                Explore cloud computing services tailored to
+                                meet your unique business needs.
                               </p>
                               <div className="mt-8 flex flex-col gap-y-3">
-                                <Button className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-error-800 hover:bg-white text-error-700" size="lg">
-                                  Explore More <ArrowRight className="size-[15px]" />
+                                <Button
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-error-800 hover:bg-white text-error-700"
+                                  size="lg"
+                                >
+                                  Explore More{" "}
+                                  <ArrowRight className="size-[15px]" />
                                 </Button>
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(listingsServices.length > 0 ? listingsServices.slice(0, 8) : fromLength(8)).map((item: any, idx: number) => {
-                            const service = listingsServices.length > 0 ? item : null
-                            const href = service ? buildServiceUrl(currentCategoryPath, service.slug, service.id) : listingHref("services")
+                          {(listingsServices.length > 0
+                            ? listingsServices.slice(0, 8)
+                            : fromLength(8)
+                          ).map((item: any, idx: number) => {
+                            const service =
+                              listingsServices.length > 0 ? item : null
+                            const href = service
+                              ? buildServiceUrl(
+                                  currentCategoryPath,
+                                  service.slug,
+                                  service.id
+                                )
+                              : listingHref("services")
                             return (
-                              <SwiperSlide key={service?.id ?? idx} className="w-[355px]">
-                                <NextLink href={href} className="block focus-visible:outline-none">
+                              <SwiperSlide
+                                key={service?.id ?? idx}
+                                className="w-[355px]"
+                              >
+                                <NextLink
+                                  href={href}
+                                  className="block focus-visible:outline-none"
+                                >
                                   <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                                     <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]" src={service?.mediaUrls?.[0] || "/dashboard.png"} alt={service?.title || "Service"} fill sizes="33vw" />
+                                      <NextImage
+                                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                                        src={
+                                          service?.mediaUrls?.[0] ||
+                                          "/dashboard.png"
+                                        }
+                                        alt={service?.title || "Service"}
+                                        fill
+                                        sizes="33vw"
+                                      />
                                     </div>
                                     <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">{service?.title || `Professional ${currentName} Service`}</span>
+                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
+                                        {service?.title ||
+                                          `Professional ${currentName} Service`}
+                                      </span>
                                       <div className="inline-flex items-center gap-x-1">
                                         <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">4.9 <span className="font-extralight">(5)</span></span>
+                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                                          4.9{" "}
+                                          <span className="font-extralight">
+                                            (5)
+                                          </span>
+                                        </span>
                                       </div>
                                     </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">{service?.description?.slice(0, 140) || `Brief overview of a high-impact ${currentName.toLowerCase()} service package.`}</p>
+                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                                      {service?.description?.slice(0, 140) ||
+                                        `Brief overview of a high-impact ${currentName.toLowerCase()} service package.`}
+                                    </p>
                                     <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]"><Clock className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">Starting from {service?.duration || "12 weeks"}</span></div>
-                                      <div className="flex items-center gap-x-[6.4px]"><Money className="size-[18px] shrink-0 text-primary-500" /><span className="font-medium text-sm leading-none text-dark-blue-400">{service?.priceMin ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month` : "$5,000 - $15,000/month"}</span></div>
+                                      <div className="flex items-center gap-x-[6.4px]">
+                                        <Clock className="size-[18px] shrink-0 text-primary-500" />
+                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                          Starting from{" "}
+                                          {service?.duration || "12 weeks"}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-x-[6.4px]">
+                                        <Money className="size-[18px] shrink-0 text-primary-500" />
+                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                          {service?.priceMin
+                                            ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
+                                            : "$5,000 - $15,000/month"}
+                                        </span>
+                                      </div>
                                     </div>
                                     <div className="mt-5 flex items-end justify-between">
-                                      <AvatarGroup max={5} size="sm" excess excessClassName="border-gray-300 text-gray-500">
-                                        {(talentUsers.length > 0 ? talentUsers.slice(0, 6) : fromLength(6)).map((u: any, k: number) => (<Avatar key={u?.id ?? k} size="sm" className="border-2 border-white hover:ring-0 active:ring-0"><AvatarImage src={u?.avatarUrl || "/woman.jpg"} alt={u?.firstName || "Team"} /><AvatarFallback>{u?.firstName?.[0] || "T"}</AvatarFallback></Avatar>))}
+                                      <AvatarGroup
+                                        max={5}
+                                        size="sm"
+                                        excess
+                                        excessClassName="border-gray-300 text-gray-500"
+                                      >
+                                        {(talentUsers.length > 0
+                                          ? talentUsers.slice(0, 6)
+                                          : fromLength(6)
+                                        ).map((u: any, k: number) => (
+                                          <Avatar
+                                            key={u?.id ?? k}
+                                            size="sm"
+                                            className="border-2 border-white hover:ring-0 active:ring-0"
+                                          >
+                                            <AvatarImage
+                                              src={u?.avatarUrl || "/woman.jpg"}
+                                              alt={u?.firstName || "Team"}
+                                            />
+                                            <AvatarFallback>
+                                              {u?.firstName?.[0] || "T"}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        ))}
                                       </AvatarGroup>
-                                      <FavoriteRoot>{({ pressed }) => (<TooltipProvider delayDuration={75}><Tooltip><TooltipTrigger asChild><span className="inline-block"><Favorite /></span></TooltipTrigger><TooltipContent>{pressed ? (<span className="inline-flex items-center gap-x-1"><Check className="size-[15px] shrink-0 text-green-500" />Saved</span>) : "Save to favorites"}</TooltipContent></Tooltip></TooltipProvider>)}</FavoriteRoot>
+                                      <FavoriteRoot>
+                                        {({ pressed }) => (
+                                          <TooltipProvider delayDuration={75}>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <span className="inline-block">
+                                                  <Favorite />
+                                                </span>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                {pressed ? (
+                                                  <span className="inline-flex items-center gap-x-1">
+                                                    <Check className="size-[15px] shrink-0 text-green-500" />
+                                                    Saved
+                                                  </span>
+                                                ) : (
+                                                  "Save to favorites"
+                                                )}
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        )}
+                                      </FavoriteRoot>
                                     </div>
                                   </article>
                                 </NextLink>
@@ -2755,7 +5813,12 @@ export default function Projects() {
                 Guides Related to {sectionLabel}
               </h1>
 
-              <Button size="lg" variant="link" visual="gray" className="hover:text-dark-blue-400">
+              <Button
+                size="lg"
+                variant="link"
+                visual="gray"
+                className="hover:text-dark-blue-400"
+              >
                 Visit the Blog <ArrowRight className="size-[15px]" />
               </Button>
             </div>
@@ -2880,26 +5943,26 @@ export default function Projects() {
         <h1 className="text-[28px] font-bold text-center text-dark-blue-400">
           {currentName} FAQ
         </h1>
-        
+
         <div className="mt-10 max-w-[1200px] mx-auto">
           <Tabs defaultValue="general" className="flex gap-x-20">
             <TabsList className="flex flex-col items-start gap-y-3 bg-transparent h-auto min-w-[240px]">
-              <TabsTrigger 
-                value="general" 
+              <TabsTrigger
+                value="general"
                 className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 General Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
               </TabsTrigger>
-              <TabsTrigger 
-                value="career" 
+              <TabsTrigger
+                value="career"
                 className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 Career Related Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
               </TabsTrigger>
-              <TabsTrigger 
-                value="technical" 
+              <TabsTrigger
+                value="technical"
                 className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 Technical Questions
@@ -2908,7 +5971,10 @@ export default function Projects() {
             </TabsList>
 
             <div className="flex-1">
-              <TabsContent value="general" className="mt-0 border-t border-gray-200">
+              <TabsContent
+                value="general"
+                className="mt-0 border-t border-gray-200"
+              >
                 <div className="flex flex-col">
                   {[
                     `What is ${currentName.toLowerCase()}?`,
@@ -2917,7 +5983,10 @@ export default function Projects() {
                     `What skills are essential for ${currentName.toLowerCase()}?`,
                     `What are some popular ${currentName.toLowerCase()} methodologies?`,
                   ].map((q, i) => (
-                    <div key={i} className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer">
+                    <div
+                      key={i}
+                      className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer"
+                    >
                       <span className="text-base font-semibold text-dark-blue-400 group-hover:text-primary-600 transition-colors">
                         {q}
                       </span>
@@ -2926,14 +5995,20 @@ export default function Projects() {
                   ))}
                 </div>
               </TabsContent>
-              <TabsContent value="career" className="mt-0 border-t border-gray-200">
+              <TabsContent
+                value="career"
+                className="mt-0 border-t border-gray-200"
+              >
                 <div className="flex flex-col">
                   {[
                     `How to start a career in ${currentName}?`,
                     `What is the average salary for ${currentName} specialists?`,
                     `Are there remote opportunities in ${currentName}?`,
                   ].map((q, i) => (
-                    <div key={i} className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer">
+                    <div
+                      key={i}
+                      className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer"
+                    >
                       <span className="text-base font-semibold text-dark-blue-400 group-hover:text-primary-600 transition-colors">
                         {q}
                       </span>
@@ -2942,14 +6017,20 @@ export default function Projects() {
                   ))}
                 </div>
               </TabsContent>
-              <TabsContent value="technical" className="mt-0 border-t border-gray-200">
+              <TabsContent
+                value="technical"
+                className="mt-0 border-t border-gray-200"
+              >
                 <div className="flex flex-col">
                   {[
                     `What tools are used in ${currentName}?`,
                     `Best practices for ${currentName} projects.`,
                     `How to stay updated with ${currentName} trends?`,
                   ].map((q, i) => (
-                    <div key={i} className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer">
+                    <div
+                      key={i}
+                      className="py-6 flex items-center justify-between border-b border-gray-200 group cursor-pointer"
+                    >
                       <span className="text-base font-semibold text-dark-blue-400 group-hover:text-primary-600 transition-colors">
                         {q}
                       </span>
@@ -2964,11 +6045,17 @@ export default function Projects() {
 
         <div className="mt-16 text-center text-sm text-gray-500">
           Still have some questions? Visit our{" "}
-          <NextLink href="/help" className="text-primary-600 font-medium hover:underline">
+          <NextLink
+            href="/help"
+            className="text-primary-600 font-medium hover:underline"
+          >
             Help Center
           </NextLink>{" "}
           or{" "}
-          <NextLink href="/chat" className="text-primary-600 font-medium hover:underline">
+          <NextLink
+            href="/chat"
+            className="text-primary-600 font-medium hover:underline"
+          >
             Chat with Us
           </NextLink>
         </div>

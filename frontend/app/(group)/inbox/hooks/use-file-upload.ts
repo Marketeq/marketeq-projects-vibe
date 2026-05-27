@@ -1,9 +1,9 @@
 "use client"
 
-import { getPublicBackendUrl } from "@/lib/runtime-urls"
 import { encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
 interface FileUploadResponse {
   message: {
@@ -36,9 +36,7 @@ interface FileUploadResponse {
   }
 }
 
-const API_BASE_URL =
-  getPublicBackendUrl() ||
-  "http://localhost:3002/api"
+const API_BASE_URL = getPublicBackendUrl() || "http://localhost:3002/api"
 
 export function useFileUpload(
   token: string,

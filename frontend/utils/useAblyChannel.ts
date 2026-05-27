@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser, getAccessToken } from "@/utils/auth"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 export function useAblyChannel(
@@ -20,12 +20,24 @@ export function useAblyChannel(
   const onEditRef = useRef(onEdit)
   const onReactionRef = useRef(onReaction)
 
-  useEffect(() => { onMessageRef.current = onMessage }, [onMessage])
-  useEffect(() => { onPinToggledRef.current = onPinToggled }, [onPinToggled])
-  useEffect(() => { onDeleteRef.current = onDelete }, [onDelete])
-  useEffect(() => { onUndeleteRef.current = onUndelete }, [onUndelete])
-  useEffect(() => { onEditRef.current = onEdit }, [onEdit])
-  useEffect(() => { onReactionRef.current = onReaction }, [onReaction])
+  useEffect(() => {
+    onMessageRef.current = onMessage
+  }, [onMessage])
+  useEffect(() => {
+    onPinToggledRef.current = onPinToggled
+  }, [onPinToggled])
+  useEffect(() => {
+    onDeleteRef.current = onDelete
+  }, [onDelete])
+  useEffect(() => {
+    onUndeleteRef.current = onUndelete
+  }, [onUndelete])
+  useEffect(() => {
+    onEditRef.current = onEdit
+  }, [onEdit])
+  useEffect(() => {
+    onReactionRef.current = onReaction
+  }, [onReaction])
 
   useEffect(() => {
     if (!threadId) return

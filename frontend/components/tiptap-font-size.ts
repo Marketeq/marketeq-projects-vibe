@@ -50,7 +50,11 @@ export const FontSizeExtension = Mark.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["span", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
+    return [
+      "span",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ]
   },
 
   addCommands() {

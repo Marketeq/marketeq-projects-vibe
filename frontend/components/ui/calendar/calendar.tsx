@@ -335,13 +335,16 @@ const RangeCalendar = ({
   const onFocusedValueChangeRef = React.useRef(onFocusedValueChange)
   onFocusedValueChangeRef.current = onFocusedValueChange
 
-  const onChange = React.useCallback((value: RangeValue<CalendarDate> | null) => {
-    if (!value) return
-    onValueChangeRef.current?.({
-      start: new Date(value.start.toString()),
-      end: new Date(value.end.toString()),
-    })
-  }, [])
+  const onChange = React.useCallback(
+    (value: RangeValue<CalendarDate> | null) => {
+      if (!value) return
+      onValueChangeRef.current?.({
+        start: new Date(value.start.toString()),
+        end: new Date(value.end.toString()),
+      })
+    },
+    []
+  )
 
   const onFocusChange = React.useCallback((value: CalendarDate) => {
     onFocusedValueChangeRef.current?.(new Date(value.toString()))
@@ -351,9 +354,16 @@ const RangeCalendar = ({
   // Recreating CalendarDate objects every render triggers react-aria's internal effects every
   // render → setState every render → "Maximum update depth exceeded".
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const calendarValue = React.useMemo(() => convertToRangeValue(value), [value?.start?.getTime(), value?.end?.getTime()])
+  const calendarValue = React.useMemo(
+    () => convertToRangeValue(value),
+    [value?.start?.getTime(), value?.end?.getTime()]
+  )
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const calendarFocusedValue = React.useMemo(() => focusedValue ? parseDate(format(focusedValue, "yyyy-MM-dd")) : undefined, [focusedValue?.getTime()])
+  const calendarFocusedValue = React.useMemo(
+    () =>
+      focusedValue ? parseDate(format(focusedValue, "yyyy-MM-dd")) : undefined,
+    [focusedValue?.getTime()]
+  )
 
   return (
     <AriaRangeCalendar
@@ -461,8 +471,8 @@ const DualCalendar = ({
   }, [])
 
   // Second calendar starts one month ahead and manages its own focused month independently
-  const [secondFocusedMonth, setSecondFocusedMonth] = React.useState<Date>(
-    () => addMonths(focusedValueState ?? new Date(), 1)
+  const [secondFocusedMonth, setSecondFocusedMonth] = React.useState<Date>(() =>
+    addMonths(focusedValueState ?? new Date(), 1)
   )
 
   const onStartDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -546,7 +556,13 @@ const DualCalendar = ({
           </div>
 
           <div className="inline-flex items-center gap-x-3">
-            <Button type="button" size="md" variant="outlined" visual="gray" onClick={onCancel}>
+            <Button
+              type="button"
+              size="md"
+              variant="outlined"
+              visual="gray"
+              onClick={onCancel}
+            >
               Cancel
             </Button>
             <Button type="button" size="md" onClick={() => onApply?.(state)}>

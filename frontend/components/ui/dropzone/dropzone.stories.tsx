@@ -72,8 +72,8 @@ export const DefaultDestructive = () => {
         ref.current.add(
           debounce(
             () =>
-              setState(
-                (prev) => prev?.map((value) => ({ ...value, progress: 50 }))
+              setState((prev) =>
+                prev?.map((value) => ({ ...value, progress: 50 }))
               ),
             1000 * 3
           ).cancel
@@ -81,8 +81,8 @@ export const DefaultDestructive = () => {
         ref.current.add(
           debounce(
             () =>
-              setState(
-                (prev) => prev?.map((value) => ({ ...value, hasError: true }))
+              setState((prev) =>
+                prev?.map((value) => ({ ...value, hasError: true }))
               ),
             1000 * 6
           ).cancel

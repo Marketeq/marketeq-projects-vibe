@@ -16,7 +16,8 @@ export const inputVariants = cva(
 )
 
 interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement>,
+  extends
+    React.InputHTMLAttributes<HTMLInputElement>,
     VariantProps<typeof inputVariants> {
   isInvalid?: boolean
 }

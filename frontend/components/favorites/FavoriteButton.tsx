@@ -1,9 +1,13 @@
 "use client"
 
-import { FavoriteRoot, Favorite } from "@/components/ui"
-import { useAddFavorite, useRemoveFavorite, useFavorites } from "@/src/hooks/useFavorites"
 import type { FavoriteType } from "@/service/http/favorites"
+import {
+  useAddFavorite,
+  useFavorites,
+  useRemoveFavorite,
+} from "@/src/hooks/useFavorites"
 import { cn } from "@/utils/functions"
+import { Favorite, FavoriteRoot } from "@/components/ui"
 
 interface FavoriteButtonProps {
   type: FavoriteType
@@ -11,7 +15,11 @@ interface FavoriteButtonProps {
   className?: string
 }
 
-export function FavoriteButton({ type, itemId, className }: FavoriteButtonProps) {
+export function FavoriteButton({
+  type,
+  itemId,
+  className,
+}: FavoriteButtonProps) {
   const { data: favorites = [] } = useFavorites(type)
   const addFavorite = useAddFavorite()
   const removeFavorite = useRemoveFavorite()

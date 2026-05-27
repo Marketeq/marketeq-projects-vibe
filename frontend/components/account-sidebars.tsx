@@ -3,6 +3,7 @@
 import { ComponentType, useMemo } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/utils/functions"
+import { useInboxThreads } from "@/utils/useInboxThreads"
 import {
   AlertCircle,
   BarChartSquare02,
@@ -14,12 +15,12 @@ import {
   Mail01,
   Search,
   Settings02,
+  Sidebar,
   UserCircle,
   Users,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
-import { Badge } from "@/components/ui"
-import { useInboxThreads } from "@/utils/useInboxThreads"
+import { Badge, IconButton } from "@/components/ui"
 
 type SidebarItem = {
   href: string
@@ -47,7 +48,7 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
     cn(
       "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3",
       pathname === href || pathname?.startsWith(href + "/")
-        ? "bg-gray-100"
+        ? "bg-primary-50 text-primary-500"
         : "hover:bg-gray-100"
     )
 
@@ -149,10 +150,14 @@ export const TalentAccountSidebar = () => {
   const { totalUnread } = useInboxThreads()
   const sections = useMemo(
     () => buildTalentSections(formatBadge(totalUnread)),
-    [totalUnread],
+    [totalUnread]
   )
 
-  return <div className={sidebarFrameClass}>{renderSections(sections, pathname)}</div>
+  return (
+    <div className={sidebarFrameClass}>
+      {renderSections(sections, pathname)}
+    </div>
+  )
 }
 
 export const ClientAccountSidebar = () => {
@@ -160,8 +165,20 @@ export const ClientAccountSidebar = () => {
   const { totalUnread } = useInboxThreads()
   const sections = useMemo(
     () => buildClientSections(formatBadge(totalUnread)),
-    [totalUnread],
+    [totalUnread]
   )
 
-  return <div className={sidebarFrameClass}>{renderSections(sections, pathname)}</div>
+  return (
+    <div className={sidebarFrameClass}>
+      <IconButton
+        className="bg-white absolute size-[23px] opacity-50 hover:opacity-100 top-2.5 right-2.5"
+        variant="outlined"
+        visual="gray"
+        size="md"
+      >
+        <Sidebar className="size-[15px]" />
+      </IconButton>
+      {renderSections(sections, pathname)}
+    </div>
+  )
 }

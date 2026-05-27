@@ -5,12 +5,11 @@
 // We build an index on the client from decrypted messages and persist it in
 // IndexedDB so a refresh doesn't cost re-indexing. A brand-new device pays
 // the one-time cost of fetching + decrypting all history.
-
-import Fuse, { type IFuseOptions } from "fuse.js"
-import { openDB, type IDBPDatabase } from "idb"
 import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
+import Fuse, { type IFuseOptions } from "fuse.js"
+import { type IDBPDatabase, openDB } from "idb"
 import type { Conversation } from "@/types/conversation"
 import type { Message, MessageAttachment } from "@/types/message"
 
@@ -228,10 +227,7 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
       threadsIndexed.push(thread.id)
     } catch (err) {
       if ((err as any)?.name === "AbortError") throw err
-      console.warn(
-        `[message-search] failed to index thread ${thread.id}`,
-        err
-      )
+      console.warn(`[message-search] failed to index thread ${thread.id}`, err)
     }
 
     done += 1

@@ -1,7 +1,6 @@
 // Favorite groups — defines which usernames belong to each group.
 // Actual user data is fetched from the API (UserAPI.getByUsername) so that
 // cards and profile pages always show the same data.
-
 import type { UserProfile } from "@/types/user"
 
 /** Card-compatible talent data derived from a UserProfile */
@@ -33,7 +32,7 @@ export function userProfileToCardData(user: UserProfile): TalentCardData {
 
   // Extract country from location (e.g. "Toronto, Canada" → "Canada")
   const country = user.location
-    ? user.location.split(",").pop()?.trim() ?? user.location
+    ? (user.location.split(",").pop()?.trim() ?? user.location)
     : ""
 
   // Compute local time from timezone
@@ -58,7 +57,9 @@ export function userProfileToCardData(user: UserProfile): TalentCardData {
   if (user.experience && user.experience.length > 0) {
     const totalYears = user.experience.reduce((sum, exp) => {
       const start = new Date(exp.startDate).getFullYear()
-      const end = exp.endDate ? new Date(exp.endDate).getFullYear() : new Date().getFullYear()
+      const end = exp.endDate
+        ? new Date(exp.endDate).getFullYear()
+        : new Date().getFullYear()
       return sum + (end - start)
     }, 0)
     experience = `${totalYears} year${totalYears !== 1 ? "s" : ""} of experience`
@@ -69,7 +70,7 @@ export function userProfileToCardData(user: UserProfile): TalentCardData {
     firstName: user.firstName ?? "",
     lastName: user.lastName ?? "",
     username: user.username ?? "",
-    role: user.role as string ?? "",
+    role: (user.role as string) ?? "",
     avatarUrl: user.avatarUrl ?? "",
     rate: rateStr,
     experience,

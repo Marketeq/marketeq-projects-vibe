@@ -4,9 +4,9 @@
 >
 > **Audience.** Developers, QA, the CTO, and any Claude Code session working on the repo.
 >
-> **Binding.** Every rule here is enforced by a Jenkins pipeline, a promotion script, a CODEOWNERS route, or a PR template check. Nothing in this doc is aspirational — if a rule is stated, there is machinery behind it.
+> **Binding.** Every rule here is enforced by a GitHub Actions workflow, a Jenkins pipeline, a promotion script, a CODEOWNERS route, or a PR template check. Nothing in this doc is aspirational — if a rule is stated, there is machinery behind it.
 >
-> **CI/CD Migration (2026-05-22):** All GitHub Actions workflows have been disabled (not deleted) and replaced by 12 Jenkins pipelines on a self-hosted server (72.61.77.231:8080). n8n DevOps workflows have also been deactivated. Jenkins is now the sole CI/CD runner. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
+> **CI/CD Architecture (2026-05-22):** All CI/CD runs on **Jenkins** (72.61.77.231:8080). GitHub Actions workflows are disabled (free plan minutes exhausted). GitHub webhook delivers `pull_request` and `push` events to the Jenkins `github-webhook-dispatcher` pipeline, which routes to the correct checks. PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `login-gate`, `code-review`) post commit statuses back to GitHub so PRs show pass/fail. Post-merge checks (`post-merge-audit`, `login-violation-alert`) fire on push to protected branches. Post-deploy automation (deploys, smoke tests, staging sync) also on Jenkins. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
 
 ---
 
@@ -110,7 +110,7 @@ Backend changes must remain backwards-compatible. All three frontends (dev, stag
 A developer who wants to experiment by pointing their **personal** `.env.local` at the Render backend is not prevented from doing so — nothing on the server side can see inside their machine. But:
 
 - `.env.local` is git-ignored and never committed
-- Any code that encourages or enables that pattern gets caught by Jenkins `sop-check` pipeline on the PR
+- Any code that encourages or enables that pattern gets caught by GitHub Actions `sop-check` workflow on the PR
 - The developer is responsible for switching back to localhost before they open a PR — if they don't, their local tests pass but downstream devs' tests fail, and the PR check flags the hardcoded URL
 
 ### 4.3 Runtime guardrails (follow-up)
@@ -146,7 +146,7 @@ Each template owns a distinct set of values for:
 
 ### 5.1 Frozen means frozen
 
-A PR that modifies **any** of these six template files requires a four-point confirmation for the matching environment in the PR description. Jenkins `sop-check` pipeline blocks the PR if the confirmation is missing.
+A PR that modifies **any** of these six template files requires a four-point confirmation for the matching environment in the PR description. GitHub Actions `sop-check` workflow blocks the PR if the confirmation is missing.
 
 **Local four-point confirmation** (required on any PR to `dev-main` that modifies `*.local.example` or any login-frozen file — see `CODE_REVIEW_SOP.md` §1.4):
 
@@ -175,7 +175,7 @@ A PR that modifies **any** of these six template files requires a four-point con
 - A PR modifying `*.staging.example` must target `staging`
 - A PR modifying `*.production.example` must target `live-mvp`
 
-Jenkins `sop-check` pipeline blocks branch/template mismatches. The three template pairs are independent: modifying the local template never affects staging or prod; modifying staging never affects local or prod. If a PR modifies more than one pair at once, block it and ask the author to split.
+GitHub Actions `sop-check` workflow blocks branch/template mismatches. The three template pairs are independent: modifying the local template never affects staging or prod; modifying staging never affects local or prod. If a PR modifies more than one pair at once, block it and ask the author to split.
 
 ---
 
@@ -185,7 +185,7 @@ Login behavior differs across environments because of cookies (`SameSite`, `Secu
 
 **The rule:** login code reads every environment-specific value from `process.env.*`. There are **zero hardcoded URLs, cookie flag values, CORS origin strings, or JWT key material** in login source code.
 
-**Scoped files** (enforced by Jenkins `sop-check` pipeline):
+**Scoped files** (enforced by GitHub Actions `sop-check` workflow):
 
 - `frontend/app/sign-in/**`
 - `frontend/app/sign-up/**`
@@ -196,7 +196,7 @@ Login behavior differs across environments because of cookies (`SameSite`, `Secu
 - `backend/libs/shared/src/guards/**`
 - `backend/libs/shared/src/decorators/**`
 
-Jenkins `sop-check` pipeline greps these paths for hardcoded `*.onrender.com`, hardcoded `SameSite:`, hardcoded `secure: true`, hardcoded `origin:` CORS strings, and hardcoded `localhost` fallbacks. Matches block the PR.
+GitHub Actions `sop-check` workflow greps these paths for hardcoded `*.onrender.com`, hardcoded `SameSite:`, hardcoded `secure: true`, hardcoded `origin:` CORS strings, and hardcoded `localhost` fallbacks. Matches block the PR.
 
 **Why this matters:** "fix login once, never again" is only possible if the code is environment-agnostic. The code reads env vars, the three template pairs own the per-environment values, and the four-point confirmations gate the templates. Break any link in that chain and you re-introduce the bug class.
 
@@ -264,7 +264,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | QA | ❌ | ✅ via script | ❌ (script only) | ✅ |
 | CTO | ✅ all branches | ✅ all branches | ✅ all branches | ✅ |
 
-**Enforcement:** CODEOWNERS routes reviews by directory, PR template has different required confirmations per target branch, and promotion scripts are the only approved path onto `staging` and `live-mvp`. Breaking role separation is caught by Jenkins `post-merge-audit` pipeline: a direct push to `staging` or `live-mvp` (no PR, no script) opens an urgent issue and tags the CTO within ~60 seconds of the push.
+**Enforcement:** CODEOWNERS routes reviews by directory, PR template has different required confirmations per target branch, and promotion scripts are the only approved path onto `staging` and `live-mvp`. Breaking role separation is caught by the GitHub Actions `post-merge-audit` workflow (with Jenkins as a safety net): a direct push to `staging` or `live-mvp` (no PR, no script) opens an urgent issue and tags the CTO within ~60 seconds of the push.
 
 ---
 
@@ -278,7 +278,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | Vercel deploy fails after promotion push | Build error, env var missing, framework change | Script exits non-zero with the Vercel deployment URL; investigate there |
 | Render deploy fails after `live-mvp` promotion | Build error, migration error, env var missing | Script exits non-zero with the Render deploy log URL; investigate there. Do **not** revert `live-mvp` until the root cause is understood — the commit may be fine and the cause may be Render infra |
 | Post-merge audit auto-reverts a promotion | Required checks failed on the promoted commits | CTO reviews the revert PR; developer fixes the failing checks; re-promote |
-| Someone force-pushes `dev-main`, `staging`, or `live-mvp` | Mistake or deliberate bypass | Jenkins `post-merge-audit` pipeline opens an urgent issue within ~60 seconds; CTO investigates and, if needed, restores the previous SHA from the reflog |
+| Someone force-pushes `dev-main`, `staging`, or `live-mvp` | Mistake or deliberate bypass | GitHub Actions `post-merge-audit` workflow (+ Jenkins safety net) opens an urgent issue within ~60 seconds; CTO investigates and, if needed, restores the previous SHA from the reflog |
 
 ---
 
@@ -286,7 +286,8 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 
 - Code review rules (seven-point checklist, block comment template, review prompt): `docs/CODE_REVIEW_SOP.md`
 - Remediation backlog and implementation status: `docs/DEVOPS_REMEDIATION_PLAN.md`
-- Automated checks running on every PR: Jenkins pipelines `sop-check`, `ai-breakage-check`, `post-merge-audit`, `gitleaks`
+- Automated PR gate checks (GitHub Actions): `sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`
+- Post-merge enforcement (GitHub Actions + Jenkins safety net): `post-merge-audit`, `login-violation-alert`
 - CODEOWNERS routing: `.github/CODEOWNERS`
 - PR template: `.github/pull_request_template.md`
 - Promotion scripts: `scripts/devops/qa-promote-dev-to-staging.sh`, `scripts/devops/qa-promote-staging-to-live.sh`
@@ -300,4 +301,4 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | Date | Change |
 |---|---|
 | 2026-04-11 | Initial document. Split from `docs/CODE_REVIEW_SOP.md` at CTO request — devops concerns belong here, code review concerns stay in the review SOP. Branch names locked to `dev-main` / `staging` / `live-mvp` (real names on origin). §3 CTO call: Render on `live-mvp` with auto-deploy on, one service, all three Vercel projects hit it. §1.11 "dev-main not on Vercel" rule from the review SOP is deleted — dev-main legitimately deploys to `marketeq-projects-dev`, the bug was hardcoded login values not the Vercel coupling itself. |
-| 2026-05-22 | CI/CD migration: all GitHub Actions workflows disabled, replaced by 12 Jenkins pipelines (self-hosted at 72.61.77.231:8080). n8n DevOps workflows deactivated. Updated all `.yml` references to Jenkins pipeline names. Render deploys now via Jenkins `staging-orchestrator` instead of n8n. Old docs archived to `docs/md/Deployment (CI-CD)/old devops docs/`. |
+| 2026-05-22 | CI/CD split: PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`) run on **GitHub Actions**. Post-merge enforcement (`post-merge-audit`, `login-violation-alert`) runs on **both** GitHub Actions and Jenkins. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). n8n DevOps workflows deactivated. Old docs archived to `docs/md/Deployment (CI-CD)/old devops docs/`. |

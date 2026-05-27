@@ -7,11 +7,11 @@ import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import {
-  MY_LISTINGS_STORAGE_KEY,
   formatRelativeTime,
   statusToBadgeVisual,
   useMyListings,
 } from "@/src/lib/my-listings"
+import { ProjectAPI } from "@/service/http/project"
 import {
   Archive,
   Briefcase,
@@ -60,28 +60,12 @@ const newListingOptions = [
     label: "Project",
     description: "Post a project and hire talent to complete it",
     icon: Briefcase,
-    href: "/publish-project",
   },
   {
     type: "service",
     label: "Service",
     description: "Offer a service that clients can purchase",
     icon: Monitor,
-    href: "/publish-project",
-  },
-  {
-    type: "team",
-    label: "Team",
-    description: "Create a team listing to find collaborators",
-    icon: Users,
-    href: "/publish-project",
-  },
-  {
-    type: "job",
-    label: "Job",
-    description: "Post a job opening for your organization",
-    icon: Briefcase,
-    href: "/publish-project",
   },
 ]
 
@@ -90,6 +74,7 @@ export default function MyListingsPage() {
   const { user } = useAuth()
   const isTalent = resolveDashboardRole(user) === ROLE.TALENT
   const [showNewListingDialog, setShowNewListingDialog] = useState(false)
+  const [creatingType, setCreatingType] = useState<string | null>(null)
   const { listings, isLoading } = useMyListings()
   const [viewMode, setViewMode] = useState("grid")
   const [searchVisible, setSearchVisible] = useState(true)
@@ -469,7 +454,10 @@ export default function MyListingsPage() {
 
         <Dialog
           open={showNewListingDialog}
-          onOpenChange={setShowNewListingDialog}
+          onOpenChange={(open) => {
+            setShowNewListingDialog(open)
+            if (!open) setCreatingType(null)
+          }}
         >
           <DialogContent className="sm:max-w-md p-0 overflow-hidden">
             <div className="p-6 pb-2">
@@ -484,34 +472,28 @@ export default function MyListingsPage() {
               {newListingOptions.map((option) => (
                 <button
                   key={option.type}
-                  className="w-full flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group"
-                  onClick={() => {
-                    setShowNewListingDialog(false)
-                    // Pre-create an "Untitled" draft so that simply clicking
-                    // this button results in a listing, even if the user
-                    // never enters anything and navigates away.
-                    const draftId = `draft-${Date.now()}-${Math.random()
-                      .toString(36)
-                      .slice(2, 8)}`
+                  disabled={creatingType !== null}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group disabled:opacity-50"
+                  onClick={async () => {
+                    setCreatingType(option.type)
                     try {
-                      const key = MY_LISTINGS_STORAGE_KEY
-                      const raw = window.localStorage.getItem(key)
-                      const drafts = raw ? JSON.parse(raw) : {}
-                      drafts[draftId] = {
-                        id: draftId,
-                        projectInfo: { title: "Untitled" },
-                        media: {},
-                        projectScope: [],
-                        currentStep: 0,
-                        savedAt: new Date().toISOString(),
+                      const res = await ProjectAPI.CreateProjectDraft({
+                        title: "",
+                        listingType: option.type,
+                      })
+                      const draftId =
+                        res?.data?.projectId ?? res?.data?.id
+                      if (draftId) {
+                        setShowNewListingDialog(false)
+                        router.push(`/my-listings/${draftId}`)
+                      } else {
+                        console.error("No draft ID returned", res)
+                        setCreatingType(null)
                       }
-                      window.localStorage.setItem(key, JSON.stringify(drafts))
-                    } catch {
-                      /* ignore */
+                    } catch (err) {
+                      console.error("Failed to create draft", err)
+                      setCreatingType(null)
                     }
-                    router.push(
-                      `${option.href}?type=${option.type}&draftId=${draftId}`
-                    )
                   }}
                 >
                   <div className="size-10 rounded-lg bg-primary-50 flex items-center justify-center flex-none">
@@ -525,7 +507,11 @@ export default function MyListingsPage() {
                       {option.description}
                     </p>
                   </div>
-                  <ChevronRight className="size-4 text-gray-300 group-hover:text-gray-500 flex-none" />
+                  {creatingType === option.type ? (
+                    <div className="size-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-none" />
+                  ) : (
+                    <ChevronRight className="size-4 text-gray-300 group-hover:text-gray-500 flex-none" />
+                  )}
                 </button>
               ))}
             </div>

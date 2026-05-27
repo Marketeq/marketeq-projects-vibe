@@ -15,11 +15,10 @@
  * thumbnail zooms on hover to match the behavior of the larger
  * ListingCard for visual consistency.
  */
-
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
 import { projectDetailsUrl, serviceDetailsUrl } from "@/src/lib/listing-urls"
 import { Briefcase } from "@blend-metrics/icons"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
 
 export interface ListingCardCompactProps {
   kind: "project" | "service"

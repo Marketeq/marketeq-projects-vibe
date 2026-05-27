@@ -26,13 +26,13 @@ import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Alert,
   AlertContent,
+  AlertDescription,
   AlertIcon,
   AlertTitle,
-  AlertDescription,
-  CloseButton,
   Badge,
   Button,
   Card,
+  CloseButton,
   DateRangeCalendar,
   DropdownMenu,
   DropdownMenuContent,
@@ -479,7 +479,6 @@ export default function ReportsPage() {
                   </Popover>
                 </div>
               </div>
-
             </div>
 
             <div className="mt-6">

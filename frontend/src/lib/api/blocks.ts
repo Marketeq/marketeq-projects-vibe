@@ -15,7 +15,7 @@ function authHeaders(): Record<string, string> {
 
 export async function blockUser(
   userId: string,
-  reason?: string,
+  reason?: string
 ): Promise<BlockedUser> {
   return apiFetch<BlockedUser>(`/users/${userId}/block`, {
     method: "POST",
@@ -24,7 +24,9 @@ export async function blockUser(
   })
 }
 
-export async function unblockUser(userId: string): Promise<{ message: string }> {
+export async function unblockUser(
+  userId: string
+): Promise<{ message: string }> {
   return apiFetch<{ message: string }>(`/users/${userId}/block`, {
     method: "DELETE",
     headers: authHeaders(),

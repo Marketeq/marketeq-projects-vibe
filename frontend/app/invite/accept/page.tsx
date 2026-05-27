@@ -134,9 +134,8 @@ export default function AcceptInvitationPage() {
         const checkUser = user || acceptedUser
         const hasRole = !!resolveDashboardRole(checkUser)
 
-        const finalDestination = (!hasRole || !onboardingDone)
-          ? "/onboarding"
-          : redirect.destination
+        const finalDestination =
+          !hasRole || !onboardingDone ? "/onboarding" : redirect.destination
 
         setStatus("success")
         setMessage("Invitation accepted successfully.")
@@ -210,8 +209,7 @@ export default function AcceptInvitationPage() {
               <Button
                 className="w-full"
                 onClick={() => {
-                  const onboardingDone =
-                    user?.onboardingDismissed ?? false
+                  const onboardingDone = user?.onboardingDismissed ?? false
                   const hasRole = !!resolveDashboardRole(user)
                   if (!hasRole || !onboardingDone) {
                     router.push("/onboarding")
@@ -220,7 +218,7 @@ export default function AcceptInvitationPage() {
                   }
                 }}
               >
-                {(!user?.onboardingDismissed || !resolveDashboardRole(user))
+                {!user?.onboardingDismissed || !resolveDashboardRole(user)
                   ? "Continue Onboarding"
                   : "Go to My Team"}
               </Button>

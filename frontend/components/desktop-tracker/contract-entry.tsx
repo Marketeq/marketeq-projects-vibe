@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/utils/functions"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
 
 export interface TaskEntry {
   id: string
@@ -26,7 +26,13 @@ export interface ContractEntryProps {
   className?: string
 }
 
-function ChevronIcon({ expanded, className }: { expanded: boolean; className?: string }) {
+function ChevronIcon({
+  expanded,
+  className,
+}: {
+  expanded: boolean
+  className?: string
+}) {
   return (
     <svg
       className={cn("h-4 w-4 text-gray-400 transition-transform", className)}
@@ -34,9 +40,21 @@ function ChevronIcon({ expanded, className }: { expanded: boolean; className?: s
       fill="none"
     >
       {expanded ? (
-        <path d="M4 10l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M4 10l4-4 4 4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       ) : (
-        <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M4 6l4 4 4-4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       )}
     </svg>
   )
@@ -44,16 +62,33 @@ function ChevronIcon({ expanded, className }: { expanded: boolean; className?: s
 
 function PlusIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+    >
       <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M10 6.5v7M6.5 10h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M10 6.5v7M6.5 10h7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
 
 function PlaySmallIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+    >
       <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
       <path d="M8 6.5l5.5 3.5L8 13.5V6.5z" fill="currentColor" />
     </svg>
@@ -74,7 +109,9 @@ export function ContractEntry({
   className,
 }: ContractEntryProps) {
   return (
-    <div className={cn("rounded-lg border border-gray-200 bg-white", className)}>
+    <div
+      className={cn("rounded-lg border border-gray-200 bg-white", className)}
+    >
       {/* Contract header row */}
       <div className="flex items-center gap-2.5 px-3 py-3">
         <button
@@ -93,7 +130,9 @@ export function ContractEntry({
           <p className="text-sm font-semibold text-dark-blue-500 truncate leading-5">
             {contractName}
           </p>
-          <p className="text-xs text-gray-500 truncate leading-4">@{clientHandle}</p>
+          <p className="text-xs text-gray-500 truncate leading-4">
+            @{clientHandle}
+          </p>
         </div>
 
         <button
@@ -109,7 +148,9 @@ export function ContractEntry({
           className="flex flex-col items-center gap-0.5 text-gray-400 hover:text-primary-500 transition shrink-0"
         >
           <PlaySmallIcon className="h-5 w-5" />
-          <span className="text-[10px] leading-3 text-gray-400">{totalHours}</span>
+          <span className="text-[10px] leading-3 text-gray-400">
+            {totalHours}
+          </span>
         </button>
       </div>
 
@@ -126,7 +167,12 @@ export function ContractEntry({
                 className="inline-flex items-center gap-1.5 rounded-[5px] border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-xs hover:bg-gray-50 transition"
               >
                 <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path
+                    d="M8 3v10M3 8h10"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
                 </svg>
                 Add A Task
               </button>
@@ -149,7 +195,9 @@ export function ContractEntry({
                     <p className="text-sm font-medium text-dark-blue-500 truncate leading-5">
                       {task.name}
                     </p>
-                    <p className="text-xs text-gray-400 leading-4">{task.timeRange}</p>
+                    <p className="text-xs text-gray-400 leading-4">
+                      {task.timeRange}
+                    </p>
                   </div>
 
                   {/* Mini progress bar */}

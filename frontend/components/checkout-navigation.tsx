@@ -2,10 +2,10 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { cn } from "@/utils/functions"
 import { Check, Lock } from "@blend-metrics/icons"
 import { Logo3 } from "@/components/icons"
 import { StepIndicator } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 type CheckoutStepNumber = 1 | 2 | 3
 
@@ -59,7 +59,10 @@ export function CheckoutNavigation({
       <div className="max-w-[1140px] h-[64px] mx-auto flex items-center justify-between">
         <div className="flex items-center gap-x-6">
           {logoHref ? (
-            <Link href={logoHref} className="shrink-0 focus-visible:outline-none">
+            <Link
+              href={logoHref}
+              className="shrink-0 focus-visible:outline-none"
+            >
               <Logo3 className="w-[128px] h-[18.81px] shrink-0" />
             </Link>
           ) : (

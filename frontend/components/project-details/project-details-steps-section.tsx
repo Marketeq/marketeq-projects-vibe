@@ -3,8 +3,8 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import type { ProjectStaticHowItWorksStep } from "@/lib/project-details/project-static-content-from-api"
-import { Button } from "@/components/ui"
 import NextImage from "@/components/next-image"
+import { Button } from "@/components/ui"
 
 /** App-owned copy (not from CMS). */
 const STEPS_SECTION_EYEBROW = "How It Works"

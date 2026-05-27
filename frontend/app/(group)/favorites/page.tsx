@@ -1,15 +1,28 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useInviteWindowStore } from "@/components/invite-window"
-import { useToast } from "@/components/ui/toast/use-toast"
 import { useRouter } from "next/navigation"
-import { type Favorite, type FavoriteGroup as FavGroup, getGroups, getAllFavoritesGrouped, getProjectFavorites, getServiceFavorites, getTalentFavorites, removeFavorite as removeFavoriteApi, renameGroup as renameGroupApi, deleteGroup as deleteGroupApi, createGroup as createGroupApi } from "@/src/lib/api/favorites"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
-import { type TalentCardData, sampleGroups, getUsernamesForGroup, userProfileToCardData } from "@/src/lib/data/sample-talents"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { UserAPI } from "@/service/http/user"
-import { motion } from "framer-motion"
+import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import {
+  type FavoriteGroup as FavGroup,
+  type Favorite,
+  createGroup as createGroupApi,
+  deleteGroup as deleteGroupApi,
+  getAllFavoritesGrouped,
+  getGroups,
+  getProjectFavorites,
+  getServiceFavorites,
+  getTalentFavorites,
+  removeFavorite as removeFavoriteApi,
+  renameGroup as renameGroupApi,
+} from "@/src/lib/api/favorites"
+import {
+  type TalentCardData,
+  getUsernamesForGroup,
+  sampleGroups,
+  userProfileToCardData,
+} from "@/src/lib/data/sample-talents"
 import { cn, getFirstItem } from "@/utils/functions"
 import {
   Briefcase,
@@ -26,8 +39,12 @@ import {
   Trash2,
   Users,
 } from "@blend-metrics/icons"
+import { motion } from "framer-motion"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { useToast } from "@/components/ui/toast/use-toast"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
+import { useInviteWindowStore } from "@/components/invite-window"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { TalentCardLandscape } from "@/components/talent-card-landscape"
@@ -85,7 +102,14 @@ const imageVariants = {
   }),
 }
 
-const ProjectGroupCard = ({ group, itemMeta, onRename, onDelete, existingNames, itemType = "project" }: ProjectGroupCardProps) => {
+const ProjectGroupCard = ({
+  group,
+  itemMeta,
+  onRename,
+  onDelete,
+  existingNames,
+  itemType = "project",
+}: ProjectGroupCardProps) => {
   const router = useRouter()
   const available = group.favorites
     .map((f) => itemMeta[f.itemId]?.mediaUrl)
@@ -112,7 +136,13 @@ const ProjectGroupCard = ({ group, itemMeta, onRename, onDelete, existingNames, 
             variants={available[i] ? imageVariants : undefined}
           >
             {available[i] && (
-              <NextImage className="object-cover" src={available[i]} alt="" sizes="25vw" fill />
+              <NextImage
+                className="object-cover"
+                src={available[i]}
+                alt=""
+                sizes="25vw"
+                fill
+              />
             )}
           </motion.div>
         ))}
@@ -129,7 +159,14 @@ const ProjectGroupCard = ({ group, itemMeta, onRename, onDelete, existingNames, 
         </div>
 
         <div data-dropdown-zone>
-          <CardDropdown className="absolute top-1.5 right-1.5 lg:top-[9px] lg:right-[9px] lg:py-1" groupId={group.id} groupName={group.name} onRename={onRename} onDelete={onDelete} existingNames={existingNames} />
+          <CardDropdown
+            className="absolute top-1.5 right-1.5 lg:top-[9px] lg:right-[9px] lg:py-1"
+            groupId={group.id}
+            groupName={group.name}
+            onRename={onRename}
+            onDelete={onDelete}
+            existingNames={existingNames}
+          />
         </div>
 
         <h1 className="text-[11px] leading-[13.31px] lg:text-base text-center lg:leading-[21.79px] font-bold text-dark-blue-400 line-clamp-2">
@@ -143,7 +180,14 @@ const ProjectGroupCard = ({ group, itemMeta, onRename, onDelete, existingNames, 
   )
 }
 
-const ProjectGroupListCard = ({ group, itemMeta, onRename, onDelete, existingNames, itemType = "project" }: ProjectGroupCardProps) => {
+const ProjectGroupListCard = ({
+  group,
+  itemMeta,
+  onRename,
+  onDelete,
+  existingNames,
+  itemType = "project",
+}: ProjectGroupCardProps) => {
   const router = useRouter()
   const available = group.favorites
     .map((f) => itemMeta[f.itemId]?.mediaUrl)
@@ -180,20 +224,47 @@ const ProjectGroupListCard = ({ group, itemMeta, onRename, onDelete, existingNam
           </div>
         </div>
         <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {Array.from({ length: 4 }).map((_, i) =>
             available[i] ? (
-              <motion.div key={i} custom={i} initial="hidden" animate="visible" variants={imageVariants} style={{ height: "100%" }}>
-                <NextImage src={available[i]} alt="" sizes="25vw" width={214.03} height={72} style={{ width: "auto", height: "100%" }} />
+              <motion.div
+                key={i}
+                custom={i}
+                initial="hidden"
+                animate="visible"
+                variants={imageVariants}
+                style={{ height: "100%" }}
+              >
+                <NextImage
+                  src={available[i]}
+                  alt=""
+                  sizes="25vw"
+                  width={214.03}
+                  height={72}
+                  style={{ width: "auto", height: "100%" }}
+                />
               </motion.div>
             ) : (
-              <div key={i} className="bg-gray-100" style={{ width: 214.03, height: "100%" }} />
+              <div
+                key={i}
+                className="bg-gray-100"
+                style={{ width: 214.03, height: "100%" }}
+              />
             )
-          ))}
+          )}
         </div>
       </div>
 
-      <div className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden" data-dropdown-zone>
-        <CardDropdown groupId={group.id} groupName={group.name} onRename={onRename} onDelete={onDelete} existingNames={existingNames} />
+      <div
+        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden"
+        data-dropdown-zone
+      >
+        <CardDropdown
+          groupId={group.id}
+          groupName={group.name}
+          onRename={onRename}
+          onDelete={onDelete}
+          existingNames={existingNames}
+        />
       </div>
     </div>
   )
@@ -213,7 +284,21 @@ const formatGroupDateLong = (isoDate: string) => {
   return { month, year }
 }
 
-const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete }: { groupId: string; groupName: string; talents: TalentCardData[]; createdAt: string; onRename: (groupId: string, newName: string) => void; onDelete: (groupId: string) => void }) => {
+const TalentCard = ({
+  groupId,
+  groupName,
+  talents,
+  createdAt,
+  onRename,
+  onDelete,
+}: {
+  groupId: string
+  groupName: string
+  talents: TalentCardData[]
+  createdAt: string
+  onRename: (groupId: string, newName: string) => void
+  onDelete: (groupId: string) => void
+}) => {
   const router = useRouter()
   // Show the most recently added talents (last in array = most recent)
   const recentTalents = [...talents].reverse().slice(0, 4)
@@ -250,7 +335,10 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto rotate-[--tw-rotate-root] [--tw-rotate-root:45deg]"
             initial={{ opacity: 0, scale: 0.3 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: recentTalents.length * 0.1 + 0.05, duration: 0.3 }}
+            transition={{
+              delay: recentTalents.length * 0.1 + 0.05,
+              duration: 0.3,
+            }}
           >
             <button className="inline-flex items-center justify-center shrink-0 size-[44.96px] lg:size-[61px] rounded-full border-dashed border-[1.5px] border-gray-300 text-gray-300 focus-visible:outline-none rotate-[--tw-rotate] [--tw-rotate:calc(-1*var(--tw-rotate-root))] pointer-events-none">
               <Plus className="size-5" />
@@ -262,7 +350,11 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             <motion.div
               key={talent.id}
               className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto"
-              style={{ rotate: `${avatarRotationAngles[i]}deg` } as React.CSSProperties}
+              style={
+                {
+                  rotate: `${avatarRotationAngles[i]}deg`,
+                } as React.CSSProperties
+              }
               custom={i + 1}
               initial="hidden"
               animate="visible"
@@ -270,11 +362,21 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             >
               <Avatar
                 className="border-2 border-white size-[44.96px] lg:size-[61px] pointer-events-none !ring-0 hover:!ring-0"
-                style={{ rotate: `${-avatarRotationAngles[i]}deg` } as React.CSSProperties}
+                style={
+                  {
+                    rotate: `${-avatarRotationAngles[i]}deg`,
+                  } as React.CSSProperties
+                }
                 size="2xl"
               >
-                <AvatarImage src={talent.avatarUrl} alt={`${talent.firstName} ${talent.lastName}`} />
-                <AvatarFallback>{talent.firstName[0]}{talent.lastName[0]}</AvatarFallback>
+                <AvatarImage
+                  src={talent.avatarUrl}
+                  alt={`${talent.firstName} ${talent.lastName}`}
+                />
+                <AvatarFallback>
+                  {talent.firstName[0]}
+                  {talent.lastName[0]}
+                </AvatarFallback>
               </Avatar>
             </motion.div>
           ))}
@@ -283,7 +385,9 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
           {recentTalents.length < 5 && (
             <motion.div
               className="absolute w-[44.96px] lg:w-[61px] inset-0 m-auto z-10"
-              style={{ rotate: `${savedRotationAngle}deg` } as React.CSSProperties}
+              style={
+                { rotate: `${savedRotationAngle}deg` } as React.CSSProperties
+              }
               custom={0}
               initial="hidden"
               animate="visible"
@@ -291,7 +395,9 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
             >
               <div
                 className="size-[44.96px] lg:size-[61px] bg-white border border-gray-300 flex rounded-full flex-col shrink-0 justify-center items-center"
-                style={{ rotate: `${-savedRotationAngle}deg` } as React.CSSProperties}
+                style={
+                  { rotate: `${-savedRotationAngle}deg` } as React.CSSProperties
+                }
               >
                 <span className="inline-block text-[11.79px] leading-[14.27px] lg:text-base lg:leading-[19.36px] font-semibold text-dark-blue-400">
                   {talents.length}
@@ -306,7 +412,13 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
       </div>
 
       <div data-dropdown-zone>
-        <CardDropdown className="absolute top-[10px] right-[9.8px]" groupId={groupId} groupName={groupName} onRename={onRename} onDelete={onDelete} />
+        <CardDropdown
+          className="absolute top-[10px] right-[9.8px]"
+          groupId={groupId}
+          groupName={groupName}
+          onRename={onRename}
+          onDelete={onDelete}
+        />
       </div>
 
       <div className="mt-[13.24px] lg:mt-[17px]">
@@ -321,7 +433,23 @@ const TalentCard = ({ groupId, groupName, talents, createdAt, onRename, onDelete
   )
 }
 
-const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt, onRename, onDelete }: { value: string; groupId: string; groupName: string; talents: TalentCardData[]; createdAt: string; onRename: (groupId: string, newName: string) => void; onDelete: (groupId: string) => void }) => {
+const TalentCardLandscapeRow = ({
+  value,
+  groupId,
+  groupName,
+  talents,
+  createdAt,
+  onRename,
+  onDelete,
+}: {
+  value: string
+  groupId: string
+  groupName: string
+  talents: TalentCardData[]
+  createdAt: string
+  onRename: (groupId: string, newName: string) => void
+  onDelete: (groupId: string) => void
+}) => {
   // Most recently added first for avatar display
   const recentTalents = [...talents].reverse().slice(0, 6)
 
@@ -333,7 +461,10 @@ const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt,
       <div className="flex xs:max-md:p-3 xs:max-md:flex-col xs:max-md:gap-y-[17px]">
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
-            <NextLink href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`} className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline line-clamp-2">
+            <NextLink
+              href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`}
+              className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline line-clamp-2"
+            >
               {groupName}
             </NextLink>
             <div className="xs:max-md:flex hidden items-center gap-x-2">
@@ -341,12 +472,20 @@ const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt,
                 Created on
               </span>
               <span className="inline-flex gap-x-2 items-center text-[10px] leading-[12.1px] lg:text-sm lg:leading-[16.94px] font-light text-dark-blue-400">
-                <span className="font-bold">{formatGroupDateLong(createdAt).month}</span>
+                <span className="font-bold">
+                  {formatGroupDateLong(createdAt).month}
+                </span>
                 {formatGroupDateLong(createdAt).year}
               </span>
             </div>
           </div>
-          <InlineDropdown className="xs:max-md:inline-flex md:hidden" groupId={groupId} groupName={groupName} onRename={onRename} onDelete={onDelete} />
+          <InlineDropdown
+            className="xs:max-md:inline-flex md:hidden"
+            groupId={groupId}
+            groupName={groupName}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
         </div>
 
         <div className="md:contents flex items-center justify-between">
@@ -362,9 +501,19 @@ const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt,
               </div>
               <div className="flex items-center -space-x-2 lg:-space-x-1.5">
                 {recentTalents.map((talent) => (
-                  <Avatar key={talent.id} className="border-2 border-white xs:max-lg:size-6" size="sm">
-                    <AvatarImage src={talent.avatarUrl} alt={`${talent.firstName} ${talent.lastName}`} />
-                    <AvatarFallback>{talent.firstName[0]}{talent.lastName[0]}</AvatarFallback>
+                  <Avatar
+                    key={talent.id}
+                    className="border-2 border-white xs:max-lg:size-6"
+                    size="sm"
+                  >
+                    <AvatarImage
+                      src={talent.avatarUrl}
+                      alt={`${talent.firstName} ${talent.lastName}`}
+                    />
+                    <AvatarFallback>
+                      {talent.firstName[0]}
+                      {talent.lastName[0]}
+                    </AvatarFallback>
                   </Avatar>
                 ))}
               </div>
@@ -377,7 +526,9 @@ const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt,
                 Created on
               </span>
               <span className="inline-flex gap-x-2 items-center text-[10px] leading-[12.1px] lg:text-sm lg:leading-[16.94px] font-light text-dark-blue-400">
-                <span className="font-bold">{formatGroupDateLong(createdAt).month}</span>
+                <span className="font-bold">
+                  {formatGroupDateLong(createdAt).month}
+                </span>
                 {formatGroupDateLong(createdAt).year}
               </span>
             </div>
@@ -386,11 +537,20 @@ const TalentCardLandscapeRow = ({ value, groupId, groupName, talents, createdAt,
           <div className="md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
             <div className="contents md:flex justify-end items-center gap-x-3 lg:gap-x-6">
               <AccordionTrigger asChild>
-                <Button className="xs:max-lg:text-[10px] xs:max-lg:leading-6 xs:max-lg:gap-x-1" variant="link" visual="primary">
+                <Button
+                  className="xs:max-lg:text-[10px] xs:max-lg:leading-6 xs:max-lg:gap-x-1"
+                  variant="link"
+                  visual="primary"
+                >
                   Expand <ChevronDown className="size-3 lg:size-[15px]" />
                 </Button>
               </AccordionTrigger>
-              <InlineDropdown groupId={groupId} groupName={groupName} onRename={onRename} onDelete={onDelete} />
+              <InlineDropdown
+                groupId={groupId}
+                groupName={groupName}
+                onRename={onRename}
+                onDelete={onDelete}
+              />
             </div>
           </div>
         </div>
@@ -426,41 +586,68 @@ interface GroupDropdownActions {
   existingNames?: string[]
 }
 
-const CardDropdown = ({ className, ...actions }: { className?: string } & GroupDropdownActions) => {
+const CardDropdown = ({
+  className,
+  ...actions
+}: { className?: string } & GroupDropdownActions) => {
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const { toast } = useToast()
 
-  const groupUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
-    : ""
+  const groupUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
+      : ""
 
   return (
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
-            className={cn("h-auto py-[2px] px-1.5 py-1 text-gray-500", className)}
+            className={cn(
+              "h-auto py-[2px] px-1.5 py-1 text-gray-500",
+              className
+            )}
             visual="gray"
             variant="ghost"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
           >
             <MoreHorizontal className="size-5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[165px]" onCloseAutoFocus={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent
+          align="end"
+          className="w-[165px]"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onClick={(e) => e.stopPropagation()}
+        >
           <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
             <Edit03 className="h-4 w-4" /> Rename Group
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => openInviteWindow(true, `Share "${actions.groupName}"`)}>
+          <DropdownMenuItem
+            onSelect={() =>
+              openInviteWindow(true, `Share "${actions.groupName}"`)
+            }
+          >
             <Share07 className="h-4 w-4" /> Share Group
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => { navigator.clipboard.writeText(groupUrl); toast({ title: "Link copied to clipboard", variant: "success" }) }}>
+          <DropdownMenuItem
+            onSelect={() => {
+              navigator.clipboard.writeText(groupUrl)
+              toast({ title: "Link copied to clipboard", variant: "success" })
+            }}
+          >
             <Link01 className="h-4 w-4" /> Copy Link
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem visual="destructive" onSelect={() => setDeleteOpen(true)}>
+          <DropdownMenuItem
+            visual="destructive"
+            onSelect={() => setDeleteOpen(true)}
+          >
             <Trash2 className="h-4 w-4" /> Delete Group
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -468,14 +655,20 @@ const CardDropdown = ({ className, ...actions }: { className?: string } & GroupD
 
       <RenameGroupDialog
         open={renameOpen}
-        onOpenChange={(v) => { setRenameOpen(v); if (!v) markDialogClosed() }}
+        onOpenChange={(v) => {
+          setRenameOpen(v)
+          if (!v) markDialogClosed()
+        }}
         groupName={actions.groupName}
         onConfirm={(newName) => actions.onRename(actions.groupId, newName)}
         existingNames={actions.existingNames}
       />
       <DeleteGroupDialog
         open={deleteOpen}
-        onOpenChange={(v) => { setDeleteOpen(v); if (!v) markDialogClosed() }}
+        onOpenChange={(v) => {
+          setDeleteOpen(v)
+          if (!v) markDialogClosed()
+        }}
         groupName={actions.groupName}
         onConfirm={() => actions.onDelete(actions.groupId)}
       />
@@ -483,40 +676,64 @@ const CardDropdown = ({ className, ...actions }: { className?: string } & GroupD
   )
 }
 
-const InlineDropdown = ({ className, ...actions }: { className?: string } & GroupDropdownActions) => {
+const InlineDropdown = ({
+  className,
+  ...actions
+}: { className?: string } & GroupDropdownActions) => {
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const { toast } = useToast()
 
-  const groupUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
-    : ""
+  const groupUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
+      : ""
 
   return (
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <IconButton
-            className={cn("text-gray-400 xs:max-md:hidden xs:max-lg:h-5 xs:max-lg:w-auto xs:max-lg:px-1.5", className)}
+            className={cn(
+              "text-gray-400 xs:max-md:hidden xs:max-lg:h-5 xs:max-lg:w-auto xs:max-lg:px-1.5",
+              className
+            )}
             variant="ghost"
             visual="gray"
           >
             <MoreHorizontal className="size-4 lg:size-5" />
           </IconButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[165px]" onCloseAutoFocus={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent
+          align="end"
+          className="w-[165px]"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onClick={(e) => e.stopPropagation()}
+        >
           <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
             <Edit03 className="h-4 w-4" /> Rename Group
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => openInviteWindow(true, `Share "${actions.groupName}"`)}>
+          <DropdownMenuItem
+            onSelect={() =>
+              openInviteWindow(true, `Share "${actions.groupName}"`)
+            }
+          >
             <Share07 className="h-4 w-4" /> Share Group
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => { navigator.clipboard.writeText(groupUrl); toast({ title: "Link copied to clipboard", variant: "success" }) }}>
+          <DropdownMenuItem
+            onSelect={() => {
+              navigator.clipboard.writeText(groupUrl)
+              toast({ title: "Link copied to clipboard", variant: "success" })
+            }}
+          >
             <Link01 className="h-4 w-4" /> Copy Link
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem visual="destructive" onSelect={() => setDeleteOpen(true)}>
+          <DropdownMenuItem
+            visual="destructive"
+            onSelect={() => setDeleteOpen(true)}
+          >
             <Trash2 className="h-4 w-4" /> Delete Group
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -524,14 +741,20 @@ const InlineDropdown = ({ className, ...actions }: { className?: string } & Grou
 
       <RenameGroupDialog
         open={renameOpen}
-        onOpenChange={(v) => { setRenameOpen(v); if (!v) markDialogClosed() }}
+        onOpenChange={(v) => {
+          setRenameOpen(v)
+          if (!v) markDialogClosed()
+        }}
         groupName={actions.groupName}
         onConfirm={(newName) => actions.onRename(actions.groupId, newName)}
         existingNames={actions.existingNames}
       />
       <DeleteGroupDialog
         open={deleteOpen}
-        onOpenChange={(v) => { setDeleteOpen(v); if (!v) markDialogClosed() }}
+        onOpenChange={(v) => {
+          setDeleteOpen(v)
+          if (!v) markDialogClosed()
+        }}
         groupName={actions.groupName}
         onConfirm={() => actions.onDelete(actions.groupId)}
       />
@@ -570,7 +793,13 @@ const RenameGroupDialog = ({
     e.preventDefault()
     const capitalized = titleCase(name.trim())
     if (!capitalized || capitalized === groupName) return
-    if (existingNames.some((n) => n.toLowerCase() === capitalized.toLowerCase() && n.toLowerCase() !== groupName.toLowerCase())) {
+    if (
+      existingNames.some(
+        (n) =>
+          n.toLowerCase() === capitalized.toLowerCase() &&
+          n.toLowerCase() !== groupName.toLowerCase()
+      )
+    ) {
       setError("A group with this name already exists")
       return
     }
@@ -580,7 +809,10 @@ const RenameGroupDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onClick={(e) => e.stopPropagation()} onCloseAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent
+        onClick={(e) => e.stopPropagation()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogTitle>Rename Group</DialogTitle>
         <form onSubmit={handleSubmit} className="mt-4 space-y-2">
           <div className="flex items-center gap-x-3">
@@ -589,9 +821,16 @@ const RenameGroupDialog = ({
               placeholder="Enter Group Name"
               className="flex-auto"
               value={name}
-              onChange={(e) => { setName(titleCase(e.target.value)); setError("") }}
+              onChange={(e) => {
+                setName(titleCase(e.target.value))
+                setError("")
+              }}
             />
-            <Button type="submit" size="lg" disabled={!name.trim() || name.trim() === groupName}>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={!name.trim() || name.trim() === groupName}
+            >
               Save
             </Button>
           </div>
@@ -631,13 +870,22 @@ const DeleteGroupDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onClick={(e) => e.stopPropagation()} onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DialogTitle className="text-lg font-bold text-dark-blue-400">Delete Group</DialogTitle>
+      <DialogContent
+        onClick={(e) => e.stopPropagation()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogTitle className="text-lg font-bold text-dark-blue-400">
+          Delete Group
+        </DialogTitle>
         <p className="mt-2 text-sm text-gray-600">
-          This will permanently delete the group <span className="font-bold">&ldquo;{groupName}&rdquo;</span> and remove all saved items from it. This action cannot be undone.
+          This will permanently delete the group{" "}
+          <span className="font-bold">&ldquo;{groupName}&rdquo;</span> and
+          remove all saved items from it. This action cannot be undone.
         </p>
         <p className="mt-4 text-sm text-gray-600">
-          Type <span className="font-mono font-bold text-red-600">{expected}</span> to confirm:
+          Type{" "}
+          <span className="font-mono font-bold text-red-600">{expected}</span>{" "}
+          to confirm:
         </p>
         <Input
           className="mt-2"
@@ -647,10 +895,18 @@ const DeleteGroupDialog = ({
           autoFocus
         />
         <div className="mt-4 flex justify-end gap-x-3">
-          <Button variant="outlined" visual="gray" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outlined"
+            visual="gray"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button visual="error" disabled={confirmation !== expected} onClick={handleDelete}>
+          <Button
+            visual="error"
+            disabled={confirmation !== expected}
+            onClick={handleDelete}
+          >
             Delete Group
           </Button>
         </div>
@@ -666,7 +922,15 @@ function titleCase(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-const NewGroupModal = ({ onCreated, existingNames, activeTab }: { onCreated: (group: FavGroup) => void; existingNames: string[]; activeTab: string }) => {
+const NewGroupModal = ({
+  onCreated,
+  existingNames,
+  activeTab,
+}: {
+  onCreated: (group: FavGroup) => void
+  existingNames: string[]
+  activeTab: string
+}) => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [isCreating, setIsCreating] = useState(false)
@@ -676,15 +940,27 @@ const NewGroupModal = ({ onCreated, existingNames, activeTab }: { onCreated: (gr
     e.preventDefault()
     const capitalized = titleCase(name.trim())
     if (!capitalized) return
-    if (existingNames.some((n) => n.toLowerCase() === capitalized.toLowerCase())) {
+    if (
+      existingNames.some((n) => n.toLowerCase() === capitalized.toLowerCase())
+    ) {
       setError("A group with this name already exists")
       return
     }
     setIsCreating(true)
     setError("")
     await ensureDevAuth()
-    const defaultType = activeTab === "Projects" ? "project" : activeTab === "Services" ? "service" : activeTab === "Talent" ? "talent" : undefined
-    const group = await createGroupApi({ name: capitalized, defaultType: defaultType as any })
+    const defaultType =
+      activeTab === "Projects"
+        ? "project"
+        : activeTab === "Services"
+          ? "service"
+          : activeTab === "Talent"
+            ? "talent"
+            : undefined
+    const group = await createGroupApi({
+      name: capitalized,
+      defaultType: defaultType as any,
+    })
     setIsCreating(false)
     if (group) {
       onCreated(group)
@@ -696,7 +972,16 @@ const NewGroupModal = ({ onCreated, existingNames, activeTab }: { onCreated: (gr
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setError(""); setName("") } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v)
+        if (!v) {
+          setError("")
+          setName("")
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           className="!border-2 !border-primary-500 xs:max-lg:text-[10px] xs:max-lg:leading-[18.63px] xs:max-lg:h-8 xs:max-lg:px-[11px] xs:max-lg:py-1.5 xs:max-lg:gap-x-1.5 text-primary-500 hover:text-white hover:bg-primary-500"
@@ -715,10 +1000,17 @@ const NewGroupModal = ({ onCreated, existingNames, activeTab }: { onCreated: (gr
               placeholder="Enter Group Name"
               className="flex-auto"
               value={name}
-              onChange={(e) => { setName(titleCase(e.target.value)); setError("") }}
+              onChange={(e) => {
+                setName(titleCase(e.target.value))
+                setError("")
+              }}
               autoFocus
             />
-            <Button type="submit" size="lg" disabled={!name.trim() || isCreating}>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={!name.trim() || isCreating}
+            >
               {isCreating ? "Saving..." : "Save"}
             </Button>
           </div>
@@ -729,7 +1021,12 @@ const NewGroupModal = ({ onCreated, existingNames, activeTab }: { onCreated: (gr
   )
 }
 
-type GroupSortOption = "newest" | "oldest" | "name-asc" | "name-desc" | "most-items"
+type GroupSortOption =
+  | "newest"
+  | "oldest"
+  | "name-asc"
+  | "name-desc"
+  | "most-items"
 
 const GROUP_SORT_LABELS: Record<GroupSortOption, string> = {
   newest: "Newest First",
@@ -743,21 +1040,35 @@ function sortGroups(groups: FavGroup[], sortBy: GroupSortOption): FavGroup[] {
   const sorted = [...groups]
   switch (sortBy) {
     case "newest":
-      return sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      return sorted.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
     case "oldest":
-      return sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      return sorted.sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
     case "name-asc":
       return sorted.sort((a, b) => a.name.localeCompare(b.name))
     case "name-desc":
       return sorted.sort((a, b) => b.name.localeCompare(a.name))
     case "most-items":
-      return sorted.sort((a, b) => (b.favorites?.length ?? 0) - (a.favorites?.length ?? 0))
+      return sorted.sort(
+        (a, b) => (b.favorites?.length ?? 0) - (a.favorites?.length ?? 0)
+      )
     default:
       return sorted
   }
 }
 
-const SortDropdown = ({ value, onChange }: { value: GroupSortOption; onChange: (v: GroupSortOption) => void }) => {
+const SortDropdown = ({
+  value,
+  onChange,
+}: {
+  value: GroupSortOption
+  onChange: (v: GroupSortOption) => void
+}) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -766,9 +1077,18 @@ const SortDropdown = ({ value, onChange }: { value: GroupSortOption; onChange: (
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <ScrollArea viewportClassName="max-h-[250px]" scrollBar={<ScrollBar className="w-4 p-1" />}>
-          {(Object.entries(GROUP_SORT_LABELS) as [GroupSortOption, string][]).map(([key, label]) => (
-            <DropdownMenuCheckItem key={key} checked={value === key} onSelect={() => onChange(key)}>
+        <ScrollArea
+          viewportClassName="max-h-[250px]"
+          scrollBar={<ScrollBar className="w-4 p-1" />}
+        >
+          {(
+            Object.entries(GROUP_SORT_LABELS) as [GroupSortOption, string][]
+          ).map(([key, label]) => (
+            <DropdownMenuCheckItem
+              key={key}
+              checked={value === key}
+              onSelect={() => onChange(key)}
+            >
               {label}
             </DropdownMenuCheckItem>
           ))}
@@ -817,9 +1137,13 @@ export default function FavoritesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [sortBy, setSortBy] = useState<GroupSortOption>("newest")
   // Map of groupId → TalentCardData[] fetched from the API
-  const [groupTalents, setGroupTalents] = useState<Record<string, TalentCardData[]>>({})
+  const [groupTalents, setGroupTalents] = useState<
+    Record<string, TalentCardData[]>
+  >({})
   // Map of itemId → { title, slug, mediaUrl } for projects/services
-  const [itemMeta, setItemMeta] = useState<Record<string, { title?: string; slug?: string; mediaUrl?: string }>>({})
+  const [itemMeta, setItemMeta] = useState<
+    Record<string, { title?: string; slug?: string; mediaUrl?: string }>
+  >({})
 
   const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
@@ -840,7 +1164,10 @@ export default function FavoritesPage() {
         setApiGroups(groups)
 
         // Fetch metadata for favorited projects/services
-        const allItemFavs = [...projGroups.flatMap((g) => g.favorites), ...svcGroups.flatMap((g) => g.favorites)]
+        const allItemFavs = [
+          ...projGroups.flatMap((g) => g.favorites),
+          ...svcGroups.flatMap((g) => g.favorites),
+        ]
         if (allItemFavs.length > 0) {
           const [projRes, svcRes] = await Promise.all([
             fetch(`${apiBase}/v1/projects`).catch(() => null),
@@ -850,13 +1177,21 @@ export default function FavoritesPage() {
           if (projRes?.ok) {
             const items: any[] = await projRes.json()
             for (const item of items) {
-              metas[String(item.id)] = { title: item.title, slug: item.slug, mediaUrl: item.mediaUrls?.[0] }
+              metas[String(item.id)] = {
+                title: item.title,
+                slug: item.slug,
+                mediaUrl: item.mediaUrls?.[0],
+              }
             }
           }
           if (svcRes?.ok) {
             const items: any[] = await svcRes.json()
             for (const item of items) {
-              metas[String(item.id)] = { title: item.title, slug: item.slug, mediaUrl: item.mediaUrls?.[0] }
+              metas[String(item.id)] = {
+                title: item.title,
+                slug: item.slug,
+                mediaUrl: item.mediaUrls?.[0],
+              }
             }
           }
           setItemMeta(metas)
@@ -881,8 +1216,11 @@ export default function FavoritesPage() {
         Array.from(allUsernames).map(async (username) => {
           try {
             const res = await UserAPI.getByUsername(username)
-            if (res?.data) profileMap[username] = userProfileToCardData(res.data)
-          } catch { /* skip unavailable users */ }
+            if (res?.data)
+              profileMap[username] = userProfileToCardData(res.data)
+          } catch {
+            /* skip unavailable users */
+          }
         })
       )
       // Build group → talents mapping
@@ -897,48 +1235,69 @@ export default function FavoritesPage() {
     loadGroupTalents()
   }, [])
 
-  const handleRenameGroup = useCallback(async (groupId: string, newName: string) => {
-    await ensureDevAuth()
-    const updated = await renameGroupApi(groupId, { name: newName })
-    if (updated) {
-      const updateGroups = (groups: FavGroup[]) =>
-        groups.map((g) => (g.id === groupId ? { ...g, name: newName } : g))
-      setProjectGroups(updateGroups)
-      setServiceGroups(updateGroups)
-      setApiGroups(updateGroups)
-    }
-  }, [])
+  const handleRenameGroup = useCallback(
+    async (groupId: string, newName: string) => {
+      await ensureDevAuth()
+      const updated = await renameGroupApi(groupId, { name: newName })
+      if (updated) {
+        const updateGroups = (groups: FavGroup[]) =>
+          groups.map((g) => (g.id === groupId ? { ...g, name: newName } : g))
+        setProjectGroups(updateGroups)
+        setServiceGroups(updateGroups)
+        setApiGroups(updateGroups)
+      }
+    },
+    []
+  )
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
     await ensureDevAuth()
     const success = await deleteGroupApi(groupId)
     if (success) {
-      const removeGroup = (groups: FavGroup[]) => groups.filter((g) => g.id !== groupId)
+      const removeGroup = (groups: FavGroup[]) =>
+        groups.filter((g) => g.id !== groupId)
       setProjectGroups(removeGroup)
       setServiceGroups(removeGroup)
       setApiGroups(removeGroup)
     }
   }, [])
 
-  const handleGroupCreated = useCallback((group: FavGroup) => {
-    const newGroup = { ...group, favorites: group.favorites ?? [] }
-    if (activeTab === "Projects") setProjectGroups((prev) => [...prev, newGroup])
-    else if (activeTab === "Services") setServiceGroups((prev) => [...prev, newGroup])
-    setApiGroups((prev) => [...prev, newGroup])
-  }, [activeTab])
+  const handleGroupCreated = useCallback(
+    (group: FavGroup) => {
+      const newGroup = { ...group, favorites: group.favorites ?? [] }
+      if (activeTab === "Projects")
+        setProjectGroups((prev) => [...prev, newGroup])
+      else if (activeTab === "Services")
+        setServiceGroups((prev) => [...prev, newGroup])
+      setApiGroups((prev) => [...prev, newGroup])
+    },
+    [activeTab]
+  )
 
-  const allGroupNames = [...new Set([...projectGroups, ...serviceGroups, ...apiGroups].map((g) => g.name))]
+  const allGroupNames = [
+    ...new Set(
+      [...projectGroups, ...serviceGroups, ...apiGroups].map((g) => g.name)
+    ),
+  ]
 
   const sortedProjectGroups = sortGroups(projectGroups, sortBy)
   const sortedServiceGroups = sortGroups(serviceGroups, sortBy)
   const sortedSampleGroups = [...sampleGroups].sort((a, b) => {
     switch (sortBy) {
-      case "newest": return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      case "oldest": return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      case "name-asc": return a.name.localeCompare(b.name)
-      case "name-desc": return b.name.localeCompare(a.name)
-      case "most-items": return (groupTalents[b.id]?.length ?? 0) - (groupTalents[a.id]?.length ?? 0)
-      default: return 0
+      case "newest":
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      case "oldest":
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      case "name-asc":
+        return a.name.localeCompare(b.name)
+      case "name-desc":
+        return b.name.localeCompare(a.name)
+      case "most-items":
+        return (
+          (groupTalents[b.id]?.length ?? 0) - (groupTalents[a.id]?.length ?? 0)
+        )
+      default:
+        return 0
     }
   })
 
@@ -948,7 +1307,10 @@ export default function FavoritesPage() {
         <div className="flex items-center gap-x-3 lg:gap-x-3.5">
           <SortDropdown value={sortBy} onChange={setSortBy} />
 
-          <ToggleGroupRoot value={value} onValueChange={(details) => setValue(details.value)}>
+          <ToggleGroupRoot
+            value={value}
+            onValueChange={(details) => setValue(details.value)}
+          >
             <ToggleGroupItem value={GRID_LAYOUT}>
               <Grid className="size-4 lg:size-6" />
             </ToggleGroupItem>
@@ -958,28 +1320,54 @@ export default function FavoritesPage() {
           </ToggleGroupRoot>
         </div>
 
-        <NewGroupModal onCreated={handleGroupCreated} existingNames={allGroupNames} activeTab={activeTab} />
+        <NewGroupModal
+          onCreated={handleGroupCreated}
+          existingNames={allGroupNames}
+          activeTab={activeTab}
+        />
       </div>
 
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
         My Favorites
       </h1>
 
-      <Tabs className="mt-7 lg:mt-[19px]" value={activeTab} onValueChange={setActiveTab}>
+      <Tabs
+        className="mt-7 lg:mt-[19px]"
+        value={activeTab}
+        onValueChange={setActiveTab}
+      >
         <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
           <div className="items-end inline-flex gap-x-3">
-            <Button className="text-gray-500" variant="ghost" visual="gray" size="md">
+            <Button
+              className="text-gray-500"
+              variant="ghost"
+              visual="gray"
+              size="md"
+            >
               <SearchMd className="size-[18px]" />
             </Button>
 
             <TabsList className="flex justify-start border-b-0 px-0">
-              <TabsTrigger className="xs:max-lg:text-xs xs:max-lg:leading-5" value="Projects">
-                Projects {projectGroups.flatMap((g) => g.favorites).length > 0 && `(${projectGroups.flatMap((g) => g.favorites).length})`}
+              <TabsTrigger
+                className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                value="Projects"
+              >
+                Projects{" "}
+                {projectGroups.flatMap((g) => g.favorites).length > 0 &&
+                  `(${projectGroups.flatMap((g) => g.favorites).length})`}
               </TabsTrigger>
-              <TabsTrigger className="xs:max-lg:text-xs xs:max-lg:leading-5" value="Services">
-                Services {serviceGroups.flatMap((g) => g.favorites).length > 0 && `(${serviceGroups.flatMap((g) => g.favorites).length})`}
+              <TabsTrigger
+                className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                value="Services"
+              >
+                Services{" "}
+                {serviceGroups.flatMap((g) => g.favorites).length > 0 &&
+                  `(${serviceGroups.flatMap((g) => g.favorites).length})`}
               </TabsTrigger>
-              <TabsTrigger className="xs:max-lg:text-xs xs:max-lg:leading-5" value="Talent Network">
+              <TabsTrigger
+                className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                value="Talent Network"
+              >
                 Talent Network
               </TabsTrigger>
             </TabsList>
@@ -989,7 +1377,10 @@ export default function FavoritesPage() {
             <div className="flex items-center gap-x-3 lg:gap-x-3.5">
               <SortDropdown value={sortBy} onChange={setSortBy} />
 
-              <ToggleGroupRoot value={value} onValueChange={(details) => setValue(details.value)}>
+              <ToggleGroupRoot
+                value={value}
+                onValueChange={(details) => setValue(details.value)}
+              >
                 <ToggleGroupItem value={GRID_LAYOUT}>
                   <Grid className="size-4 lg:size-6" />
                 </ToggleGroupItem>
@@ -999,7 +1390,11 @@ export default function FavoritesPage() {
               </ToggleGroupRoot>
             </div>
 
-            <NewGroupModal onCreated={handleGroupCreated} existingNames={allGroupNames} activeTab={activeTab} />
+            <NewGroupModal
+              onCreated={handleGroupCreated}
+              existingNames={allGroupNames}
+              activeTab={activeTab}
+            />
           </div>
         </div>
 
@@ -1054,9 +1449,14 @@ export default function FavoritesPage() {
         <TabsContent value="Projects">
           {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8).fill(0).map((_, i) => (
-                <div key={i} className="bg-white border rounded-lg h-[300px] animate-pulse" />
-              ))}
+              {Array(8)
+                .fill(0)
+                .map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-white border rounded-lg h-[300px] animate-pulse"
+                  />
+                ))}
             </div>
           ) : projectGroups.length === 0 ? (
             <EmptyState
@@ -1072,13 +1472,27 @@ export default function FavoritesPage() {
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {sortedProjectGroups.map((group) => (
-                <ProjectGroupCard key={group.id} group={group} itemMeta={itemMeta} onRename={handleRenameGroup} onDelete={handleDeleteGroup} existingNames={allGroupNames} />
+                <ProjectGroupCard
+                  key={group.id}
+                  group={group}
+                  itemMeta={itemMeta}
+                  onRename={handleRenameGroup}
+                  onDelete={handleDeleteGroup}
+                  existingNames={allGroupNames}
+                />
               ))}
             </div>
           ) : (
             <div className="grid gap-y-3 pt-3.5 lg:pt-6">
               {sortedProjectGroups.map((group) => (
-                <ProjectGroupListCard key={group.id} group={group} itemMeta={itemMeta} onRename={handleRenameGroup} onDelete={handleDeleteGroup} existingNames={allGroupNames} />
+                <ProjectGroupListCard
+                  key={group.id}
+                  group={group}
+                  itemMeta={itemMeta}
+                  onRename={handleRenameGroup}
+                  onDelete={handleDeleteGroup}
+                  existingNames={allGroupNames}
+                />
               ))}
             </div>
           )}
@@ -1088,9 +1502,14 @@ export default function FavoritesPage() {
         <TabsContent value="Services">
           {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8).fill(0).map((_, i) => (
-                <div key={i} className="bg-white border rounded-lg h-[300px] animate-pulse" />
-              ))}
+              {Array(8)
+                .fill(0)
+                .map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-white border rounded-lg h-[300px] animate-pulse"
+                  />
+                ))}
             </div>
           ) : serviceGroups.length === 0 ? (
             <EmptyState
@@ -1106,13 +1525,29 @@ export default function FavoritesPage() {
           ) : getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
               {sortedServiceGroups.map((group) => (
-                <ProjectGroupCard key={group.id} group={group} itemMeta={itemMeta} onRename={handleRenameGroup} onDelete={handleDeleteGroup} existingNames={allGroupNames} itemType="service" />
+                <ProjectGroupCard
+                  key={group.id}
+                  group={group}
+                  itemMeta={itemMeta}
+                  onRename={handleRenameGroup}
+                  onDelete={handleDeleteGroup}
+                  existingNames={allGroupNames}
+                  itemType="service"
+                />
               ))}
             </div>
           ) : (
             <div className="grid gap-y-3 pt-3.5 lg:pt-6">
               {sortedServiceGroups.map((group) => (
-                <ProjectGroupListCard key={group.id} group={group} itemMeta={itemMeta} onRename={handleRenameGroup} onDelete={handleDeleteGroup} existingNames={allGroupNames} itemType="service" />
+                <ProjectGroupListCard
+                  key={group.id}
+                  group={group}
+                  itemMeta={itemMeta}
+                  onRename={handleRenameGroup}
+                  onDelete={handleDeleteGroup}
+                  existingNames={allGroupNames}
+                  itemType="service"
+                />
               ))}
             </div>
           )}

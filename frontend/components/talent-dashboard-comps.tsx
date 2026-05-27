@@ -6,6 +6,13 @@ import { usePathname, useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
 import { UserAPI } from "@/service/http/user"
+import {
+  type MyListing,
+  formatActivityDate,
+  formatRelativeTime,
+  statusToBadgeVisual,
+  useMyListings,
+} from "@/src/lib/my-listings"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
 import { useEditable } from "@ark-ui/react"
@@ -84,15 +91,6 @@ import {
   EditableRoot,
 } from "@/components/ui"
 
-import {
-  type MyListing,
-  formatActivityDate,
-  formatRelativeTime,
-  statusToBadgeVisual,
-  useMyListings,
-} from "@/src/lib/my-listings"
-
-
 export const MoneyDollarCircleFill = ({
   className,
   ...props
@@ -167,7 +165,9 @@ export const WalletBold = ({
   )
 }
 
-export const LeftSidebar = ({ forceRole }: { forceRole?: "TALENT" | "CLIENT" } = {}) => {
+export const LeftSidebar = ({
+  forceRole,
+}: { forceRole?: "TALENT" | "CLIENT" } = {}) => {
   const { user } = useAuth()
   const dashboardRole = forceRole ?? resolveDashboardRole(user)
   const isTalent = dashboardRole === ROLE.TALENT

@@ -1,5 +1,6 @@
-'use client'
+"use client"
 
+import { talentToCardProps, useTalentUsers } from "@/src/lib/api/talent-users"
 import {
   ArrowRight,
   Check,
@@ -15,15 +16,17 @@ import {
 } from "@blend-metrics/icons"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { SwiperSlide } from "swiper/react"
+import { CategoryBanner } from "@/components/category-banner"
+import { ListingCard } from "@/components/listing-card"
+import { Money } from "@/components/money"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
 import {
   SwiperContent,
   SwiperNextTrigger,
   SwiperPrevTrigger,
   SwiperRoot,
 } from "@/components/swiper"
-import { Money } from "@/components/money"
-import NextImage from "@/components/next-image"
-import NextLink from "@/components/next-link"
 import {
   Avatar,
   AvatarFallback,
@@ -44,9 +47,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { ListingCard } from "@/components/listing-card"
-import { useTalentUsers, talentToCardProps } from "@/src/lib/api/talent-users"
-import { CategoryBanner } from "@/components/category-banner"
 
 export default function Talent() {
   const { talents } = useTalentUsers()
@@ -63,8 +63,12 @@ export default function Talent() {
             breadcrumbs={
               <div className="flex items-center gap-x-2">
                 <Home03 className="size-[18px] text-white opacity-60" />
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">Talent</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  /
+                </span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  Talent
+                </span>
               </div>
             }
           />
@@ -164,101 +168,106 @@ export default function Talent() {
               </h1>
 
               <SwiperRoot>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Featured">Featured</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Newest">Newest</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Most Popular">Most Popular</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Trending">Trending</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
-                  </Badge>
-                </TabsList>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Featured">Featured</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Newest">Newest</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Most Popular">
+                        Most Popular
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Trending">Trending</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
+                    </Badge>
+                  </TabsList>
 
-                <div className="flex items-center gap-x-3">
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    size="lg"
-                    className="underline"
-                  >
-                    Explore more Talent
-                  </Button>
-                  <SwiperPrevTrigger asChild>
-                    <IconButton
-                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  <div className="flex items-center gap-x-3">
+                    <Button
+                      variant="link"
                       visual="gray"
-                      variant="outlined"
+                      size="lg"
+                      className="underline"
                     >
-                      <ChevronLeft className="size-[18px]" />
-                    </IconButton>
-                  </SwiperPrevTrigger>
-                  <SwiperNextTrigger asChild>
-                    <IconButton
-                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                      visual="gray"
-                      variant="outlined"
-                    >
-                      <ChevronRight className="size-[18px]" />
-                    </IconButton>
-                  </SwiperNextTrigger>
+                      Explore more Talent
+                    </Button>
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-6">
-                <TabsContent
-                  className="gap-5 flex items-center"
-                  value="Featured"
-                >
-                  <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                  {talents.length > 0 ? (
-                    talents.slice(0, 8).map((u, idx) => (
-                      <SwiperSlide className="w-[355px]" key={u.id}>
-                        <ListingCard kind="talent" {...talentToCardProps(u, idx)} />
-                      </SwiperSlide>
-                    ))
-                  ) : null}
-                  </SwiperContent>
-                </TabsContent>
-              </div>
+                <div className="mt-6">
+                  <TabsContent
+                    className="gap-5 flex items-center"
+                    value="Featured"
+                  >
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {talents.length > 0
+                        ? talents.slice(0, 8).map((u, idx) => (
+                            <SwiperSlide className="w-[355px]" key={u.id}>
+                              <ListingCard
+                                kind="talent"
+                                {...talentToCardProps(u, idx)}
+                              />
+                            </SwiperSlide>
+                          ))
+                        : null}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
               </SwiperRoot>
             </Tabs>
           </div>

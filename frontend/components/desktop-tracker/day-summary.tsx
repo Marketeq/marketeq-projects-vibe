@@ -25,7 +25,12 @@ export function DaySummary({
   const pct = total > 0 ? Math.min((tracked / total) * 100, 100) : 0
 
   return (
-    <div className={cn("flex items-center gap-2.5 px-4 py-2.5 shrink-0", className)}>
+    <div
+      className={cn(
+        "flex items-center gap-2.5 px-4 py-2.5 shrink-0",
+        className
+      )}
+    >
       <span className="text-sm font-semibold text-dark-blue-500 shrink-0">
         {label}
       </span>
@@ -47,8 +52,18 @@ export function DaySummary({
       </span>
 
       {/* Small chevron toggle */}
-      <svg className="h-3.5 w-3.5 text-gray-400 shrink-0" viewBox="0 0 14 14" fill="none">
-        <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <svg
+        className="h-3.5 w-3.5 text-gray-400 shrink-0"
+        viewBox="0 0 14 14"
+        fill="none"
+      >
+        <path
+          d="M3 5l4 4 4-4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </div>
   )

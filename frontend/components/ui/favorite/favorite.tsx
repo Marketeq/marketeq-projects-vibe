@@ -22,11 +22,12 @@ const FavoriteRoot = ({
   value?: boolean
   onValueChange?: (value: boolean) => void
   children?: (options: { pressed: boolean }) => React.ReactNode
+  defaultValue?: boolean
 }) => {
   const [pressed, setPressed] = useControllableState({
     value: props.value,
     onChange: props.onValueChange,
-    defaultValue: false,
+    defaultValue: props.defaultValue ?? false,
   })
   const value = useMemo(
     () => ({ value: pressed, onValueChange: setPressed }),

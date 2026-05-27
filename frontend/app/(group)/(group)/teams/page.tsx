@@ -1,4 +1,5 @@
-'use client'
+"use client"
+
 import {
   ArrowRight,
   Check,
@@ -13,6 +14,7 @@ import {
 import { AdobeBrand } from "@blend-metrics/icons/brands"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { SwiperSlide } from "swiper/react"
+import { CategoryBanner } from "@/components/category-banner"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -42,7 +44,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { CategoryBanner } from "@/components/category-banner"
 
 export default function Teams() {
   return (
@@ -57,8 +58,12 @@ export default function Teams() {
             breadcrumbs={
               <div className="flex items-center gap-x-2">
                 <Home03 className="size-[18px] text-white opacity-60" />
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">Teams</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  /
+                </span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  Teams
+                </span>
               </div>
             }
           />
@@ -158,416 +163,451 @@ export default function Teams() {
               </h1>
 
               <SwiperRoot>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Featured">Featured</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Newest">Newest</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Most Popular">Most Popular</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Trending">Trending</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
-                  </Badge>
-                </TabsList>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Featured">Featured</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Newest">Newest</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Most Popular">
+                        Most Popular
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Trending">Trending</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Top-Rated">Top-Rated</TabsTrigger>
+                    </Badge>
+                  </TabsList>
 
-                <div className="flex items-center gap-x-8">
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    size="lg"
-                    className="underline"
-                  >
-                    Explore More Projects
-                  </Button>
+                  <div className="flex items-center gap-x-8">
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      size="lg"
+                      className="underline"
+                    >
+                      Explore More Projects
+                    </Button>
 
-                  <div className="flex items-center gap-x-3">
-                    <SwiperPrevTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronLeft className="size-[18px]" />
-                      </IconButton>
-                    </SwiperPrevTrigger>
-                    <SwiperNextTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronRight className="size-[18px]" />
-                      </IconButton>
-                    </SwiperNextTrigger>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-6">
-                <TabsContent
-                  className="gap-5 flex items-center"
-                  value="Featured"
-                >
-                  <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                  {Array(8)
-                    .fill(0)
-                    .map((_, index) => (
-                      <SwiperSlide className="w-[355px]" key={index}>
-                      <article
-                        className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white"
-                      >
-                        <div className="flex items-start justify-between">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AvatarGroup
-                                  max={3}
-                                  size="md"
-                                  excess
-                                  excessClassName="border-gray-300 text-gray-500"
-                                >
-                                  <Avatar
-                                    size="md"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="md"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="md"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="md"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="md"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                  <Avatar
-                                    size="md"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                  >
-                                    <AvatarImage src="/woman.jpg" alt="Woman" />
-                                    <AvatarFallback>W</AvatarFallback>
-                                  </Avatar>
-                                </AvatarGroup>
-                              </TooltipTrigger>
-
-                              <TooltipContent
-                                className="p-0 max-w-[262px]"
-                                size="md"
-                              >
-                                <ScrollArea
-                                  className="h-[192px] p-3"
-                                  scrollBar={
-                                    <ScrollBar
-                                      className="w-4 p-1"
-                                      thumbClassName="bg-white/20"
-                                    />
-                                  }
-                                >
-                                  <div className="space-y-3 pr-5">
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
+                <div className="mt-6">
+                  <TabsContent
+                    className="gap-5 flex items-center"
+                    value="Featured"
+                  >
+                    <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                      {Array(8)
+                        .fill(0)
+                        .map((_, index) => (
+                          <SwiperSlide className="w-[355px]" key={index}>
+                            <article className="p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+                              <div className="flex items-start justify-between">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <AvatarGroup
+                                        max={3}
+                                        size="md"
+                                        excess
+                                        excessClassName="border-gray-300 text-gray-500"
+                                      >
+                                        <Avatar
+                                          size="md"
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                        >
                                           <AvatarImage
                                             src="/woman.jpg"
                                             alt="Woman"
                                           />
                                           <AvatarFallback>W</AvatarFallback>
                                         </Avatar>
+                                        <Avatar
+                                          size="md"
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                        >
+                                          <AvatarImage
+                                            src="/woman.jpg"
+                                            alt="Woman"
+                                          />
+                                          <AvatarFallback>W</AvatarFallback>
+                                        </Avatar>
+                                        <Avatar
+                                          size="md"
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                        >
+                                          <AvatarImage
+                                            src="/woman.jpg"
+                                            alt="Woman"
+                                          />
+                                          <AvatarFallback>W</AvatarFallback>
+                                        </Avatar>
+                                        <Avatar
+                                          size="md"
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                        >
+                                          <AvatarImage
+                                            src="/woman.jpg"
+                                            alt="Woman"
+                                          />
+                                          <AvatarFallback>W</AvatarFallback>
+                                        </Avatar>
+                                        <Avatar
+                                          size="md"
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                        >
+                                          <AvatarImage
+                                            src="/woman.jpg"
+                                            alt="Woman"
+                                          />
+                                          <AvatarFallback>W</AvatarFallback>
+                                        </Avatar>
+                                        <Avatar
+                                          size="md"
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                        >
+                                          <AvatarImage
+                                            src="/woman.jpg"
+                                            alt="Woman"
+                                          />
+                                          <AvatarFallback>W</AvatarFallback>
+                                        </Avatar>
+                                      </AvatarGroup>
+                                    </TooltipTrigger>
 
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
+                                    <TooltipContent
+                                      className="p-0 max-w-[262px]"
+                                      size="md"
+                                    >
+                                      <ScrollArea
+                                        className="h-[192px] p-3"
+                                        scrollBar={
+                                          <ScrollBar
+                                            className="w-4 p-1"
+                                            thumbClassName="bg-white/20"
+                                          />
+                                        }
+                                      >
+                                        <div className="space-y-3 pr-5">
+                                          <div className="flex items-center gap-x-[18px]">
+                                            <div className="flex items-center gap-x-2 flex-auto">
+                                              <Avatar>
+                                                <AvatarImage
+                                                  src="/woman.jpg"
+                                                  alt="Woman"
+                                                />
+                                                <AvatarFallback>
+                                                  W
+                                                </AvatarFallback>
+                                              </Avatar>
+
+                                              <div className="flex flex-col flex-auto">
+                                                <div className="flex items-center gap-x-0.5">
+                                                  <span className="text-xs leading-5 font-semibold text-white">
+                                                    Sevil
+                                                  </span>
+                                                  <span className="text-[10px] leading-none font-light text-white">
+                                                    @designsuperstar23
+                                                  </span>
+                                                </div>
+                                                <span className="text-[10px] font-light text-white">
+                                                  Full-stack Developer
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <span className="text-sm font-semibold text-white leading-5">
+                                              $75{" "}
+                                              <span className="text-[10px] font-light leading-5">
+                                                /hr
+                                              </span>
                                             </span>
                                           </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
+                                          <div className="flex items-center gap-x-[18px]">
+                                            <div className="flex items-center gap-x-2 flex-auto">
+                                              <Avatar>
+                                                <AvatarImage
+                                                  src="/woman.jpg"
+                                                  alt="Woman"
+                                                />
+                                                <AvatarFallback>
+                                                  W
+                                                </AvatarFallback>
+                                              </Avatar>
 
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
+                                              <div className="flex flex-col flex-auto">
+                                                <div className="flex items-center gap-x-0.5">
+                                                  <span className="text-xs leading-5 font-semibold text-white">
+                                                    Sevil
+                                                  </span>
+                                                  <span className="text-[10px] leading-none font-light text-white">
+                                                    @designsuperstar23
+                                                  </span>
+                                                </div>
+                                                <span className="text-[10px] font-light text-white">
+                                                  Full-stack Developer
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <span className="text-sm font-semibold text-white leading-5">
+                                              $75{" "}
+                                              <span className="text-[10px] font-light leading-5">
+                                                /hr
+                                              </span>
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-x-[18px]">
+                                            <div className="flex items-center gap-x-2 flex-auto">
+                                              <Avatar>
+                                                <AvatarImage
+                                                  src="/woman.jpg"
+                                                  alt="Woman"
+                                                />
+                                                <AvatarFallback>
+                                                  W
+                                                </AvatarFallback>
+                                              </Avatar>
+
+                                              <div className="flex flex-col flex-auto">
+                                                <div className="flex items-center gap-x-0.5">
+                                                  <span className="text-xs leading-5 font-semibold text-white">
+                                                    Sevil
+                                                  </span>
+                                                  <span className="text-[10px] leading-none font-light text-white">
+                                                    @designsuperstar23
+                                                  </span>
+                                                </div>
+                                                <span className="text-[10px] font-light text-white">
+                                                  Full-stack Developer
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <span className="text-sm font-semibold text-white leading-5">
+                                              $75{" "}
+                                              <span className="text-[10px] font-light leading-5">
+                                                /hr
+                                              </span>
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-x-[18px]">
+                                            <div className="flex items-center gap-x-2 flex-auto">
+                                              <Avatar>
+                                                <AvatarImage
+                                                  src="/woman.jpg"
+                                                  alt="Woman"
+                                                />
+                                                <AvatarFallback>
+                                                  W
+                                                </AvatarFallback>
+                                              </Avatar>
+
+                                              <div className="flex flex-col flex-auto">
+                                                <div className="flex items-center gap-x-0.5">
+                                                  <span className="text-xs leading-5 font-semibold text-white">
+                                                    Sevil
+                                                  </span>
+                                                  <span className="text-[10px] leading-none font-light text-white">
+                                                    @designsuperstar23
+                                                  </span>
+                                                </div>
+                                                <span className="text-[10px] font-light text-white">
+                                                  Full-stack Developer
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <span className="text-sm font-semibold text-white leading-5">
+                                              $75{" "}
+                                              <span className="text-[10px] font-light leading-5">
+                                                /hr
+                                              </span>
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </ScrollArea>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+
+                                <FavoriteRoot>
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block">
+                                            <Favorite />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (
+                                            <span className="inline-flex items-center gap-x-1">
+                                              <Check className="size-[15px] shrink-0 text-green-500" />
+                                              Saved
+                                            </span>
+                                          ) : (
+                                            "Save to favorites"
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
+                              </div>
+
+                              <div className="mt-5 flex items-center">
+                                <span className="text-sm font-bold text-dark-blue-400 leading-none">
+                                  $85 - $120
+                                </span>
+                                <span className="text-[10px] text-dark-blue-400 leading-none font-light">
+                                  /hr
+                                </span>
+                              </div>
+
+                              <div className="mt-5">
+                                <h1 className="text-base leading-none text-dark-blue-400 font-bold">
+                                  Team Name{" "}
+                                  <span className="font-light text-gray-500">
+                                    @Tech Sential
+                                  </span>
+                                </h1>
+                                <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">
+                                  Development team
+                                </h3>
+
+                                <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">
+                                  Average 10 years of experience
+                                </p>
+
+                                <div className="mt-3.5 flex items-center gap-x-1">
+                                  <MarkerPin02 className="size-3 text-gray-500" />
+
+                                  <span className="leading-4 text-[10px] font-medium text-gray-500">
+                                    UK, USA, Brazil, Philippines, more...
+                                  </span>
+                                </div>
+
+                                <div className="mt-3.5 flex items-center gap-x-2">
+                                  <div className="flex items-center gap-x-2">
+                                    <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                                      <div className="flex items-center gap-x-[3px]">
+                                        <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
+                                        <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
+                                        <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
+                                        <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
+                                        <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
+                                    <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                                      4.7
+                                    </span>
+                                  </div>
+                                  <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                                    2 Projects
+                                  </span>
+                                </div>
 
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
+                                <div className="mt-5 flex gap-2 flex-wrap">
+                                  <Badge
+                                    className="bg-transparent"
+                                    visual="gray"
+                                  >
+                                    iOS
+                                  </Badge>
+                                  <Badge
+                                    className="bg-transparent"
+                                    visual="gray"
+                                  >
+                                    iOS
+                                  </Badge>
+                                  <Badge
+                                    className="bg-transparent"
+                                    visual="gray"
+                                  >
+                                    iOS
+                                  </Badge>
+                                </div>
 
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
+                                <div className="mt-5 space-y-2">
+                                  <span className="block text-[11px] font-light text-dark-blue-400">
+                                    Previous clients
+                                  </span>
+                                  <div className="mt-2 flex items-center flex-wrap gap-3">
+                                    <div className="size-[25px] rounded-full shrink-0 relative bg-gray-50">
+                                      <AdobeBrand className="size-7" />
                                     </div>
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
+                                    <div className="size-[25px] rounded-full shrink-0 relative bg-gray-50">
+                                      <AdobeBrand className="size-7" />
                                     </div>
-                                    <div className="flex items-center gap-x-[18px]">
-                                      <div className="flex items-center gap-x-2 flex-auto">
-                                        <Avatar>
-                                          <AvatarImage
-                                            src="/woman.jpg"
-                                            alt="Woman"
-                                          />
-                                          <AvatarFallback>W</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="flex flex-col flex-auto">
-                                          <div className="flex items-center gap-x-0.5">
-                                            <span className="text-xs leading-5 font-semibold text-white">
-                                              Sevil
-                                            </span>
-                                            <span className="text-[10px] leading-none font-light text-white">
-                                              @designsuperstar23
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] font-light text-white">
-                                            Full-stack Developer
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <span className="text-sm font-semibold text-white leading-5">
-                                        $75{" "}
-                                        <span className="text-[10px] font-light leading-5">
-                                          /hr
-                                        </span>
-                                      </span>
+                                    <div className="size-[25px] rounded-full shrink-0 relative bg-gray-50">
+                                      <AdobeBrand className="size-7" />
                                     </div>
                                   </div>
-                                </ScrollArea>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
-                          <FavoriteRoot>
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        </div>
-
-                        <div className="mt-5 flex items-center">
-                          <span className="text-sm font-bold text-dark-blue-400 leading-none">
-                            $85 - $120
-                          </span>
-                          <span className="text-[10px] text-dark-blue-400 leading-none font-light">
-                            /hr
-                          </span>
-                        </div>
-
-                        <div className="mt-5">
-                          <h1 className="text-base leading-none text-dark-blue-400 font-bold">
-                            Team Name{" "}
-                            <span className="font-light text-gray-500">
-                              @Tech Sential
-                            </span>
-                          </h1>
-                          <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">
-                            Development team
-                          </h3>
-
-                          <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">
-                            Average 10 years of experience
-                          </p>
-
-                          <div className="mt-3.5 flex items-center gap-x-1">
-                            <MarkerPin02 className="size-3 text-gray-500" />
-
-                            <span className="leading-4 text-[10px] font-medium text-gray-500">
-                              UK, USA, Brazil, Philippines, more...
-                            </span>
-                          </div>
-
-                          <div className="mt-3.5 flex items-center gap-x-2">
-                            <div className="flex items-center gap-x-2">
-                              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                                <div className="flex items-center gap-x-[3px]">
-                                  <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                  <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                  <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                  <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
-                                  <Star className="size-3 text-primary-500 fill-primary-500 shrink-0" />
                                 </div>
                               </div>
-                              <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                                4.7
-                              </span>
-                            </div>
-                            <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                              2 Projects
-                            </span>
-                          </div>
-
-                          <div className="mt-5 flex gap-2 flex-wrap">
-                            <Badge className="bg-transparent" visual="gray">
-                              iOS
-                            </Badge>
-                            <Badge className="bg-transparent" visual="gray">
-                              iOS
-                            </Badge>
-                            <Badge className="bg-transparent" visual="gray">
-                              iOS
-                            </Badge>
-                          </div>
-
-                          <div className="mt-5 space-y-2">
-                            <span className="block text-[11px] font-light text-dark-blue-400">
-                              Previous clients
-                            </span>
-                            <div className="mt-2 flex items-center flex-wrap gap-3">
-                              <div className="size-[25px] rounded-full shrink-0 relative bg-gray-50">
-                                <AdobeBrand className="size-7" />
-                              </div>
-                              <div className="size-[25px] rounded-full shrink-0 relative bg-gray-50">
-                                <AdobeBrand className="size-7" />
-                              </div>
-                              <div className="size-[25px] rounded-full shrink-0 relative bg-gray-50">
-                                <AdobeBrand className="size-7" />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                      </SwiperSlide>
-                    ))}
-                  </SwiperContent>
-                </TabsContent>
-              </div>
+                            </article>
+                          </SwiperSlide>
+                        ))}
+                    </SwiperContent>
+                  </TabsContent>
+                </div>
               </SwiperRoot>
             </Tabs>
           </div>

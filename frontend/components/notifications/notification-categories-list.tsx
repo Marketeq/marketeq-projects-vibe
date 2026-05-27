@@ -1,14 +1,22 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, DotsHorizontal, RefreshCcw01, SearchMd } from "@blend-metrics/icons"
+import type {
+  CatalogCategory,
+  CategoryPref,
+} from "@/service/http/notifications"
+import {
+  ChevronDown,
+  DotsHorizontal,
+  RefreshCcw01,
+  SearchMd,
+} from "@blend-metrics/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui"
-import type { CatalogCategory, CategoryPref } from "@/service/http/notifications"
 import { resolveIcon, summarizeChannels } from "./shared"
 
 interface Props {
@@ -27,7 +35,7 @@ export default function NotificationCategoriesList({
   const [search, setSearch] = useState("")
 
   const visible = catalog.filter((c) =>
-    c.title.toLowerCase().includes(search.toLowerCase()),
+    c.title.toLowerCase().includes(search.toLowerCase())
   )
 
   return (

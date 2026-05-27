@@ -12,7 +12,6 @@
  *   2. Payment       — choose a saved card or add a new one
  *   3. Confirm       — review + complete
  */
-
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
@@ -391,9 +390,7 @@ export default function AddFundsPage() {
           </p>
 
           <div className="mt-6">
-            {step === 1 && (
-              <AmountStep amount={amount} setAmount={setAmount} />
-            )}
+            {step === 1 && <AmountStep amount={amount} setAmount={setAmount} />}
             {step === 2 && (
               <PaymentStep cardId={cardId} setCardId={setCardId} />
             )}
@@ -419,7 +416,9 @@ export default function AddFundsPage() {
             )}
             {step === 3 && (
               <Button onClick={submit} disabled={submitting}>
-                {submitting ? "Processing…" : `Pay $${Number(amount).toFixed(2)}`}
+                {submitting
+                  ? "Processing…"
+                  : `Pay $${Number(amount).toFixed(2)}`}
               </Button>
             )}
           </div>

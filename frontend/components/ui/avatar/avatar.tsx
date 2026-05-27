@@ -85,7 +85,8 @@ const [AvatarProvider, useAvatarContext] = createContext<{
 })
 
 interface AvatarProps
-  extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>,
+  extends
+    React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>,
     VariantProps<typeof avatarVariants> {
   isOnline?: boolean
   badgeClassName?: string

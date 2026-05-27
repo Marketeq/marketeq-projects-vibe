@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/utils/functions"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
 
 interface ContractOption {
   id: string
@@ -15,27 +15,61 @@ interface NewTaskFormProps {
   contracts?: ContractOption[]
   defaultContractId?: string
   onCancel?: () => void
-  onCreate?: (data: { contractId: string; taskName: string; notes: string }) => void
+  onCreate?: (data: {
+    contractId: string
+    taskName: string
+    notes: string
+  }) => void
   className?: string
 }
 
 function BackArrowIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M12.5 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+    >
+      <path
+        d="M12.5 15l-5-5 5-5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
 function ChevronDownIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+    >
+      <path
+        d="M4 6l4 4 4-4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCreate, className }: NewTaskFormProps) {
+export function NewTaskForm({
+  contracts = [],
+  defaultContractId,
+  onCancel,
+  onCreate,
+  className,
+}: NewTaskFormProps) {
   const [contractId, setContractId] = React.useState(defaultContractId || "")
   const [showDropdown, setShowDropdown] = React.useState(false)
   const [taskName, setTaskName] = React.useState("")
@@ -48,7 +82,10 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
     <div className={cn("flex flex-col flex-1", className)}>
       {/* Sub-header: back arrow + "New Task" centered */}
       <div className="flex items-center px-4 py-3">
-        <button onClick={onCancel} className="text-gray-500 hover:text-gray-700 transition">
+        <button
+          onClick={onCancel}
+          className="text-gray-500 hover:text-gray-700 transition"
+        >
           <BackArrowIcon className="h-5 w-5" />
         </button>
         <span className="flex-1 text-center text-sm font-semibold text-dark-blue-500">
@@ -71,20 +108,34 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
             {selectedContract ? (
               <div className="flex items-center gap-2 min-w-0">
                 <Avatar size="xs">
-                  <AvatarImage src={selectedContract.avatarSrc} alt={selectedContract.name} />
-                  <AvatarFallback>{selectedContract.name.charAt(0)}</AvatarFallback>
+                  <AvatarImage
+                    src={selectedContract.avatarSrc}
+                    alt={selectedContract.name}
+                  />
+                  <AvatarFallback>
+                    {selectedContract.name.charAt(0)}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                  <span className="text-sm text-gray-black truncate">{selectedContract.name}</span>
+                  <span className="text-sm text-gray-black truncate">
+                    {selectedContract.name}
+                  </span>
                   {selectedContract.clientHandle && (
-                    <span className="text-xs text-gray-500 ml-1">@{selectedContract.clientHandle}</span>
+                    <span className="text-xs text-gray-500 ml-1">
+                      @{selectedContract.clientHandle}
+                    </span>
                   )}
                 </div>
               </div>
             ) : (
               <span className="text-gray-500">Select Contract</span>
             )}
-            <ChevronDownIcon className={cn("h-4 w-4 text-gray-400 shrink-0 transition-transform", showDropdown && "rotate-180")} />
+            <ChevronDownIcon
+              className={cn(
+                "h-4 w-4 text-gray-400 shrink-0 transition-transform",
+                showDropdown && "rotate-180"
+              )}
+            />
           </button>
           {showDropdown && contracts.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 max-h-[160px] overflow-y-auto">
@@ -97,7 +148,9 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
                   }}
                   className={cn(
                     "flex w-full items-center gap-2 px-3.5 py-2 text-sm hover:bg-gray-50 transition",
-                    c.id === contractId ? "text-primary-500 font-medium" : "text-gray-700"
+                    c.id === contractId
+                      ? "text-primary-500 font-medium"
+                      : "text-gray-700"
                   )}
                 >
                   <Avatar size="xs">
@@ -128,7 +181,9 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
         {/* Notes */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-sm font-semibold text-dark-blue-500">Notes</label>
+            <label className="text-sm font-semibold text-dark-blue-500">
+              Notes
+            </label>
             <span className="text-xs text-gray-400">
               {notes.length}/{maxNotes}
             </span>
@@ -153,7 +208,9 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
         </button>
         <button
           disabled={!contractId || !taskName.trim()}
-          onClick={() => onCreate?.({ contractId, taskName: taskName.trim(), notes })}
+          onClick={() =>
+            onCreate?.({ contractId, taskName: taskName.trim(), notes })
+          }
           className={cn(
             "inline-flex items-center justify-center rounded-[5px] px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition",
             contractId && taskName.trim()

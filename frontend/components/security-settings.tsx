@@ -112,9 +112,7 @@ const PasswordForm = ({
         response.status >= 200 &&
         response.status < 300
       if (isSuccess) {
-        setUser((prev) =>
-          prev ? { ...prev, hasPassword: true } : prev
-        )
+        setUser((prev) => (prev ? { ...prev, hasPassword: true } : prev))
         reset()
         onSuccess()
       } else {
@@ -136,7 +134,12 @@ const PasswordForm = ({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent className="w-full max-w-md space-y-6">
         <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-6">
           <h2 className="text-2xl font-semibold text-dark-blue-400">
@@ -252,7 +255,12 @@ const PasswordForm = ({
           </ul>
 
           <div className="flex justify-end gap-x-3 pt-6">
-            <Button type="button" variant="outlined" visual="gray" onClick={onClose}>
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              onClick={onClose}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
@@ -267,7 +275,12 @@ const PasswordForm = ({
 
 const SaveChangesExit = ({ onClose }: { onClose: () => void }) => {
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>All set! You've secured your account.</DialogTitle>
@@ -321,10 +334,7 @@ const SecuritySettingsStepper = ({
       <StepRootProvider value={stepperRootValue}>
         <StepControl>
           <Step>
-            <PasswordForm
-              onClose={onCloseModal}
-              onSuccess={() => setStep(1)}
-            />
+            <PasswordForm onClose={onCloseModal} onSuccess={() => setStep(1)} />
           </Step>
           <Step>
             <SaveChangesExit onClose={onCloseModal} />

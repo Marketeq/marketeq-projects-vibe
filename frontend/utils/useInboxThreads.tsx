@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  type ReactNode,
   createContext,
   useCallback,
   useContext,
@@ -8,13 +9,12 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react"
 import { useAuth } from "@/contexts/auth"
-import { apiFetch } from "@/src/lib/api"
 import { decryptAES } from "@/src/crypto/e2ee"
 import { loadPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
+import { apiFetch } from "@/src/lib/api"
 import { getAccessToken } from "@/utils/auth"
 import { useUserChannel } from "@/utils/useUserChannel"
 import type { Conversation } from "@/types/conversation"
@@ -54,7 +54,7 @@ function buildSummary(
   participants: Map<string, ParticipantInfo>,
   groupNames: Map<string, string>,
   decryptedPreviews: Map<string, string>,
-  currentUserId: string | undefined,
+  currentUserId: string | undefined
 ): InboxThreadSummary {
   let displayName = "Conversation"
   let displayAvatarUrl: string | undefined
@@ -108,9 +108,9 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const userId = user?.id
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [participants, setParticipants] = useState<Map<string, ParticipantInfo>>(
-    new Map(),
-  )
+  const [participants, setParticipants] = useState<
+    Map<string, ParticipantInfo>
+  >(new Map())
   const [groupNames, setGroupNames] = useState<Map<string, string>>(new Map())
   const [decryptedPreviews, setDecryptedPreviews] = useState<
     Map<string, string>
@@ -173,13 +173,15 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
           if (fetchedGroupIdsRef.current.has(conv.id)) continue
           fetchedGroupIdsRef.current.add(conv.id)
           if (conv.group?.name) {
-            setGroupNames((prev) => new Map(prev).set(conv.id, conv.group!.name))
+            setGroupNames((prev) =>
+              new Map(prev).set(conv.id, conv.group!.name)
+            )
             continue
           }
           try {
             const g = await apiFetch<{ name?: string }>(
               `/v1/threads/${conv.id}`,
-              { headers: { Authorization: `Bearer ${token}` } },
+              { headers: { Authorization: `Bearer ${token}` } }
             )
             if (cancelled) return
             if (g?.name) {
@@ -208,7 +210,7 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
               name,
               username: u.username,
               avatarUrl: u.avatarUrl,
-            }),
+            })
           )
         } catch {
           /* keep fallback */
@@ -231,8 +233,7 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
         const lm = (conv as { lastMessage?: Record<string, any> }).lastMessage
         if (!lm) continue
         if (lm.m_content || lm.content) continue
-        const ciphertext: string | undefined =
-          lm.m_ciphertext ?? lm.ciphertext
+        const ciphertext: string | undefined = lm.m_ciphertext ?? lm.ciphertext
         if (!ciphertext) continue
         if (decryptedKeyRef.current.has(conv.id)) continue
 
@@ -248,15 +249,15 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
           try {
             const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
               `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
-              { headers: { Authorization: `Bearer ${token}` } },
+              { headers: { Authorization: `Bearer ${token}` } }
             )
             const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
-              c.charCodeAt(0),
+              c.charCodeAt(0)
             )
             const raw = await window.crypto.subtle.decrypt(
               { name: "RSA-OAEP" },
               privateKey,
-              wrapped,
+              wrapped
             )
             key = new Uint8Array(raw)
             saveKey(conv.id, btoa(String.fromCharCode(...key)))
@@ -298,19 +299,19 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
   const threads = useMemo<InboxThreadSummary[]>(
     () =>
       conversations.map((c) =>
-        buildSummary(c, participants, groupNames, decryptedPreviews, userId),
+        buildSummary(c, participants, groupNames, decryptedPreviews, userId)
       ),
-    [conversations, participants, groupNames, decryptedPreviews, userId],
+    [conversations, participants, groupNames, decryptedPreviews, userId]
   )
 
   const totalUnread = useMemo(
     () => threads.reduce((sum, t) => sum + t.unreadCount, 0),
-    [threads],
+    [threads]
   )
 
   const value = useMemo<InboxThreadsContextValue>(
     () => ({ threads, totalUnread, loading, refetch: fetchThreads }),
-    [threads, totalUnread, loading, fetchThreads],
+    [threads, totalUnread, loading, fetchThreads]
   )
 
   return (
