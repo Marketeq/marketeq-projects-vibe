@@ -53,6 +53,16 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'wire-review': 'wireReview',
 }
 
+const USER_SERVICE_V1_RESOURCES = new Set([
+  'experiences',
+  'education',
+  'languages',
+  'certifications',
+  'industries',
+  'portfolio',
+  'skills',
+])
+
 @Controller()
 export class ProxyController {
   private static readonly VARIANT_MAX_LENGTH = 64
@@ -143,6 +153,8 @@ export class ProxyController {
     // /v1/transactions/* or /v1/invoices/* → transaction-service (default for v1)
     if (prefix === 'v1' && segments[1] === 'users') {
       prefix = 'users'
+    } else if (prefix === 'v1' && USER_SERVICE_V1_RESOURCES.has(segments[1])) {
+      prefix = 'users'
     } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
@@ -174,7 +186,10 @@ export class ProxyController {
     // listings-service controllers are mounted at /v1/projects and /v1/services,
     // so we forward the full /v1/... path unchanged.
     let downstreamPath = normalizedPath
-    if (segments[0] === 'v1' && segments[1] === 'users') {
+    if (
+      segments[0] === 'v1' &&
+      (segments[1] === 'users' || USER_SERVICE_V1_RESOURCES.has(segments[1]))
+    ) {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
     if (serviceName === 'categories') {

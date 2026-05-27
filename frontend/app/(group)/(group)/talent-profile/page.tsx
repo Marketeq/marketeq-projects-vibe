@@ -433,12 +433,12 @@ function Default() {
 
   const handleDeleteWorkExperience = useCallback((expId: string) => {
     const exp = profile?.experience?.find((e: any) => String(e.id) === String(expId))
-    setDeleteConfirm({ type: "experience", id: expId, label: exp?.role || "this work experience" })
+    setDeleteConfirm({ type: "experience", id: expId, label: exp?.title || "this work experience" })
   }, [profile?.experience])
 
   const handleDeleteEducation = useCallback((eduId: string) => {
     const edu = profile?.education?.find((e: any) => String(e.id) === String(eduId))
-    setDeleteConfirm({ type: "education", id: eduId, label: edu?.institution || "this education" })
+    setDeleteConfirm({ type: "education", id: eduId, label: edu?.school || "this education" })
   }, [profile?.education])
 
   const confirmDelete = useCallback(async () => {
@@ -446,9 +446,9 @@ function Default() {
     setIsDeleting(true)
     try {
       if (deleteConfirm.type === "experience") {
-        await UserAPI.removeExperience(profile.id, deleteConfirm.id)
+        await UserAPI.removeExperience(deleteConfirm.id)
       } else {
-        await UserAPI.removeEducation(profile.id, deleteConfirm.id)
+        await UserAPI.removeEducation(deleteConfirm.id)
       }
       refreshProfile()
     } catch { /* noop */ }
@@ -739,9 +739,9 @@ function Default() {
                     </h1>
                     <div className="flex items-center gap-x-1 mt-1">
                       <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
-                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
+                        {((profile as any)?.jobTitles?.find((j: any) => j.saveAsDefault)?.jobTitle) ||
                           (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                          profile?.role ||
+                          profile?.recentJobTitle ||
                           "Unknown"}
                       </h2>
                       {isEditMode && isOwnProfile && (
@@ -1019,9 +1019,9 @@ function Default() {
                         </span>
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        {((profile as any)?.jobTitles?.find((j: any) => j.isDefault)?.jobTitle) ||
+                        {((profile as any)?.jobTitles?.find((j: any) => j.saveAsDefault)?.jobTitle) ||
                           (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                          profile?.role ||
+                          profile?.recentJobTitle ||
                           ""}
                       </span>
                     </div>
@@ -1124,7 +1124,7 @@ function Default() {
             id="portfolio"
           >
             <div className="pt-6 flex gap-x-8">
-              <div className="flex-auto">
+              <div className="flex-auto min-w-0">
                 {isEditMode && isOwnProfile && (() => {
                   const steps = [
                     {
@@ -1787,8 +1787,8 @@ function Default() {
                       return (
                         <LineClampText
                           text={bioText}
-                          lines={5}
-                          className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed"
+                          lines={3}
+                          className="text-sm font-extralight text-gray-700 leading-relaxed"
                           toggleClassName="mt-6"
                           expandLabel="View More"
                           collapseLabel="View Less"
@@ -6466,9 +6466,13 @@ function Default() {
                                       const [y, m] = d.split("-")
                                       return `${months[parseInt(m, 10) - 1]} ${y}`
                                     }
+                                    const toDate = (d: string) => {
+                                      const [y, m, day] = d.split("-")
+                                      return new Date(Number(y), Number(m) - 1, Number(day || 1))
+                                    }
                                     const calcDuration = (start: string, end: string | null) => {
-                                      const s = new Date(start + "-01")
-                                      const e = end ? new Date(end + "-01") : new Date()
+                                      const s = toDate(start)
+                                      const e = end ? toDate(end) : new Date()
                                       let totalMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
                                       const yrs = Math.floor(totalMonths / 12)
                                       const mos = totalMonths % 12
@@ -6495,11 +6499,11 @@ function Default() {
                                     )}
                                   </div>
 
-                                  <div className="flex-auto">
+                                  <div className="flex-auto min-w-0">
                                     <div className="pb-8">
                                       <div className="flex items-center justify-between">
                                         <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                          {exp.role}
+                                          {exp.title}
                                         </h1>
                                         {isEditMode && isOwnProfile && (
                                           <div className="flex items-center">
@@ -6545,7 +6549,7 @@ function Default() {
                                         >
                                           {({ readMore, text, toggle }) => (
                                             <>
-                                              <p className="mt-3 text-sm leading-none font-extralight text-gray-700">
+                                              <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
                                                 {text}{" "}
                                                 <Button
                                                   className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
@@ -6561,6 +6565,20 @@ function Default() {
                                           )}
                                         </ReadMoreLessComp>
                                       </ReadMoreLessRoot>
+                                      )}
+                                      {Array.isArray(exp.skills) && exp.skills.length > 0 && (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {exp.skills.map((skill: string, sIdx: number) => (
+                                            <Badge
+                                              key={`${exp.id || idx}-${sIdx}`}
+                                              className="text-gray-700"
+                                              visual="gray"
+                                              size="sm"
+                                            >
+                                              {skill}
+                                            </Badge>
+                                          ))}
+                                        </div>
                                       )}
                                     </div>
                                   </div>
@@ -6608,28 +6626,28 @@ function Default() {
                             >
                               <ShowMoreLessComp max={4}>
                                 {(profile?.education && profile.education.length > 0) ? profile.education
-                                  .sort((a: any, b: any) => (b.startDate || "").localeCompare(a.startDate || ""))
+                                  .sort((a: any, b: any) => (b.startYear ?? 0) - (a.startYear ?? 0) || (b.startMonth ?? 0) - (a.startMonth ?? 0))
                                   .map((edu: any, idx: number) => {
                                     const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
-                                    const fmtDate = (d: string | null) => {
-                                      if (!d) return "Present"
-                                      const [y, m] = d.split("-")
-                                      return `${months[parseInt(m, 10) - 1]} ${y}`
+                                    const fmtYearMonth = (year?: number | null, month?: number | null) => {
+                                      if (!year) return "Present"
+                                      if (!month) return String(year)
+                                      return `${months[month - 1]} ${year}`
                                     }
                                     return (
                                 <div key={edu.id || idx} className="flex pb-5 items-start gap-x-6">
                                   <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
                                     {edu.institutionLogoUrl ? (
-                                      <NextImage src={edu.institutionLogoUrl} alt={edu.institution || ""} fill sizes="55px" className="object-contain p-1" />
+                                      <NextImage src={edu.institutionLogoUrl} alt={edu.school || ""} fill sizes="55px" className="object-contain p-1" />
                                     ) : (
-                                      <span className="text-lg font-bold text-gray-400">{edu.institution?.charAt(0) || "E"}</span>
+                                      <span className="text-lg font-bold text-gray-400">{edu.school?.charAt(0) || "E"}</span>
                                     )}
                                   </div>
 
                                   <div className="flex-auto">
                                     <div className="flex items-start justify-between">
                                       <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                        {edu.institution}
+                                        {edu.school}
                                       </h1>
                                       {isEditMode && isOwnProfile && (
                                         <div className="flex items-center">
@@ -6660,12 +6678,12 @@ function Default() {
                                       </span>
                                       <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
                                       <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        {edu.field}
+                                        {edu.fieldOfStudy}
                                       </span>
                                     </div>
                                     <div className="mt-1.5">
                                       <span className="text-dark-blue-400 text-xs leading-none">
-                                        {fmtDate(edu.startDate)} - {fmtDate(edu.endDate)}
+                                        {fmtYearMonth(edu.startYear, edu.startMonth)} - {edu.currentlyStudying ? "Present" : fmtYearMonth(edu.endYear, edu.endMonth)}
                                       </span>
                                     </div>
                                   </div>

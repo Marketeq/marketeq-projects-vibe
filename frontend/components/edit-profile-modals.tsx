@@ -243,7 +243,7 @@ const workExperienceFormSchema = z
         .optional(),
     }),
     currentlyWorkHere: z.boolean(),
-    jobDescription: z.string().min(1, "Please enter at least 1 character(s)"),
+    jobDescription: z.string().optional(),
     skills: z
       .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
       .max(50, "You have reached the maximum limit of 50 skills"),
@@ -277,6 +277,19 @@ const workExperienceFormSchema = z
             .safeParse(data.endDate).success,
     {
       message: "Please select a year",
+      path: ["endDate.year"],
+    }
+  )
+  .refine(
+    (data) => {
+      if (data.currentlyWorkHere) return true
+      if (!data.endDate?.year || !data.endDate?.month) return true
+      const start = data.startDate.year * 12 + data.startDate.month
+      const end = data.endDate.year * 12 + data.endDate.month
+      return end >= start
+    },
+    {
+      message: "End date must be on or after start date",
       path: ["endDate.year"],
     }
   )
@@ -362,6 +375,19 @@ const educationFormSchema = z
       path: ["endDate.year"],
     }
   )
+  .refine(
+    (data) => {
+      if (data.currentlyAttending) return true
+      if (!data.endDate?.year || !data.endDate?.month) return true
+      const start = data.startDate.year * 12 + data.startDate.month
+      const end = data.endDate.year * 12 + data.endDate.month
+      return end >= start
+    },
+    {
+      message: "End date must be on or after start date",
+      path: ["endDate.year"],
+    }
+  )
 
 type EducationFormValues = z.infer<typeof educationFormSchema>
 
@@ -398,7 +424,7 @@ const skillsFormDefaultValue: SkillsFormValues = {
 
 const industriesFormSchema = z.object({
   industries: z
-    .array(z.object({ id: z.number(), name: z.string() }))
+    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
     .min(1, "Please at least provide 1 industry"),
 })
 
@@ -421,7 +447,7 @@ const certificationsFormSchema = z
         }
       ),
     skills: z
-      .array(z.object({ id: z.number(), name: z.string() }))
+      .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
       .min(1, "Please provide at least 1 skill(s)"),
     issuedDate: z.instanceof(Date, { message: "Please provide a valid date" }),
     expirationDate: z
@@ -1108,9 +1134,7 @@ export const MoreInfoDialog = ({
         payload.rateMax = allRates[0]
       }
 
-      // Default job title becomes the profile's displayed role
-      if (defaultChunk?.jobTitle) payload.role = defaultChunk.jobTitle
-      // Persist all job title entries
+      if (defaultChunk?.jobTitle) payload.recentJobTitle = defaultChunk.jobTitle
       payload.jobTitles = updatedChunks
       UserAPI.updateProfile(userId, payload)
         .then(() => onSaved?.())
@@ -1718,12 +1742,12 @@ export const WorkExperienceDialog = ({
     }
     try {
       const res = await fetch(
-        `${getPublicApiUrl()}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.value })))
+      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
     } catch {}
   }, [])
 
@@ -1754,36 +1778,35 @@ export const WorkExperienceDialog = ({
     },
   })
   const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
-    if (userId) {
-      const startDate = values.startDate
-        ? `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`
+    const startDate = values.startDate
+      ? `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`
+      : undefined
+    const endDate = values.currentlyWorkHere
+      ? undefined
+      : values.endDate?.year && values.endDate?.month
+        ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}-01`
         : undefined
-      const endDate = values.currentlyWorkHere
-        ? undefined
-        : values.endDate?.year && values.endDate?.month
-          ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
-          : undefined
-      try {
-        if (editingId) {
-          await UserAPI.updateExperience(userId, editingId, {
-            company: values.employer,
-            role: values.jobTitle,
-            startDate: startDate ?? "",
-            endDate,
-            description: values.jobDescription,
-          })
-        } else {
-          await UserAPI.addExperience(userId, {
-            company: values.employer,
-            role: values.jobTitle,
-            startDate: startDate ?? "",
-            endDate,
-            description: values.jobDescription,
-          })
-        }
-      } catch {}
-      onSaved?.()
+    const fullStart = startDate ? `${startDate}-01` : ""
+    const payload = {
+      company: values.employer,
+      title: values.jobTitle,
+      startDate: fullStart,
+      endDate,
+      isCurrentRole: values.currentlyWorkHere,
+      description: values.jobDescription,
+      skills: values.skills?.map((s) => s.name),
     }
+    try {
+      if (editingId) {
+        await UserAPI.updateExperience(editingId, payload)
+      } else {
+        await UserAPI.addExperience(payload)
+      }
+    } catch (err) {
+      console.error("[work-experience] save failed", err)
+      return
+    }
+    onSaved?.()
     setEditingId(undefined)
     reset()
     setOpen(false)
@@ -1800,12 +1823,12 @@ export const WorkExperienceDialog = ({
     const ed = exp.endDate ? exp.endDate.split("-") : []
     reset({
       employer: exp.company ?? "",
-      jobTitle: exp.role ?? "",
+      jobTitle: exp.title ?? "",
       startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
       endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
-      currentlyWorkHere: !exp.endDate,
+      currentlyWorkHere: Boolean(exp.isCurrentRole),
       jobDescription: exp.description ?? "",
-      skills: [],
+      skills: (exp.skills ?? []).map((name: string, i: number) => ({ id: i + 1, name })),
     })
     setTimeout(() => trigger())
   }
@@ -1826,12 +1849,12 @@ export const WorkExperienceDialog = ({
         const ed = exp.endDate ? exp.endDate.split("-") : []
         return {
           employer: exp.company ?? "",
-          jobTitle: exp.role ?? "",
+          jobTitle: exp.title ?? "",
           startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
           endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
-          currentlyWorkHere: !exp.endDate,
+          currentlyWorkHere: Boolean(exp.isCurrentRole),
           jobDescription: exp.description ?? "",
-          skills: [],
+          skills: (exp.skills ?? []).map((name: string, i: number) => ({ id: i + 1, name })),
         } as WorkExperienceFormValues
       })
       setValueFn(mapped)
@@ -1842,7 +1865,7 @@ export const WorkExperienceDialog = ({
     const exp = profile?.experience?.[idx]
     if (userId && exp?.id) {
       try {
-        await UserAPI.removeExperience(userId, String(exp.id))
+        await UserAPI.removeExperience(String(exp.id))
       } catch {}
       onSaved?.()
     }
@@ -1963,7 +1986,7 @@ export const WorkExperienceDialog = ({
                                 >
                                   {months.map((m) => (
                                       <ListboxOption key={m.value} value={m.value}>
-                                        {m.name}
+                                        {m.value}
                                       </ListboxOption>
                                     ))}
                                 </ScrollArea>
@@ -2053,7 +2076,7 @@ export const WorkExperienceDialog = ({
                                 >
                                   {months.map((m) => (
                                       <ListboxOption key={m.value} value={m.value}>
-                                        {m.name}
+                                        {m.value}
                                       </ListboxOption>
                                     ))}
                                 </ScrollArea>
@@ -2225,6 +2248,7 @@ export const WorkExperienceDialog = ({
                     <Badge key={skill.id} visual="primary">
                       {skill.name}
                       <button
+                        type="button"
                         className="focus-visible:outline-none"
                         onClick={() => {
                           setValue(
@@ -2359,15 +2383,13 @@ export const EducationDialog = ({
     setEditingId(id)
     const edu = profile?.education?.find((e: any) => String(e.id) === id)
     if (!edu) return
-    const sd = edu.startDate ? edu.startDate.split("-") : []
-    const ed = edu.endDate ? edu.endDate.split("-") : []
     reset({
-      schoolOrUniversity: edu.institution ?? "",
+      schoolOrUniversity: edu.school ?? "",
       degree: edu.degree ?? "",
-      major: edu.field ?? "",
-      currentlyAttending: !edu.endDate,
-      startDate: { year: sd[0] ? Number(sd[0]) : undefined, month: sd[1] ? Number(sd[1]) : undefined },
-      endDate: { year: ed[0] ? Number(ed[0]) : undefined, month: ed[1] ? Number(ed[1]) : undefined },
+      major: edu.fieldOfStudy ?? "",
+      currentlyAttending: Boolean(edu.currentlyStudying),
+      startDate: { year: edu.startYear ?? undefined, month: edu.startMonth ?? undefined },
+      endDate: { year: edu.endYear ?? undefined, month: edu.endMonth ?? undefined },
     })
     setTimeout(() => formTrigger())
   }
@@ -2383,31 +2405,21 @@ export const EducationDialog = ({
 
   const onSubmit: SubmitHandler<EducationFormValues> = async (values) => {
     if (userId) {
-      const startDate = values.startDate
-        ? `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`
-        : ""
-      const endDate = values.currentlyAttending
-        ? undefined
-        : values.endDate?.year && values.endDate?.month
-          ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}`
-          : undefined
+      const payload = {
+        school: values.schoolOrUniversity,
+        degree: values.degree,
+        fieldOfStudy: values.major,
+        startYear: values.startDate?.year as number,
+        startMonth: values.startDate?.month,
+        endYear: values.currentlyAttending ? undefined : values.endDate?.year,
+        endMonth: values.currentlyAttending ? undefined : values.endDate?.month,
+        currentlyStudying: values.currentlyAttending,
+      }
       try {
         if (editingId) {
-          await UserAPI.updateEducation(userId, editingId, {
-            institution: values.schoolOrUniversity,
-            degree: values.degree,
-            field: values.major,
-            startDate,
-            endDate,
-          })
+          await UserAPI.updateEducation(editingId, payload)
         } else {
-          await UserAPI.addEducation(userId, {
-            institution: values.schoolOrUniversity,
-            degree: values.degree,
-            field: values.major,
-            startDate,
-            endDate,
-          })
+          await UserAPI.addEducation(payload)
         }
       } catch {}
       onSaved?.()
@@ -2573,7 +2585,7 @@ export const EducationDialog = ({
                               <ListboxOptions>
                                 {months.map((m) => (
                                   <ListboxOption key={m.value} value={m.value}>
-                                    {m.name}
+                                    {m.value}
                                   </ListboxOption>
                                 ))}
                               </ListboxOptions>
@@ -2659,7 +2671,7 @@ export const EducationDialog = ({
                               <ListboxOptions>
                                 {months.map((m) => (
                                   <ListboxOption key={m.value} value={m.value}>
-                                    {m.name}
+                                    {m.value}
                                   </ListboxOption>
                                 ))}
                               </ListboxOptions>
@@ -2814,12 +2826,12 @@ export const LanguagesDialog = ({
     }
     try {
       const res = await fetch(
-        `${getPublicApiUrl()}/autocomplete/search?q=${encodeURIComponent(q)}&type=language&limit=20`
+        `${getPublicApiUrl()}/autocomplete/languages?q=${encodeURIComponent(q)}`
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredLanguages(entries.map((e) => ({ id: e.id, name: e.value })))
+      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredLanguages(entries.map((e) => ({ id: e.id, name: e.label })))
     } catch {}
   }, [])
 
@@ -2850,14 +2862,14 @@ export const LanguagesDialog = ({
         if (profile?.languages?.length) {
           await Promise.all(
             profile.languages.map((lang: any) =>
-              UserAPI.removeLanguage(userId, String(lang.id))
+              UserAPI.removeLanguage(String(lang.id))
             )
           )
         }
         // Add new languages
         await Promise.all(
           values.languages.map((lang) =>
-            UserAPI.addLanguage(userId, { name: lang.name })
+            UserAPI.addLanguage({ name: lang.name })
           )
         )
       } catch {}
@@ -3050,12 +3062,12 @@ export const SkillsDialog = ({
     }
     try {
       const res = await fetch(
-        `${getPublicApiUrl()}/autocomplete/search?q=${encodeURIComponent(q)}&type=skill&limit=20`
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; value: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.value })))
+      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
     } catch {}
   }, [])
 
@@ -3088,8 +3100,8 @@ export const SkillsDialog = ({
         const toRemove = currentSkills.filter((s: any) => !newNames.has(s.name?.toLowerCase()))
         const toAdd = values.skills.filter((s) => !currentNames.has(s.name.toLowerCase()))
 
-        await Promise.all(toRemove.map((skill: any) => UserAPI.removeSkill(userId, String(skill.id))))
-        await Promise.all(toAdd.map((skill) => UserAPI.addSkill(userId, { name: skill.name })))
+        await Promise.all(toRemove.map((skill: any) => UserAPI.removeSkill(String(skill.id))))
+        await Promise.all(toAdd.map((skill) => UserAPI.addSkill({ name: skill.name })))
       } catch {}
       onSaved?.()
     }
@@ -3302,7 +3314,7 @@ export const IndustryExpertiseDialog = ({
     if (open && profile?.industries?.length) {
       const mapped = profile.industries.map((ind: any, i: number) => ({
         id: ind.id ?? i + 1,
-        name: ind.name ?? "",
+        name: ind.industry ?? "",
       }))
       setValue("industries", mapped)
     }
@@ -3317,13 +3329,13 @@ export const IndustryExpertiseDialog = ({
           if (profile?.industries?.length) {
             await Promise.all(
               profile.industries.map((ind: any) =>
-                UserAPI.removeIndustry(userId, String(ind.id))
+                UserAPI.removeIndustry(String(ind.id))
               )
             )
           }
           await Promise.all(
             values.industries.map((ind) =>
-              UserAPI.addIndustry(userId, { name: ind.name })
+              UserAPI.addIndustry({ industry: ind.name })
             )
           )
         } catch {}
@@ -3528,11 +3540,11 @@ export const CertificationsDialog = ({
     setValueFn((prev) => (prev ? [...prev, values] : [values]))
     reset()
     if (userId) {
-      UserAPI.addCertification(userId, {
+      UserAPI.addCertification({
         name: values.name,
-        issuingOrganization: "",
-        issueDate: values.issuedDate?.toISOString(),
-        expiryDate: values.expirationDate?.toISOString(),
+        issuer: "",
+        issueDate: values.issuedDate?.toISOString() ?? "",
+        expirationDate: values.expirationDate?.toISOString(),
         credentialUrl: values.credentialsUrl || undefined,
       })
         .then(() => onSaved?.())
