@@ -14,10 +14,19 @@ export async function ensureDevAuth(): Promise<boolean> {
   if (process.env.NODE_ENV === "production")
     return !!Cookies.get("access_token")
 
-  // If there's already a token, respect it — don't replace another user's session
+  // If there's already a token, verify it decodes to the right user
   const existing = Cookies.get("access_token")
   if (existing) {
-    return true
+    try {
+      // Decode JWT payload (no verification, just read)
+      const payload = JSON.parse(atob(existing.split(".")[1]))
+      if (payload.email === DEV_EMAIL) return true
+      // Wrong user — clear and re-login
+      Cookies.remove("access_token", { path: "/" })
+    } catch {
+      // Corrupt token — clear and re-login
+      Cookies.remove("access_token", { path: "/" })
+    }
   }
 
   try {
