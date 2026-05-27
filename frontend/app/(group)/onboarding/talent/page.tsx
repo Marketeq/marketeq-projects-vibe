@@ -3819,6 +3819,7 @@ const DoNext = ({
           nextUser = {
             ...fallbackUser,
             onboardingDismissed: true,
+            talentOnboardedAt: new Date().toISOString(),
             userType: "talent",
           }
         }

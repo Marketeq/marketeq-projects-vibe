@@ -263,10 +263,19 @@ export class UserService {
           ? "client"
           : undefined;
 
+    const now = new Date().toISOString();
+    const roleTimestamp =
+      role === UserRole.TALENT
+        ? { talentOnboardedAt: now }
+        : role === UserRole.CLIENT
+          ? { clientOnboardedAt: now }
+          : {};
+
     return this.updateUser(id, {
       onboardingDismissed: true,
       ...(userType ? { userType } : {}),
-    });
+      ...roleTimestamp,
+    } as any);
   }
 
   async deactivateUser(id: string): Promise<void> {

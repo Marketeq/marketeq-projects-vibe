@@ -34,6 +34,10 @@ export type User = {
   customAvailability?: CustomAvailabilityDay[] | null
   recentJobTitle?: string | null
   jobTitles?: string[] | null
+  clientOnboardedAt?: string | Date | null
+  talentOnboardedAt?: string | Date | null
+  onboardedAt?: string | Date | null
+  hasCompletedOnboarding?: boolean | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
