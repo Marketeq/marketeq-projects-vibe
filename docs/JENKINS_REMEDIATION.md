@@ -1,6 +1,6 @@
 # Jenkins CI/CD Remediation Plan
 
-> **Status:** BROKEN — multiple pipelines not firing or misbehaving
+> **Status:** RESOLVED — all 7 issues fixed 2026-05-27
 > **Server:** 72.61.77.231:8080
 > **Created:** 2026-05-27
 > **Priority:** P0 — deployments and branch sync are manual until fixed
@@ -158,13 +158,13 @@ This is currently harmless because the squash-merge also triggers a `push` event
 
 | # | Pipeline | Issue | Severity | Status |
 |---|----------|-------|----------|--------|
-| 1 | `sync-dev-main-to-staging` | Not dispatched on dev-main push | P0 | BROKEN |
-| 2 | `vercel-deploy` | Not dispatched on any push | P0 | BROKEN |
-| 3 | `staging-orchestrator` | Not dispatched on any push | P1 | BROKEN |
-| 4 | `post-merge-audit` | Wrong status context names -> false reverts | P0 | BROKEN |
-| 5 | `post-merge-audit` | Flags SOP-approved staging force-push | P1 | BROKEN |
-| 6 | `github-webhook-dispatcher` | Ignores merged PR events | P2 | MINOR |
-| 7 | All jobs | CSRF blocks programmatic API triggers | P2 | MINOR |
+| 1 | `sync-dev-main-to-staging` | Not dispatched on dev-main push | P0 | FIXED 2026-05-27 |
+| 2 | `vercel-deploy` | Not dispatched on any push | P0 | FIXED 2026-05-27 |
+| 3 | `staging-orchestrator` | Not dispatched on any push | P1 | FIXED 2026-05-27 |
+| 4 | `post-merge-audit` | Wrong status context names -> false reverts | P0 | FIXED 2026-05-27 |
+| 5 | `post-merge-audit` | Flags SOP-approved staging force-push | P1 | FIXED 2026-05-27 |
+| 6 | `github-webhook-dispatcher` | Ignores merged PR events | P2 | FIXED 2026-05-27 |
+| 7 | All jobs | CSRF blocks programmatic API triggers | P2 | FIXED 2026-05-27 |
 
 ---
 
@@ -200,3 +200,4 @@ This is currently harmless because the squash-merge also triggers a `push` event
 | Date | Change |
 |------|--------|
 | 2026-05-27 | Initial document. Full audit of all 13 Jenkins pipelines after discovering staging was 5 days stale and Vercel hadn't deployed since May 22. |
+| 2026-05-27 | ALL 7 ISSUES FIXED. Dispatcher updated with 3 new dispatch calls + merged PR handling. Post-merge-audit switched from check-runs API to statuses API with correct Jenkins context names. Staging force-push allowlist added. CSRF excludeClientIPFromCrumb enabled. |
