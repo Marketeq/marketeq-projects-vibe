@@ -32,7 +32,6 @@ export class CmsBackfillService implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     if (this.config.get<string>('CMS_BACKFILL_ON_BOOT') === 'false') return;
     await new Promise((r) => setTimeout(r, BOOT_DELAY_MS));
-    try {
     await Promise.all([
       this.backfillProjects(),
       this.backfillTestimonials(),
@@ -70,9 +69,6 @@ export class CmsBackfillService implements OnApplicationBootstrap {
         salaryMax: j.salaryMax,
       })),
     ]);
-    } catch (err: any) {
-      this.logger.error(`[CmsBackfill] Bootstrap backfill failed (non-fatal): ${err.message}`);
-    }
   }
 
   // ── Backfill entities → CMS REST API ──────────────────────────────────────

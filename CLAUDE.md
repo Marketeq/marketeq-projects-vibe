@@ -25,25 +25,14 @@ Read this before doing anything else.
 - The env-driven login rule (no hardcoded URLs, cookie flags, or CORS origins) enforced by the SOP check
 - The QA promotion flow scripts and role separation between code review and devops
 
-**All CI/CD runs on Jenkins (72.61.77.231:8080).** GitHub Actions are disabled (free plan minutes exhausted). GitHub webhook delivers events to the Jenkins `github-webhook-dispatcher` pipeline.
+**Automated enforcement that runs on every PR (Jenkins CI — 72.61.77.231:8080):**
+1. Jenkins `sop-check` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, Render coupling on dev-main, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
+2. Jenkins `ai-breakage-check` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code. Blocks the PR if it detects likely regression.
+3. Jenkins `gitleaks` — secret scanning on every PR.
+4. Jenkins `code-review` — AI code review on every PR to `dev-main`, `staging`, `live-mvp`.
+5. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
 
-**PR gate checks (posted as GitHub commit statuses):**
-1. `Jenkins / SOP Check` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
-2. `Jenkins / AI Breakage Detector` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code.
-3. `Jenkins / Secret Scan` — gitleaks secret scanning on every PR.
-4. `Jenkins / Login Gate` — blocks PRs touching login/auth files unless repo owner approves.
-5. `Jenkins / Code Review` — AI code review on every PR to protected branches.
-6. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
-
-**Post-merge enforcement (triggered on push to protected branches):**
-7. `post-merge-audit` — auto-reverts merges that bypassed SOP checks.
-8. `login-violation-alert` — opens issues when login files are merged without owner approval.
-
-**Post-deploy automation:**
-- Deployment orchestration (Render, Vercel, n8n)
-- Post-deploy smoke tests
-- Staging sync (`sync-dev-main-to-staging`)
-- Stale branch cleanup (weekly)
+> **Note:** All GitHub Actions workflows have been disabled (2026-05-22). Jenkins is the sole CI/CD runner. Old workflow files remain in `.github/workflows/` for reference but are inactive.
 
 If you are reviewing a PR via Claude CLI, use the prompt in §10 of the SOP verbatim.
 
