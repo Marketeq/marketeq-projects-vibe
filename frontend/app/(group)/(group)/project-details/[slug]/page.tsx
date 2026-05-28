@@ -506,6 +506,9 @@ export default function ProjectDetails() {
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
   const [activeAnchor, setActiveAnchor] = React.useState("Description")
+  const [relatedSearches, setRelatedSearches] = React.useState<string[]>([])
+  const [recommendedProjects, setRecommendedProjects] = React.useState<any[]>([])
+  const [recentlyViewed, setRecentlyViewed] = React.useState<any[]>([])
 
   // --- Sidebar pricing (docs §01, §14) ---
   const sidebarPricing = React.useMemo(() => {
@@ -653,6 +656,36 @@ export default function ProjectDetails() {
 
     fetchProject()
   }, [params.slug, router])
+
+  // Fetch related data + track view when project loads
+  React.useEffect(() => {
+    if (!project?.id) return
+    const apiBase = getPublicApiUrl() || "http://localhost:4000"
+
+    // Related searches from project metadata
+    fetch(`${apiBase}/v1/projects/${project.id}/related-searches`)
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRelatedSearches)
+      .catch(() => {})
+
+    // Recommended projects (JWT required — best effort)
+    fetch(`${apiBase}/v1/recently-viewed/recommended`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRecommendedProjects)
+      .catch(() => {})
+
+    // Recently viewed (JWT required — best effort)
+    fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRecentlyViewed)
+      .catch(() => {})
+
+    // Track this view (fire and forget)
+    fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {})
+  }, [project?.id])
 
   // Scroll to top when page loads
   React.useEffect(() => {
@@ -4734,111 +4767,39 @@ export default function ProjectDetails() {
                 </div>
               </div>
 
+              {(project?.similarProjects?.length > 0) ? (
               <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <SwiperSlide className="w-[355px]" key={index}>
-                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                        <NextImage
-                          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                          src="/dashboard.png"
-                          alt="Dashboard"
-                          fill
-                          sizes="33vw"
-                        />
-                      </div>
-
-                      <div className="mt-3 flex items-start gap-x-3">
-                        <NextLink
-                          href="#"
-                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                        >
-                          The Ultimate Mobile App Experience
-                        </NextLink>
-
-                        <div className="inline-flex items-center gap-x-1">
-                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                            4.9 <span className="font-extralight">(5)</span>
+                {project.similarProjects.map((sp: any) => (
+                  <SwiperSlide className="w-[355px]" key={sp.id}>
+                    <NextLink href={`/project-details/${sp.slug}`}>
+                      <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                          <NextImage
+                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                            src={sp.thumbnail || "/dashboard.png"}
+                            alt={sp.title}
+                            fill
+                            sizes="33vw"
+                          />
+                        </div>
+                        <div className="mt-3">
+                          <span className="font-bold text-base leading-none text-dark-blue-400 hover:underline">
+                            {sp.title}
                           </span>
                         </div>
-                      </div>
-
-                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                        Brief Description of the project. Lorem ipsum dolor sit
-                        amet, consectetur adipiscing elit, sed do eiusmod tempor
-                        incididunt.
-                      </p>
-
-                      <div className="mt-[14.5px] flex flex-col gap-y-3">
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            Starting from 12 weeks
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            $50,000 budget
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex items-end justify-between">
-                        <AvatarGroup
-                          max={5}
-                          size="sm"
-                          excess
-                          excessClassName="border-gray-300 text-gray-500"
-                        >
-                          {Array.from({ length: 6 }).map((_, i) => (
-                            <Avatar
-                              key={i}
-                              size="sm"
-                              className="border-2 border-white hover:ring-0 active:ring-0"
-                            >
-                              <AvatarImage src="/woman.jpg" alt="Woman" />
-                              <AvatarFallback>W</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-
-                        <FavoriteRoot>
-                          {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-block">
-                                    <Favorite />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {pressed ? (
-                                    <span className="inline-flex items-center gap-x-1">
-                                      <Check className="size-[15px] shrink-0 text-green-500" />
-                                      Saved
-                                    </span>
-                                  ) : (
-                                    "Save to favorites"
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </FavoriteRoot>
-                      </div>
-                    </article>
+                      </article>
+                    </NextLink>
                   </SwiperSlide>
                 ))}
               </SwiperContent>
+              ) : (
+                <p className="text-sm text-gray-500 py-4">No similar projects found.</p>
+              )}
             </div>
           </SwiperRoot>
 
           {/* Recommended Projects */}
+          {recommendedProjects.length > 0 && (
           <SwiperRoot>
             <div className="space-y-6 mt-[50px]">
               <div className="flex items-end justify-between">
@@ -4887,108 +4848,68 @@ export default function ProjectDetails() {
               </div>
 
               <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <SwiperSlide className="w-[355px]" key={index}>
-                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                        <NextImage
-                          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                          src="/dashboard.png"
-                          alt="Dashboard"
-                          fill
-                          sizes="33vw"
-                        />
-                      </div>
-
-                      <div className="mt-3 flex items-start gap-x-3">
-                        <NextLink
-                          href="#"
-                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                        >
-                          The Ultimate Mobile App Experience
-                        </NextLink>
-
-                        <div className="inline-flex items-center gap-x-1">
-                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                            4.9 <span className="font-extralight">(5)</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                        Brief Description of the project. Lorem ipsum dolor sit
-                        amet, consectetur adipiscing elit, sed do eiusmod tempor
-                        incididunt.
-                      </p>
-
-                      <div className="mt-[14.5px] flex flex-col gap-y-3">
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            Starting from 12 weeks
-                          </span>
+                {recommendedProjects.map((rp: any) => (
+                  <SwiperSlide className="w-[355px]" key={rp.id}>
+                    <NextLink href={`/project-details/${rp.slug}`}>
+                      <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                          <NextImage
+                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                            src={rp.thumbnail || "/dashboard.png"}
+                            alt={rp.title}
+                            fill
+                            sizes="33vw"
+                          />
                         </div>
 
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            $50,000 budget
+                        <div className="mt-3 flex items-start gap-x-3">
+                          <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
+                            {rp.title}
                           </span>
-                        </div>
-                      </div>
 
-                      <div className="mt-5 flex items-end justify-between">
-                        <AvatarGroup
-                          max={5}
-                          size="sm"
-                          excess
-                          excessClassName="border-gray-300 text-gray-500"
-                        >
-                          {Array.from({ length: 6 }).map((_, i) => (
-                            <Avatar
-                              key={i}
-                              size="sm"
-                              className="border-2 border-white hover:ring-0 active:ring-0"
-                            >
-                              <AvatarImage src="/woman.jpg" alt="Woman" />
-                              <AvatarFallback>W</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-
-                        <FavoriteRoot>
-                          {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-block">
-                                    <Favorite />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {pressed ? (
-                                    <span className="inline-flex items-center gap-x-1">
-                                      <Check className="size-[15px] shrink-0 text-green-500" />
-                                      Saved
-                                    </span>
-                                  ) : (
-                                    "Save to favorites"
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                          {rp.rating > 0 && (
+                          <div className="inline-flex items-center gap-x-1">
+                            <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                            <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                              {rp.rating} <span className="font-extralight">({rp.reviewCount})</span>
+                            </span>
+                          </div>
                           )}
-                        </FavoriteRoot>
-                      </div>
-                    </article>
+                        </div>
+
+                        {rp.shortDescription && (
+                        <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
+                          {rp.shortDescription}
+                        </p>
+                        )}
+
+                        <div className="mt-[14.5px] flex flex-col gap-y-3">
+                          {rp.duration && (
+                          <div className="flex items-center gap-x-[6.4px]">
+                            <Clock className="size-[18px] shrink-0 text-primary-500" />
+                            <span className="font-medium text-sm leading-none text-dark-blue-400">
+                              {rp.duration}
+                            </span>
+                          </div>
+                          )}
+
+                          {rp.budget != null && (
+                          <div className="flex items-center gap-x-[6.4px]">
+                            <Money className="size-[18px] shrink-0 text-primary-500" />
+                            <span className="font-medium text-sm leading-none text-dark-blue-400">
+                              ${Number(rp.budget).toLocaleString()} budget
+                            </span>
+                          </div>
+                          )}
+                        </div>
+                      </article>
+                    </NextLink>
                   </SwiperSlide>
                 ))}
               </SwiperContent>
             </div>
           </SwiperRoot>
+          )}
 
           {/* More Ways to Explore */}
           <div className="mt-[50px]">
@@ -5017,252 +4938,30 @@ export default function ProjectDetails() {
               </RadixTabs.List>
 
               <TabsContent value="Related Categories">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Mobile Applications
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      Android Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Cross-Platform Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Native Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Web Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Gaming Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      E-commerce Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      React Native
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Flutter
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Mobile Applications
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      Android Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Cross-Platform Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Native Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Web Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Gaming Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      E-commerce Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      React Native
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Flutter
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Mobile Applications
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      Android Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Cross-Platform Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Native Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Web Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Gaming Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      E-commerce Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      React Native
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Flutter
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Mobile Applications
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      Android Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Cross-Platform Development
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Native Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Web Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Gaming Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      E-commerce Applications
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      React Native
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Flutter
-                    </Button>
-                  </div>
+                <div className="mt-5 py-5 flex flex-wrap gap-3">
+                  {(project?.relatedCategories?.length > 0) ? (
+                    project.relatedCategories.map((cat: string, i: number) => (
+                      <Button key={i} variant="link" className="text-dark-blue-400">
+                        {cat}
+                      </Button>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No related categories found.</p>
+                  )}
                 </div>
               </TabsContent>
 
               <TabsContent value="Related Skills">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Programming Languages
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      Python
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      JavaScript
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      TypeScript
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Java
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      C++
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Go
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Rust
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Swift
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Frameworks
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      React
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Angular
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Vue.js
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Next.js
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Django
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      NestJS
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Spring Boot
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Express
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Cloud & DevOps
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      AWS
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Azure
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Google Cloud
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Docker
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Kubernetes
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      CI/CD
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Terraform
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Jenkins
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-y-3 items-start">
-                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Data & AI
-                    </h2>
-
-                    <Button variant="link" className="text-dark-blue-400">
-                      Machine Learning
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Data Science
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      TensorFlow
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      PyTorch
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      NLP
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      Computer Vision
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      PostgreSQL
-                    </Button>
-                    <Button variant="link" className="text-dark-blue-400">
-                      MongoDB
-                    </Button>
-                  </div>
+                <div className="mt-5 py-5 flex flex-wrap gap-3">
+                  {(project?.relatedSkills?.length > 0) ? (
+                    project.relatedSkills.map((skill: string, i: number) => (
+                      <Button key={i} variant="link" className="text-dark-blue-400">
+                        {skill}
+                      </Button>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No related skills found.</p>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
@@ -5275,14 +4974,7 @@ export default function ProjectDetails() {
             </h1>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {[
-                "Python", "JavaScript", "TypeScript", "React", "Node.js", "Django", "Flask", "Ruby", "Go", "Rust",
-                "Machine Learning", "Data Science", "PostgreSQL", "MongoDB", "Redis", "REST API", "GraphQL", "Docker", "Kubernetes", "AWS",
-                "Azure", "CI/CD", "Microservices", "React Native", "Flutter", "Swift", "Kotlin", "Java", "C++", "Scala",
-                "DevOps", "Agile", "Scrum", "TensorFlow", "PyTorch", "NLP", "Blockchain", "Web3", "Solidity", "Firebase",
-                "Next.js", "Vue.js", "Angular", "Svelte", "Tailwind CSS", "Sass", "Figma", "Sketch", "Jira", "Git",
-                "Webpack", "Vite", "Express", "NestJS", "Spring Boot", "Laravel", "PHP", "Elixir", "Haskell", "SQL",
-              ].map((label, i) => (
+              {relatedSearches.map((label, i) => (
                 <Badge
                   key={i}
                   className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300 cursor-pointer hover:border-dark-blue-400 hover:text-dark-blue-400 transition duration-300"
@@ -5297,6 +4989,7 @@ export default function ProjectDetails() {
         </div>
 
         {/* Recently Viewed */}
+        {recentlyViewed.length > 0 && (
         <div className="pt-[50px]">
           <div className="flex items-center justify-between">
             <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
@@ -5309,47 +5002,54 @@ export default function ProjectDetails() {
           </div>
 
           <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <article key={i} className="flex items-start gap-x-6">
-                <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
-                  <NextImage
-                    className="object-cover"
-                    src="/dashboard.png"
-                    alt="Dashboard"
-                    sizes="25vw"
-                    fill
-                  />
-                </div>
-
-                <div className="pr-[45.54px]">
-                  <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
-                    BI Sales Forecasting & Inventory Management
-                  </h1>
-
-                  <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
-                    Tempor nam commodo sapien lobortis pellentesque non. Elementum
-                    adipiscing sit senectus faucibus mauris amet. Elementum vitae
-                    semper lorem ornare congue. Ullamcorper nulla non integer
-                    curabitur sed. Pulvinar est vivamus aliquam fermentum ipsum
-                    pellentesque ut lacus.
-                  </p>
-
-                  <div className="mt-3 flex items-center gap-x-3">
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      Starting at $25,000
-                    </span>
-
-                    <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
-
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      2 weeks
-                    </span>
+            {recentlyViewed.map((rv: any) => (
+              <NextLink key={rv.id} href={`/project-details/${rv.slug}`}>
+                <article className="flex items-start gap-x-6">
+                  <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
+                    <NextImage
+                      className="object-cover"
+                      src={rv.thumbnail || "/dashboard.png"}
+                      alt={rv.title}
+                      sizes="25vw"
+                      fill
+                    />
                   </div>
-                </div>
-              </article>
+
+                  <div className="pr-[45.54px]">
+                    <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
+                      {rv.title}
+                    </h1>
+
+                    {rv.shortDescription && (
+                    <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
+                      {rv.shortDescription}
+                    </p>
+                    )}
+
+                    <div className="mt-3 flex items-center gap-x-3">
+                      {rv.budget != null && (
+                      <span className="text-sm font-medium leading-none text-dark-blue-400">
+                        Starting at ${Number(rv.budget).toLocaleString()}
+                      </span>
+                      )}
+
+                      {rv.budget != null && rv.duration && (
+                      <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
+                      )}
+
+                      {rv.duration && (
+                      <span className="text-sm font-medium leading-none text-dark-blue-400">
+                        {rv.duration}
+                      </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              </NextLink>
             ))}
           </div>
         </div>
+        )}
 
       </div>
 
