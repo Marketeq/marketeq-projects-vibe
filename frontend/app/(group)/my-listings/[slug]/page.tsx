@@ -3658,7 +3658,7 @@ export default function ProjectDetails() {
 
                     <TabsContent value="Description">
                       <div id="section-Description" className="pt-6">
-                        {!project.description && (
+                        {getRichTextCharacterCount(project.description || "") === 0 && (
                           <Alert
                             variant="primary"
                             className="mb-6 items-center"
@@ -3684,7 +3684,7 @@ export default function ProjectDetails() {
                             </NextLink>
                           </Alert>
                         )}
-                        {project.description ? (
+                        {getRichTextCharacterCount(project.description || "") > 0 ? (
                           <DescriptionCard
                             descHtml={project.description}
                             onEdit={() => {
