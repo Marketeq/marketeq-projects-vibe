@@ -188,17 +188,6 @@ function useProvideAuth() {
   const getUser = () => {
     setIsLoading(true)
 
-    const accessToken = Cookies.get("access_token")
-    if (!accessToken) {
-      setUser(null)
-      setIsAuthChecked(true)
-      setIsLoading(false)
-      return
-    }
-
-    // Ensure cookie is always set with path="/" so it's available on all routes
-    Cookies.set("access_token", accessToken, { path: "/" })
-
     UserAPI.me()
       .then((response) => {
         if (response?.status === 200) {
@@ -248,11 +237,13 @@ function useProvideAuth() {
 
   const logoutHandler = async () => {
     try {
-      const refreshToken = Cookies.get("refresh_token")
-      await AuthAPI.Logout(refreshToken)
+      await AuthAPI.Logout()
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      document.cookie =
+        "refresh_token=; Path=/; Max-Age=0; SameSite=None; Secure"
+      document.cookie = "session_id=; Path=/; Max-Age=0; SameSite=None; Secure"
       Cookies.remove("access_token", { path: "/" })
       Cookies.remove("accessToken", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
@@ -280,9 +271,7 @@ function useProvideAuth() {
 
   // Heartbeat: keeps session alive and detects revocation
   useEffect(() => {
-    const accessToken = Cookies.get("access_token")
-    const sessionId = Cookies.get("session_id")
-    if (!accessToken || !sessionId) return
+    if (!user) return
 
     const tick = () => {
       AuthAPI.Heartbeat().catch((err) => {

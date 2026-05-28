@@ -14,7 +14,6 @@ import { containsOneLowerCaseLetter, hookFormHasError } from "@/utils/functions"
 import { Eye, EyeOff } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
-import Cookies from "js-cookie"
 import { Controller, SubmitHandler, useForm } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
@@ -133,15 +132,7 @@ export default function SignIn() {
         code: twoFactorCode,
         partialToken,
       })
-      if (res?.data?.access_token) {
-        Cookies.set("access_token", res.data.access_token, { path: "/" })
-        if (res.data.refresh_token) {
-          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-        }
-        if (res.data.sessionId) {
-          Cookies.set("session_id", res.data.sessionId, { path: "/" })
-        }
-
+      if (res?.data?.user) {
         let nextUser = res.data.user
         try {
           const meResponse = await UserAPI.me()
@@ -209,17 +200,7 @@ export default function SignIn() {
           return
         }
 
-        if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response.data.access_token, { path: "/" })
-          if (response.data.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, {
-              path: "/",
-            })
-          }
-          if (response.data.sessionId) {
-            Cookies.set("session_id", response.data.sessionId, { path: "/" })
-          }
-
+        if (response?.status === 200 && response?.data?.user) {
           let nextUser = response.data.user
           try {
             const meResponse = await UserAPI.me()

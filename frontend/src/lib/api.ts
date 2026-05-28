@@ -21,6 +21,7 @@ export async function apiFetch<T = any>(
 
   const res = await fetch(finalUrl, {
     ...(opts as any),
+    credentials: opts.credentials ?? "include",
     headers: {
       "Content-Type": "application/json",
       ...(headers || {}),
