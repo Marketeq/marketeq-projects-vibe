@@ -2461,7 +2461,7 @@ const RichTextEditor = ({
             <div className="relative flex-1 min-h-0 overflow-hidden">
               <div className="pointer-events-none absolute inset-0 bg-gray-50" />
               <div className="relative z-10 h-full overflow-y-auto">
-                <div className="p-[50px]">
+                <div className="px-[50px]">
                   <div
                     data-rich-text-fullscreen-content="true"
                     className="mx-auto w-full max-w-[818px]"
