@@ -17,7 +17,7 @@ const COLLECTION        = 'job-listings';
 
 const CMS_RECORDS = [
   {
-    sourceId: SEED_IDS.PUBLISHED_SERVICE,
+    sourceId: SEED_IDS.DEVOPS_SERVICE,
     title: 'Cloud Infrastructure DevOps Support',
     ndaEnabled: false,
     industries: [
@@ -53,7 +53,7 @@ const CMS_RECORDS = [
     ],
   },
   {
-    sourceId: SEED_IDS.DRAFT_PROJECT,
+    sourceId: SEED_IDS.ECOMMERCE_PLATFORM,
     title: 'B2B SaaS Analytics Platform',
     ndaEnabled: true,
     industries: [
