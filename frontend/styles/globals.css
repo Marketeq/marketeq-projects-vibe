@@ -167,6 +167,11 @@ body {
   font-size: 16px;
 }
 
+/* Bold markers only when the entire line is bold */
+.rich-text-content li:has(> p > strong:only-child)::marker {
+  font-weight: 700;
+}
+
 /* ── Image alignment — full width (default) ── */
 .rich-text-content img {
   max-width: 100%;
