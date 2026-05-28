@@ -156,6 +156,22 @@ body {
   margin: 0;
 }
 
+/* Markers scale with the content font size */
+.rich-text-content li:has([data-font-size="large-heading"])::marker {
+  font-size: 24px;
+}
+.rich-text-content li:has([data-font-size="normal-heading"])::marker {
+  font-size: 20px;
+}
+.rich-text-content li:has([data-font-size="small-heading"])::marker {
+  font-size: 16px;
+}
+
+/* Bold markers when content is bold */
+.rich-text-content li:has(> p > strong:first-child)::marker {
+  font-weight: 700;
+}
+
 /* ── Image alignment — full width (default) ── */
 .rich-text-content img {
   max-width: 100%;
