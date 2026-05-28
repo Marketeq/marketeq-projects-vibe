@@ -15,11 +15,14 @@ import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowUp,
   Attachment01,
   ChartBreakoutCircle,
   Check,
   CheckCircle,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   FileText,
   Flag,
@@ -64,7 +67,15 @@ import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
+import { Money } from "@/components/money"
 import NextLink from "@/components/next-link"
+import { SwiperSlide } from "swiper/react"
+import {
+  SwiperContent,
+  SwiperNextTrigger,
+  SwiperPrevTrigger,
+  SwiperRoot,
+} from "@/components/swiper"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import {
@@ -494,6 +505,7 @@ export default function ProjectDetails() {
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
+  const [activeAnchor, setActiveAnchor] = React.useState("Description")
 
   // --- Sidebar pricing (docs §01, §14) ---
   const sidebarPricing = React.useMemo(() => {
@@ -943,10 +955,12 @@ export default function ProjectDetails() {
                 selected === "Live Chat" && "sticky top-[65px] z-10"
               )}
             >
-              <Button className="group" variant="link" visual="gray">
-                <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
-                Back To Search
-              </Button>
+              <div className="flex-1 flex justify-start">
+                <Button className="group" variant="link" visual="gray">
+                  <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
+                  Back To Search
+                </Button>
+              </div>
 
               <DisclosureTrigger
                 value={
@@ -962,15 +976,20 @@ export default function ProjectDetails() {
                 </Button>
               </DisclosureTrigger>
 
-              <DisclosureTrigger
-                value={
-                  selected === "View Project Scope"
-                    ? "Details"
-                    : "View Project Scope"
-                }
-                asChild
-              >
-                <Button className="group" variant="link" visual="gray">
+              <div className="flex-1 flex justify-end">
+                <Button
+                  className="group"
+                  variant="link"
+                  visual="gray"
+                  data-state={selected === "View Project Scope" ? "active" : "inactive"}
+                  onClick={() =>
+                    setSelected(
+                      selected === "View Project Scope"
+                        ? "Details"
+                        : "View Project Scope"
+                    )
+                  }
+                >
                   {selected === "View Project Scope"
                     ? "Close Scope"
                     : project?.listingType === "service"
@@ -978,7 +997,7 @@ export default function ProjectDetails() {
                       : "View Project Scope"}
                   <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
                 </Button>
-              </DisclosureTrigger>
+              </div>
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
               <Inbox>
@@ -1055,7 +1074,7 @@ export default function ProjectDetails() {
               <div className="mt-6">
                 <Tabs
                   className="group/tabs"
-                  defaultValue="Description"
+                  value={activeAnchor}
                   ref={tabsRef}
                   data-position={isSticky ? "sticky" : "default"}
                 >
@@ -1080,19 +1099,25 @@ export default function ProjectDetails() {
                           </div>
                         </div>
                         <TabsList className="w-full justify-start flex-auto group-data-[position=sticky]/tabs:px-0">
-                          <TabsTrigger value="Description">
-                            Description
-                          </TabsTrigger>
-                          <TabsTrigger value="Deliverables">
-                            Deliverables
-                          </TabsTrigger>
-                          <TabsTrigger value="Project Details">
-                            Project Details
-                          </TabsTrigger>
-                          <TabsTrigger value="How it Works">
-                            How it Works
-                          </TabsTrigger>
-                          <TabsTrigger value="Questions">Questions</TabsTrigger>
+                          {([
+                            ["Description", "section-description"],
+                            ["Deliverables", "section-deliverables"],
+                            ["Project Details", "section-project-details"],
+                            ["How it Works", "section-how-it-works"],
+                            ["Questions", "section-questions"],
+                          ] as const).map(([label, id]) => (
+                            <TabsTrigger
+                              key={label}
+                              value={label}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                setActiveAnchor(label)
+                                document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+                              }}
+                            >
+                              {label}
+                            </TabsTrigger>
+                          ))}
                         </TabsList>
                       </div>
                       <div className="flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
@@ -1110,8 +1135,8 @@ export default function ProjectDetails() {
                     </div>
                   </div>
 
-                  <TabsContent value="Description">
-                    <div className="pt-6">
+                  <div>
+                    <div id="section-description" className="pt-6">
                       <ShowMoreLessRoot>
                         {({ isShowing, setIsShowing, scrollHeight }) => (
                           <div
@@ -1180,7 +1205,7 @@ export default function ProjectDetails() {
                               scrollHeight > 456 && !isShowing ? "h-[456px]" : "h-auto"
                             )}
                           >
-                            <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
+                            <h2 id="section-deliverables" className="text-xl leading-none text-dark-blue-400 font-semibold scroll-mt-[120px]">
                               Deliverables
                             </h2>
 
@@ -1302,7 +1327,7 @@ export default function ProjectDetails() {
                         )}
                       </ShowMoreLessRoot>
 
-                      <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div id="section-project-details" className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[120px]">
                         <div className="p-6 border-b border-gray-200">
                           <h2 className="text-xl leading-none font-bold text-dark-blue-400">
                             Project Details
@@ -1744,11 +1769,12 @@ export default function ProjectDetails() {
                         )}
                       </div>
 
+                      <div id="section-how-it-works" className="scroll-mt-[120px]" />
                       <ProjectDetailsStepsSection
                         steps={projectStaticContent.howItWorks.steps}
                       />
 
-                      <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div id="section-questions" className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[120px]">
                         <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                           Questions
                         </h1>
@@ -3522,7 +3548,7 @@ export default function ProjectDetails() {
                       </Tabs>
                       </>}
                     </div>
-                  </TabsContent>
+                  </div>
                 </Tabs>
               </div>
             </TabsContent>
@@ -4655,6 +4681,753 @@ export default function ProjectDetails() {
           </div>
         </div>
       </div>
+
+      <div className="pb-[100px]" />
+
+      {/* Similar Projects — full-width section */}
+      <div className="-mx-[100px] px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
+        <div>
+          <SwiperRoot>
+            <div className="space-y-6">
+              <div className="flex items-end justify-between">
+                <div className="space-y-2">
+                  <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                    Similar Projects
+                  </h1>
+
+                  <p className="text-lg font-light text-dark-blue-400 leading-none">
+                    Users who have viewed this project have also expressed
+                    interest in these as well
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-x-8">
+                  <Button
+                    className="underline"
+                    size="lg"
+                    visual="gray"
+                    variant="link"
+                  >
+                    View More
+                  </Button>
+
+                  <div className="flex items-center gap-x-3">
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
+                </div>
+              </div>
+
+              <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <SwiperSlide className="w-[355px]" key={index}>
+                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                        <NextImage
+                          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                          src="/dashboard.png"
+                          alt="Dashboard"
+                          fill
+                          sizes="33vw"
+                        />
+                      </div>
+
+                      <div className="mt-3 flex items-start gap-x-3">
+                        <NextLink
+                          href="#"
+                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                        >
+                          The Ultimate Mobile App Experience
+                        </NextLink>
+
+                        <div className="inline-flex items-center gap-x-1">
+                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                            4.9 <span className="font-extralight">(5)</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                        Brief Description of the project. Lorem ipsum dolor sit
+                        amet, consectetur adipiscing elit, sed do eiusmod tempor
+                        incididunt.
+                      </p>
+
+                      <div className="mt-[14.5px] flex flex-col gap-y-3">
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            Starting from 12 weeks
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            $50,000 budget
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-end justify-between">
+                        <AvatarGroup
+                          max={5}
+                          size="sm"
+                          excess
+                          excessClassName="border-gray-300 text-gray-500"
+                        >
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <Avatar
+                              key={i}
+                              size="sm"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                            >
+                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                              <AvatarFallback>W</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+
+                        <FavoriteRoot>
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
+                      </div>
+                    </article>
+                  </SwiperSlide>
+                ))}
+              </SwiperContent>
+            </div>
+          </SwiperRoot>
+
+          {/* Recommended Projects */}
+          <SwiperRoot>
+            <div className="space-y-6 mt-[50px]">
+              <div className="flex items-end justify-between">
+                <div className="space-y-2">
+                  <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                    Recommended Projects
+                  </h1>
+
+                  <p className="text-lg font-light text-dark-blue-400 leading-none">
+                    These projects are recommended based on your recent searches
+                    and browsing history
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-x-8">
+                  <Button
+                    className="underline"
+                    size="lg"
+                    visual="gray"
+                    variant="link"
+                  >
+                    View More
+                  </Button>
+
+                  <div className="flex items-center gap-x-3">
+                    <SwiperPrevTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronLeft className="size-[18px]" />
+                      </IconButton>
+                    </SwiperPrevTrigger>
+                    <SwiperNextTrigger asChild>
+                      <IconButton
+                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                        visual="gray"
+                        variant="outlined"
+                      >
+                        <ChevronRight className="size-[18px]" />
+                      </IconButton>
+                    </SwiperNextTrigger>
+                  </div>
+                </div>
+              </div>
+
+              <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <SwiperSlide className="w-[355px]" key={index}>
+                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                        <NextImage
+                          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                          src="/dashboard.png"
+                          alt="Dashboard"
+                          fill
+                          sizes="33vw"
+                        />
+                      </div>
+
+                      <div className="mt-3 flex items-start gap-x-3">
+                        <NextLink
+                          href="#"
+                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                        >
+                          The Ultimate Mobile App Experience
+                        </NextLink>
+
+                        <div className="inline-flex items-center gap-x-1">
+                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                            4.9 <span className="font-extralight">(5)</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                        Brief Description of the project. Lorem ipsum dolor sit
+                        amet, consectetur adipiscing elit, sed do eiusmod tempor
+                        incididunt.
+                      </p>
+
+                      <div className="mt-[14.5px] flex flex-col gap-y-3">
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            Starting from 12 weeks
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            $50,000 budget
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-end justify-between">
+                        <AvatarGroup
+                          max={5}
+                          size="sm"
+                          excess
+                          excessClassName="border-gray-300 text-gray-500"
+                        >
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <Avatar
+                              key={i}
+                              size="sm"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                            >
+                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                              <AvatarFallback>W</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+
+                        <FavoriteRoot>
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
+                      </div>
+                    </article>
+                  </SwiperSlide>
+                ))}
+              </SwiperContent>
+            </div>
+          </SwiperRoot>
+
+          {/* More Ways to Explore */}
+          <div className="mt-[50px]">
+            <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
+              More Ways to Explore
+            </h1>
+
+            <Tabs className="mt-5" defaultValue="Related Categories">
+              <RadixTabs.List className="flex items-center gap-x-3">
+                <TabsTrigger
+                  variant="unstyled"
+                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                  value="Related Categories"
+                  showUnderline={false}
+                >
+                  Related Categories
+                </TabsTrigger>
+                <TabsTrigger
+                  variant="unstyled"
+                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                  value="Related Skills"
+                  showUnderline={false}
+                >
+                  Related Skills
+                </TabsTrigger>
+              </RadixTabs.List>
+
+              <TabsContent value="Related Categories">
+                <div className="mt-5 py-5 flex items-start justify-between">
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Mobile Applications
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      Android Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Cross-Platform Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Native Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Web Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Gaming Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      E-commerce Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      React Native
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Flutter
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Mobile Applications
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      Android Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Cross-Platform Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Native Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Web Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Gaming Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      E-commerce Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      React Native
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Flutter
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Mobile Applications
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      Android Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Cross-Platform Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Native Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Web Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Gaming Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      E-commerce Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      React Native
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Flutter
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Mobile Applications
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      Android Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Cross-Platform Development
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Native Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Web Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Gaming Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      E-commerce Applications
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      React Native
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Flutter
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="Related Skills">
+                <div className="mt-5 py-5 flex items-start justify-between">
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Programming Languages
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      Python
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      JavaScript
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      TypeScript
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Java
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      C++
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Go
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Rust
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Swift
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Frameworks
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      React
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Angular
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Vue.js
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Next.js
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Django
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      NestJS
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Spring Boot
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Express
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Cloud & DevOps
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      AWS
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Azure
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Google Cloud
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Docker
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Kubernetes
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      CI/CD
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Terraform
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Jenkins
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-y-3 items-start">
+                    <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Data & AI
+                    </h2>
+
+                    <Button variant="link" className="text-dark-blue-400">
+                      Machine Learning
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Data Science
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      TensorFlow
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      PyTorch
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      NLP
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      Computer Vision
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      PostgreSQL
+                    </Button>
+                    <Button variant="link" className="text-dark-blue-400">
+                      MongoDB
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          {/* Related Searches */}
+          <div className="mt-[50px]">
+            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+              Related Searches
+            </h1>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              {[
+                "Python", "JavaScript", "TypeScript", "React", "Node.js", "Django", "Flask", "Ruby", "Go", "Rust",
+                "Machine Learning", "Data Science", "PostgreSQL", "MongoDB", "Redis", "REST API", "GraphQL", "Docker", "Kubernetes", "AWS",
+                "Azure", "CI/CD", "Microservices", "React Native", "Flutter", "Swift", "Kotlin", "Java", "C++", "Scala",
+                "DevOps", "Agile", "Scrum", "TensorFlow", "PyTorch", "NLP", "Blockchain", "Web3", "Solidity", "Firebase",
+                "Next.js", "Vue.js", "Angular", "Svelte", "Tailwind CSS", "Sass", "Figma", "Sketch", "Jira", "Git",
+                "Webpack", "Vite", "Express", "NestJS", "Spring Boot", "Laravel", "PHP", "Elixir", "Haskell", "SQL",
+              ].map((label, i) => (
+                <Badge
+                  key={i}
+                  className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300 cursor-pointer hover:border-dark-blue-400 hover:text-dark-blue-400 transition duration-300"
+                  visual="gray"
+                  size="lg"
+                >
+                  {label}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Recently Viewed */}
+        <div className="pt-[50px]">
+          <div className="flex items-center justify-between">
+            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
+              Recently Viewed
+            </h1>
+
+            <Button variant="link" visual="gray">
+              View All
+            </Button>
+          </div>
+
+          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <article key={i} className="flex items-start gap-x-6">
+                <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
+                  <NextImage
+                    className="object-cover"
+                    src="/dashboard.png"
+                    alt="Dashboard"
+                    sizes="25vw"
+                    fill
+                  />
+                </div>
+
+                <div className="pr-[45.54px]">
+                  <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
+                    BI Sales Forecasting & Inventory Management
+                  </h1>
+
+                  <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
+                    Tempor nam commodo sapien lobortis pellentesque non. Elementum
+                    adipiscing sit senectus faucibus mauris amet. Elementum vitae
+                    semper lorem ornare congue. Ullamcorper nulla non integer
+                    curabitur sed. Pulvinar est vivamus aliquam fermentum ipsum
+                    pellentesque ut lacus.
+                  </p>
+
+                  <div className="mt-3 flex items-center gap-x-3">
+                    <span className="text-sm font-medium leading-none text-dark-blue-400">
+                      Starting at $25,000
+                    </span>
+
+                    <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
+
+                    <span className="text-sm font-medium leading-none text-dark-blue-400">
+                      2 weeks
+                    </span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Ready to Work CTA */}
+      <div className="-mx-[100px] px-[100px] py-[70px] bg-gray-50">
+        <div className="relative">
+          <h1 className="text-[30px] font-bold text-center leading-none text-dark-blue-400">
+            Ready to Work With Premium Quality Talent?
+          </h1>
+
+          <p className="text-lg font-extralight leading-none mt-6 text-center text-dark-blue-400">
+            Click below to create your free account
+          </p>
+
+          <div className="flex items-center justify-center mt-[50px]">
+            <Button size="2xl">Create My Account</Button>
+          </div>
+
+          <svg
+            className="absolute left-0 top-1/2 -translate-y-1/2 -scale-x-100"
+            width={272}
+            height={229}
+            viewBox="0 0 272 229"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m160.177 12.936-10.808 10.83-10.83-10.807 10.807-10.831z"
+            />
+            <path
+              transform="rotate(134.94 89.48 164.252)skewX(-.12)"
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="M-1.413 0h15.302v15.302H-1.413z"
+            />
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m1.882 146.37 6.954-6.968 6.969 6.954-6.954 6.969z"
+            />
+          </svg>
+
+          <svg
+            className="absolute right-0 top-1/2 -translate-y-1/2"
+            width={272}
+            height={229}
+            viewBox="0 0 272 229"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m160.177 12.936-10.808 10.83-10.83-10.807 10.807-10.831z"
+            />
+            <path
+              transform="rotate(134.94 89.48 164.252)skewX(-.12)"
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="M-1.413 0h15.302v15.302H-1.413z"
+            />
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m1.882 146.37 6.954-6.968 6.969 6.954-6.954 6.969z"
+            />
+          </svg>
+        </div>
+      </div>
+
     </div>
   )
 }
