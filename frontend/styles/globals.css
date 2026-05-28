@@ -200,6 +200,17 @@ body {
   clear: both;
 }
 
+/* ── Drag cursor states ── */
+.rich-text-content img {
+  cursor: grab;
+}
+.rich-text-content img:active {
+  cursor: grabbing;
+}
+body.rich-text-image-dragging * {
+  cursor: grabbing !important;
+}
+
 /* ── Drag source ghost ── */
 .rich-text-content img[data-rich-text-drag-source="true"] {
   opacity: 0.4;
