@@ -143,11 +143,6 @@ export class CreateUserDto {
   @IsArray()
   jobTitles?: any[];
 
-  @ApiPropertyOptional({ example: 'talent' })
-  @IsOptional()
-  @IsString()
-  userType?: string;
-
   @ApiPropertyOptional({ example: 'Finance' })
   @IsOptional()
   @IsString()
