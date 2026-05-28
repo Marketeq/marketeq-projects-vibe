@@ -15,14 +15,11 @@ import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
   AlertCircle,
   ArrowLeft,
-  ArrowUp,
   Attachment01,
   ChartBreakoutCircle,
   Check,
   CheckCircle,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   FileText,
   Flag,
@@ -63,19 +60,13 @@ import {
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { ProjectAPI } from "@/service/http/project"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
 import { Money } from "@/components/money"
 import NextLink from "@/components/next-link"
-import { SwiperSlide } from "swiper/react"
-import {
-  SwiperContent,
-  SwiperNextTrigger,
-  SwiperPrevTrigger,
-  SwiperRoot,
-} from "@/components/swiper"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import {
@@ -612,6 +603,50 @@ export default function ProjectDetails() {
           // Try as a service
           const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           if (!svcRes.ok) {
+            // If rawSlug looks like a UUID, try the publish/draft endpoint
+            // so "View as Client" works for unpublished drafts
+            const isUuid =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                rawSlug
+              )
+            if (isUuid) {
+              try {
+                await ensureDevAuth()
+                const draftRes = await ProjectAPI.GetProjectDraft(rawSlug)
+                if (draftRes?.data) {
+                  const d = draftRes.data
+                  let featuredImage: string | null = null
+                  if (d.media) {
+                    const mediaObj = Array.isArray(d.media)
+                      ? d.media[0]
+                      : d.media
+                    if (mediaObj?.featuredImage)
+                      featuredImage = mediaObj.featuredImage
+                  }
+                  setProject({
+                    ...d,
+                    role:
+                      d.category || d.categories?.[0] || "Software Development",
+                    summary: d.shortDescription || d.fullDescription || "",
+                    description: d.fullDescription || "",
+                    featuredImage: featuredImage || d.featuredImage || null,
+                    programmingLanguages:
+                      Array.isArray(d.skills) && d.skills.length > 0
+                        ? d.skills
+                        : d.programmingLanguages,
+                    developmentTech:
+                      Array.isArray(d.industries) && d.industries.length > 0
+                        ? d.industries
+                        : d.developmentTech,
+                    listingType: d.listingType || "project",
+                  })
+                  setLoading(false)
+                  return
+                }
+              } catch {
+                // draft fetch failed — fall through
+              }
+            }
             setLoading(false)
             return
           }
@@ -4720,310 +4755,380 @@ export default function ProjectDetails() {
       {/* Similar Projects — full-width section */}
       <div className="-mx-[100px] px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
         <div>
-          <SwiperRoot>
-            <div className="space-y-6">
-              <div className="flex items-end justify-between">
-                <div className="space-y-2">
-                  <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                    Similar Projects
-                  </h1>
+          <div className="space-y-6">
+            <div className="flex items-end justify-between">
+              <div className="space-y-2">
+                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                  Similar Projects
+                </h1>
 
-                  <p className="text-lg font-light text-dark-blue-400 leading-none">
-                    Users who have viewed this project have also expressed
-                    interest in these as well
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-x-8">
-                  <Button
-                    className="underline"
-                    size="lg"
-                    visual="gray"
-                    variant="link"
-                  >
-                    View More
-                  </Button>
-
-                  <div className="flex items-center gap-x-3">
-                    <SwiperPrevTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronLeft className="size-[18px]" />
-                      </IconButton>
-                    </SwiperPrevTrigger>
-                    <SwiperNextTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronRight className="size-[18px]" />
-                      </IconButton>
-                    </SwiperNextTrigger>
-                  </div>
-                </div>
+                <p className="text-lg font-light text-dark-blue-400 leading-none">
+                  Users who have viewed this project have also expressed
+                  interest in these as well
+                </p>
               </div>
 
-              <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {(project?.similarProjects ?? []).map((sp: any) => (
-                  <SwiperSlide className="w-[355px]" key={sp.id}>
-                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                        <NextLink href={`/project-details/${sp.slug}`}>
-                          <NextImage
-                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                            src={sp.thumbnail || "/dashboard.png"}
-                            alt={sp.title}
-                            fill
-                            sizes="33vw"
-                          />
-                        </NextLink>
-                      </div>
-
-                      <div className="mt-3 flex items-start gap-x-3">
-                        <NextLink
-                          href={`/project-details/${sp.slug}`}
-                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                        >
-                          {sp.title}
-                        </NextLink>
-
-                        <div className="inline-flex items-center gap-x-1">
-                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                            4.9 <span className="font-extralight">(5)</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                        Brief Description of the project. Lorem ipsum dolor sit
-                        amet, consectetur adipiscing elit, sed do eiusmod tempor
-                        incididunt.
-                      </p>
-
-                      <div className="mt-[14.5px] flex flex-col gap-y-3">
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            Starting from 12 weeks
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            $50,000 budget
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex items-end justify-between">
-                        <AvatarGroup
-                          max={5}
-                          size="sm"
-                          excess
-                          excessClassName="border-gray-300 text-gray-500"
-                        >
-                          {Array.from({ length: 6 }).map((_, i) => (
-                            <Avatar
-                              key={i}
-                              size="sm"
-                              className="border-2 border-white hover:ring-0 active:ring-0"
-                            >
-                              <AvatarImage src="/woman.jpg" alt="Woman" />
-                              <AvatarFallback>W</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-
-                        <FavoriteRoot>
-                          {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-block">
-                                    <Favorite />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {pressed ? (
-                                    <span className="inline-flex items-center gap-x-1">
-                                      <Check className="size-[15px] shrink-0 text-green-500" />
-                                      Saved
-                                    </span>
-                                  ) : (
-                                    "Save to favorites"
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </FavoriteRoot>
-                      </div>
-                    </article>
-                  </SwiperSlide>
-                ))}
-              </SwiperContent>
+              <Button
+                variant="link"
+                visual="gray"
+                size="lg"
+                className="underline"
+              >
+                View More
+              </Button>
             </div>
-          </SwiperRoot>
+
+            <div className="gap-5 grid grid-cols-4">
+              {(project?.similarProjects ?? []).slice(0, 4).map((sp: any) => (
+                <article
+                  key={sp.id}
+                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                >
+                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
+                    <NextLink href={`/project-details/${sp.slug}`}>
+                      <NextImage
+                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                        src={sp.thumbnail || "/dashboard.png"}
+                        alt={sp.title}
+                        fill
+                        sizes="33vw"
+                      />
+                    </NextLink>
+                  </div>
+
+                  <div className="mt-3 flex items-start gap-x-3">
+                    <NextLink
+                      href={`/project-details/${sp.slug}`}
+                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                    >
+                      {sp.title}
+                    </NextLink>
+
+                    <div className="inline-flex items-center gap-x-1">
+                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                        4.9 <span className="font-extralight">(5)</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                    Brief Description of the project. Lorem ipsum dolor sit
+                    amet, consectetur adipiscing elit, sed do eiusmod tempor
+                    incididunt.
+                  </p>
+
+                  <div className="mt-[14.5px] flex flex-col gap-y-3">
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        Starting from 12 weeks
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        $50,000 budget
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-end justify-between">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AvatarGroup
+                            max={5}
+                            size="sm"
+                            excess
+                            excessClassName="border-gray-300 text-gray-500"
+                          >
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <Avatar
+                                key={i}
+                                size="sm"
+                                className="border-2 border-white hover:ring-0 active:ring-0"
+                              >
+                                <AvatarImage src="/woman.jpg" alt="Woman" />
+                                <AvatarFallback>W</AvatarFallback>
+                              </Avatar>
+                            ))}
+                          </AvatarGroup>
+                        </TooltipTrigger>
+
+                        <TooltipContent
+                          className="p-0 max-w-[262px]"
+                          size="md"
+                        >
+                          <ScrollArea
+                            className="h-[192px] p-3"
+                            scrollBar={
+                              <ScrollBar
+                                className="w-4 p-1"
+                                thumbClassName="bg-white/20"
+                              />
+                            }
+                          >
+                            <div className="space-y-3 pr-5">
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="flex items-center gap-x-[18px]">
+                                  <div className="flex items-center gap-x-2 flex-auto">
+                                    <Avatar>
+                                      <AvatarImage
+                                        src="/woman.jpg"
+                                        alt="Woman"
+                                      />
+                                      <AvatarFallback>W</AvatarFallback>
+                                    </Avatar>
+
+                                    <div className="flex flex-col flex-auto">
+                                      <div className="flex items-center gap-x-0.5">
+                                        <span className="text-xs leading-5 font-semibold text-white">
+                                          Sevil
+                                        </span>
+                                        <span className="text-[10px] leading-none font-light text-white">
+                                          @designsuperstar23
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] font-light text-white">
+                                        Full-stack Developer
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <span className="text-sm font-semibold text-white leading-5">
+                                    $75{" "}
+                                    <span className="text-[10px] font-light leading-5">
+                                      /hr
+                                    </span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <FavoriteRoot>
+                      {({ pressed }) => (
+                        <TooltipProvider delayDuration={75}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-block">
+                                <Favorite />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {pressed ? (
+                                <span className="inline-flex items-center gap-x-1">
+                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                  Saved
+                                </span>
+                              ) : (
+                                "Save to favorites"
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </FavoriteRoot>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
 
           {/* Recommended Projects */}
-          <SwiperRoot>
-            <div className="space-y-6 mt-[50px]">
-              <div className="flex items-end justify-between">
-                <div className="space-y-2">
-                  <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                    Recommended Projects
-                  </h1>
+          <div className="space-y-6 mt-[50px]">
+            <div className="flex items-end justify-between">
+              <div className="space-y-2">
+                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                  Recommended Projects
+                </h1>
 
-                  <p className="text-lg font-light text-dark-blue-400 leading-none">
-                    These projects are recommended based on your recent searches
-                    and browsing history
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-x-8">
-                  <Button
-                    className="underline"
-                    size="lg"
-                    visual="gray"
-                    variant="link"
-                  >
-                    View More
-                  </Button>
-
-                  <div className="flex items-center gap-x-3">
-                    <SwiperPrevTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronLeft className="size-[18px]" />
-                      </IconButton>
-                    </SwiperPrevTrigger>
-                    <SwiperNextTrigger asChild>
-                      <IconButton
-                        className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                        visual="gray"
-                        variant="outlined"
-                      >
-                        <ChevronRight className="size-[18px]" />
-                      </IconButton>
-                    </SwiperNextTrigger>
-                  </div>
-                </div>
+                <p className="text-lg font-light text-dark-blue-400 leading-none">
+                  These projects are recommended based on your recent searches
+                  and browsing history
+                </p>
               </div>
 
-              <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {recommendedProjects.map((rp: any) => (
-                  <SwiperSlide className="w-[355px]" key={rp.id}>
-                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                        <NextLink href={`/project-details/${rp.slug}`}>
-                          <NextImage
-                            className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                            src={rp.thumbnail || "/dashboard.png"}
-                            alt={rp.title}
-                            fill
-                            sizes="33vw"
-                          />
-                        </NextLink>
-                      </div>
-
-                      <div className="mt-3 flex items-start gap-x-3">
-                        <NextLink
-                          href={`/project-details/${rp.slug}`}
-                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                        >
-                          {rp.title}
-                        </NextLink>
-
-                        <div className="inline-flex items-center gap-x-1">
-                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                            {rp.rating ?? 0} <span className="font-extralight">({rp.reviewCount ?? 0})</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
-                        {rp.shortDescription || rp.title}
-                      </p>
-
-                      <div className="mt-[14.5px] flex flex-col gap-y-3">
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            {rp.duration || "Starting from 12 weeks"}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-x-[6.4px]">
-                          <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                            {rp.budget != null ? `$${Number(rp.budget).toLocaleString()} budget` : "$50,000 budget"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex items-end justify-between">
-                        <AvatarGroup
-                          max={5}
-                          size="sm"
-                          excess
-                          excessClassName="border-gray-300 text-gray-500"
-                        >
-                          {Array.from({ length: 6 }).map((_, i) => (
-                            <Avatar
-                              key={i}
-                              size="sm"
-                              className="border-2 border-white hover:ring-0 active:ring-0"
-                            >
-                              <AvatarImage src="/woman.jpg" alt="Woman" />
-                              <AvatarFallback>W</AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-
-                        <FavoriteRoot>
-                          {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-block">
-                                    <Favorite />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {pressed ? (
-                                    <span className="inline-flex items-center gap-x-1">
-                                      <Check className="size-[15px] shrink-0 text-green-500" />
-                                      Saved
-                                    </span>
-                                  ) : (
-                                    "Save to favorites"
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </FavoriteRoot>
-                      </div>
-                    </article>
-                  </SwiperSlide>
-                ))}
-              </SwiperContent>
+              <Button
+                variant="link"
+                visual="gray"
+                size="lg"
+                className="underline"
+              >
+                View More
+              </Button>
             </div>
-          </SwiperRoot>
+
+            <div className="gap-5 grid grid-cols-4">
+              {recommendedProjects.slice(0, 4).map((rp: any) => (
+                <article
+                  key={rp.id}
+                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                >
+                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
+                    <NextLink href={`/project-details/${rp.slug}`}>
+                      <NextImage
+                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                        src={rp.thumbnail || "/dashboard.png"}
+                        alt={rp.title}
+                        fill
+                        sizes="33vw"
+                      />
+                    </NextLink>
+                  </div>
+
+                  <div className="mt-3 flex items-start gap-x-3">
+                    <NextLink
+                      href={`/project-details/${rp.slug}`}
+                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                    >
+                      {rp.title}
+                    </NextLink>
+
+                    <div className="inline-flex items-center gap-x-1">
+                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                        4.9 <span className="font-extralight">(5)</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                    Brief Description of the project. Lorem ipsum dolor sit
+                    amet, consectetur adipiscing elit, sed do eiusmod tempor
+                    incididunt.
+                  </p>
+
+                  <div className="mt-[14.5px] flex flex-col gap-y-3">
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        Starting from 12 weeks
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        $50,000 budget
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-end justify-between">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AvatarGroup
+                            max={5}
+                            size="sm"
+                            excess
+                            excessClassName="border-gray-300 text-gray-500"
+                          >
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <Avatar
+                                key={i}
+                                size="sm"
+                                className="border-2 border-white hover:ring-0 active:ring-0"
+                              >
+                                <AvatarImage src="/woman.jpg" alt="Woman" />
+                                <AvatarFallback>W</AvatarFallback>
+                              </Avatar>
+                            ))}
+                          </AvatarGroup>
+                        </TooltipTrigger>
+
+                        <TooltipContent
+                          className="p-0 max-w-[262px]"
+                          size="md"
+                        >
+                          <ScrollArea
+                            className="h-[192px] p-3"
+                            scrollBar={
+                              <ScrollBar
+                                className="w-4 p-1"
+                                thumbClassName="bg-white/20"
+                              />
+                            }
+                          >
+                            <div className="space-y-3 pr-5">
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="flex items-center gap-x-[18px]">
+                                  <div className="flex items-center gap-x-2 flex-auto">
+                                    <Avatar>
+                                      <AvatarImage
+                                        src="/woman.jpg"
+                                        alt="Woman"
+                                      />
+                                      <AvatarFallback>W</AvatarFallback>
+                                    </Avatar>
+
+                                    <div className="flex flex-col flex-auto">
+                                      <div className="flex items-center gap-x-0.5">
+                                        <span className="text-xs leading-5 font-semibold text-white">
+                                          Sevil
+                                        </span>
+                                        <span className="text-[10px] leading-none font-light text-white">
+                                          @designsuperstar23
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] font-light text-white">
+                                        Full-stack Developer
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <span className="text-sm font-semibold text-white leading-5">
+                                    $75{" "}
+                                    <span className="text-[10px] font-light leading-5">
+                                      /hr
+                                    </span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <FavoriteRoot>
+                      {({ pressed }) => (
+                        <TooltipProvider delayDuration={75}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-block">
+                                <Favorite />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {pressed ? (
+                                <span className="inline-flex items-center gap-x-1">
+                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                  Saved
+                                </span>
+                              ) : (
+                                "Save to favorites"
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </FavoriteRoot>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
 
           {/* More Ways to Explore */}
           <div className="mt-[50px]">
@@ -5122,7 +5227,7 @@ export default function ProjectDetails() {
               {relatedSearches.map((label, i) => (
                 <Badge
                   key={i}
-                  className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300 cursor-pointer hover:border-dark-blue-400 hover:text-dark-blue-400 transition duration-300"
+                  className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300"
                   visual="gray"
                   size="lg"
                 >
@@ -5135,7 +5240,7 @@ export default function ProjectDetails() {
 
         {/* Recently Viewed — show only when grid is full (9 items) */}
         {recentlyViewed.length >= 9 && (
-        <div className="pt-[50px]">
+        <div className="max-w-[1240px] mx-auto py-[35px]">
           <div className="flex items-center justify-between">
             <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
               Recently Viewed

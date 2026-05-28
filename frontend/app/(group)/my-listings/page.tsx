@@ -12,6 +12,7 @@ import {
   useMyListings,
 } from "@/src/lib/my-listings"
 import { ProjectAPI } from "@/service/http/project"
+import { cn } from "@/utils/functions"
 import {
   Archive,
   Briefcase,
@@ -77,9 +78,11 @@ export default function MyListingsPage() {
   const [creatingType, setCreatingType] = useState<string | null>(null)
   const { listings, isLoading } = useMyListings()
   const [viewMode, setViewMode] = useState("grid")
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [searchVisible, setSearchVisible] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("All")
+  const [sortBy, setSortBy] = useState<string>("recent")
 
   // Redirect clients to their dashboard — listings is a talent-only page
   useEffect(() => {
@@ -97,8 +100,30 @@ export default function MyListingsPage() {
       const q = searchQuery.toLowerCase()
       items = items.filter((l) => l.title.toLowerCase().includes(q))
     }
-    return items
-  }, [listings, activeTab, searchQuery])
+    // Sort
+    const sorted = [...items]
+    switch (sortBy) {
+      case "oldest":
+        sorted.sort((a, b) => {
+          const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+          const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+          return aT - bT
+        })
+        break
+      case "a-z":
+        sorted.sort((a, b) => a.title.localeCompare(b.title))
+        break
+      case "z-a":
+        sorted.sort((a, b) => b.title.localeCompare(a.title))
+        break
+      case "recent":
+      case "modified":
+      default:
+        // Already sorted by recent activity from useMyListings
+        break
+    }
+    return sorted
+  }, [listings, activeTab, searchQuery, sortBy])
 
   const goEdit = (id: string) => router.push(editProjectListingUrl(id))
 
@@ -140,7 +165,7 @@ export default function MyListingsPage() {
 
         <div className="flex-1 p-[32px] min-[1024px]:pl-[248px]">
           <div className="flex items-center justify-between">
-            <h1 className="text-base font-bold text-dark-blue-400">
+            <h1 className="text-xl font-bold text-dark-blue-400">
               My Listings
             </h1>
 
@@ -245,12 +270,21 @@ export default function MyListingsPage() {
                       align="end"
                       className="min-w-[11.25rem]"
                     >
-                      <DropdownMenuItem>Recently Created</DropdownMenuItem>
-                      <DropdownMenuItem>Oldest First</DropdownMenuItem>
-                      <DropdownMenuItem>A - Z</DropdownMenuItem>
-                      <DropdownMenuItem>Z - A</DropdownMenuItem>
-                      <DropdownMenuItem>Last Modified</DropdownMenuItem>
-                      <DropdownMenuItem>Last Published</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("recent")}>
+                        Recently Created{sortBy === "recent" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("oldest")}>
+                        Oldest First{sortBy === "oldest" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("a-z")}>
+                        A - Z{sortBy === "a-z" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("z-a")}>
+                        Z - A{sortBy === "z-a" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("modified")}>
+                        Last Modified{sortBy === "modified" ? " ✓" : ""}
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
@@ -320,12 +354,32 @@ export default function MyListingsPage() {
                               <Briefcase className="size-10 text-gray-300" />
                             </div>
                           )}
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/50 group-hover:opacity-100 opacity-0 transition duration-300">
-                            <div className="absolute top-2.5 right-2.5">
-                              <DropdownMenu>
+                          <div
+                            className={cn(
+                              "absolute inset-0 flex items-center justify-center bg-black/50 transition duration-300 cursor-pointer",
+                              openMenuId === listing.id
+                                ? "opacity-100"
+                                : "opacity-0 group-hover:opacity-100"
+                            )}
+                            onClick={() => goEdit(listing.id)}
+                          >
+                            <div
+                              className="absolute top-2.5 right-2.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <DropdownMenu
+                                open={openMenuId === listing.id}
+                                onOpenChange={(open) =>
+                                  setOpenMenuId(open ? listing.id : null)
+                                }
+                              >
                                 <DropdownMenuTrigger asChild>
                                   <IconButton
-                                    className="text-white size-[27px] rounded-full bg-white/20 hover:text-dark-blue-400 hover:bg-white"
+                                    className={cn(
+                                      "text-white size-[27px] rounded-full bg-white/20 hover:text-dark-blue-400 hover:bg-white",
+                                      openMenuId === listing.id &&
+                                        "text-dark-blue-400 bg-white"
+                                    )}
                                     visual="gray"
                                     asChild
                                   >
@@ -337,12 +391,9 @@ export default function MyListingsPage() {
                                 {renderListingMenu(listing.id)}
                               </DropdownMenu>
                             </div>
-                            <button
-                              onClick={() => goEdit(listing.id)}
-                              className="focus-visible:outline-none text-white text-xs leading-none font-semibold"
-                            >
+                            <span className="text-white text-xs leading-none font-semibold">
                               View Details
-                            </button>
+                            </span>
                           </div>
                         </div>
                         <div className="mt-2">

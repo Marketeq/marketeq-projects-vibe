@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   AutocompleteAPI,
@@ -10,6 +10,7 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import { TeamsAPI } from "@/service/http/teams"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   TEAM_SEED_LISTINGS,
@@ -229,6 +230,77 @@ const Shimmer = ({ className }: { className?: string }) => (
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
+
+const DESC_MAX_HEIGHT = 530
+
+const DescriptionCard = ({
+  descHtml,
+  onEdit,
+}: {
+  descHtml: string
+  onEdit: () => void
+}) => {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [needsTruncation, setNeedsTruncation] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!contentRef.current) return
+    setNeedsTruncation(contentRef.current.scrollHeight > DESC_MAX_HEIGHT)
+  }, [descHtml])
+
+  return (
+    <div
+      className={cn(
+        "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+        needsTruncation && !isExpanded && "h-[530px]"
+      )}
+      ref={contentRef}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-auto" />
+        <IconButton
+          className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+          variant="ghost"
+          visual="gray"
+          onClick={onEdit}
+        >
+          <Edit03 className="size-4" />
+        </IconButton>
+      </div>
+
+      <div>
+        <div
+          className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+          dangerouslySetInnerHTML={{ __html: descHtml }}
+        />
+      </div>
+
+      {needsTruncation &&
+        (isExpanded ? (
+          <div className="flex mt-6 items-center justify-center">
+            <Button
+              visual="gray"
+              variant="link"
+              onClick={() => setIsExpanded(false)}
+            >
+              View Less
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
+            <Button
+              visual="gray"
+              variant="link"
+              onClick={() => setIsExpanded(true)}
+            >
+              View More
+            </Button>
+          </div>
+        ))}
+    </div>
+  )
+}
 
 const formatDeliverable = (text: string) => {
   const cleaned = text
@@ -2393,12 +2465,64 @@ export default function ProjectDetails() {
           if (Array.isArray(d.tags) && d.tags.length > 0) setDetailsTags(d.tags)
         }
 
+        // Fetch the current user's team from the backend and populate project.team
+        const fetchTeamData = async () => {
+          try {
+            const teamRes = await TeamsAPI.getMyTeam()
+            const teamData = teamRes?.data
+            if (!teamData?.id) return
+            const membersRes = await TeamsAPI.getTeamMembers(teamData.id)
+            const members = membersRes?.data
+            if (!Array.isArray(members) || members.length === 0) return
+            // Hydrate team members with profile data
+            const hydratedMembers = await Promise.all(
+              members.map(async (m: any) => {
+                let profile: any = null
+                if (m.username) {
+                  try {
+                    const profileRes =
+                      await TeamsAPI.getTalentUserByUsername(m.username)
+                    profile = profileRes?.data
+                  } catch {
+                    /* profile not found */
+                  }
+                }
+                return {
+                  id: m.userId || m.id,
+                  firstName:
+                    profile?.firstName || m.firstName || m.username || "User",
+                  username: m.username || profile?.username || "",
+                  avatarUrl: profile?.avatarUrl || m.avatarUrl || null,
+                  role: m.role || profile?.jobTitle || "",
+                  jobTitles: profile?.jobTitles ?? [],
+                  hourlyRate: profile?.hourlyRate ?? null,
+                  workSchedule: profile?.workSchedule ?? null,
+                  customHoursPerWeek: profile?.customHoursPerWeek ?? null,
+                  location: profile?.location || profile?.country || null,
+                  languages: profile?.languages ?? [],
+                  skills: profile?.skills ?? [],
+                  experience: profile?.experienceLevel || profile?.experience || null,
+                  isLead: m.role === "owner" || m.role === "lead",
+                  isOnline: false,
+                }
+              })
+            )
+            setProject((prev: any) => ({
+              ...prev,
+              team: hydratedMembers,
+            }))
+          } catch {
+            // team fetch failed — leave as seed/empty
+          }
+        }
+
         // 1. If the param is a UUID, fetch the draft directly by ID
         if (isUuid) {
           try {
             const draftRes = await ProjectAPI.GetProjectDraft(rawSlug)
             if (draftRes?.data) {
               hydrateFromDraft(draftRes.data)
+              fetchTeamData() // non-blocking — updates team when ready
               setLoading(false)
               return
             }
@@ -2418,6 +2542,7 @@ export default function ProjectDetails() {
             const publishRes = await ProjectAPI.GetProjectBySlug(candidate)
             if (publishRes?.data) {
               hydrateFromDraft(publishRes.data)
+              fetchTeamData()
               setLoading(false)
               return
             }
@@ -3563,104 +3688,13 @@ export default function ProjectDetails() {
                           </Alert>
                         )}
                         {project.description ? (
-                          (() => {
-                            const descHtml = project.description
-                            const textLength = descHtml.replace(
-                              /<[^>]*>/g,
-                              ""
-                            ).length
-                            const needsTruncation = textLength > 800
-                            return needsTruncation ? (
-                              <ShowMoreLessRoot>
-                                {({ isShowing, setIsShowing }) => (
-                                  <div
-                                    className={cn(
-                                      "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] h-[506px] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                                      isShowing && "h-auto"
-                                    )}
-                                  >
-                                    <div className="flex items-start justify-between">
-                                      <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                                        {project.title}
-                                      </h1>
-                                      <IconButton
-                                        className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-                                        variant="ghost"
-                                        visual="gray"
-                                        onClick={() => {
-                                          setDescDraft(
-                                            project.description || ""
-                                          )
-                                          setDescDialogOpen(true)
-                                        }}
-                                      >
-                                        <Edit03 className="size-4" />
-                                      </IconButton>
-                                    </div>
-
-                                    <div className="mt-6 border-t pt-6 border-gray-200">
-                                      <div
-                                        className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                                        dangerouslySetInnerHTML={{
-                                          __html: descHtml,
-                                        }}
-                                      />
-                                    </div>
-
-                                    {isShowing ? (
-                                      <div className="flex mt-6 items-center justify-center">
-                                        <Button
-                                          visual="gray"
-                                          variant="link"
-                                          onClick={() => setIsShowing(false)}
-                                        >
-                                          View Less
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
-                                        <Button
-                                          visual="gray"
-                                          variant="link"
-                                          onClick={() => setIsShowing(true)}
-                                        >
-                                          View More
-                                        </Button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </ShowMoreLessRoot>
-                            ) : (
-                              <div className="relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                <div className="flex items-start justify-between">
-                                  <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                                    {project.title}
-                                  </h1>
-                                  <IconButton
-                                    className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-                                    variant="ghost"
-                                    visual="gray"
-                                    onClick={() => {
-                                      setDescDraft(project.description || "")
-                                      setDescDialogOpen(true)
-                                    }}
-                                  >
-                                    <Edit03 className="size-4" />
-                                  </IconButton>
-                                </div>
-
-                                <div className="mt-6 border-t pt-6 border-gray-200">
-                                  <div
-                                    className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                                    dangerouslySetInnerHTML={{
-                                      __html: descHtml,
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            )
-                          })()
+                          <DescriptionCard
+                            descHtml={project.description}
+                            onEdit={() => {
+                              setDescDraft(project.description || "")
+                              setDescDialogOpen(true)
+                            }}
+                          />
                         ) : (
                           <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 flex items-start justify-between">
                             <div>
@@ -4938,7 +4972,7 @@ export default function ProjectDetails() {
                                 </Button>
                               </div>
 
-                              {/* About the Team — static fallback */}
+                              {/* About the Team — empty state */}
                               <div className="p-6 bg-white rounded-b-lg border border-gray-200 border-t-0">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-base leading-none font-semibold text-dark-blue-400">
@@ -4957,146 +4991,11 @@ export default function ProjectDetails() {
                                   </IconButton>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-x-6 mt-6">
-                                  <div className="flex items-start gap-x-3">
-                                    <Avatar size="lg">
-                                      <AvatarImage src="/man.jpg" alt="Man" />
-                                      <AvatarFallback>M</AvatarFallback>
-                                    </Avatar>
-
-                                    <div className="space-y-1.5">
-                                      <Badge
-                                        className="rounded-[4px] bg-primary-50"
-                                        visual="primary"
-                                      >
-                                        Project Lead
-                                      </Badge>
-
-                                      <div className="flex flex-col gap-y-0.5">
-                                        <span className="block text-sm leading-none text-gray-500 font-extralight">
-                                          <span className="text-base font-bold text-dark-blue-400">
-                                            Chris
-                                          </span>{" "}
-                                          @ux23isee
-                                        </span>
-
-                                        <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                          Full Stack Designer
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-3">
-                                    <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                      <MapPin className="size-[18px]" />{" "}
-                                      Locations
-                                    </h3>
-
-                                    <div className="gap-1 flex items-center flex-wrap">
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        USA,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        UK,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Brazil,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        and 1 more...
-                                      </NextLink>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="mt-6 grid grid-cols-2 gap-x-6">
-                                  <div className="space-y-3">
-                                    <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                      <MessageTextSquare01 className="size-[18px]" />{" "}
-                                      Languages
-                                    </h3>
-
-                                    <div className="gap-1 flex items-center flex-wrap">
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        English,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Spanish,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        French
-                                      </NextLink>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-3">
-                                    <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                      <Stars02 className="size-[18px]" /> Skills
-                                      & Expertise
-                                    </h3>
-
-                                    <div className="gap-1 flex items-center flex-wrap">
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Performance,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Security,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Operating Systems,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Design,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        Databases,
-                                      </NextLink>
-                                      <NextLink
-                                        href="#"
-                                        className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                      >
-                                        and 1 more...
-                                      </NextLink>
-                                    </div>
-                                  </div>
-                                </div>
+                                <p className="mt-2 text-sm font-light text-dark-blue-400">
+                                  Your team members will be displayed here once
+                                  you add them to your project. Click the edit
+                                  button to manage your team.
+                                </p>
                               </div>
                             </div>
                           )}
@@ -8449,7 +8348,7 @@ export default function ProjectDetails() {
                           size="md"
                           className="flex-auto"
                           onClick={() => {
-                            const url = `/project-details/${project.slug || params.slug}`
+                            const url = `/project-details/${project.slug || project.id || params.slug}`
                             if (hasChanges) {
                               setPendingNavUrl(url)
                               setUnsavedNavOpen(true)
