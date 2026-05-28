@@ -258,7 +258,7 @@ const DescriptionCard = ({
       ref={contentRef}
     >
       <IconButton
-        className="absolute top-4 right-4 rounded-full text-gray-500 hover:text-gray-800 shrink-0 z-10"
+        className="absolute top-6 right-6 rounded-full text-gray-500 hover:text-gray-800 shrink-0 z-10"
         variant="ghost"
         visual="gray"
         onClick={onEdit}
