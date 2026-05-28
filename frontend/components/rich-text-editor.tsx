@@ -56,6 +56,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  RmDialog,
   useToast,
 } from "@/components/ui"
 
@@ -419,6 +420,7 @@ const RichTextImageToolbar = ({
   onMouseEnter,
   onMouseLeave,
   onAlignMenuOpenChange,
+  onDeleteDialogOpenChange,
 }: {
   alignment: ImageAlignValue
   imageSource: string
@@ -432,6 +434,7 @@ const RichTextImageToolbar = ({
   onMouseEnter: () => void
   onMouseLeave: () => void
   onAlignMenuOpenChange: (open: boolean) => void
+  onDeleteDialogOpenChange: (open: boolean) => void
 }) => {
   const AlignmentIcon =
     alignment === "left" ? ToLeft : alignment === "right" ? ToRight : ToCenter
@@ -442,7 +445,7 @@ const RichTextImageToolbar = ({
       style={style}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="absolute z-20 inline-flex overflow-hidden rounded-[5px] border border-gray-300 bg-white shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] divide-x divide-gray-300"
+      className="absolute z-10 inline-flex overflow-hidden rounded-[5px] border border-gray-300 bg-white shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] divide-x divide-gray-300"
     >
       <ImageEditor
         variant="image"
@@ -524,15 +527,23 @@ const RichTextImageToolbar = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <button
-        type="button"
-        onMouseDown={preventToolbarFocusChange}
-        onClick={onDelete}
-        className="inline-flex size-9 shrink-0 items-center justify-center text-error-500 transition duration-200 hover:bg-error-100 hover:text-error-600 focus-visible:outline-none last:rounded-r-[5px]"
-        aria-label="Delete image"
-      >
-        <Trash01 className="size-4" />
-      </button>
+      <RmDialog
+        title="Delete Image"
+        description="Are you sure you want to delete this image? This action cannot be undone."
+        onRemove={onDelete}
+        onOpenChange={onDeleteDialogOpenChange}
+        trigger={({ setIsOpen }) => (
+          <button
+            type="button"
+            onMouseDown={preventToolbarFocusChange}
+            onClick={() => setIsOpen(true)}
+            className="inline-flex size-9 shrink-0 items-center justify-center text-error-500 transition duration-200 hover:bg-error-100 hover:text-error-600 focus-visible:outline-none last:rounded-r-[5px]"
+            aria-label="Delete image"
+          >
+            <Trash01 className="size-4" />
+          </button>
+        )}
+      />
     </div>
   )
 }
@@ -993,6 +1004,7 @@ const ActiveEditor = ({
   const [isHoveringImageToolbar, setIsHoveringImageToolbar] = useState(false)
   const [isImageAlignMenuOpen, setIsImageAlignMenuOpen] = useState(false)
   const [isImageEditorOpen, setIsImageEditorOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const { toast } = useToast()
   const [hoveredImage, setHoveredImage] = useState<{
     pos: number
@@ -1473,9 +1485,21 @@ const ActiveEditor = ({
         }
 
         hoveredImageElementRef.current = targetImage
+
+        // Hide toolbar if image is scrolled out of the editor's visible area
+        const toolbarTop = imageRect.top - containerRect.top + 20
+        const isImageVisible =
+          imageRect.bottom > containerRect.top &&
+          imageRect.top < containerRect.bottom
+
+        if (!isImageVisible) {
+          clearHoveredImage()
+          return
+        }
+
         setHoveredImage({
           pos,
-          top: imageRect.top - containerRect.top + 20,
+          top: toolbarTop,
           left: imageRect.left - containerRect.left + 16,
           alignment:
             node.attrs.align === "left" ||
@@ -1693,12 +1717,18 @@ const ActiveEditor = ({
           insertChain.setTextSelection(selection)
         }
 
+        // Use insertContent to always add a new image node instead of
+        // replacing the current node (which setImage does when cursor
+        // is on an existing image)
         insertChain
-          .setImage({
-            src: imageSource,
-            alt: file.name,
-            align: DEFAULT_IMAGE_ALIGN,
-          } as any)
+          .insertContent({
+            type: "image",
+            attrs: {
+              src: imageSource,
+              alt: file.name,
+              align: DEFAULT_IMAGE_ALIGN,
+            },
+          })
           .run()
       } catch (error: any) {
         const message =
@@ -1753,7 +1783,8 @@ const ActiveEditor = ({
     if (
       !isHoveringImageToolbar &&
       !isImageAlignMenuOpen &&
-      !isImageEditorOpen
+      !isImageEditorOpen &&
+      !isDeleteDialogOpen
     ) {
       clearHoveredImage()
     }
@@ -1762,6 +1793,7 @@ const ActiveEditor = ({
     isHoveringImageToolbar,
     isImageAlignMenuOpen,
     isImageEditorOpen,
+    isDeleteDialogOpen,
   ])
 
   const handleToolbarPinnedChange = useCallback(
@@ -1936,7 +1968,7 @@ const ActiveEditor = ({
   return (
     <div
       ref={containerRef}
-      className="relative min-w-0 group/editor"
+      className="relative min-w-0 group/editor isolate"
       onMouseMove={handleEditorMouseMove}
       onMouseLeave={handleEditorMouseLeave}
     >
@@ -2030,13 +2062,13 @@ const ActiveEditor = ({
           onMouseEnter={() => setIsHoveringImageToolbar(true)}
           onMouseLeave={() => {
             setIsHoveringImageToolbar(false)
-            if (!isImageAlignMenuOpen && !isImageEditorOpen) {
+            if (!isImageAlignMenuOpen && !isImageEditorOpen && !isDeleteDialogOpen) {
               clearHoveredImage()
             }
           }}
           onAlignMenuOpenChange={(open) => {
             setIsImageAlignMenuOpen(open)
-            if (!open && !isHoveringImageToolbar && !isImageEditorOpen) {
+            if (!open && !isHoveringImageToolbar && !isImageEditorOpen && !isDeleteDialogOpen) {
               clearHoveredImage()
             }
           }}
@@ -2046,6 +2078,12 @@ const ActiveEditor = ({
             updateImageAtPos(hoveredImage.pos, {
               align: value,
             })
+          }}
+          onDeleteDialogOpenChange={(open) => {
+            setIsDeleteDialogOpen(open)
+            if (!open && !isHoveringImageToolbar) {
+              clearHoveredImage()
+            }
           }}
         />
       ) : null}
@@ -2084,6 +2122,7 @@ const RichTextEditor = ({
     top: number
   } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const shouldResumeInlineEditingRef = useRef(false)
   const fullscreenEditorRef = useRef<Editor | null>(null)
   const historyEntriesRef = useRef<string[]>([
@@ -2190,6 +2229,32 @@ const RichTextEditor = ({
     [isEditing, isFullscreenOpen]
   )
 
+  const handleImageButtonClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!isEditing) {
+        setIsEditing(true)
+        // Defer so the ActiveEditor mounts, then trigger its insert-image flow
+        requestAnimationFrame(() => {
+          const fileInput =
+            containerRef.current?.querySelector<HTMLInputElement>(
+              "input[data-rich-text-file-input]"
+            )
+          fileInput?.click()
+        })
+      } else {
+        // Already editing — trigger the file input directly (insert mode)
+        const fileInput =
+          containerRef.current?.querySelector<HTMLInputElement>(
+            "input[data-rich-text-file-input]"
+          )
+        fileInput?.click()
+      }
+    },
+    [isEditing]
+  )
+
   const handleFullscreenOpenChange = useCallback((open: boolean) => {
     setIsFullscreenOpen(open)
 
@@ -2200,7 +2265,7 @@ const RichTextEditor = ({
   }, [])
 
   useEffect(() => {
-    if (!isEditing) {
+    if (!isEditing && !isFullscreenOpen) {
       const nextValue = normalizeRichTextHtml(defaultValue || "")
       setContent(nextValue)
       historyEntriesRef.current = [nextValue]
@@ -2208,7 +2273,7 @@ const RichTextEditor = ({
       suppressNextHistoryEntryRef.current = false
       syncHistoryVersion()
     }
-  }, [defaultValue, isEditing, syncHistoryVersion])
+  }, [defaultValue, isEditing, isFullscreenOpen, syncHistoryVersion])
 
   useClickOutside([containerRef], () => {
     if (!isEditing || isFullscreenOpen || typeof document === "undefined")
@@ -2313,14 +2378,28 @@ const RichTextEditor = ({
       className={cn("relative min-w-0 cursor-text", className)}
       onClick={handleClick}
     >
-      {allowFullscreen ? (
-        <div className="absolute right-3 top-3 z-10">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-x-1.5">
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <TooltipTrigger
+              type="button"
+              onClick={handleImageButtonClick}
+              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+            >
+              <ImageIcon className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent side="top" visual="white" sideOffset={8}>
+              Add image
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {allowFullscreen ? (
           <FullscreenToggleButton
             isFullscreen={false}
             onClick={handleFullscreenToggle}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {editorSurface}
       {allowFullscreen ? (
         <Dialog
@@ -2330,14 +2409,14 @@ const RichTextEditor = ({
           <DialogContent
             accessibilityTitle="Fullscreen rich text editor"
             data-rich-text-fullscreen-dialog="true"
-            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none h-screen w-screen !rounded-none p-0 gap-0 flex flex-col overflow-hidden shadow-none"
+            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none !p-0 gap-0 overflow-y-auto shadow-none flex flex-col"
           >
             <DialogTitle className="sr-only">Project Description</DialogTitle>
             <DialogDescription className="sr-only">
               Edit your project description in fullscreen.
             </DialogDescription>
 
-            <nav className="h-[68px] flex items-center justify-between px-3 bg-white border-b border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] flex-none">
+            <nav className="sticky top-0 z-20 h-[68px] flex items-center justify-between px-3 bg-white border-b border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
               <div className="flex items-center gap-x-6">
                 <div className="inline-flex items-center gap-x-1">
                   <TooltipProvider delayDuration={75}>
@@ -2458,16 +2537,13 @@ const RichTextEditor = ({
               </div>
             </nav>
 
-            <div className="relative flex-1 min-h-0 overflow-hidden">
-              <div className="pointer-events-none absolute inset-0 bg-gray-50" />
-              <div className="relative z-10 h-full overflow-y-auto">
-                <div className="p-[50px]">
-                  <div
-                    data-rich-text-fullscreen-content="true"
-                    className="mx-auto w-full max-w-[818px]"
-                  >
-                    {fullscreenEditor}
-                  </div>
+            <div className="relative flex-1 bg-gray-50">
+              <div className="px-[50px]">
+                <div
+                  data-rich-text-fullscreen-content="true"
+                  className="mx-auto w-full max-w-[818px]"
+                >
+                  {fullscreenEditor}
                 </div>
               </div>
             </div>

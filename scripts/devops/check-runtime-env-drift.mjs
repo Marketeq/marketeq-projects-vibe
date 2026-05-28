@@ -187,6 +187,39 @@ async function fetchRenderEnv() {
   }
 }
 
+async function checkRenderServiceCount() {
+  if (!renderToken) {
+    return { available: false, reason: "RENDER_TOKEN not set", report: null }
+  }
+
+  try {
+    const services = await fetchJson(
+      `https://api.render.com/v1/services?ownerId=${config.render.ownerId}&limit=50`,
+      { Authorization: `Bearer ${renderToken}`, Accept: "application/json" },
+    )
+
+    const allowed = new Set(config.render.allowedServiceIds)
+    const active = (Array.isArray(services) ? services : [])
+      .map((s) => s.service)
+      .filter((s) => s.suspended !== "suspended")
+
+    const rogue = active.filter((s) => !allowed.has(s.id))
+
+    return {
+      available: true,
+      reason: "",
+      report: {
+        ok: rogue.length === 0,
+        activeCount: active.length,
+        allowedCount: allowed.size,
+        rogue: rogue.map((s) => ({ id: s.id, name: s.name, branch: s.branch, url: s.serviceDetails?.url })),
+      },
+    }
+  } catch (error) {
+    return { available: false, reason: error.message || String(error), report: null }
+  }
+}
+
 async function main() {
   const expectations = {
     vercel: {
@@ -199,12 +232,20 @@ async function main() {
 
   const vercel = await fetchVercelEnv()
   const render = await fetchRenderEnv()
+  const renderServices = await checkRenderServiceCount()
   const failures = []
 
   if (!vercel.available) {
     failures.push(`Vercel staging env read unavailable: ${vercel.reason}`)
   } else if (!vercel.report.ok) {
     failures.push(`Vercel staging drift detected: ${vercel.report.drift.map((item) => item.key).join(", ")}`)
+  }
+
+  if (!renderServices.available) {
+    failures.push(`Render service count check unavailable: ${renderServices.reason}`)
+  } else if (!renderServices.report.ok) {
+    const names = renderServices.report.rogue.map((s) => `${s.name} (${s.id})`).join(", ")
+    failures.push(`ROGUE Render services detected — delete immediately: ${names}`)
   }
 
   if (!render.available) {
@@ -226,6 +267,7 @@ async function main() {
     expectations,
     vercelStaging: vercel,
     renderSharedBackend: render,
+    renderServiceGuard: renderServices,
   }
 
   console.log(JSON.stringify(report, null, 2))

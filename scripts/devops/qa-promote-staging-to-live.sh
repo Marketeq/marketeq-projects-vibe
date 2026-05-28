@@ -19,7 +19,7 @@
 #   7. Creates a GitHub Release tagged with the date
 #
 # Usage:
-#   ./scripts/qa-promote-staging-to-live.sh [--dry-run]
+#   ./scripts/devops/qa-promote-staging-to-live.sh [--dry-run]
 # ============================================================================
 
 set -euo pipefail

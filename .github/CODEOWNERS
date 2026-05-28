@@ -61,6 +61,10 @@
 /.github/                                           @CTorres9800 @Marketeq/code-review
 /render.yaml                                        @CTorres9800 @Marketeq/code-review
 /vercel.json                                        @CTorres9800 @Marketeq/code-review
+/scripts/devops/                                    @CTorres9800 @Marketeq/code-review
+/backend/Dockerfile.all                             @CTorres9800 @Marketeq/code-review
+/backend/boot-all.js                                @CTorres9800 @Marketeq/code-review
+/backend/build-all-services.sh                      @CTorres9800 @Marketeq/code-review
 /frontend/.env.local.example                        @CTorres9800 @Marketeq/code-review
 /frontend/.env.staging.example                      @CTorres9800 @Marketeq/code-review
 /frontend/.env.production.example                   @CTorres9800 @Marketeq/code-review
