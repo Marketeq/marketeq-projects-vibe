@@ -2069,21 +2069,6 @@ const ActiveEditor = ({
           }}
         />
       ) : null}
-      <TooltipProvider delayDuration={75}>
-        <Tooltip>
-          <TooltipTrigger
-            type="button"
-            onClick={() => handleInsertImage()}
-            disabled={isUploadingImage}
-            className="absolute right-[50px] top-3 z-10 inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50"
-          >
-            <ImageIcon className="size-4" />
-          </TooltipTrigger>
-          <TooltipContent side="top" visual="white" sideOffset={8}>
-            Add image
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
       <EditorContent editor={editor} />
     </div>
   )
@@ -2119,6 +2104,7 @@ const RichTextEditor = ({
     top: number
   } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const shouldResumeInlineEditingRef = useRef(false)
   const fullscreenEditorRef = useRef<Editor | null>(null)
   const historyEntriesRef = useRef<string[]>([
@@ -2223,6 +2209,24 @@ const RichTextEditor = ({
       setIsEditing(false)
     },
     [isEditing, isFullscreenOpen]
+  )
+
+  const handleImageButtonClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!isEditing) {
+        setIsEditing(true)
+      }
+      // Defer so the ActiveEditor mounts and its file input is in the DOM
+      requestAnimationFrame(() => {
+        const fileInput = containerRef.current?.querySelector<HTMLInputElement>(
+          "input[data-rich-text-file-input]"
+        )
+        fileInput?.click()
+      })
+    },
+    [isEditing]
   )
 
   const handleFullscreenOpenChange = useCallback((open: boolean) => {
@@ -2348,14 +2352,28 @@ const RichTextEditor = ({
       className={cn("relative min-w-0 cursor-text", className)}
       onClick={handleClick}
     >
-      {allowFullscreen ? (
-        <div className="absolute right-3 top-3 z-10">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-x-1.5">
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <TooltipTrigger
+              type="button"
+              onClick={handleImageButtonClick}
+              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+            >
+              <ImageIcon className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent side="top" visual="white" sideOffset={8}>
+              Add image
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {allowFullscreen ? (
           <FullscreenToggleButton
             isFullscreen={false}
             onClick={handleFullscreenToggle}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {editorSurface}
       {allowFullscreen ? (
         <Dialog
