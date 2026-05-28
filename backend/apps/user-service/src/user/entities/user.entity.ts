@@ -92,6 +92,12 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   onboardedAt?: Date;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  clientOnboardedAt?: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  talentOnboardedAt?: Date;
+
   @Column({ type: 'numeric', nullable: true })
   rate?: number;
 

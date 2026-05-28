@@ -493,6 +493,56 @@ export default function ProjectDetails() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
+  const [selectedPeriod, setSelectedPeriod] = React.useState("week")
+
+  // --- Sidebar pricing (docs §01, §14) ---
+  const sidebarPricing = React.useMemo(() => {
+    if (!project) return null
+    const totalCost = Number(project.priceMin ?? project.budget ?? 0)
+    const durationStr = (project.duration ?? "") as string
+    const durationWeeks = parseInt(durationStr, 10) || 0
+    const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
+
+    // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
+    const costPerWeek = durationWeeks > 0 ? Math.round(totalCost / durationWeeks) : 0
+    const costPerBiweek = durationWeeks > 0 ? Math.round(totalCost / (durationWeeks / 2)) : 0
+    const costPerMonth = durationMonths > 0 ? Math.round(totalCost / durationMonths) : 0
+    const costPerQuarter = durationMonths >= 3 ? Math.round(totalCost / (durationMonths / 3)) : 0
+    const costPerYear = durationMonths >= 12 ? Math.round(totalCost / (durationMonths / 12)) : 0
+
+    const periodOptions = [
+      { label: "week", value: "week", cost: costPerWeek },
+      { label: "2 weeks", value: "2 weeks", cost: costPerBiweek },
+      { label: "month", value: "month", cost: costPerMonth },
+      ...(costPerQuarter > 0 ? [{ label: "quarter", value: "quarter", cost: costPerQuarter }] : []),
+      ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
+    ]
+
+    // Initial payment = first month cost (docs §01 L224)
+    const initialPayment = costPerMonth > 0 ? costPerMonth : null
+
+    // Minimum team members = unique roles from scope (docs §01 L88-91)
+    const scopeArr = Array.isArray(project.scope) ? project.scope : []
+    const uniqueRoles = new Set(
+      scopeArr.flatMap((phase: any) =>
+        (phase.tasks ?? []).map((t: any) => t.roleName).filter(Boolean)
+      )
+    )
+
+    // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
+    const durationDays = durationWeeks * 7
+    let formattedDuration = ""
+    if (durationDays > 0 && durationDays < 7) {
+      formattedDuration = `${durationDays} day`
+    } else if (durationWeeks > 0 && durationWeeks < 4) {
+      formattedDuration = `${durationWeeks} week`
+    } else if (durationWeeks >= 4) {
+      const months = Math.ceil(durationWeeks / 4.33)
+      formattedDuration = `${months} month`
+    }
+
+    return { totalCost, periodOptions, initialPayment, minTeamMembers: uniqueRoles.size, formattedDuration }
+  }, [project])
 
   // Check if this item is already favorited (ensure dev auth first)
   React.useEffect(() => {
@@ -792,12 +842,15 @@ export default function ProjectDetails() {
 
                 <div className="flex flex-col items-start gap-y-3">
                   <Badge className="rounded-[5px]" visual="gray">
-                    {project.listingType === "service" ? "Service" : "Project"}
+                    {project.projectType
+                      ?? (project.categories?.[0])
+                      ?? (project.listingType === "service" ? "Service" : "Project")}
                   </Badge>
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                     {project.title}
                   </h1>
 
+                  {/* MVP: ratings, reviews, and sales hidden until review system is implemented
                   <div className="flex items-center gap-x-2">
                     <div className="inline-flex items-center gap-x-1.5">
                       <div className="inline-flex items-center gap-x-0.5">
@@ -824,7 +877,6 @@ export default function ProjectDetails() {
                       </span>
                     </div>
 
-                    {/* §13 L59: "Show only if isTopRated is true" */}
                     {project.isTopRated && (
                       <>
                         <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
@@ -837,6 +889,7 @@ export default function ProjectDetails() {
                       </>
                     )}
                   </div>
+                  */}
 
                   <div className="flex items-center gap-x-3">
                     {(project.categories || []).map(
@@ -1063,11 +1116,11 @@ export default function ProjectDetails() {
                   <TabsContent value="Description">
                     <div className="pt-6">
                       <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing }) => (
+                        {({ isShowing, setIsShowing, scrollHeight }) => (
                           <div
                             className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] h-[506px] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              isShowing && "h-auto"
+                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+                              scrollHeight > 506 && !isShowing ? "h-[506px]" : "h-auto"
                             )}
                           >
                             <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
@@ -1095,37 +1148,39 @@ export default function ProjectDetails() {
                               />
                             </div>
 
-                            {isShowing ? (
-                              <div className="flex mt-6 items-center justify-center">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(false)}
-                                >
-                                  View Less
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(true)}
-                                >
-                                  View More
-                                </Button>
-                              </div>
+                            {scrollHeight > 506 && (
+                              isShowing ? (
+                                <div className="flex mt-6 items-center justify-center">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(false)}
+                                  >
+                                    View Less
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(true)}
+                                  >
+                                    View More
+                                  </Button>
+                                </div>
+                              )
                             )}
                           </div>
                         )}
                       </ShowMoreLessRoot>
 
                       <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing }) => (
+                        {({ isShowing, setIsShowing, scrollHeight }) => (
                           <div
                             className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 h-[456px] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              isShowing && "h-auto"
+                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+                              scrollHeight > 456 && !isShowing ? "h-[456px]" : "h-auto"
                             )}
                           >
                             <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
@@ -1143,45 +1198,65 @@ export default function ProjectDetails() {
                             {Array.isArray(project.deliverables) &&
                             project.deliverables.length > 0 ? (
                               <div className="mt-6 flex flex-col">
-                                {(
-                                  project.deliverables as Array<{
-                                    phaseLabel: string
-                                    phaseName: string
-                                    items: string[]
-                                  }>
-                                ).map((phase, pi) => (
-                                  <div
-                                    key={`${phase.phaseLabel}-${pi}`}
-                                    className={cn(
-                                      pi > 0 &&
-                                        "mt-6 pt-6 border-t border-gray-200"
-                                    )}
-                                  >
-                                    <p className="text-sm text-dark-blue-400">
-                                      <span className="font-extralight">
-                                        {phase.phaseLabel}
-                                      </span>{" "}
-                                      <span className="font-semibold">
-                                        {phase.phaseName}
-                                      </span>
-                                    </p>
-                                    <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                      {phase.items.map((item, i) => (
-                                        <div
-                                          key={`${item}-${i}`}
-                                          className="flex items-center gap-x-3"
-                                        >
-                                          <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                            <Check className="size-2" />
-                                          </span>
-                                          <p className="text-sm font-extralight leading-tight text-dark-blue-400">
-                                            {item}
-                                          </p>
-                                        </div>
-                                      ))}
-                                    </div>
+                                {typeof project.deliverables[0] === "string" ? (
+                                  /* Legacy flat string[] from seed data */
+                                  <div className="grid grid-cols-3 gap-y-3 gap-x-6">
+                                    {(project.deliverables as string[]).map((item, i) => (
+                                      <div
+                                        key={`${item}-${i}`}
+                                        className="flex items-center gap-x-3"
+                                      >
+                                        <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                          <Check className="size-2" />
+                                        </span>
+                                        <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                          {item}
+                                        </p>
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
+                                ) : (
+                                  /* Grouped DeliverableGroup[] from sync pipeline (3-6 per phase) */
+                                  (
+                                    project.deliverables as Array<{
+                                      phaseLabel: string
+                                      phaseName: string
+                                      items: string[]
+                                    }>
+                                  ).map((phase, pi) => (
+                                    <div
+                                      key={`${phase.phaseLabel}-${pi}`}
+                                      className={cn(
+                                        pi > 0 &&
+                                          "mt-6 pt-6 border-t border-gray-200"
+                                      )}
+                                    >
+                                      <p className="text-sm text-dark-blue-400">
+                                        <span className="font-extralight">
+                                          {phase.phaseLabel}
+                                        </span>{" "}
+                                        <span className="font-semibold">
+                                          {phase.phaseName}
+                                        </span>
+                                      </p>
+                                      <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
+                                        {(phase.items ?? []).map((item, i) => (
+                                          <div
+                                            key={`${item}-${i}`}
+                                            className="flex items-center gap-x-3"
+                                          >
+                                            <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                              <Check className="size-2" />
+                                            </span>
+                                            <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                              {item}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
                               </div>
                             ) : (
                               <p className="mt-6 text-sm font-extralight text-gray-500">
@@ -1203,26 +1278,28 @@ export default function ProjectDetails() {
                               </AlertContent>
                             </Alert>
 
-                            {isShowing ? (
-                              <div className="flex mt-6 items-center justify-center">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(false)}
-                                >
-                                  View Less
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(true)}
-                                >
-                                  View More
-                                </Button>
-                              </div>
+                            {scrollHeight > 456 && (
+                              isShowing ? (
+                                <div className="flex mt-6 items-center justify-center">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(false)}
+                                  >
+                                    View Less
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(true)}
+                                  >
+                                    View More
+                                  </Button>
+                                </div>
+                              )
                             )}
                           </div>
                         )}
@@ -1993,7 +2070,8 @@ export default function ProjectDetails() {
                         </div>
                       </div>
 
-                      <div className="p-6 mt-6 border gap-x-[50px] flex items-start rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      {/* MVP: Project History and reviews hidden until review system is implemented */}
+                      {false && <><div className="p-6 mt-6 border gap-x-[50px] flex items-start rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="flex flex-col flex-1 gap-y-1.5 basis-[147px]">
                           <h1 className="text-xl leading-none text-nowrap font-bold text-dark-blue-400">
                             Project History
@@ -3445,6 +3523,7 @@ export default function ProjectDetails() {
                           </div>
                         </TabsContent>
                       </Tabs>
+                      </>}
                     </div>
                   </TabsContent>
                 </Tabs>
@@ -4223,48 +4302,34 @@ export default function ProjectDetails() {
                   <Badge className="rounded-[5px]" visual="gray">
                     Starting At
                   </Badge>
-                  <div className="inline-flex items-center gap-x-1.5 ml-2">
+                  <div className="inline-flex items-center gap-x-1.5 ml-2 whitespace-nowrap">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      {project.priceMin != null
-                        ? `$${Number(project.priceMin).toLocaleString()}`
-                        : project.budget != null
-                          ? `$${Number(project.budget).toLocaleString()}`
-                          : "—"}
+                      {(() => {
+                        const active = sidebarPricing?.periodOptions.find(
+                          (p) => p.value === selectedPeriod
+                        ) ?? sidebarPricing?.periodOptions[0]
+                        const price = active?.cost ?? sidebarPricing?.totalCost ?? 0
+                        return price > 0 ? `$${price.toLocaleString()}` : "—"
+                      })()}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      per
+                      {selectedPeriod === "2 weeks" ? "every" : "per"}
                     </span>
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox
-                      defaultValue={(() => {
-                        const m = (project.priceViewMode ||
-                          project.pricingModel ||
-                          "biweekly") as string
-                        const map: Record<string, string> = {
-                          weekly: "Week",
-                          biweekly: "2-week",
-                          monthly: "Month",
-                          quarterly: "Quarter",
-                          yearly: "Year",
-                        }
-                        return map[m] || "2-week"
-                      })()}
-                    >
+                    <Listbox value={selectedPeriod} onChange={setSelectedPeriod}>
                       <ListboxButton
-                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
+                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto whitespace-nowrap"
                         iconClassName="ml-1"
                         placeholder="Select"
                       />
                       <ListboxOptions className="w-[153px]">
-                        {["Week", "2-week", "Month", "Quarter", "Year"].map(
-                          (timeline) => (
-                            <ListboxOption key={timeline} value={timeline}>
-                              {timeline}
-                            </ListboxOption>
-                          )
-                        )}
+                        {(sidebarPricing?.periodOptions ?? []).map((opt) => (
+                          <ListboxOption key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </ListboxOption>
+                        ))}
                       </ListboxOptions>
                     </Listbox>
                   </div>
@@ -4298,19 +4363,17 @@ export default function ProjectDetails() {
                 </FavoriteRoot>
               </div>
 
-              <div className="mt-3">
-                <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  {project.priceMax != null
-                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
-                    : `Billing: ${project.pricingModel || "biweekly"}`}
-                </span>
-              </div>
+              {sidebarPricing?.initialPayment != null && (
+                <div className="mt-3">
+                  <span className="text-sm leading-none font-light text-dark-blue-400">
+                    with an initial payment of ${sidebarPricing.initialPayment.toLocaleString()} to kickoff
+                  </span>
+                </div>
+              )}
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  {Array.isArray(project.team) && project.team.length > 1
-                    ? "Current Team"
-                    : "Created By"}
+                  Current Team
                 </span>
 
                 <TooltipProvider>
@@ -4419,16 +4482,16 @@ export default function ProjectDetails() {
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    {project.duration
-                      ? `${project.duration} duration`
+                    {sidebarPricing?.formattedDuration
+                      ? `Starting from a ${sidebarPricing.formattedDuration} duration`
                       : "Duration: TBD"}
                   </span>
                 </div>
-                {project.estimatedHours != null && (
+                {(sidebarPricing?.minTeamMembers ?? 0) > 0 && (
                   <div className="flex items-center gap-x-[6.4px]">
                     <Users03 className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {project.estimatedHours} estimated hours
+                      Minimum {sidebarPricing!.minTeamMembers} team member{sidebarPricing!.minTeamMembers !== 1 ? "s" : ""}
                     </span>
                   </div>
                 )}
