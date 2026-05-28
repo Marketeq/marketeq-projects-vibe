@@ -111,6 +111,16 @@ body {
   margin-top: 1rem;
 }
 
+/* ── Strikethrough — keep centered at all font sizes ── */
+.rich-text-content s,
+.rich-text-content del {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1.5px;
+  background-repeat: no-repeat;
+  background-position: center 55%;
+}
+
 /* ── Font sizes (inline marks via FontSizeExtension) ── */
 .rich-text-content [data-font-size="large-heading"] {
   font-size: 24px;
@@ -211,6 +221,14 @@ body {
   width: 50%;
   margin-left: 16px;
   margin-bottom: 8px;
+}
+.prose s,
+.prose del {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1.5px;
+  background-repeat: no-repeat;
+  background-position: center 55%;
 }
 .prose [data-font-size="large-heading"] {
   font-size: 24px;
