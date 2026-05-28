@@ -905,6 +905,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         throw new UnauthorizedException('Session has been revoked');
       }
 
+      const submittedRefreshTokenHash = createHash('sha256').update(dto.refresh_token).digest('hex');
+      if (session.refreshTokenHash !== submittedRefreshTokenHash) {
+        await this.sessionRepository.delete({ id: session.id });
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       const rememberMe = payload.rememberMe ?? false;
       const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe });
 
