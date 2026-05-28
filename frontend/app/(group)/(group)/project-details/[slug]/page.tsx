@@ -4767,13 +4767,12 @@ export default function ProjectDetails() {
                 </div>
               </div>
 
-              {(project?.similarProjects?.length > 0) ? (
               <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                {project.similarProjects.map((sp: any) => (
+                {(project?.similarProjects ?? []).map((sp: any) => (
                   <SwiperSlide className="w-[355px]" key={sp.id}>
-                    <NextLink href={`/project-details/${sp.slug}`}>
-                      <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                        <NextLink href={`/project-details/${sp.slug}`}>
                           <NextImage
                             className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                             src={sp.thumbnail || "/dashboard.png"}
@@ -4781,20 +4780,94 @@ export default function ProjectDetails() {
                             fill
                             sizes="33vw"
                           />
-                        </div>
-                        <div className="mt-3">
-                          <span className="font-bold text-base leading-none text-dark-blue-400 hover:underline">
-                            {sp.title}
+                        </NextLink>
+                      </div>
+
+                      <div className="mt-3 flex items-start gap-x-3">
+                        <NextLink
+                          href={`/project-details/${sp.slug}`}
+                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                        >
+                          {sp.title}
+                        </NextLink>
+
+                        <div className="inline-flex items-center gap-x-1">
+                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                            {sp.score ?? 0} <span className="font-extralight">match</span>
                           </span>
                         </div>
-                      </article>
-                    </NextLink>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                        {sp.title}
+                      </p>
+
+                      <div className="mt-[14.5px] flex flex-col gap-y-3">
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            Starting from 12 weeks
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            $50,000 budget
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-end justify-between">
+                        <AvatarGroup
+                          max={5}
+                          size="sm"
+                          excess
+                          excessClassName="border-gray-300 text-gray-500"
+                        >
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <Avatar
+                              key={i}
+                              size="sm"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                            >
+                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                              <AvatarFallback>W</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+
+                        <FavoriteRoot>
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
+                      </div>
+                    </article>
                   </SwiperSlide>
                 ))}
               </SwiperContent>
-              ) : (
-                <p className="text-sm text-gray-500 py-4">No similar projects found.</p>
-              )}
             </div>
           </SwiperRoot>
 
@@ -4849,9 +4922,9 @@ export default function ProjectDetails() {
               <SwiperContent slidesPerView="auto" spaceBetween={20}>
                 {recommendedProjects.map((rp: any) => (
                   <SwiperSlide className="w-[355px]" key={rp.id}>
-                    <NextLink href={`/project-details/${rp.slug}`}>
-                      <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                    <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+                        <NextLink href={`/project-details/${rp.slug}`}>
                           <NextImage
                             className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                             src={rp.thumbnail || "/dashboard.png"}
@@ -4859,50 +4932,91 @@ export default function ProjectDetails() {
                             fill
                             sizes="33vw"
                           />
-                        </div>
+                        </NextLink>
+                      </div>
 
-                        <div className="mt-3 flex items-start gap-x-3">
-                          <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                            {rp.title}
+                      <div className="mt-3 flex items-start gap-x-3">
+                        <NextLink
+                          href={`/project-details/${rp.slug}`}
+                          className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                        >
+                          {rp.title}
+                        </NextLink>
+
+                        <div className="inline-flex items-center gap-x-1">
+                          <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                            {rp.rating ?? 0} <span className="font-extralight">({rp.reviewCount ?? 0})</span>
                           </span>
+                        </div>
+                      </div>
 
-                          {rp.rating > 0 && (
-                          <div className="inline-flex items-center gap-x-1">
-                            <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                            <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                              {rp.rating} <span className="font-extralight">({rp.reviewCount})</span>
-                            </span>
-                          </div>
-                          )}
+                      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
+                        {rp.shortDescription || rp.title}
+                      </p>
+
+                      <div className="mt-[14.5px] flex flex-col gap-y-3">
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            {rp.duration || "Starting from 12 weeks"}
+                          </span>
                         </div>
 
-                        {rp.shortDescription && (
-                        <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
-                          {rp.shortDescription}
-                        </p>
-                        )}
+                        <div className="flex items-center gap-x-[6.4px]">
+                          <Money className="size-[18px] shrink-0 text-primary-500" />
 
-                        <div className="mt-[14.5px] flex flex-col gap-y-3">
-                          {rp.duration && (
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Clock className="size-[18px] shrink-0 text-primary-500" />
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              {rp.duration}
-                            </span>
-                          </div>
-                          )}
-
-                          {rp.budget != null && (
-                          <div className="flex items-center gap-x-[6.4px]">
-                            <Money className="size-[18px] shrink-0 text-primary-500" />
-                            <span className="font-medium text-sm leading-none text-dark-blue-400">
-                              ${Number(rp.budget).toLocaleString()} budget
-                            </span>
-                          </div>
-                          )}
+                          <span className="font-medium text-sm leading-none text-dark-blue-400">
+                            {rp.budget != null ? `$${Number(rp.budget).toLocaleString()} budget` : "$50,000 budget"}
+                          </span>
                         </div>
-                      </article>
-                    </NextLink>
+                      </div>
+
+                      <div className="mt-5 flex items-end justify-between">
+                        <AvatarGroup
+                          max={5}
+                          size="sm"
+                          excess
+                          excessClassName="border-gray-300 text-gray-500"
+                        >
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <Avatar
+                              key={i}
+                              size="sm"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                            >
+                              <AvatarImage src="/woman.jpg" alt="Woman" />
+                              <AvatarFallback>W</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+
+                        <FavoriteRoot>
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
+                      </div>
+                    </article>
                   </SwiperSlide>
                 ))}
               </SwiperContent>
