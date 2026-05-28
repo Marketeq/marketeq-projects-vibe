@@ -4799,7 +4799,6 @@ export default function ProjectDetails() {
           </SwiperRoot>
 
           {/* Recommended Projects */}
-          {recommendedProjects.length > 0 && (
           <SwiperRoot>
             <div className="space-y-6 mt-[50px]">
               <div className="flex items-end justify-between">
@@ -4909,7 +4908,6 @@ export default function ProjectDetails() {
               </SwiperContent>
             </div>
           </SwiperRoot>
-          )}
 
           {/* More Ways to Explore */}
           <div className="mt-[50px]">
@@ -4989,7 +4987,6 @@ export default function ProjectDetails() {
         </div>
 
         {/* Recently Viewed */}
-        {recentlyViewed.length > 0 && (
         <div className="pt-[50px]">
           <div className="flex items-center justify-between">
             <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
@@ -5049,7 +5046,6 @@ export default function ProjectDetails() {
             ))}
           </div>
         </div>
-        )}
 
       </div>
 
