@@ -4794,15 +4794,13 @@ export default function ProjectDetails() {
                         <div className="inline-flex items-center gap-x-1">
                           <Star className="size-[15px] text-primary-500 fill-primary-500" />
                           <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                            4.9 <span className="font-extralight">(5)</span>
+                            {sp.score ?? 0} <span className="font-extralight">match</span>
                           </span>
                         </div>
                       </div>
 
                       <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                        Brief Description of the project. Lorem ipsum dolor sit
-                        amet, consectetur adipiscing elit, sed do eiusmod tempor
-                        incididunt.
+                        {sp.title}
                       </p>
 
                       <div className="mt-[14.5px] flex flex-col gap-y-3">
@@ -5052,61 +5050,30 @@ export default function ProjectDetails() {
               </RadixTabs.List>
 
               <TabsContent value="Related Categories">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  {(() => {
-                    const cats = project?.relatedCategories ?? []
-                    const allCats = [...(project?.categories ?? []), ...cats]
-                    const unique = Array.from(new Set(allCats)).filter(Boolean)
-                    // Split into 4 columns
-                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
-                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
-                    const headers = [
-                      project?.category ?? "Categories",
-                      ...(project?.subcategories?.slice(0, 3) ?? ["Subcategories", "Related", "More"])
-                    ]
-                    return columns.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-y-3 items-start">
-                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci] ?? "Categories"}
-                        </h2>
-                        {col.map((cat: string, i: number) => (
-                          <Button key={i} variant="link" className="text-dark-blue-400">
-                            {cat}
-                          </Button>
-                        ))}
-                      </div>
+                <div className="mt-5 py-5 flex flex-wrap gap-3">
+                  {(project?.relatedCategories?.length > 0) ? (
+                    project.relatedCategories.map((cat: string, i: number) => (
+                      <Button key={i} variant="link" className="text-dark-blue-400">
+                        {cat}
+                      </Button>
                     ))
-                  })()}
+                  ) : (
+                    <p className="text-sm text-gray-500">No related categories found.</p>
+                  )}
                 </div>
               </TabsContent>
 
               <TabsContent value="Related Skills">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  {(() => {
-                    const skills = project?.relatedSkills ?? []
-                    const allSkills = [
-                      ...(project?.skills ?? []),
-                      ...(project?.programmingLanguages ?? []),
-                      ...(project?.developmentTech ?? []),
-                      ...skills,
-                    ]
-                    const unique = Array.from(new Set(allSkills)).filter(Boolean)
-                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
-                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
-                    const headers = ["Skills", "Technologies", "Tools", "More"]
-                    return columns.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-y-3 items-start">
-                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci]}
-                        </h2>
-                        {col.map((skill: string, i: number) => (
-                          <Button key={i} variant="link" className="text-dark-blue-400">
-                            {skill}
-                          </Button>
-                        ))}
-                      </div>
+                <div className="mt-5 py-5 flex flex-wrap gap-3">
+                  {(project?.relatedSkills?.length > 0) ? (
+                    project.relatedSkills.map((skill: string, i: number) => (
+                      <Button key={i} variant="link" className="text-dark-blue-400">
+                        {skill}
+                      </Button>
                     ))
-                  })()}
+                  ) : (
+                    <p className="text-sm text-gray-500">No related skills found.</p>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
