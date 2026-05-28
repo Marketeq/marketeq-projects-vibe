@@ -22,7 +22,7 @@ export interface TalentUser {
   location?: string
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle?: string; isDefault?: boolean; saveAsDefault?: boolean }>
+  jobTitles?: Array<{ jobTitle?: string; isDefault?: boolean }>
   recentJobTitle?: string | null
   skills?: Array<{ name: string }>
 }
@@ -99,7 +99,7 @@ export function talentToCardProps(
         ].slice(0, 12)
 
   const role =
-    u.jobTitles?.find((j: any) => j?.isDefault || j?.saveAsDefault)?.jobTitle ||
+    u.jobTitles?.find((j: any) => j?.isDefault)?.jobTitle ||
     u.jobTitles?.[0]?.jobTitle ||
     u.recentJobTitle ||
     "Marketing Technologist"

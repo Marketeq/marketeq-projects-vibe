@@ -1,5 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateSkillDto {
   @ApiProperty({ example: 'TypeScript' })
@@ -7,8 +7,8 @@ export class CreateSkillDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiPropertyOptional({ example: 'expert' })
+  @ApiProperty({ example: 'expert' })
   @IsString()
-  @IsOptional()
-  proficiency?: string;
+  @IsNotEmpty()
+  proficiency: string;
 }
