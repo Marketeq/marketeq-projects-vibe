@@ -220,6 +220,8 @@ export function Chats({
   onIndexNewMessage,
 }: ChatsProps) {
   const [textareaValue, setTextareaValue] = useState("")
+  const lastTypedAtRef = useRef(0)
+  const userTypedRef = useRef(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const [uploadModalMode, setUploadModalMode] = useState<
@@ -240,6 +242,7 @@ export function Chats({
   const recentlyAbortedMessageIdsRef = useRef<Set<string>>(new Set())
   const pendingIncomingRef = useRef<Message[]>([])
   const pendingIncomingRafRef = useRef<number | null>(null)
+  const pendingEditsRef = useRef<Map<string, Partial<Message>>>(new Map())
   const pendingSendsRef = useRef<
     Map<string, { threadId: string; content: string; replyToId?: string }>
   >(new Map())
@@ -287,6 +290,8 @@ export function Chats({
         .map((hex) => parseInt(hex, 16))
     )
     setTextareaValue((prev) => (prev || "") + emojiChar)
+    userTypedRef.current = true
+    lastTypedAtRef.current = Date.now()
   }, [])
 
   const handleGifSelect = async (gif: TenorGif) => {
@@ -342,6 +347,7 @@ export function Chats({
     setSelectedFiles([])
     setRejectedFiles([])
     setUploadModalMode(null)
+    userTypedRef.current = false
 
     const tid = selectedConversation?.id
     const uid = currentUser?.id
@@ -362,6 +368,7 @@ export function Chats({
     const tid = selectedConversation?.id
     const uid = currentUser?.id
     if (!tid || !uid) return
+    if (!userTypedRef.current) return
     const handle = setTimeout(() => {
       saveDraft(tid, uid, textareaValue).catch(() => undefined)
     }, 400)
@@ -375,6 +382,7 @@ export function Chats({
     return subscribeMessagingEvents((evt) => {
       if (evt.type !== "draft") return
       if (evt.threadId !== tid || evt.userId !== uid) return
+      if (Date.now() - lastTypedAtRef.current < 1000) return
       setTextareaValue(evt.text)
     })
   }, [selectedConversation?.id, currentUser?.id])
@@ -581,10 +589,27 @@ export function Chats({
     scrollTop: number
   } | null>(null)
   useEffect(() => {
-    if (fetchedMsgs) {
-      setLocalMsgs(fetchedMsgs)
+    if (!fetchedMsgs) return
+    const convId = selectedConversation?.id
+    if (
+      fetchedMsgs.length > 0 &&
+      (fetchedMsgs[0] as any).threadId !== undefined &&
+      (fetchedMsgs[0] as any).threadId !== convId
+    ) {
+      setLocalMsgs([])
+      return
     }
-  }, [fetchedMsgs])
+    setLocalMsgs((prev) => {
+      const fetchedIds = new Set(fetchedMsgs.map((m) => m.id))
+      const localOnly = prev.filter(
+        (m) =>
+          !fetchedIds.has(m.id) &&
+          ((m as any).threadId === undefined ||
+            (m as any).threadId === convId),
+      )
+      return [...fetchedMsgs, ...localOnly]
+    })
+  }, [fetchedMsgs, selectedConversation?.id])
 
   const isNearBottomRef = useRef(true)
   useEffect(() => {
@@ -801,22 +826,27 @@ export function Chats({
             let next = prev
             let changed = false
             for (const m of batch) {
-              if (next.some((existing) => existing.id === m.id)) continue
+              const pendingEdit = pendingEditsRef.current.get(m.id)
+              const incoming = pendingEdit ? { ...m, ...pendingEdit } : m
+              if (pendingEdit) pendingEditsRef.current.delete(m.id)
+              if (next.some((existing) => existing.id === incoming.id)) continue
               const tempIdx = next.findIndex(
                 (existing) =>
                   typeof existing.id === "string" &&
                   existing.id.startsWith("tmp-") &&
-                  existing.senderId === m.senderId &&
+                  existing.senderId === incoming.senderId &&
                   (existing.status === "sending" ||
                     existing.status === "optimistic-offline") &&
                   (existing.content ?? "") === (m.content ?? "")
               )
               if (tempIdx !== -1) {
-                next = next.map((existing, i) => (i === tempIdx ? m : existing))
+                next = next.map((existing, i) =>
+                  i === tempIdx ? incoming : existing,
+                )
                 changed = true
                 continue
               }
-              next = [...next, m]
+              next = [...next, incoming]
               changed = true
             }
             return changed ? next : prev
@@ -896,13 +926,22 @@ export function Chats({
         console.error("Failed to decrypt edited message:", err)
         plain = UNDECRYPTABLE_PLACEHOLDER
       }
-      updateMessage(incoming.id, {
+      const patch: Partial<Message> = {
         content: plain,
         ciphertext: incoming.ciphertext,
         edited: true,
+      }
+      setLocalMsgs((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) {
+          return prev.map((m) =>
+            m.id === incoming.id ? { ...m, ...patch } : m,
+          )
+        }
+        pendingEditsRef.current.set(incoming.id, patch)
+        return prev
       })
     },
-    [updateMessage]
+    []
   )
 
   useAblyChannel(
@@ -2573,6 +2612,8 @@ export function Chats({
               value={textareaValue}
               onChange={(e) => {
                 setTextareaValue(e.target.value)
+                lastTypedAtRef.current = Date.now()
+                userTypedRef.current = true
                 if (e.target.value.length > 0) sendTyping(true)
                 else sendTyping(false)
               }}
@@ -2598,6 +2639,8 @@ export function Chats({
                   truncated +
                   textareaValue.slice(selEnd)
                 setTextareaValue(next)
+                userTypedRef.current = true
+                lastTypedAtRef.current = Date.now()
                 toast({
                   title: `Pasted content was truncated to ${COMPOSER_MAX_CHARS.toLocaleString()} characters`,
                 })
