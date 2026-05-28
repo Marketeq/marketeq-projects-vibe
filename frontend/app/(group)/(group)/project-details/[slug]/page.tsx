@@ -4986,7 +4986,8 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        {/* Recently Viewed */}
+        {/* Recently Viewed — show only when grid is full (9 items) */}
+        {recentlyViewed.length >= 9 && (
         <div className="pt-[50px]">
           <div className="flex items-center justify-between">
             <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
@@ -5046,6 +5047,7 @@ export default function ProjectDetails() {
             ))}
           </div>
         </div>
+        )}
 
       </div>
 
