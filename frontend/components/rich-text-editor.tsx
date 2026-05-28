@@ -420,6 +420,7 @@ const RichTextImageToolbar = ({
   onMouseEnter,
   onMouseLeave,
   onAlignMenuOpenChange,
+  onDeleteDialogOpenChange,
 }: {
   alignment: ImageAlignValue
   imageSource: string
@@ -433,6 +434,7 @@ const RichTextImageToolbar = ({
   onMouseEnter: () => void
   onMouseLeave: () => void
   onAlignMenuOpenChange: (open: boolean) => void
+  onDeleteDialogOpenChange: (open: boolean) => void
 }) => {
   const AlignmentIcon =
     alignment === "left" ? ToLeft : alignment === "right" ? ToRight : ToCenter
@@ -529,6 +531,7 @@ const RichTextImageToolbar = ({
         title="Delete Image"
         description="Are you sure you want to delete this image? This action cannot be undone."
         onRemove={onDelete}
+        onOpenChange={onDeleteDialogOpenChange}
         trigger={({ setIsOpen }) => (
           <button
             type="button"
@@ -1001,6 +1004,7 @@ const ActiveEditor = ({
   const [isHoveringImageToolbar, setIsHoveringImageToolbar] = useState(false)
   const [isImageAlignMenuOpen, setIsImageAlignMenuOpen] = useState(false)
   const [isImageEditorOpen, setIsImageEditorOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const { toast } = useToast()
   const [hoveredImage, setHoveredImage] = useState<{
     pos: number
@@ -1761,7 +1765,8 @@ const ActiveEditor = ({
     if (
       !isHoveringImageToolbar &&
       !isImageAlignMenuOpen &&
-      !isImageEditorOpen
+      !isImageEditorOpen &&
+      !isDeleteDialogOpen
     ) {
       clearHoveredImage()
     }
@@ -1770,6 +1775,7 @@ const ActiveEditor = ({
     isHoveringImageToolbar,
     isImageAlignMenuOpen,
     isImageEditorOpen,
+    isDeleteDialogOpen,
   ])
 
   const handleToolbarPinnedChange = useCallback(
@@ -2038,13 +2044,13 @@ const ActiveEditor = ({
           onMouseEnter={() => setIsHoveringImageToolbar(true)}
           onMouseLeave={() => {
             setIsHoveringImageToolbar(false)
-            if (!isImageAlignMenuOpen && !isImageEditorOpen) {
+            if (!isImageAlignMenuOpen && !isImageEditorOpen && !isDeleteDialogOpen) {
               clearHoveredImage()
             }
           }}
           onAlignMenuOpenChange={(open) => {
             setIsImageAlignMenuOpen(open)
-            if (!open && !isHoveringImageToolbar && !isImageEditorOpen) {
+            if (!open && !isHoveringImageToolbar && !isImageEditorOpen && !isDeleteDialogOpen) {
               clearHoveredImage()
             }
           }}
@@ -2054,6 +2060,12 @@ const ActiveEditor = ({
             updateImageAtPos(hoveredImage.pos, {
               align: value,
             })
+          }}
+          onDeleteDialogOpenChange={(open) => {
+            setIsDeleteDialogOpen(open)
+            if (!open && !isHoveringImageToolbar) {
+              clearHoveredImage()
+            }
           }}
         />
       ) : null}

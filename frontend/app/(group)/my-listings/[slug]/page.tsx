@@ -3805,11 +3805,12 @@ export default function ProjectDetails() {
                               </DialogClose>
                               <Button
                                 disabled={
-                                  getRichTextCharacterCount(descDraft) > 0 &&
-                                  (getRichTextCharacterCount(descDraft) <
-                                    FULL_DESCRIPTION_MIN_LENGTH ||
-                                    getRichTextCharacterCount(descDraft) >
-                                      FULL_DESCRIPTION_MAX_LENGTH)
+                                  descDraft === (project.description || "") ||
+                                  (getRichTextCharacterCount(descDraft) > 0 &&
+                                    (getRichTextCharacterCount(descDraft) <
+                                      FULL_DESCRIPTION_MIN_LENGTH ||
+                                      getRichTextCharacterCount(descDraft) >
+                                        FULL_DESCRIPTION_MAX_LENGTH))
                                 }
                                 onClick={() => {
                                   setProject((prev: any) => ({

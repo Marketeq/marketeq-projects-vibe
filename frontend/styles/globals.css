@@ -100,15 +100,15 @@ body {
 /* Rich text content — editor & read-only display of TipTap-generated HTML */
 
 /* ── Padding ── */
-.rich-text-content .ProseMirror {
+.rich-text-content.ProseMirror {
   padding: 24px;
 }
 
 /* ── Vertical spacing between block elements ── */
-.rich-text-content .ProseMirror > * + * {
+.rich-text-content > * + * {
   margin-top: 24px;
 }
-.rich-text-content .ProseMirror > p + p {
+.rich-text-content > p + p {
   margin-top: 0;
 }
 
