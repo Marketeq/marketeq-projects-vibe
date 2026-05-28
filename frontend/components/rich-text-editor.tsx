@@ -2070,6 +2070,23 @@ const ActiveEditor = ({
         />
       ) : null}
       <EditorContent editor={editor} />
+      <TooltipProvider delayDuration={75}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => handleInsertImage()}
+              disabled={isUploadingImage}
+              className="absolute bottom-2 right-2 z-10 inline-flex size-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-wait disabled:opacity-50 transition duration-200 focus-visible:outline-none"
+            >
+              <ImageIcon className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" visual="gray" sideOffset={4}>
+            Add image
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   )
 }
