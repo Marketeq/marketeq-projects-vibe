@@ -56,6 +56,9 @@ export class Project {
   shortDescription?: string;
 
   @Column({ nullable: true, type: 'text' })
+  projectType?: string;
+
+  @Column({ nullable: true, type: 'text' })
   videoUrl?: string;
 
   @Column('jsonb', { nullable: true, default: () => "'[]'" })

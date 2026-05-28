@@ -213,6 +213,7 @@ export class ProjectsService {
       title: project.title,
       slug: project.slug,
       shortDescription: project.shortDescription ?? null,
+      projectType: project.projectType ?? null,
       description: project.description,
       category: project.category ?? project.categories?.[0] ?? 'Software Development',
       categories: project.categories ?? [],
