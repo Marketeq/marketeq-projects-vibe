@@ -200,6 +200,12 @@ body {
   clear: both;
 }
 
+/* ── Hover state for editor images ── */
+.rich-text-content img[data-rich-text-image-hovered="true"] {
+  outline: 2px solid theme(colors.primary.500);
+  outline-offset: -2px;
+}
+
 /* ── Drag cursor states ── */
 .rich-text-content img {
   cursor: grab;
