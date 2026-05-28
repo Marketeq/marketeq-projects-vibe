@@ -56,6 +56,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  RmDialog,
   useToast,
 } from "@/components/ui"
 
@@ -524,15 +525,22 @@ const RichTextImageToolbar = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <button
-        type="button"
-        onMouseDown={preventToolbarFocusChange}
-        onClick={onDelete}
-        className="inline-flex size-9 shrink-0 items-center justify-center text-error-500 transition duration-200 hover:bg-error-100 hover:text-error-600 focus-visible:outline-none last:rounded-r-[5px]"
-        aria-label="Delete image"
-      >
-        <Trash01 className="size-4" />
-      </button>
+      <RmDialog
+        title="Delete Image"
+        description="Are you sure you want to delete this image? This action cannot be undone."
+        onRemove={onDelete}
+        trigger={({ setIsOpen }) => (
+          <button
+            type="button"
+            onMouseDown={preventToolbarFocusChange}
+            onClick={() => setIsOpen(true)}
+            className="inline-flex size-9 shrink-0 items-center justify-center text-error-500 transition duration-200 hover:bg-error-100 hover:text-error-600 focus-visible:outline-none last:rounded-r-[5px]"
+            aria-label="Delete image"
+          >
+            <Trash01 className="size-4" />
+          </button>
+        )}
+      />
     </div>
   )
 }

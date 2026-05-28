@@ -45,10 +45,10 @@ From the **backend/** directory, run:
 
 ```bash
 # From repo root:
-./scripts/migrate.sh <service-name> generate <MigrationName>
+./scripts/devops/migrate.sh <service-name> generate <MigrationName>
 
 # Example:
-./scripts/migrate.sh user-service generate AddAvatarUrl
+./scripts/devops/migrate.sh user-service generate AddAvatarUrl
 ```
 
 This compares your entities against the current database schema and generates a migration file with the necessary `ALTER TABLE` statements.
@@ -65,10 +65,10 @@ Open the generated file in `apps/<service>/src/migrations/` and verify:
 
 ```bash
 # Run the migration against your local database:
-./scripts/migrate.sh <service-name> run
+./scripts/devops/migrate.sh <service-name> run
 
 # Verify it applied correctly:
-./scripts/migrate.sh <service-name> show
+./scripts/devops/migrate.sh <service-name> show
 ```
 
 ### Step 5: Commit
@@ -79,16 +79,16 @@ Commit the migration file along with the entity changes. The migration will run 
 
 ```bash
 # Run pending migrations for a single service:
-./scripts/migrate.sh user-service run
+./scripts/devops/migrate.sh user-service run
 
 # Run pending migrations for ALL services:
-./scripts/migrate.sh all run
+./scripts/devops/migrate.sh all run
 
 # Show migration status for a service:
-./scripts/migrate.sh user-service show
+./scripts/devops/migrate.sh user-service show
 
 # Show migration status for all services:
-./scripts/migrate.sh all show
+./scripts/devops/migrate.sh all show
 ```
 
 Migrations also run automatically on service startup because every service has `migrationsRun: true` in its TypeORM configuration.
@@ -97,20 +97,20 @@ Migrations also run automatically on service startup because every service has `
 
 ```bash
 # Revert the last migration for a service:
-./scripts/migrate.sh user-service revert
+./scripts/devops/migrate.sh user-service revert
 
 # Revert for all services (reverts one migration per service):
-./scripts/migrate.sh all revert
+./scripts/devops/migrate.sh all revert
 ```
 
 To revert multiple migrations, run the revert command multiple times.
 
 ## The migrate.sh Script
 
-Location: `scripts/migrate.sh`
+Location: `scripts/devops/migrate.sh`
 
 ```
-Usage: ./scripts/migrate.sh <service|all> <run|generate|revert|show> [migration-name]
+Usage: ./scripts/devops/migrate.sh <service|all> <run|generate|revert|show> [migration-name]
 
 Commands:
   run       Run all pending migrations

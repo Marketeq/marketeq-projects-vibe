@@ -6,7 +6,7 @@ This document tracks the remaining production-grade DevOps controls for the `mar
 
 | Priority | Control | Status | Why it matters | Repo / runtime owner |
 |---|---|---|---|---|
-| P0 | Post-deploy smoke testing for critical user flows | Implemented | Prevents green deploys when login, homepage, onboarding, or protected routes are actually broken | `scripts/regression/smoke.deploy.mjs`, live n8n orchestrator |
+| P0 | Post-deploy smoke testing for critical user flows | Implemented | Prevents green deploys when login, homepage, onboarding, or protected routes are actually broken | `scripts/devops/regression/smoke.deploy.mjs`, live n8n orchestrator |
 | P0 | Deployment health gating on business flow checks, not just platform success | Implemented | Vercel `READY` is not enough; staging must fail if sign-in or homepage is broken | live n8n orchestrator + GitHub commit statuses |
 | P0 | Workflow drift detection for the live n8n deploy orchestrator | Implemented in this phase | Detects when the live workflow, pinned runner URL, gist revision, or webhook metadata drift away from the repo-controlled contract | `scripts/devops/check-devops-drift.mjs` |
 | P0 | Repo-controlled deploy topology manifest | Implemented in this phase | Removes hidden project IDs / hook URLs / workflow IDs from tribal memory and makes drift auditable in PRs | `scripts/devops/marketeq-devops.config.json` |

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Sync database between Marketeq environments
-# Usage: ./scripts/sync-db.sh <source> <target>
+# Usage: ./scripts/devops/sync-db.sh <source> <target>
 # Examples:
-#   ./scripts/sync-db.sh dev staging    # copy dev → staging
-#   ./scripts/sync-db.sh staging live   # copy staging → production
-#   ./scripts/sync-db.sh live dev       # refresh dev from production
+#   ./scripts/devops/sync-db.sh dev staging    # copy dev → staging
+#   ./scripts/devops/sync-db.sh staging live   # copy staging → production
+#   ./scripts/devops/sync-db.sh live dev       # refresh dev from production
 
 set -euo pipefail
 

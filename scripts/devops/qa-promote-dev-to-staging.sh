@@ -27,7 +27,7 @@
 #   - Promote further to live-mvp (use qa-promote-staging-to-live.sh)
 #
 # Usage:
-#   ./scripts/qa-promote-dev-to-staging.sh [--dry-run]
+#   ./scripts/devops/qa-promote-dev-to-staging.sh [--dry-run]
 #
 # Requires:
 #   - git, gh (authenticated), gitleaks (optional, recommended)
@@ -216,7 +216,7 @@ $(git log --oneline origin/staging..HEAD | head -n 50)
 
 ## After QA sign-off
 
-Run \`./scripts/qa-promote-staging-to-live.sh\` to promote to production.
+Run \`./scripts/devops/qa-promote-staging-to-live.sh\` to promote to production.
 
 🤖 Created automatically by \`qa-promote-dev-to-staging.sh\`
 EOF

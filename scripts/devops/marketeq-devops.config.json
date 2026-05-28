@@ -46,7 +46,9 @@
   },
   "render": {
     "serviceId": "srv-d76r48nafjfc73e1djf0",
-    "url": "https://marketeq-backend.onrender.com"
+    "url": "https://marketeq-backend.onrender.com",
+    "allowedServiceIds": ["srv-d76r48nafjfc73e1djf0"],
+    "ownerId": "tea-d0r57undiees73bn5npg"
   },
   "vercel": {
     "teamId": "team_t2RzlUaGU3p6OALpArhrWXh0",

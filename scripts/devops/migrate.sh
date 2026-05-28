@@ -3,21 +3,21 @@
 # Run TypeORM migrations for a specific service or all services.
 #
 # Usage:
-#   ./scripts/migrate.sh <service> [run|generate|revert|show]
-#   ./scripts/migrate.sh all [run|revert|show]
+#   ./scripts/devops/migrate.sh <service> [run|generate|revert|show]
+#   ./scripts/devops/migrate.sh all [run|revert|show]
 #
 # Examples:
-#   ./scripts/migrate.sh user-service run
-#   ./scripts/migrate.sh user-service generate AddEmailIndex
-#   ./scripts/migrate.sh user-service revert
-#   ./scripts/migrate.sh user-service show
-#   ./scripts/migrate.sh all run
-#   ./scripts/migrate.sh all show
+#   ./scripts/devops/migrate.sh user-service run
+#   ./scripts/devops/migrate.sh user-service generate AddEmailIndex
+#   ./scripts/devops/migrate.sh user-service revert
+#   ./scripts/devops/migrate.sh user-service show
+#   ./scripts/devops/migrate.sh all run
+#   ./scripts/devops/migrate.sh all show
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$(cd "$SCRIPT_DIR/../backend" && pwd)"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/../../backend" && pwd)"
 
 # Map of service name -> data-source file (relative to backend/)
 declare -A DATASOURCE_MAP=(

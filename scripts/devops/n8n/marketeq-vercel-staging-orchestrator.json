@@ -1,0 +1,156 @@
+{
+  "updatedAt": "2026-05-13T17:36:06.781Z",
+  "createdAt": "2026-04-24T23:23:24.753Z",
+  "id": "PPUT0GooYV2jbwMC",
+  "name": "Marketeq Vercel Staging Orchestrator",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "f402e15c-267a-47f7-8c0a-bf049234c15f",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketeq-vibe-deploy",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "c71d70d8-67aa-4391-8011-580b819d0d7e"
+    },
+    {
+      "id": "d595419e-4dbd-4d93-908f-26cfdf152814",
+      "name": "Build Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first()?.json ?? {};\nconst headers = input.headers ?? {};\nconst payload = input.body && Object.keys(input.body).length ? input.body : input;\nconst event = headers['x-github-event'] || headers['X-GitHub-Event'] || payload.event || '';\nconst branch = payload.ref ? payload.ref.replace('refs/heads/', '') : (payload.branch || '');\nconst shaInput = payload.after || payload.sha || '';\nconst action = payload.action || '';\nconst baseShaOverride = payload.baseShaOverride || '';\nconst envParts = [\n  'EVENT=' + JSON.stringify(event),\n  'BRANCH=' + JSON.stringify(branch),\n  'SHA_INPUT=' + JSON.stringify(shaInput),\n  'ACTION=' + JSON.stringify(action),\n  'BASE_SHA_OVERRIDE=' + JSON.stringify(baseShaOverride),\n];\nconst runner = \"if [ ! -f \\\"/home/node/.n8n/marketeq-devops.env\\\" ]; then echo \\\"Missing runtime env file: /home/node/.n8n/marketeq-devops.env\\\" >&2; exit 1; fi; set -a; . \\\"/home/node/.n8n/marketeq-devops.env\\\"; set +a; /usr/bin/wget -qO- https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/714d4e2ff5cd1970aed390f9ba1524bbd30261ca/marketeq_orchestrator_node.js | /usr/local/bin/node\";\nconst command = 'env ' + envParts.join(' ') + ' /bin/sh -c ' + JSON.stringify(runner);\nreturn [{ json: { event, branch, shaInput, action, baseShaOverride, command } }];"
+      }
+    },
+    {
+      "id": "73b5037b-6a58-4608-ad76-b8a02b822046",
+      "name": "Deploy Orchestrator",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "command": "={{ $json.command }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-5678-9012-abcd-ef0123456789",
+      "name": "Service Registry Check",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        390,
+        0
+      ],
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// Service Registry Check + Desktop Validation\n// 1. Checks that all backend services with src/main.ts are registered in boot-all.js\n// 2. Checks that desktop/ required files exist when desktop code is changed\n// Posts commit statuses for both checks.\n\nconst input = $input.first()?.json ?? {};\nconst branch = input.branch || '';\nconst sha = input.shaInput || '';\n\nif (!branch || branch !== 'dev-main' || !sha) {\n  return [{ json: { ...input, serviceCheckSkipped: true, serviceCheckReason: 'not-dev-main-push' } }];\n}\n\nconst GH_TOKEN = process.env.GH_TOKEN || '';\nif (!GH_TOKEN) {\n  return [{ json: { ...input, serviceCheckSkipped: true, serviceCheckReason: 'no-gh-token' } }];\n}\n\nconst REPO = 'Marketeq/marketeq-projects-vibe';\nconst headers = {\n  'Authorization': `Bearer ${GH_TOKEN}`,\n  'Accept': 'application/vnd.github+json',\n  'X-GitHub-Api-Version': '2022-11-28',\n};\n\nasync function postStatus(state, context, description) {\n  try {\n    await fetch(`https://api.github.com/repos/${REPO}/statuses/${sha}`, {\n      method: 'POST',\n      headers: { ...headers, 'Content-Type': 'application/json' },\n      body: JSON.stringify({ state, context, description: description.slice(0, 140) }),\n    });\n  } catch (e) { /* non-fatal */ }\n}\n\n// \u2500\u2500 1. Backend service registry check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nlet bootAllContent = '';\ntry {\n  const bootResp = await fetch(`https://api.github.com/repos/${REPO}/contents/backend/boot-all.js?ref=${sha}`, { headers });\n  const bootData = await bootResp.json();\n  bootAllContent = Buffer.from(bootData.content, 'base64').toString('utf-8');\n} catch (e) {\n  return [{ json: { ...input, serviceCheckSkipped: true, serviceCheckReason: 'fetch-boot-all-failed' } }];\n}\n\nlet serviceDirs = [];\ntry {\n  const appsResp = await fetch(`https://api.github.com/repos/${REPO}/contents/backend/apps?ref=${sha}`, { headers });\n  const appsDirs = await appsResp.json();\n  if (Array.isArray(appsDirs)) {\n    serviceDirs = appsDirs.filter(d => d.type === 'dir').map(d => d.name);\n  }\n} catch (e) {\n  return [{ json: { ...input, serviceCheckSkipped: true, serviceCheckReason: 'fetch-apps-failed' } }];\n}\n\nconst missingServices = [];\nfor (const svc of serviceDirs) {\n  if (svc === 'api-gateway') continue;\n  try {\n    const mainResp = await fetch(`https://api.github.com/repos/${REPO}/contents/backend/apps/${svc}/src/main.ts?ref=${sha}`, { headers });\n    if (mainResp.status !== 200) continue;\n  } catch { continue; }\n  if (!bootAllContent.includes(`name: '${svc}'`)) {\n    missingServices.push(svc);\n  }\n}\n\nif (missingServices.length > 0) {\n  await postStatus('failure', 'n8n/service-registry-check', `Missing from boot-all.js: ${missingServices.join(', ')}`);\n} else {\n  await postStatus('success', 'n8n/service-registry-check', 'All services registered in boot-all.js');\n}\n\n// \u2500\u2500 2. Desktop validation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Check if this push touched desktop/ files by comparing commits\nlet desktopChanged = false;\ntry {\n  const compareResp = await fetch(`https://api.github.com/repos/${REPO}/commits/${sha}`, { headers });\n  const commitData = await compareResp.json();\n  const files = commitData.files || [];\n  desktopChanged = files.some(f => f.filename.startsWith('desktop/'));\n} catch (e) {\n  // If we can't determine, check anyway\n  desktopChanged = true;\n}\n\nconst desktopIssues = [];\nif (desktopChanged) {\n  // Check required desktop files exist\n  const requiredDesktopFiles = [\n    'desktop/package.json',\n    'desktop/src/main/index.ts',\n    'desktop/src/preload/preload.ts',\n    'desktop/electron-builder.yml',\n    'desktop/scripts/make-placeholder-icon.js',\n    'desktop/tsconfig.main.json',\n    'desktop/tsconfig.preload.json',\n  ];\n\n  for (const filePath of requiredDesktopFiles) {\n    try {\n      const resp = await fetch(`https://api.github.com/repos/${REPO}/contents/${filePath}?ref=${sha}`, { headers });\n      if (resp.status !== 200) {\n        desktopIssues.push(`missing: ${filePath.replace('desktop/', '')}`);\n      }\n    } catch {\n      desktopIssues.push(`error checking: ${filePath.replace('desktop/', '')}`);\n    }\n  }\n\n  // Check package.json has required scripts\n  try {\n    const pkgResp = await fetch(`https://api.github.com/repos/${REPO}/contents/desktop/package.json?ref=${sha}`, { headers });\n    const pkgData = await pkgResp.json();\n    const pkgContent = Buffer.from(pkgData.content, 'base64').toString('utf-8');\n    const pkg = JSON.parse(pkgContent);\n    const requiredScripts = ['build:main', 'build:preload', 'build:renderer', 'build', 'dist'];\n    for (const script of requiredScripts) {\n      if (!pkg.scripts?.[script]) {\n        desktopIssues.push(`missing script: ${script}`);\n      }\n    }\n    // Check prebuild generates icon\n    if (!pkg.scripts?.prebuild?.includes('make-placeholder-icon')) {\n      desktopIssues.push('prebuild script should generate placeholder icon');\n    }\n  } catch (e) {\n    desktopIssues.push('could not parse package.json');\n  }\n\n  if (desktopIssues.length > 0) {\n    await postStatus('failure', 'n8n/desktop-validation', `Desktop issues: ${desktopIssues.join('; ')}`);\n  } else {\n    await postStatus('success', 'n8n/desktop-validation', 'Desktop validation passed');\n  }\n} else {\n  await postStatus('success', 'n8n/desktop-validation', 'No desktop changes \u2014 skipped');\n}\n\nreturn [{ json: {\n  ...input,\n  serviceCheckPassed: missingServices.length === 0,\n  missingServices,\n  desktopChanged,\n  desktopIssues,\n} }];\n"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Login Smoke Test \u2014 runs after deploy to verify auth is not broken.\n// Tests: 1) health endpoint, 2) auth shape (400 = service is up and parsing),\n// 3) invalid creds (401 = full auth pipeline working).\n// Posts a GitHub commit status with the result.\n\nconst BACKEND_URL = \"https://marketeq-backend.onrender.com\";\nconst MAX_WAIT = 300; // seconds to wait for deploy to go live\nconst POLL_INTERVAL = 15; // seconds between health checks\n\nconst input = $input.first()?.json ?? {};\nconst sha = input.shaInput || input.sha || \"\";\n\nfunction sleep(ms) { return new Promise(r => setTimeout(r, ms)); }\n\nasync function httpGet(url, timeoutMs = 10000) {\n  const controller = new AbortController();\n  const tid = setTimeout(() => controller.abort(), timeoutMs);\n  try {\n    const res = await fetch(url, { signal: controller.signal });\n    clearTimeout(tid);\n    return { status: res.status, ok: res.ok };\n  } catch (e) {\n    clearTimeout(tid);\n    return { status: 0, ok: false, error: e.message };\n  }\n}\n\nasync function httpPost(url, body, timeoutMs = 10000) {\n  const controller = new AbortController();\n  const tid = setTimeout(() => controller.abort(), timeoutMs);\n  try {\n    const res = await fetch(url, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify(body),\n      signal: controller.signal,\n    });\n    clearTimeout(tid);\n    return { status: res.status, ok: res.ok, body: await res.text() };\n  } catch (e) {\n    clearTimeout(tid);\n    return { status: 0, ok: false, error: e.message };\n  }\n}\n\n// Step 1: Wait for health endpoint\nlet healthy = false;\nconst start = Date.now();\nwhile ((Date.now() - start) < MAX_WAIT * 1000) {\n  const h = await httpGet(BACKEND_URL + \"/api/health\");\n  if (h.ok || h.status === 200) { healthy = true; break; }\n  await sleep(POLL_INTERVAL * 1000);\n}\n\nif (!healthy) {\n  return [{ json: { smoke: \"FAIL\", reason: \"Health endpoint not reachable after \" + MAX_WAIT + \"s\", sha } }];\n}\n\n// Step 2: Auth shape test \u2014 POST /api/auth/login with empty body should return 400 (validation error)\nconst shape = await httpPost(BACKEND_URL + \"/api/auth/login\", {});\nif (shape.status !== 400 && shape.status !== 422) {\n  return [{ json: { smoke: \"FAIL\", reason: \"Auth shape test: expected 400/422 for empty body, got \" + shape.status, sha } }];\n}\n\n// Step 3: Invalid credentials test \u2014 should return 401\nconst creds = await httpPost(BACKEND_URL + \"/api/auth/login\", {\n  email: \"smoke-test-nonexistent@marketeq.invalid\",\n  password: \"SmokeTestPassword123!\"\n});\nif (creds.status !== 401) {\n  return [{ json: { smoke: \"FAIL\", reason: \"Auth creds test: expected 401 for invalid creds, got \" + creds.status, sha } }];\n}\n\nreturn [{ json: { smoke: \"PASS\", reason: \"All login smoke tests passed\", sha } }];"
+      },
+      "id": "smoke-login-1",
+      "name": "Login Smoke Test",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Post GitHub commit status for the smoke test result\nconst input = $input.first()?.json ?? {};\nconst sha = input.sha || \"\";\nconst passed = input.smoke === \"PASS\";\n\nif (!sha) {\n  return [{ json: { skipped: true, reason: \"No SHA available for commit status\" } }];\n}\n\nconst ghToken = process.env.GITHUB_TOKEN || \"\";\nif (!ghToken) {\n  return [{ json: { skipped: true, reason: \"No GITHUB_TOKEN \u2014 cannot post commit status\" } }];\n}\n\nconst statusUrl = `https://api.github.com/repos/Marketeq/marketeq-projects-vibe/statuses/${sha}`;\nconst res = await fetch(statusUrl, {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": \"token \" + ghToken,\n    \"Content-Type\": \"application/json\",\n    \"Accept\": \"application/vnd.github+json\",\n  },\n  body: JSON.stringify({\n    state: passed ? \"success\" : \"failure\",\n    context: \"n8n/login-smoke-test\",\n    description: input.reason || (passed ? \"Login smoke test passed\" : \"Login smoke test failed\"),\n    target_url: \"https://n8n.srv1149839.hstgr.cloud\",\n  }),\n});\n\nreturn [{ json: { posted: true, state: passed ? \"success\" : \"failure\", httpStatus: res.status, reason: input.reason } }];"
+      },
+      "id": "smoke-status-1",
+      "name": "Post Smoke Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Command": {
+      "main": [
+        [
+          {
+            "node": "Service Registry Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Service Registry Check": {
+      "main": [
+        [
+          {
+            "node": "Deploy Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Login Smoke Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login Smoke Test": {
+      "main": [
+        [
+          {
+            "node": "Post Smoke Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

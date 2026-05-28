@@ -8,10 +8,10 @@ set -euo pipefail
 # deploy from the correct branch, then sets it back to private.
 #
 # Usage:
-#   ./scripts/deploy.sh dev        # deploy dev-main branch
-#   ./scripts/deploy.sh staging    # deploy staging branch
-#   ./scripts/deploy.sh live       # deploy live/mvp branch
-#   ./scripts/deploy.sh all        # deploy all three
+#   ./scripts/devops/deploy.sh dev        # deploy dev-main branch
+#   ./scripts/devops/deploy.sh staging    # deploy staging branch
+#   ./scripts/devops/deploy.sh live       # deploy live/mvp branch
+#   ./scripts/devops/deploy.sh all        # deploy all three
 # ─────────────────────────────────────────────────────────────
 
 REPO="Marketeq/marketeq-projects-vibe"
@@ -66,7 +66,7 @@ deploy_env() {
 
   # Get the repo root (script may be called from anywhere)
   local repo_root
-  repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+  repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 
   cd "$repo_root"
 
@@ -84,7 +84,7 @@ deploy_env() {
 # ── Main ─────────────────────────────────────────────────────
 
 if [ $# -eq 0 ]; then
-  echo "Usage: ./scripts/deploy.sh [dev|staging|live|all]"
+  echo "Usage: ./scripts/devops/deploy.sh [dev|staging|live|all]"
   exit 1
 fi
 

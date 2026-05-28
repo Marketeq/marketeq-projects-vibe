@@ -59,6 +59,15 @@ Each Vercel project has its own env var set in the Vercel dashboard, populated f
 |---|---|---|---|---|---|
 | `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | n8n orchestrator API deploys | Vercel dev + Vercel staging + Vercel live | `https://marketeq-backend.onrender.com` |
 
+### 3.0.1 One service means one service
+
+There must be **exactly one** active (non-suspended) Render web service at any time: `marketeq-backend` (`srv-d76r48nafjfc73e1djf0`). Creating a second backend service (e.g. a "staging backend") violates this topology and wastes Render resources.
+
+**Enforcement:**
+- `scripts/devops/check-runtime-env-drift.mjs` checks the Render API for rogue services on every run and fails if any active service exists outside the allowed list in `marketeq-devops.config.json`.
+- The staging orchestrator (`marketeq_orchestrator_node.js`) blocks all deploys if rogue services are detected.
+- If a rogue service is found, delete it immediately via the Render API or dashboard before proceeding.
+
 ### 3.1 How the shared backend deploys
 
 All three Vercel projects point to the same Render backend. The Jenkins `staging-orchestrator` pipeline triggers Render API deploys with the specific commit SHA whenever backend files change on `dev-main` or `staging`. This keeps the shared backend current for all frontends without waiting for a `live-mvp` promotion.
