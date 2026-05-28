@@ -1065,7 +1065,7 @@ const MoreInfoDialog = ({
         <form
           onSubmit={handleSubmit(onSubmit)}
           className={cn(
-            "transition-all duration-300",
+            "transition-all duration-300 min-w-0",
             state === "action" && "col-span-3"
           )}
         >
@@ -2373,7 +2373,7 @@ const WorkExperienceDialog = ({
         <form
           onSubmit={handleSubmit(onSubmit)}
           className={cn(
-            "transition-all duration-300",
+            "transition-all duration-300 min-w-0",
             state === "action" && "col-span-3"
           )}
         >
@@ -4320,7 +4320,7 @@ const WorkExperienceCard = ({
           />
         </div>
       </div>
-      <div className="flex-auto">
+      <div className="flex-auto min-w-0">
         <div className="flex items-start justify-between">
           <h1 className="text-base leading-none font-bold text-dark-blue-400">
             {jobTitle}
@@ -4402,10 +4402,10 @@ const WorkExperienceCard = ({
           </span>
         </div>
 
-        <div className="mt-3">
-          <span className="text-sm inline-block leading-none text-dark-blue-400 line-clamp-2">
+        <div className="mt-3 min-w-0 overflow-hidden">
+          <p className="text-sm leading-none text-dark-blue-400 line-clamp-2 break-all">
             {jobDescription}
-          </span>
+          </p>
         </div>
 
         <div className="mt-3 flex items-center gap-x-2">
