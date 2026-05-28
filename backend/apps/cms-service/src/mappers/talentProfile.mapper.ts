@@ -5,28 +5,33 @@
 export function mapProfileToEvent(doc: any) {
   const id = doc.uuid || String(doc.id);
   const username = doc.username;
-  const name = doc.name;
+  const firstName = doc.firstName || "";
+  const lastName = doc.lastName || "";
+  const name = [firstName, lastName].filter(Boolean).join(" ");
 
-  if (!id || id === 'undefined' || !username || !name) {
-    throw new Error(`Profile missing required fields: id=${id}, username=${username}, name=${name}`);
+  if (!id || id === "undefined" || !username || !name) {
+    throw new Error(
+      `Profile missing required fields: id=${id}, username=${username}, firstName=${firstName}, lastName=${lastName}`,
+    );
   }
 
-  return {
+  const result = {
     id,
     sourceId: doc.sourceId || null,
     username,
     name,
-    headline: doc.headline || null,
+    headline: doc.jobTitles?.[0]?.headline || null,
+    jobTitles: (doc.jobTitles || []).map((jt: any) => ({
+      headline: jt.headline,
+      rate: jt.rate,
+    })),
     availability: doc.availability || null,
-    isAvailable: doc.isAvailable ?? true,
-    location: doc.location || null,
-    country: doc.country || null,
-    timezone: doc.timezone || null,
-    rateMin: doc.rateMin ?? null,
-    rateMax: doc.rateMax ?? null,
+    rate: doc.jobTitles?.[0]?.rate ?? null,
     overview: doc.overview || null,
     skills: (doc.skills || []).map((s: any) => s.name),
-    industryExpertise: (doc.industryExpertise || []).map((i: any) => i.name),
+    industryExpertise: (doc.industries || doc.industryExpertise || []).map(
+      (i: any) => i.name,
+    ),
     languages: (doc.languages || []).map((l: any) => ({
       language: l.language,
       fluency: l.fluency,
@@ -47,13 +52,22 @@ export function mapProfileToEvent(doc: any) {
       startDate: w.startDate,
       endDate: w.endDate,
       description: w.description,
+      skills: (w.skills || []).map((s: any) => s.name),
     })),
     portfolio: (doc.portfolio || []).map((p: any) => ({
       title: p.title,
       url: p.url,
-      thumbnailId: typeof p.thumbnail === 'object' && p.thumbnail ? p.thumbnail.id : null,
+      thumbnailId:
+        typeof p.thumbnail === "object" && p.thumbnail ? p.thumbnail.id : null,
+      thumbnailUrl:
+        typeof p.thumbnail === "object" && p.thumbnail ? p.thumbnail.url : null,
       description: p.description,
     })),
-    status: doc.status || 'active',
+    location: doc.location || null,
+    country: doc.country || null,
+    status: doc.status || "active",
+    timezone: null,
   };
+
+  return result;
 }

@@ -29,19 +29,37 @@ const path = require('path');
 const GATEWAY_PORT = process.env.PORT || '10000';
 
 // Internal ports — only reachable inside the container
+// All backend services — ports must match proxy.service.ts defaults in the gateway.
+// Only services the API gateway actually proxies to.
+// Keep this list in sync with proxy.service.ts route map.
+// Active services to run at startup. All 27 are compiled in the Docker image,
+// but only these are started to stay within the 512 MB Render Starter plan.
+// 3 services + gateway = 4 processes. Each gets --max-old-space-size=128
+// to cap heap at ~128 MB each (4 × 128 = 512 MB — OS overhead keeps RSS lower).
+// 5 services and 9 services both OOM-killed at 512 MB (2026-05-14).
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
-  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
-  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
-  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
-  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
+  // Reduced to 3 core services after repeated OOM kills at 512 MB.
+  // Re-enable after Render plan upgrade:
+  // notification-service (3006), category-service (3023),
+  // contracts-service (3010), invitations-service (3013),
+  // content-moderation-service (3014), time-tracking-service (3017),
+  // Dormant until Render plan upgrade (compiled but not started):
+  // messaging-service (3005), search-service (3007), algolia-service (3008),
+  // checkout-service (3009), favorites-service (3012), portfolio-service (3015),
+  // autocomplete-service (3016), transaction-service (3018),
+  // suggestions-service (3020), admin-service (3024),
+  // affiliate-referral-service (3025), billing-service (3026),
+  // earnings-service (3027), payout-service (3028), pricing-service (3029),
+  // wallet-service (3030), wire-review-service (3031), legal-service (3032)
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
 
-// Build internal service URLs for the gateway
+// Gateway env — every internal service URL must be listed here so the
+// proxy can reach them. Ports must match the SERVICES array above.
 const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
@@ -49,10 +67,30 @@ const gatewayEnv = {
   AUTH_SERVICE_URL:             'http://localhost:3001',
   USER_SERVICE_URL:             'http://localhost:3002',
   LISTINGS_SERVICE_URL:         'http://localhost:3003',
+  MESSAGING_SERVICE_URL:        'http://localhost:3005',
   NOTIFICATION_SERVICE_URL:     'http://localhost:3006',
+  SEARCH_SERVICE_URL:           'http://localhost:3007',
+  ALGOLIA_SERVICE_URL:          'http://localhost:3008',
+  CHECKOUT_SERVICE_URL:         'http://localhost:3009',
+  CONTRACTS_SERVICE_URL:        'http://localhost:3010',
+  FAVORITES_SERVICE_URL:        'http://localhost:3012',
   INVITATIONS_SERVICE_URL:      'http://localhost:3013',
   MODERATION_SERVICE_URL:       'http://localhost:3014',
+  PORTFOLIO_SERVICE_URL:        'http://localhost:3015',
+  AUTOCOMPLETE_SERVICE_URL:     'http://localhost:3016',
+  LEGAL_SERVICE_URL:            'http://localhost:3032',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
+  TRANSACTION_SERVICE_URL:      'http://localhost:3018',
+  SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
+  CATEGORY_SERVICE_URL:         'http://localhost:3023',
+  ADMIN_SERVICE_URL:            'http://localhost:3024',
+  AFFILIATE_REFERRAL_SERVICE_URL: 'http://localhost:3025',
+  BILLING_SERVICE_URL:          'http://localhost:3026',
+  EARNINGS_SERVICE_URL:         'http://localhost:3027',
+  PAYOUT_SERVICE_URL:           'http://localhost:3028',
+  PRICING_SERVICE_URL:          'http://localhost:3029',
+  WALLET_SERVICE_URL:           'http://localhost:3030',
+  WIRE_REVIEW_SERVICE_URL:      'http://localhost:3031',
 };
 
 function buildInternalServiceEnv(port) {
@@ -91,7 +129,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', [distMain], {
+  const child = spawn('node', ['--max-old-space-size=128', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
@@ -110,6 +148,7 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
+
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
   console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
@@ -117,8 +156,7 @@ async function bootstrapAll() {
   launchService(GATEWAY, gatewayEnv, true);
 
   // Start the gateway first so Render discovers the public-facing process
-  // before the internal services begin listening. Do not hard-fail if the
-  // gateway takes time to become healthy while RabbitMQ reconnects.
+  // before the internal services begin listening.
   setTimeout(() => {
     console.log('[boot] Launching internal services after gateway head start...');
     for (const svc of SERVICES) {

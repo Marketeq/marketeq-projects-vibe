@@ -1,16 +1,31 @@
 "use client"
 
 import React from "react"
+import {
+  Check,
+  CreditCard,
+  Edit03,
+  MoreHorizontal,
+  Trash03,
+  Trash2,
+} from "@blend-metrics/icons"
+import { MastercardDefault } from "@blend-metrics/icons/payment-methods"
 import { Control, useWatch } from "react-hook-form"
+import type { BillingAddressFormValues } from "@/types/checkout-core"
+import RmDialog from "@/components/ui/rm-dialog/rm-dialog"
 import { getCardType } from "@/components/credit-card-input"
 import { Amex, Discover, Visa } from "@/components/icons/payment-icons"
-import { MastercardDefault } from "@blend-metrics/icons/payment-methods"
-import { Check, CreditCard, Edit03, MoreHorizontal, Trash03, Trash2 } from "@blend-metrics/icons"
-import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton } from "@/components/ui"
-import RmDialog from "@/components/ui/rm-dialog/rm-dialog"
-import type { BillingAddressFormValues } from "@/types/checkout-core"
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  IconButton,
+} from "@/components/ui"
 
-export default function CreditDebitCardArticle1 ({
+export default function CreditDebitCardArticle1({
   onEdit,
   onRemove,
   cardNumber,
@@ -22,7 +37,7 @@ export default function CreditDebitCardArticle1 ({
   cardNumber?: string
   saveDefaultPaymentMethod?: boolean
   onChange?: () => void
-})  {
+}) {
   const kind = getCardType(cardNumber || "")
 
   return (
@@ -769,4 +784,9 @@ const CreditCardCvvOrCvc = (props: React.SVGProps<SVGSVGElement>) => {
     </svg>
   )
 }
-export { CreditDebitCardArticle, CreditDebitCardArticle2, CreditDebitCardArticle3, CreditCardCvvOrCvc }
+export {
+  CreditDebitCardArticle,
+  CreditDebitCardArticle2,
+  CreditDebitCardArticle3,
+  CreditCardCvvOrCvc,
+}

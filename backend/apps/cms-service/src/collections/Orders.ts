@@ -1,9 +1,13 @@
 import { CollectionConfig } from 'payload/types';
 import { isAdmin, isAdminOrDeveloper } from '../access/roles';
 import { crossServiceSourceIdField } from '../fields/crossServiceSourceIdField';
+import { syncOrderToService } from '../hooks/afterChange/syncOrders';
 
 export const Orders: CollectionConfig = {
   slug: 'orders',
+  hooks: {
+    afterChange: [syncOrderToService],
+  },
   admin: {
     useAsTitle: 'orderNumber',
     defaultColumns: ['orderNumber', 'orderType', 'status', 'totalAmount'],

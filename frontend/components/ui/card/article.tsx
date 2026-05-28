@@ -24,7 +24,8 @@ const articleVariants = cva(
 )
 
 interface ArticleProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends
+    React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof articleVariants> {
   isDragging?: boolean
   isError?: boolean
@@ -104,7 +105,8 @@ const ArticleIconVariants = cva(
 )
 
 interface ArticleIconProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends
+    React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof ArticleIconVariants> {}
 
 const ArticleIcon = ({
@@ -138,7 +140,8 @@ const ArticleTitleVariants = cva("font-medium text-gray-900", {
 })
 
 interface ArticleTitleProps
-  extends React.HTMLAttributes<HTMLHeadingElement>,
+  extends
+    React.HTMLAttributes<HTMLHeadingElement>,
     VariantProps<typeof ArticleTitleVariants> {}
 
 const ArticleTitle = ({ className, size, ...props }: ArticleTitleProps) => {
@@ -157,8 +160,7 @@ const ArticleTitle = ({ className, size, ...props }: ArticleTitleProps) => {
   )
 }
 
-interface ArticleDescription
-  extends React.HTMLAttributes<HTMLParagraphElement> {}
+interface ArticleDescription extends React.HTMLAttributes<HTMLParagraphElement> {}
 
 const ArticleDescription = ({ className, ...props }: ArticleDescription) => {
   const { variant } = useArticleContext()

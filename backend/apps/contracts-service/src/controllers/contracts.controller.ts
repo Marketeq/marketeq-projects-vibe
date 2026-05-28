@@ -1,11 +1,23 @@
-import { Controller, Post, Put, Get, Param, Body } from '@nestjs/common';
+import { Controller, Post, Put, Get, Param, Body, Headers, ForbiddenException } from '@nestjs/common';
 import { ContractsService } from '../services/contracts.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
+import { ConfigService } from '@nestjs/config';
+import { Public } from '../decorators/public.decorator';
 
 @Controller('contracts')
 export class ContractsController {
-  constructor(private readonly contractsService: ContractsService) {}
+  constructor(
+    private readonly contractsService: ContractsService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private validateInternalToken(token: string | undefined) {
+    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('Invalid internal token');
+    }
+  }
 
   // End a single contract
   @Put(':id/end')
@@ -35,5 +47,16 @@ export class ContractsController {
   @Get(':id')
   async getContract(@Param('id') id: string) {
     return this.contractsService.getContract(id);
+  }
+
+  @Public()
+  @Post(':id/cms-sync')
+  async syncFromCms(
+    @Headers('x-internal-token') token: string | undefined,
+    @Param('id') id: string,
+    @Body() dto: any,
+  ) {
+    this.validateInternalToken(token);
+    return this.contractsService.update(id, dto);
   }
 }

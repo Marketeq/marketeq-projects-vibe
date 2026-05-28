@@ -1,7 +1,7 @@
 "use client"
 
-import { useParams, useRouter } from "next/navigation"
 import { useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
 
 /**
  * Route: /c/:l1/services/:slug-:shortId

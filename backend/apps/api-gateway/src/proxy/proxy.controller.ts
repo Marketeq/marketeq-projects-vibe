@@ -37,7 +37,31 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
   metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
+  public: 'users',               // public talent profiles live in user-service
+  admin: 'admin',
+  'affiliate-referral': 'affiliateReferral',
+  billing: 'billing',
+  earnings: 'earnings',
+  payouts: 'payouts',
+  'deposit-methods': 'payouts',   // payout-service handles deposit methods
+  pricing: 'pricing',
+  rates: 'pricing',               // pricing-service rates endpoints
+  currency: 'pricing',            // pricing-service currency endpoints
+  budget: 'pricing',              // pricing-service budget endpoints
+  wallet: 'wallet',
+  'wire-transfer': 'wireReview',
+  'wire-review': 'wireReview',
 }
+
+const USER_SERVICE_V1_RESOURCES = new Set([
+  'experiences',
+  'education',
+  'languages',
+  'certifications',
+  'industries',
+  'portfolio',
+  'skills',
+])
 
 @Controller()
 export class ProxyController {
@@ -129,12 +153,24 @@ export class ProxyController {
     // /v1/transactions/* or /v1/invoices/* → transaction-service (default for v1)
     if (prefix === 'v1' && segments[1] === 'users') {
       prefix = 'users'
+    } else if (prefix === 'v1' && USER_SERVICE_V1_RESOURCES.has(segments[1])) {
+      prefix = 'users'
     } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
       prefix = 'messages'
     } else if (prefix === 'v1' && segments[1] === 'notifications') {
       prefix = 'notifications'
+    } else if (prefix === 'v1' && segments[1] === 'payouts') {
+      prefix = 'payouts'
+    } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
+      prefix = 'deposit-methods'
+    } else if (prefix === 'v1' && segments[1] === 'rates') {
+      prefix = 'rates'
+    } else if (prefix === 'v1' && segments[1] === 'currency') {
+      prefix = 'currency'
+    } else if (prefix === 'v1' && segments[1] === 'budget') {
+      prefix = 'budget'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]
@@ -150,7 +186,10 @@ export class ProxyController {
     // listings-service controllers are mounted at /v1/projects and /v1/services,
     // so we forward the full /v1/... path unchanged.
     let downstreamPath = normalizedPath
-    if (segments[0] === 'v1' && segments[1] === 'users') {
+    if (
+      segments[0] === 'v1' &&
+      (segments[1] === 'users' || USER_SERVICE_V1_RESOURCES.has(segments[1]))
+    ) {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
     if (serviceName === 'categories') {

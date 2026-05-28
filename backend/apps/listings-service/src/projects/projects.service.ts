@@ -213,6 +213,7 @@ export class ProjectsService {
       title: project.title,
       slug: project.slug,
       shortDescription: project.shortDescription ?? null,
+      projectType: project.projectType ?? null,
       description: project.description,
       category: project.category ?? project.categories?.[0] ?? 'Software Development',
       categories: project.categories ?? [],
@@ -338,6 +339,88 @@ export class ProjectsService {
       reviewCount: totalReviews,
       projectCount: eligible.length,
     };
+  }
+
+  async addQuestion(projectId: string, question: string, userId: string) {
+    if (!userId) {
+      throw new ForbiddenException('You must be logged in to ask a question');
+    }
+
+    const trimmed = question?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Question cannot be empty');
+    }
+
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const questions = project.recentQuestions ?? [];
+    questions.push({ question: trimmed, answer: null });
+    await this.repo.update(projectId, { recentQuestions: questions });
+
+    return { question: trimmed, answer: null };
+  }
+
+  async answerQuestion(projectId: string, questionIndex: number, answer: string, userId: string) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+    this.assertOwnership(project, userId);
+
+    const trimmed = answer?.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Answer cannot be empty');
+    }
+
+    const questions = project.recentQuestions ?? [];
+    if (questionIndex < 0 || questionIndex >= questions.length) {
+      throw new BadRequestException('Invalid question index');
+    }
+
+    questions[questionIndex].answer = trimmed;
+    await this.repo.update(projectId, { recentQuestions: questions });
+
+    return questions[questionIndex];
+  }
+
+  async getQuestions(projectId: string) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+    return project.recentQuestions ?? [];
+  }
+
+  async getRelatedSearches(projectId: string, limit = 60) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    // Gather seed terms from this project's metadata
+    const seedTerms = new Set<string>([
+      ...(project.skills ?? []),
+      ...(project.tags ?? []),
+      ...(project.programmingLanguages ?? []),
+      ...(project.developmentTech ?? []),
+      ...(project.subcategories ?? []),
+    ]);
+
+    // Fetch related published projects to expand the term pool
+    const related = await this.repo.find({
+      where: { status: ListingStatus.Published },
+      select: ['skills', 'tags', 'programmingLanguages', 'developmentTech', 'subcategories'],
+      take: 50,
+    });
+
+    for (const r of related) {
+      for (const arr of [r.skills, r.tags, r.programmingLanguages, r.developmentTech, r.subcategories]) {
+        if (!arr) continue;
+        for (const term of arr) {
+          seedTerms.add(term);
+        }
+      }
+    }
+
+    // Return unique, non-empty terms up to the limit
+    return Array.from(seedTerms)
+      .filter((t) => t && t.trim().length > 0)
+      .slice(0, limit);
   }
 
   private overlapRatio(source: Set<string>, candidate: string[] | null | undefined): number {

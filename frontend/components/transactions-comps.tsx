@@ -4,7 +4,6 @@ import * as React from "react"
 import { SVGProps, useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
-import { useToast } from "@/components/ui"
 import {
   AlertCircle,
   ArrowDown,
@@ -33,8 +32,10 @@ import {
   UserCircle,
   X,
 } from "@blend-metrics/icons"
-import NextLink from "@/components/next-link"
+import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
+import { useToast } from "@/components/ui"
 import {
   Avatar,
   AvatarFallback,
@@ -82,7 +83,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { ToggleGroupRoot, ToggleGroupItem } from "@/components/ui/toggle-group"
 
 // ─── SVG Icons (inline, from designs) ───────────────────────────────────
 
@@ -100,22 +100,58 @@ const BankIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
       strokeWidth="1.5"
       strokeLinejoin="round"
     />
-    <path d="M3 8V15M7 8V15M13 8V15M17 8V15" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M1 15H19V17.5H1V15Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    <path
+      d="M3 8V15M7 8V15M13 8V15M17 8V15"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    />
+    <path
+      d="M1 15H19V17.5H1V15Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
   </svg>
 )
 
 const DollarSignIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
-  <svg className={cn("size-5", className)} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-    <path d="M12 2V22M17 5H9.5C8.57174 5 7.6815 5.36875 7.02513 6.02513C6.36875 6.6815 6 7.57174 6 8.5C6 9.42826 6.36875 10.3185 7.02513 10.9749C7.6815 11.6313 8.57174 12 9.5 12H14.5C15.4283 12 16.3185 12.3687 16.9749 13.0251C17.6313 13.6815 18 14.5717 18 15.5C18 16.4283 17.6313 17.3185 16.9749 17.9749C16.3185 18.6313 15.4283 19 14.5 19H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  <svg
+    className={cn("size-5", className)}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <path
+      d="M12 2V22M17 5H9.5C8.57174 5 7.6815 5.36875 7.02513 6.02513C6.36875 6.6815 6 7.57174 6 8.5C6 9.42826 6.36875 10.3185 7.02513 10.9749C7.6815 11.6313 8.57174 12 9.5 12H14.5C15.4283 12 16.3185 12.3687 16.9749 13.0251C17.6313 13.6815 18 14.5717 18 15.5C18 16.4283 17.6313 17.3185 16.9749 17.9749C16.3185 18.6313 15.4283 19 14.5 19H6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 )
 
 const PaypalIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
-  <svg className={cn("size-6", className)} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-    <path d="M7.076 21.337H2.47a.641.641 0 01-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.283c-.521 0-.963.38-1.045.9l-.848 5.36-.303 1.916a.553.553 0 01-.546.471l.535-.64z" fill="#253B80" />
-    <path d="M23.048 7.667C22.07 13.158 18.37 15.33 13.437 15.33h-1.19c-.56 0-1.036.41-1.123.967l-1.212 7.682a.467.467 0 00.462.54h3.24c.49 0 .908-.355.985-.838l.04-.212.782-4.955.05-.272a.998.998 0 01.985-.838h.622c4.018 0 7.163-1.632 8.082-6.354.384-1.973.185-3.617-.83-4.774a3.961 3.961 0 00-1.134-.86z" fill="#179BD7" />
-    <path d="M21.754 7.151a8.267 8.267 0 00-1.022-.231 12.94 12.94 0 00-2.058-.151h-6.23a.998.998 0 00-.985.838l-1.327 8.408-.038.247a1.13 1.13 0 011.123-.967h2.34c4.594 0 8.192-1.866 9.245-7.263.031-.16.058-.316.082-.467a5.357 5.357 0 00-1.13-.414z" fill="#222D65" />
+  <svg
+    className={cn("size-6", className)}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <path
+      d="M7.076 21.337H2.47a.641.641 0 01-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.283c-.521 0-.963.38-1.045.9l-.848 5.36-.303 1.916a.553.553 0 01-.546.471l.535-.64z"
+      fill="#253B80"
+    />
+    <path
+      d="M23.048 7.667C22.07 13.158 18.37 15.33 13.437 15.33h-1.19c-.56 0-1.036.41-1.123.967l-1.212 7.682a.467.467 0 00.462.54h3.24c.49 0 .908-.355.985-.838l.04-.212.782-4.955.05-.272a.998.998 0 01.985-.838h.622c4.018 0 7.163-1.632 8.082-6.354.384-1.973.185-3.617-.83-4.774a3.961 3.961 0 00-1.134-.86z"
+      fill="#179BD7"
+    />
+    <path
+      d="M21.754 7.151a8.267 8.267 0 00-1.022-.231 12.94 12.94 0 00-2.058-.151h-6.23a.998.998 0 00-.985.838l-1.327 8.408-.038.247a1.13 1.13 0 011.123-.967h2.34c4.594 0 8.192-1.866 9.245-7.263.031-.16.058-.316.082-.467a5.357 5.357 0 00-1.13-.414z"
+      fill="#222D65"
+    />
   </svg>
 )
 
@@ -230,14 +266,19 @@ interface StatCardProps {
   status?: string
 }
 
-const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardProps) => (
+const StatCard = ({
+  label,
+  sublabel,
+  amount,
+  change,
+  extra,
+  status,
+}: StatCardProps) => (
   <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4 min-w-0">
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-500 truncate">{label}</p>
-        {sublabel && (
-          <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>
-        )}
+        {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
       </div>
       <div className="text-right shrink-0">
         <p className="text-2xl font-bold text-dark-blue-400">
@@ -245,17 +286,21 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
           {amount}
         </p>
         {status && (
-          <p className="text-xs font-medium text-primary-500 mt-0.5">{status}</p>
+          <p className="text-xs font-medium text-primary-500 mt-0.5">
+            {status}
+          </p>
         )}
       </div>
     </div>
     {(change || extra) && (
       <div className="flex items-center gap-2 mt-2">
         {change && (
-          <span className={cn(
-            "inline-flex items-center gap-0.5 text-xs font-medium",
-            change.direction === "up" ? "text-success-500" : "text-error-500"
-          )}>
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs font-medium",
+              change.direction === "up" ? "text-success-500" : "text-error-500"
+            )}
+          >
             {change.direction === "up" ? (
               <ArrowUp className="size-3" />
             ) : (
@@ -264,7 +309,9 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
             {change.value}
           </span>
         )}
-        {change && <span className="text-xs text-gray-400">{change.label}</span>}
+        {change && (
+          <span className="text-xs text-gray-400">{change.label}</span>
+        )}
         {extra && <span className="text-xs text-gray-500">{extra}</span>}
       </div>
     )}
@@ -273,11 +320,18 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
 
 // ─── Overview Tab ───────────────────────────────────────────────────────
 
-export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void }) => {
+export const OverviewTab = ({
+  onNavigateTab,
+  onEditPayoutSchedule,
+}: {
+  onNavigateTab?: (tab: string) => void
+  onEditPayoutSchedule?: () => void
+}) => {
   const router = useRouter()
   const { toast } = useToast()
   const [showBanner, setShowBanner] = useState(true)
-  const comingSoon = (feature: string) => toast({ title: feature, description: "This feature is coming soon." })
+  const comingSoon = (feature: string) =>
+    toast({ title: feature, description: "This feature is coming soon." })
 
   return (
     <div className="flex gap-6">
@@ -288,7 +342,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           <div className="flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
-              You&apos;ve earned over <span className="font-semibold text-success-600">$5,000</span> this year, that&apos;s <span className="font-semibold text-success-600">22%</span> more than last year!
+              You&apos;ve earned over{" "}
+              <span className="font-semibold text-success-600">
+                $5,000
+              </span>{" "}
+              this year, that&apos;s{" "}
+              <span className="font-semibold text-success-600">22%</span> more
+              than last year!
             </p>
             <IconButton
               size="sm"
@@ -304,7 +364,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         {/* Earnings Summary */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex items-center gap-2 mb-4">
-            <h3 className="text-base font-semibold text-dark-blue-400">Earnings Summary</h3>
+            <h3 className="text-base font-semibold text-dark-blue-400">
+              Earnings Summary
+            </h3>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
@@ -334,7 +396,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </TooltipProvider>
               </div>
               <p className="text-3xl font-bold text-dark-blue-400">
-                <span className="text-base align-top">$</span>520<span className="text-lg">.00</span>
+                <span className="text-base align-top">$</span>520
+                <span className="text-lg">.00</span>
               </p>
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="inline-flex items-center gap-0.5 text-xs font-medium text-error-500">
@@ -343,7 +406,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </span>
                 <span className="text-xs text-gray-400">since yesterday</span>
               </div>
-              <p className="text-sm text-gray-500 mt-1"><span className="font-semibold">4h 30m</span> Logged</p>
+              <p className="text-sm text-gray-500 mt-1">
+                <span className="font-semibold">4h 30m</span> Logged
+              </p>
             </div>
 
             {/* This Week + This Month */}
@@ -364,14 +429,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">$</span>2,460<span className="text-base">.00</span>
+                    <span className="text-sm align-top">$</span>2,460
+                    <span className="text-base">.00</span>
                   </p>
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium text-success-500">
                     <ArrowUp className="size-3" />
                     5.2%
                   </span>
                   <span className="text-xs text-gray-400">since last week</span>
-                  <span className="text-sm text-gray-500 ml-auto"><span className="font-semibold">19h 15m</span> Logged</span>
+                  <span className="text-sm text-gray-500 ml-auto">
+                    <span className="font-semibold">19h 15m</span> Logged
+                  </span>
                 </div>
               </div>
 
@@ -391,21 +459,31 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">$</span>13,870<span className="text-base">.00</span>
+                    <span className="text-sm align-top">$</span>13,870
+                    <span className="text-base">.00</span>
                   </p>
                   <span className="inline-flex items-center gap-0.5 text-xs font-medium text-error-500">
                     <ArrowDown className="size-3" />
                     2.7%
                   </span>
-                  <span className="text-xs text-gray-400">since last month</span>
-                  <span className="text-sm text-gray-500 ml-auto"><span className="font-semibold">52h 45m</span> Logged</span>
+                  <span className="text-xs text-gray-400">
+                    since last month
+                  </span>
+                  <span className="text-sm text-gray-500 ml-auto">
+                    <span className="font-semibold">52h 45m</span> Logged
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="mt-4">
-            <Button variant="outlined" visual="gray" size="sm" onClick={() => onNavigateTab?.("earnings")}>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              onClick={() => onNavigateTab?.("earnings")}
+            >
               View All Earnings
             </Button>
           </div>
@@ -414,8 +492,15 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         {/* Direct Deposit */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-dark-blue-400">Direct Deposit</h3>
-            <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
+            <h3 className="text-base font-semibold text-dark-blue-400">
+              Direct Deposit
+            </h3>
+            <Button
+              variant="link"
+              visual="gray"
+              size="sm"
+              onClick={() => onNavigateTab?.("payouts")}
+            >
               View All Payouts
             </Button>
           </div>
@@ -423,12 +508,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Upcoming Payout */}
             <div className="rounded-lg border border-gray-200 p-4">
-              <p className="text-sm font-medium text-gray-500 mb-1">Upcoming Payout</p>
+              <p className="text-sm font-medium text-gray-500 mb-1">
+                Upcoming Payout
+              </p>
               <p className="text-3xl font-bold text-dark-blue-400">
-                <span className="text-base align-top">$</span>2,460<span className="text-lg">.00</span>
+                <span className="text-base align-top">$</span>2,460
+                <span className="text-lg">.00</span>
               </p>
               <div className="flex items-center gap-1.5 mt-1">
-                <span className="text-xs text-gray-400">Scheduled for June 3, 2025</span>
+                <span className="text-xs text-gray-400">
+                  Scheduled for June 3, 2025
+                </span>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger>
@@ -440,7 +530,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <Button variant="outlined" visual="gray" size="sm" className="mt-3" onClick={() => onEditPayoutSchedule?.()}>
+              <Button
+                variant="outlined"
+                visual="gray"
+                size="sm"
+                className="mt-3"
+                onClick={() => onEditPayoutSchedule?.()}
+              >
                 Edit Payout Schedule
               </Button>
             </div>
@@ -449,25 +545,40 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             <div className="rounded-lg border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-gray-500">Deposit Method</span>
+                  <span className="text-sm font-medium text-gray-500">
+                    Deposit Method
+                  </span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
                         <HelpCircle className="size-3.5 text-gray-400" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>The account where your payouts are sent by default.</p>
+                        <p>
+                          The account where your payouts are sent by default.
+                        </p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Button variant="link" visual="gray" size="sm" onClick={() => comingSoon("Edit Deposit Method")}>Edit</Button>
+                <Button
+                  variant="link"
+                  visual="gray"
+                  size="sm"
+                  onClick={() => comingSoon("Edit Deposit Method")}
+                >
+                  Edit
+                </Button>
               </div>
               <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
                 <BankIcon className="size-5 text-gray-500" />
-                <span className="text-sm font-medium text-dark-blue-400">Chase Bank</span>
+                <span className="text-sm font-medium text-dark-blue-400">
+                  Chase Bank
+                </span>
                 <span className="text-sm text-gray-400">...4553</span>
-                <Badge visual="primary" size="sm" className="ml-auto">Default</Badge>
+                <Badge visual="primary" size="sm" className="ml-auto">
+                  Default
+                </Badge>
               </div>
             </div>
           </div>
@@ -475,13 +586,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           {/* Previous Payout */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
             <div>
-              <p className="text-sm font-medium text-gray-500">Previous Payout</p>
+              <p className="text-sm font-medium text-gray-500">
+                Previous Payout
+              </p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Deposited on May 28, 2025 to <BankIcon className="size-3.5 inline" /> Chase Bank ...4553
+                Deposited on May 28, 2025 to{" "}
+                <BankIcon className="size-3.5 inline" /> Chase Bank ...4553
               </p>
             </div>
             <p className="text-2xl font-bold text-dark-blue-400">
-              <span className="text-sm align-top">$</span>2,460<span className="text-base">.00</span>
+              <span className="text-sm align-top">$</span>2,460
+              <span className="text-base">.00</span>
             </p>
           </div>
         </div>
@@ -490,19 +605,30 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         <div className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1.5">
-              <h3 className="text-base font-semibold text-dark-blue-400">Connected Accounts</h3>
+              <h3 className="text-base font-semibold text-dark-blue-400">
+                Connected Accounts
+              </h3>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
                     <HelpCircle className="size-4 text-gray-400" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Linked bank and wallet accounts available for receiving deposits.</p>
+                    <p>
+                      Linked bank and wallet accounts available for receiving
+                      deposits.
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
-            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => comingSoon("Add Deposit Method")}>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() => comingSoon("Add Deposit Method")}
+            >
               Add Deposit Method
             </Button>
           </div>
@@ -511,13 +637,27 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             {/* Chase Bank */}
             <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
               <BankIcon className="size-5 text-gray-500" />
-              <span className="text-sm font-medium text-dark-blue-400">Chase Bank</span>
+              <span className="text-sm font-medium text-dark-blue-400">
+                Chase Bank
+              </span>
               <span className="text-sm text-gray-400">...4553</span>
-              <Badge visual="primary" size="sm" className="ml-auto mr-2">Default</Badge>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Edit Account")}>
+              <Badge visual="primary" size="sm" className="ml-auto mr-2">
+                Default
+              </Badge>
+              <IconButton
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                onClick={() => comingSoon("Edit Account")}
+              >
                 <Edit03 className="size-4" />
               </IconButton>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Remove Account")}>
+              <IconButton
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                onClick={() => comingSoon("Remove Account")}
+              >
                 <Trash01 className="size-4" />
               </IconButton>
             </div>
@@ -525,15 +665,33 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             {/* PayPal */}
             <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
               <PaypalIcon className="size-5" />
-              <span className="text-sm font-medium text-dark-blue-400">Paypal</span>
+              <span className="text-sm font-medium text-dark-blue-400">
+                Paypal
+              </span>
               <span className="text-sm text-gray-400">C...123@e..m</span>
-              <Button variant="link" visual="gray" size="sm" className="ml-auto mr-2" onClick={() => comingSoon("Make Default")}>
+              <Button
+                variant="link"
+                visual="gray"
+                size="sm"
+                className="ml-auto mr-2"
+                onClick={() => comingSoon("Make Default")}
+              >
                 Make Default
               </Button>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Edit Account")}>
+              <IconButton
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                onClick={() => comingSoon("Edit Account")}
+              >
                 <Edit03 className="size-4" />
               </IconButton>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Remove Account")}>
+              <IconButton
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                onClick={() => comingSoon("Remove Account")}
+              >
                 <Trash01 className="size-4" />
               </IconButton>
             </div>
@@ -546,21 +704,28 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         {/* Available for Withdrawal */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex items-center gap-1.5 mb-3">
-            <h3 className="text-sm font-semibold text-dark-blue-400">Available for Withdrawal</h3>
+            <h3 className="text-sm font-semibold text-dark-blue-400">
+              Available for Withdrawal
+            </h3>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
                   <HelpCircle className="size-4 text-gray-400" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Earnings currently eligible for manual withdrawal. This amount excludes your $150 reserve balance and any pending transactions.</p>
+                  <p>
+                    Earnings currently eligible for manual withdrawal. This
+                    amount excludes your $150 reserve balance and any pending
+                    transactions.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
           <div className="flex items-center gap-2 mb-4">
             <p className="text-3xl font-bold text-dark-blue-400">
-              <span className="text-base align-top">$</span>567<span className="text-lg">.00</span>
+              <span className="text-base align-top">$</span>567
+              <span className="text-lg">.00</span>
             </p>
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
               <BankIcon className="size-3.5" />
@@ -568,34 +733,57 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outlined" visual="gray" size="sm" onClick={() => comingSoon("Withdraw Funds")}>Withdraw Funds</Button>
-            <Button variant="outlined" visual="gray" size="sm" onClick={() => router.push("/billing")}>Manage</Button>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              onClick={() => comingSoon("Withdraw Funds")}
+            >
+              Withdraw Funds
+            </Button>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              onClick={() => router.push("/billing")}
+            >
+              Manage
+            </Button>
           </div>
         </div>
 
         {/* Recent Activity */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <h3 className="text-sm font-semibold text-dark-blue-400 mb-4">Recent Activity</h3>
+          <h3 className="text-sm font-semibold text-dark-blue-400 mb-4">
+            Recent Activity
+          </h3>
           <div className="space-y-4">
             {RECENT_ACTIVITY.map((item, i) => (
               <div key={i} className="flex items-start gap-3">
-                <div className={cn(
-                  "size-9 rounded-full flex items-center justify-center shrink-0",
-                  item.iconBg
-                )}>
+                <div
+                  className={cn(
+                    "size-9 rounded-full flex items-center justify-center shrink-0",
+                    item.iconBg
+                  )}
+                >
                   {item.icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-dark-blue-400">{item.title}</p>
-                  <p className="text-xs text-gray-400 truncate">{item.description}</p>
+                  <p className="text-sm font-medium text-dark-blue-400">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {item.description}
+                  </p>
                 </div>
-                <span className="text-xs text-gray-400 shrink-0">{item.time}</span>
+                <span className="text-xs text-gray-400 shrink-0">
+                  {item.time}
+                </span>
               </div>
             ))}
           </div>
         </div>
       </div>
-
     </div>
   )
 }
@@ -625,7 +813,13 @@ const DAYS_OF_WEEK = [
 
 const RESERVE_PRESETS = [25, 50, 100, 150, 250]
 
-export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+export const PayoutScheduleDialog = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
   const { toast } = useToast()
 
   // Deposit method state
@@ -654,7 +848,8 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
   // Authorization
   const [authorized, setAuthorized] = useState(false)
 
-  const selectedDayFull = DAYS_OF_WEEK.find((d) => d.key === selectedDay)?.fullName ?? "Wednesday"
+  const selectedDayFull =
+    DAYS_OF_WEEK.find((d) => d.key === selectedDay)?.fullName ?? "Wednesday"
 
   const getNextDepositDate = () => {
     const dayIndex = DAYS_OF_WEEK.findIndex((d) => d.key === selectedDay)
@@ -665,12 +860,18 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
     if (schedule === "biweekly") daysUntil += 7
     const nextDate = new Date(today)
     nextDate.setDate(today.getDate() + daysUntil)
-    return nextDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+    return nextDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    })
   }
 
   const getScheduleLabel = () => {
     if (schedule === "weekly") return `Weekly (every ${selectedDayFull})`
-    if (schedule === "biweekly") return `Bi-Weekly (every other ${selectedDayFull})`
+    if (schedule === "biweekly")
+      return `Bi-Weekly (every other ${selectedDayFull})`
     if (schedule === "monthly") return "Monthly (1st of each month)"
     if (schedule === "daily") return "Daily (every day)"
     if (schedule === "custom" && customSchedule) return customSchedule
@@ -693,9 +894,14 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
 
   const handleAddSplitMethod = () => {
     const usedMethods = splitMethods.map((m) => m.method)
-    const available = DEPOSIT_METHODS.find((m) => !usedMethods.includes(m.value))
+    const available = DEPOSIT_METHODS.find(
+      (m) => !usedMethods.includes(m.value)
+    )
     if (available) {
-      setSplitMethods((prev) => [...prev, { method: available.value, percentage: 0 }])
+      setSplitMethods((prev) => [
+        ...prev,
+        { method: available.value, percentage: 0 },
+      ])
     }
   }
 
@@ -714,7 +920,9 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
           <DialogTitle className="text-lg font-semibold text-dark-blue-400">
             Setup Your Direct Deposit Schedule
           </DialogTitle>
-          <p className="text-xs text-gray-400 mt-0.5">Last updated on Feb 21, 2025</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Last updated on Feb 21, 2025
+          </p>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-140px)]">
@@ -723,7 +931,9 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-dark-blue-400">
-                  {splitMode ? "Preferred Payout Method" : "Preferred Deposit Method"}
+                  {splitMode
+                    ? "Preferred Payout Method"
+                    : "Preferred Deposit Method"}
                 </label>
                 <button
                   type="button"
@@ -738,7 +948,9 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                           <TooltipTrigger asChild>
                             <HelpCircle className="size-3.5" />
                           </TooltipTrigger>
-                          <TooltipContent>Split earnings across multiple accounts</TooltipContent>
+                          <TooltipContent>
+                            Split earnings across multiple accounts
+                          </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </>
@@ -750,14 +962,18 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                           <TooltipTrigger asChild>
                             <HelpCircle className="size-3.5" />
                           </TooltipTrigger>
-                          <TooltipContent>Split earnings across multiple accounts</TooltipContent>
+                          <TooltipContent>
+                            Split earnings across multiple accounts
+                          </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </>
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-500">Choose where your earnings should be deposited.</p>
+              <p className="text-xs text-gray-500">
+                Choose where your earnings should be deposited.
+              </p>
 
               {!splitMode ? (
                 /* Single deposit method */
@@ -774,7 +990,13 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                     <button
                       type="button"
                       className="relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-sm text-primary-500 hover:bg-gray-50"
-                      onClick={() => toast({ title: "Add Deposit Method", description: "Connect a new account in Settings → Payment Methods." })}
+                      onClick={() =>
+                        toast({
+                          title: "Add Deposit Method",
+                          description:
+                            "Connect a new account in Settings → Payment Methods.",
+                        })
+                      }
                     >
                       <Plus className="size-4 mr-2" />
                       Add New Deposit Method
@@ -811,7 +1033,9 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                         <Input
                           className="w-16 text-center text-sm"
                           value={item.percentage}
-                          onChange={(e) => handleSplitPercentageChange(index, e.target.value)}
+                          onChange={(e) =>
+                            handleSplitPercentageChange(index, e.target.value)
+                          }
                         />
                         <span className="text-sm text-gray-500">%</span>
                       </div>
@@ -841,8 +1065,12 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
 
             {/* ── Deposit Schedule ── */}
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-dark-blue-400">Set your Deposit Schedule</label>
-              <p className="text-xs text-gray-500">Deposits run on your schedule when minimum balance is met.</p>
+              <label className="text-sm font-semibold text-dark-blue-400">
+                Set your Deposit Schedule
+              </label>
+              <p className="text-xs text-gray-500">
+                Deposits run on your schedule when minimum balance is met.
+              </p>
 
               <Select
                 value={schedule}
@@ -855,34 +1083,61 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                   <SelectValue>{getScheduleLabel()}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="weekly">Weekly (every {selectedDayFull})</SelectItem>
-                  <SelectItem value="biweekly">Bi-Weekly (every other {selectedDayFull})</SelectItem>
-                  <SelectItem value="monthly">Monthly (1st of each month)</SelectItem>
+                  <SelectItem value="weekly">
+                    Weekly (every {selectedDayFull})
+                  </SelectItem>
+                  <SelectItem value="biweekly">
+                    Bi-Weekly (every other {selectedDayFull})
+                  </SelectItem>
+                  <SelectItem value="monthly">
+                    Monthly (1st of each month)
+                  </SelectItem>
                   <SelectItem value="daily">Daily (every day)</SelectItem>
                   <SelectItem value="custom">Set Custom Schedule</SelectItem>
                 </SelectContent>
               </Select>
 
               {schedule === "custom" && (
-                <Select value={customSchedule} onValueChange={setCustomSchedule}>
+                <Select
+                  value={customSchedule}
+                  onValueChange={setCustomSchedule}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Choose custom schedule" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Daily (every 2 days)">Daily (every 2 days)</SelectItem>
-                    <SelectItem value={`Weekly (every week on ${selectedDayFull})`}>Weekly (every week on {selectedDayFull})</SelectItem>
-                    <SelectItem value={`Bi-Weekly (every 2 weeks on ${selectedDayFull})`}>Bi-Weekly (every 2 weeks on {selectedDayFull})</SelectItem>
-                    <SelectItem value="Monthly (every month on the 14th)">Monthly (every month on the 14th)</SelectItem>
-                    <SelectItem value="Monthly (every 2 months on the 14th)">Monthly (every 2 months on the 14th)</SelectItem>
+                    <SelectItem value="Daily (every 2 days)">
+                      Daily (every 2 days)
+                    </SelectItem>
+                    <SelectItem
+                      value={`Weekly (every week on ${selectedDayFull})`}
+                    >
+                      Weekly (every week on {selectedDayFull})
+                    </SelectItem>
+                    <SelectItem
+                      value={`Bi-Weekly (every 2 weeks on ${selectedDayFull})`}
+                    >
+                      Bi-Weekly (every 2 weeks on {selectedDayFull})
+                    </SelectItem>
+                    <SelectItem value="Monthly (every month on the 14th)">
+                      Monthly (every month on the 14th)
+                    </SelectItem>
+                    <SelectItem value="Monthly (every 2 months on the 14th)">
+                      Monthly (every 2 months on the 14th)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               )}
             </div>
 
             {/* ── Select Deposit Day ── */}
-            {(schedule === "weekly" || schedule === "biweekly" || schedule === "custom") && (
+            {(schedule === "weekly" ||
+              schedule === "biweekly" ||
+              schedule === "custom") && (
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-dark-blue-400">Select Deposit Day</label>
+                <label className="text-sm font-semibold text-dark-blue-400">
+                  Select Deposit Day
+                </label>
                 <div className="flex gap-2">
                   {DAYS_OF_WEEK.map((day) => (
                     <button
@@ -908,14 +1163,20 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
               <Badge visual="primary" className="text-xs">
                 Next Deposit (based on your schedule)
               </Badge>
-              <span className="text-xs font-medium text-primary-500">{getNextDepositDate()}</span>
+              <span className="text-xs font-medium text-primary-500">
+                {getNextDepositDate()}
+              </span>
             </div>
 
             {/* ── Minimum Payout ── */}
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-dark-blue-400">Minimum Payout</label>
+              <label className="text-sm font-semibold text-dark-blue-400">
+                Minimum Payout
+              </label>
               <p className="text-xs text-gray-500">
-                Scheduled deposits are made only if your balance exceeds this amount. Setting a minimum helps avoid frequent small payouts and lowers processing fees.
+                Scheduled deposits are made only if your balance exceeds this
+                amount. Setting a minimum helps avoid frequent small payouts and
+                lowers processing fees.
               </p>
               <Select value={minimumPayout} onValueChange={setMinimumPayout}>
                 <SelectTrigger className="w-full">
@@ -936,10 +1197,15 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
               <div className="flex items-center justify-between">
                 <div>
                   <label className="text-sm font-semibold text-dark-blue-400">
-                    Reserve Balance <span className="font-normal text-gray-400">(optional)</span>
+                    Reserve Balance{" "}
+                    <span className="font-normal text-gray-400">
+                      (optional)
+                    </span>
                   </label>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.
+                    Keep up to $250 in your account after each payout to
+                    automatically cover subscription or platform fees without
+                    disruption.
                   </p>
                 </div>
                 <Switch
@@ -996,11 +1262,15 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
                         <InputGroup className="flex-auto">
-                          <InputLeftElement className="text-gray-500">$</InputLeftElement>
+                          <InputLeftElement className="text-gray-500">
+                            $
+                          </InputLeftElement>
                           <Input
                             placeholder="Enter custom amount"
                             value={customReserveInput}
-                            onChange={(e) => setCustomReserveInput(e.target.value)}
+                            onChange={(e) =>
+                              setCustomReserveInput(e.target.value)
+                            }
                           />
                         </InputGroup>
                         <Button
@@ -1015,7 +1285,9 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
                           Cancel
                         </Button>
                       </div>
-                      <p className="text-xs text-gray-400">Custom amount needs to be under $250</p>
+                      <p className="text-xs text-gray-400">
+                        Custom amount needs to be under $250
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1031,10 +1303,14 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
               />
               <div className="text-xs text-gray-600 leading-relaxed">
                 <p className="font-semibold text-dark-blue-400">
-                  I authorize Marketeq to deposit my earnings into the account(s) listed above.
+                  I authorize Marketeq to deposit my earnings into the
+                  account(s) listed above.
                 </p>
                 <p className="mt-1 text-gray-500">
-                  I understand that any changes to my payout preferences may take up to 3 business days to process. I certify that I am an authorized user of the account(s) provided and that all information entered is accurate.
+                  I understand that any changes to my payout preferences may
+                  take up to 3 business days to process. I certify that I am an
+                  authorized user of the account(s) provided and that all
+                  information entered is accurate.
                 </p>
               </div>
             </div>
@@ -1044,12 +1320,11 @@ export const PayoutScheduleDialog = ({ open, onOpenChange }: { open: boolean; on
         {/* ── Footer ── */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200">
           <DialogClose asChild>
-            <Button variant="outlined" visual="gray">Cancel</Button>
+            <Button variant="outlined" visual="gray">
+              Cancel
+            </Button>
           </DialogClose>
-          <Button
-            disabled={!authorized}
-            onClick={handleSave}
-          >
+          <Button disabled={!authorized} onClick={handleSave}>
             Save
           </Button>
         </div>
@@ -1120,13 +1395,90 @@ const RECENT_ACTIVITY = [
 // ─── Earnings Tab ───────────────────────────────────────────────────────
 
 const EARNINGS_DATA = [
-  { date: "April 2, 2025", project: "Website Redesign", client: "@referrizerllc", clientImg: "/images/avatar-1.png", task: "UX Wireframing", startTime: "9:14 AM", endTime: "2:14 AM", duration: "2h 0m", earnings: "$1,800", status: "" },
-  { date: "April 1, 2025", project: "Website Redesign", client: "@referrizerllc", clientImg: "/images/avatar-1.png", task: "UX Wireframing", startTime: "2:20 PM", endTime: "5:20 PM", duration: "1h 0m", earnings: "$1,800", status: "" },
-  { date: "April 1, 2025", project: "Website Redesign", client: "@referrizerllc", clientImg: "/images/avatar-1.png", task: "UX Wireframing", startTime: "9:14 AM", endTime: "3:14 AM", duration: "1h 0m", earnings: "$1,800", status: "" },
-  { date: "April 1, 2025", project: "Website Redesign", client: "@christheclient234", clientImg: "/images/avatar-2.png", task: "UX Research", startTime: "2:20 PM", endTime: "4:20 PM", duration: "2h 0m", earnings: "$1,800", status: "" },
-  { date: "Mar 31, 2025", project: "Website Redesign", client: "@referrizerllc", clientImg: "/images/avatar-1.png", task: "UX Research", startTime: "9:14 AM", endTime: "11:14 AM", duration: "1h 0m", earnings: "$1,800", status: "Paid" },
-  { date: "Mar 31, 2025", project: "Website Redesign", client: "@referrizerllc", clientImg: "/images/avatar-1.png", task: "UX Research", startTime: "12:20 PM", endTime: "1:20 PM", duration: "1h 0m", earnings: "$1,800", status: "Paid" },
-  { date: "Mar 31, 2025", project: "Website Redesign", client: "@christheclient234", clientImg: "/images/avatar-2.png", task: "UX Research", startTime: "4:20 PM", endTime: "7:20 PM", duration: "2h 0m", earnings: "$1,800", status: "Paid" },
+  {
+    date: "April 2, 2025",
+    project: "Website Redesign",
+    client: "@referrizerllc",
+    clientImg: "/images/avatar-1.png",
+    task: "UX Wireframing",
+    startTime: "9:14 AM",
+    endTime: "2:14 AM",
+    duration: "2h 0m",
+    earnings: "$1,800",
+    status: "",
+  },
+  {
+    date: "April 1, 2025",
+    project: "Website Redesign",
+    client: "@referrizerllc",
+    clientImg: "/images/avatar-1.png",
+    task: "UX Wireframing",
+    startTime: "2:20 PM",
+    endTime: "5:20 PM",
+    duration: "1h 0m",
+    earnings: "$1,800",
+    status: "",
+  },
+  {
+    date: "April 1, 2025",
+    project: "Website Redesign",
+    client: "@referrizerllc",
+    clientImg: "/images/avatar-1.png",
+    task: "UX Wireframing",
+    startTime: "9:14 AM",
+    endTime: "3:14 AM",
+    duration: "1h 0m",
+    earnings: "$1,800",
+    status: "",
+  },
+  {
+    date: "April 1, 2025",
+    project: "Website Redesign",
+    client: "@christheclient234",
+    clientImg: "/images/avatar-2.png",
+    task: "UX Research",
+    startTime: "2:20 PM",
+    endTime: "4:20 PM",
+    duration: "2h 0m",
+    earnings: "$1,800",
+    status: "",
+  },
+  {
+    date: "Mar 31, 2025",
+    project: "Website Redesign",
+    client: "@referrizerllc",
+    clientImg: "/images/avatar-1.png",
+    task: "UX Research",
+    startTime: "9:14 AM",
+    endTime: "11:14 AM",
+    duration: "1h 0m",
+    earnings: "$1,800",
+    status: "Paid",
+  },
+  {
+    date: "Mar 31, 2025",
+    project: "Website Redesign",
+    client: "@referrizerllc",
+    clientImg: "/images/avatar-1.png",
+    task: "UX Research",
+    startTime: "12:20 PM",
+    endTime: "1:20 PM",
+    duration: "1h 0m",
+    earnings: "$1,800",
+    status: "Paid",
+  },
+  {
+    date: "Mar 31, 2025",
+    project: "Website Redesign",
+    client: "@christheclient234",
+    clientImg: "/images/avatar-2.png",
+    task: "UX Research",
+    startTime: "4:20 PM",
+    endTime: "7:20 PM",
+    duration: "2h 0m",
+    earnings: "$1,800",
+    status: "Paid",
+  },
 ]
 
 export const EarningsTab = () => {
@@ -1143,7 +1495,11 @@ export const EarningsTab = () => {
           label="Today"
           amount="520.00"
           extra="4h 30m Logged"
-          change={{ value: "5.2%", direction: "down", label: "since yesterday" }}
+          change={{
+            value: "5.2%",
+            direction: "down",
+            label: "since yesterday",
+          }}
         />
         <StatCard
           label="This Week"
@@ -1155,7 +1511,11 @@ export const EarningsTab = () => {
           label="This Month"
           amount="13,870.00"
           extra="4h 30m Logged"
-          change={{ value: "2.7%", direction: "down", label: "since last month" }}
+          change={{
+            value: "2.7%",
+            direction: "down",
+            label: "since last month",
+          }}
         />
       </div>
 
@@ -1172,7 +1532,12 @@ export const EarningsTab = () => {
           <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
         </ToggleGroupRoot>
 
-        <Button variant="outlined" visual="gray" size="sm" leftIcon={<Calendar className="size-4" />}>
+        <Button
+          variant="outlined"
+          visual="gray"
+          size="sm"
+          leftIcon={<Calendar className="size-4" />}
+        >
           All Time
         </Button>
 
@@ -1246,28 +1611,46 @@ export const EarningsTab = () => {
           <TableBody>
             {EARNINGS_DATA.map((row, i) => (
               <TableRow key={i}>
-                <TableCell className="text-sm text-gray-500 whitespace-nowrap">{row.date}</TableCell>
+                <TableCell className="text-sm text-gray-500 whitespace-nowrap">
+                  {row.date}
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2.5">
                     <Avatar className="size-8">
                       <AvatarImage src={row.clientImg} alt={row.client} />
-                      <AvatarFallback>{row.client[1]?.toUpperCase()}</AvatarFallback>
+                      <AvatarFallback>
+                        {row.client[1]?.toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-semibold text-dark-blue-400">{row.project}</p>
+                      <p className="text-sm font-semibold text-dark-blue-400">
+                        {row.project}
+                      </p>
                       <p className="text-xs text-gray-400">{row.client}</p>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="text-sm text-gray-500">{row.task}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.startTime}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.endTime}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.duration}</TableCell>
+                <TableCell className="text-sm text-gray-500">
+                  {row.task}
+                </TableCell>
+                <TableCell className="text-sm text-gray-500">
+                  {row.startTime}
+                </TableCell>
+                <TableCell className="text-sm text-gray-500">
+                  {row.endTime}
+                </TableCell>
+                <TableCell className="text-sm text-gray-500">
+                  {row.duration}
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">{row.earnings}</span>
+                    <span className="text-sm text-gray-500">
+                      {row.earnings}
+                    </span>
                     {row.status && (
-                      <Badge visual="success" size="sm">{row.status}</Badge>
+                      <Badge visual="success" size="sm">
+                        {row.status}
+                      </Badge>
                     )}
                   </div>
                 </TableCell>
@@ -1279,8 +1662,26 @@ export const EarningsTab = () => {
                       </IconButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => toast({ title: "Transaction Details", description: `${row.project} — ${row.task} (${row.duration})` })}>View Details</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toast({ title: "Download", description: "Receipt download started." })}>Download</DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          toast({
+                            title: "Transaction Details",
+                            description: `${row.project} — ${row.task} (${row.duration})`,
+                          })
+                        }
+                      >
+                        View Details
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          toast({
+                            title: "Download",
+                            description: "Receipt download started.",
+                          })
+                        }
+                      >
+                        Download
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -1299,7 +1700,10 @@ export const EarningsTab = () => {
                   <HelpCircle className="size-3.5 inline text-gray-400" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Time manually entered by you (not tracked by the desktop app).</p>
+                  <p>
+                    Time manually entered by you (not tracked by the desktop
+                    app).
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1337,13 +1741,55 @@ export const EarningsTab = () => {
 // ─── Payouts Tab ────────────────────────────────────────────────────────
 
 const PAYOUTS_DATA = [
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "April 2, 2025", estArrival: "April 2, 2025" },
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "April 1, 2025", estArrival: "April 1, 2025" },
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "April 1, 2025", estArrival: "April 1, 2025" },
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "April 1, 2025", estArrival: "April 1, 2025" },
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "Mar 31, 2025", estArrival: "Mar 31, 2025" },
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "Mar 31, 2025", estArrival: "Mar 31, 2025" },
-  { amount: "$1,800.00 USD", account: "Chase Bank", accountNum: "...4553", initiatedOn: "Mar 31, 2025", estArrival: "Mar 31, 2025" },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "April 2, 2025",
+    estArrival: "April 2, 2025",
+  },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "April 1, 2025",
+    estArrival: "April 1, 2025",
+  },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "April 1, 2025",
+    estArrival: "April 1, 2025",
+  },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "April 1, 2025",
+    estArrival: "April 1, 2025",
+  },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "Mar 31, 2025",
+    estArrival: "Mar 31, 2025",
+  },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "Mar 31, 2025",
+    estArrival: "Mar 31, 2025",
+  },
+  {
+    amount: "$1,800.00 USD",
+    account: "Chase Bank",
+    accountNum: "...4553",
+    initiatedOn: "Mar 31, 2025",
+    estArrival: "Mar 31, 2025",
+  },
 ]
 
 export const PayoutsTab = () => {
@@ -1378,7 +1824,12 @@ export const PayoutsTab = () => {
 
       {/* Filters Row */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="outlined" visual="gray" size="sm" leftIcon={<Calendar className="size-4" />}>
+        <Button
+          variant="outlined"
+          visual="gray"
+          size="sm"
+          leftIcon={<Calendar className="size-4" />}
+        >
           All Time
         </Button>
 
@@ -1400,7 +1851,14 @@ export const PayoutsTab = () => {
           </SelectContent>
         </Select>
 
-        <Button variant="link" visual="gray" size="sm" onClick={() => setSearchQuery("")}>Clear All</Button>
+        <Button
+          variant="link"
+          visual="gray"
+          size="sm"
+          onClick={() => setSearchQuery("")}
+        >
+          Clear All
+        </Button>
 
         <div className="ml-auto">
           <SearchField>
@@ -1433,16 +1891,24 @@ export const PayoutsTab = () => {
           <TableBody>
             {PAYOUTS_DATA.map((row, i) => (
               <TableRow key={i}>
-                <TableCell className="text-sm font-medium text-dark-blue-400">{row.amount}</TableCell>
+                <TableCell className="text-sm font-medium text-dark-blue-400">
+                  {row.amount}
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <BankIcon className="size-4 text-gray-400" />
                     <span className="text-sm text-gray-500">{row.account}</span>
-                    <span className="text-sm text-gray-400">{row.accountNum}</span>
+                    <span className="text-sm text-gray-400">
+                      {row.accountNum}
+                    </span>
                   </div>
                 </TableCell>
-                <TableCell className="text-sm text-gray-500">{row.initiatedOn}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.estArrival}</TableCell>
+                <TableCell className="text-sm text-gray-500">
+                  {row.initiatedOn}
+                </TableCell>
+                <TableCell className="text-sm text-gray-500">
+                  {row.estArrival}
+                </TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1451,8 +1917,26 @@ export const PayoutsTab = () => {
                       </IconButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => toast({ title: "Payout Details", description: `${row.amount} to ${row.account} ${row.accountNum}` })}>View Details</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toast({ title: "Download Receipt", description: "Receipt download started." })}>Download Receipt</DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          toast({
+                            title: "Payout Details",
+                            description: `${row.amount} to ${row.account} ${row.accountNum}`,
+                          })
+                        }
+                      >
+                        View Details
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          toast({
+                            title: "Download Receipt",
+                            description: "Receipt download started.",
+                          })
+                        }
+                      >
+                        Download Receipt
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

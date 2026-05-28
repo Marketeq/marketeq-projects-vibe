@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prebuild": "node scripts/make-placeholder-icon.js",
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "tsc -p tsconfig.preload.json",
     "build:renderer": "vite build",

@@ -19,13 +19,23 @@ export class TalentProfileController {
     private readonly repo: Repository<TalentProfile>,
   ) {}
 
+  private static readonly PUBLIC_FIELDS: (keyof TalentProfile)[] = [
+    'id', 'username', 'name', 'jobTitles', 'availability',
+    'location', 'country', 'timezone', 'rate', 'overview', 'skills',
+    'industryExpertise', 'languages', 'certifications', 'education',
+    'workExperience', 'portfolio', 'status', 'rating', 'reviewsCount',
+    'totalProjectsCompleted', 'repeatHireRate', 'responseTimeHours',
+    'memberSince', 'createdAt', 'updatedAt',
+  ];
+
   @Public()
   @Get(':username')
   async getByUsername(
     @Param('username') username: string,
-  ): Promise<TalentProfile> {
+  ) {
     const profile = await this.repo.findOne({
       where: { username, status: 'active' },
+      select: TalentProfileController.PUBLIC_FIELDS,
     });
     if (!profile) {
       throw new NotFoundException(
@@ -43,7 +53,8 @@ export class TalentProfileController {
   ) {
     const take = Math.min(limit, 100);
     const [profiles, total] = await this.repo.findAndCount({
-      where: { status: 'active', isAvailable: true },
+      where: { status: 'active' },
+      select: TalentProfileController.PUBLIC_FIELDS,
       order: { updatedAt: 'DESC' },
       skip: (page - 1) * take,
       take,

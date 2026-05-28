@@ -110,6 +110,25 @@ async function bootstrap() {
       },
     })
     logger.log('RabbitMQ microservice connected (queue: api-gateway.projects)')
+
+    // Blog post synchronization from CMS
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'api-gateway.blogs',
+        queueOptions: {
+          durable: true,
+          arguments: {
+            'x-dead-letter-exchange': 'cms.events.dlx',
+          },
+        },
+        noAck: false,
+        prefetchCount: 1,
+        deserializer: cmsDeserializer,
+      },
+    })
+    logger.log('RabbitMQ microservice connected (queue: api-gateway.blogs)')
   } else {
     logger.warn('RABBITMQ_URL not set — cms.events consumers disabled')
   }

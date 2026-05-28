@@ -4,9 +4,11 @@ import { useDocumentInfo } from "payload/components/utilities";
 
 import {
   FALLBACK_INDUSTRY_OPTIONS,
+  FALLBACK_LANGUAGE_OPTIONS,
   FALLBACK_SKILL_OPTIONS,
   FALLBACK_TAG_OPTIONS,
   loadAutocompleteOptions,
+  submitAutocompleteEntry,
 } from "./autocompleteOptions";
 
 import "./ChipArrayTagsField.scss";
@@ -35,6 +37,9 @@ export type ChipArrayTagsFieldConfig = {
   suggestedOptions: readonly string[];
   suggestedHeading: string;
   fetchErrorLabel: string;
+  rowValueKey?: string;
+  submitType?: string;
+  submitSource?: string;
   /**
    * Payload v2 often omits `field.required` on custom `Field` overrides for arrays.
    * Set true when the collection marks the field `required: true` so the title shows *.
@@ -75,12 +80,37 @@ function normalizeValueRows(raw: unknown): ValueRow[] {
   return out;
 }
 
-function rowsToFormValue(
+function normalizeRowsWithKey(raw: unknown, rowValueKey: string): ValueRow[] {
+  if (rowValueKey === "value") return normalizeValueRows(raw);
+  let rowsRaw: unknown = raw;
+  if (!Array.isArray(rowsRaw) && rowsRaw && typeof rowsRaw === "object") {
+    const anyRaw = rowsRaw as any;
+    if (Array.isArray(anyRaw.rows)) rowsRaw = anyRaw.rows;
+    else if (Array.isArray(anyRaw.value)) rowsRaw = anyRaw.value;
+  }
+  if (!Array.isArray(rowsRaw)) return [];
+  const out: ValueRow[] = [];
+  for (const row of rowsRaw) {
+    if (!row || typeof row !== "object") continue;
+    const v = (row as Record<string, unknown>)[rowValueKey];
+    if (typeof v !== "string") continue;
+    const trimmed = v.trim();
+    if (!trimmed) continue;
+    const id = (row as { id?: string }).id;
+    out.push(id ? { id, value: trimmed } : { value: trimmed });
+  }
+  return out;
+}
+
+function rowsToFormValueWithKey(
   rows: ValueRow[],
-): Array<{ id?: string; value: string }> {
-  return rows.map((r) =>
-    r.id ? { id: r.id, value: r.value } : { value: r.value },
-  );
+  rowValueKey: string,
+): Array<Record<string, unknown>> {
+  return rows.map((r) => {
+    const base: Record<string, unknown> = { [rowValueKey]: r.value };
+    if (r.id) base.id = r.id;
+    return base;
+  });
 }
 
 export function createChipArrayTagsField(
@@ -91,6 +121,7 @@ export function createChipArrayTagsField(
     field,
     label,
   }) => {
+    const rowValueKey = config.rowValueKey ?? "value";
     const maxRows =
       typeof field?.maxRows === "number"
         ? field.maxRows
@@ -109,17 +140,24 @@ export function createChipArrayTagsField(
       errorMessage: validationErrorMessage,
     } = useField<unknown>({ path });
 
-    const rows = React.useMemo(() => normalizeValueRows(value), [value]);
+    const rows = React.useMemo(
+      () => normalizeRowsWithKey(value, rowValueKey),
+      [rowValueKey, value],
+    );
     const docInfo = useDocumentInfo();
 
-    // If Payload admin form state fails to hydrate seeded array values (observed after refresh
-    // with array Field overrides), pull the persisted value via same-origin REST and hydrate it
-    // once. This does NOT overwrite non-empty form state.
+    // Hydrate seeded/persisted array values once on mount when Payload's form
+    // state is empty (observed with array Field overrides after page refresh).
+    // A ref guard ensures this runs exactly once — re-running on rows.length
+    // change would undo user removals by re-fetching the saved value.
+    const hydratedRef = React.useRef(false);
     React.useEffect(() => {
+      if (hydratedRef.current) return;
       let cancelled = false;
       const run = async () => {
         try {
-          if (rows.length > 0) return;
+          const currentRows = normalizeRowsWithKey(value, rowValueKey);
+          if (currentRows.length > 0) { hydratedRef.current = true; return; }
           const id = (docInfo as any)?.id ?? (docInfo as any)?.docID ?? null;
           if (!id) return;
           const pathName =
@@ -134,10 +172,12 @@ export function createChipArrayTagsField(
           );
           if (!res.ok) return;
           const doc = (await res.json()) as any;
-          const nextVal = doc?.[path];
-          const parsed = normalizeValueRows(nextVal);
+          // path may be a dot-path (e.g. "roleDescriptions.0.skills") — traverse it
+          const nextVal = path.split('.').reduce((obj: any, key) => obj?.[key], doc);
+          const parsed = normalizeRowsWithKey(nextVal, rowValueKey);
           if (!cancelled && parsed.length > 0) {
-            setValue(rowsToFormValue(parsed));
+            hydratedRef.current = true;
+            setValue(rowsToFormValueWithKey(parsed, rowValueKey));
           }
         } catch {
           // ignore (best-effort hydration)
@@ -147,7 +187,8 @@ export function createChipArrayTagsField(
       return () => {
         cancelled = true;
       };
-    }, [docInfo, path, rows.length, setValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docInfo, path, rowValueKey, setValue]);
     const selectedLower = React.useMemo(
       () => new Set(rows.map((r) => r.value.toLowerCase())),
       [rows],
@@ -218,19 +259,28 @@ export function createChipArrayTagsField(
         if (!next) return;
         if (rows.length >= maxRows) return;
         if (selectedLower.has(next.toLowerCase())) return;
-        setValue(rowsToFormValue([...rows, { value: next }]));
+        setValue(rowsToFormValueWithKey([...rows, { value: next }], rowValueKey));
+        if (config.submitType) {
+          void submitAutocompleteEntry({
+            type: config.submitType,
+            value: next,
+            source: config.submitSource,
+          }).catch(() => {
+            // Best-effort signal to autocomplete-service; ignore failures in form UX.
+          });
+        }
         setDraft("");
         setOpen(false);
       },
-      [maxRows, rows, setValue, selectedLower],
+      [config.submitSource, config.submitType, maxRows, rowValueKey, rows, setValue, selectedLower],
     );
 
     const removeAt = React.useCallback(
       (index: number) => {
         const next = rows.filter((_, i) => i !== index);
-        setValue(rowsToFormValue(next));
+        setValue(rowsToFormValueWithKey(next, rowValueKey));
       },
-      [rows, setValue],
+      [rowValueKey, rows, setValue],
     );
 
     return React.createElement(
@@ -436,6 +486,78 @@ export const ProjectIndustriesChipField = createChipArrayTagsField({
   getHelperText: (maxRows) =>
     `Add up to ${String(maxRows)} industries that align with your project.`,
   defaultMaxRows: 5,
+  suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
+  suggestedHeading: "Suggested Industries",
+  fetchErrorLabel: "Failed to load industry suggestions",
+});
+
+export const TalentSkillsChipField = createChipArrayTagsField({
+  title: "Skills",
+  autocompleteType: "skills",
+  submitType: "skill",
+  submitSource: "cms-service:talent-profiles",
+  rowValueKey: "name",
+  placeholder: "Add Skill",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} skills for this profile.`,
+  defaultMaxRows: 20,
+  suggestedOptions: FALLBACK_SKILL_OPTIONS,
+  suggestedHeading: "Suggested Skills",
+  fetchErrorLabel: "Failed to load skill suggestions",
+});
+
+export const JobListingIndustriesChipField = createChipArrayTagsField({
+  title: "Industries",
+  autocompleteType: "industries",
+  submitType: "industry",
+  submitSource: "cms-service:job-listings",
+  placeholder: "Add Industry",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} industries that align with this listing.`,
+  defaultMaxRows: 10,
+  suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
+  suggestedHeading: "Suggested Industries",
+  fetchErrorLabel: "Failed to load industry suggestions",
+});
+
+export const JobListingLanguagesChipField = createChipArrayTagsField({
+  title: "Languages",
+  autocompleteType: "languages",
+  submitType: "language",
+  submitSource: "cms-service:job-listings",
+  placeholder: "Add Language",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} languages required for this listing.`,
+  defaultMaxRows: 10,
+  suggestedOptions: FALLBACK_LANGUAGE_OPTIONS,
+  suggestedHeading: "Suggested Languages",
+  fetchErrorLabel: "Failed to load language suggestions",
+});
+
+export const JobListingSkillsChipField = createChipArrayTagsField({
+  title: "Skills",
+  autocompleteType: "skills",
+  submitType: "skill",
+  submitSource: "cms-service:job-listings",
+  placeholder: "Add Skill",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} skills required for this role.`,
+  defaultMaxRows: 20,
+  suggestedOptions: FALLBACK_SKILL_OPTIONS,
+  suggestedHeading: "Suggested Skills",
+  fetchErrorLabel: "Failed to load skill suggestions",
+});
+
+export const TalentIndustriesChipField = createChipArrayTagsField({
+  title: "Industry Expertise",
+  autocompleteType: "industries",
+  submitType: "industry",
+  submitSource: "cms-service:talent-profiles",
+  rowValueKey: "name",
+  placeholder: "Add Industry",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} industries for this profile.`,
+  defaultMaxRows: 15,
   suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
   suggestedHeading: "Suggested Industries",
   fetchErrorLabel: "Failed to load industry suggestions",

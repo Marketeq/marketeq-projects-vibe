@@ -2,14 +2,14 @@
 
 import React, { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { ChevronDown, ChevronRight } from "@blend-metrics/icons"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
+import { ChevronDown, ChevronRight } from "@blend-metrics/icons"
 import {
   Button,
   DropdownMenu,
-  DropdownMenuItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui"
 
@@ -109,7 +109,9 @@ export function MarketplaceSecondaryNavShell({
     <>
       <div
         className="fixed inset-x-0 top-[62px] lg:top-[65px] px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden z-40 transition-transform duration-300"
-        style={{ transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)" }}
+        style={{
+          transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)",
+        }}
       >
         <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px]">
           <div className="flex flex-col">
@@ -219,7 +221,7 @@ export function MarketplaceSecondaryNavShell({
                 router.push(
                   user?.accountType === "TALENT"
                     ? "/talent-dashboard"
-                    : "/client-dashboard",
+                    : "/client-dashboard"
                 )
               }
             >

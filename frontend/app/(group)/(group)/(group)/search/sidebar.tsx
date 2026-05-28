@@ -710,9 +710,7 @@ const HourlyRate = () => {
               type="text"
               className="pl-10 h-10 w-full"
               value={minRate}
-              onChange={(e) =>
-                setMinRate(e.target.value.replace(/\D/g, ""))
-              }
+              onChange={(e) => setMinRate(e.target.value.replace(/\D/g, ""))}
             />
             <InputLeftElement className="w-10">
               <DollarSign className="text-gray-500 size-4" />
@@ -729,9 +727,7 @@ const HourlyRate = () => {
               type="text"
               className="pl-10 h-10 w-full"
               value={maxRate}
-              onChange={(e) =>
-                setMaxRate(e.target.value.replace(/\D/g, ""))
-              }
+              onChange={(e) => setMaxRate(e.target.value.replace(/\D/g, ""))}
             />
             <InputLeftElement className="w-10">
               <DollarSign className="text-gray-500 size-4" />
@@ -764,9 +760,7 @@ const MonthlyBudget = () => {
               type="text"
               className="pl-10 h-10 w-full"
               value={minRate}
-              onChange={(e) =>
-                setMinRate(e.target.value.replace(/\D/g, ""))
-              }
+              onChange={(e) => setMinRate(e.target.value.replace(/\D/g, ""))}
             />
             <InputLeftElement className="w-10">
               <DollarSign className="text-gray-500 size-4" />
@@ -783,9 +777,7 @@ const MonthlyBudget = () => {
               type="text"
               className="pl-10 h-10 w-full"
               value={maxRate}
-              onChange={(e) =>
-                setMaxRate(e.target.value.replace(/\D/g, ""))
-              }
+              onChange={(e) => setMaxRate(e.target.value.replace(/\D/g, ""))}
             />
             <InputLeftElement className="w-10">
               <DollarSign className="text-gray-500 size-4" />
@@ -847,9 +839,7 @@ const DropdownFacetSection = ({
   )
 
   const reset = () => {
-    setSelections(
-      Object.fromEntries(options.map((option) => [option, false]))
-    )
+    setSelections(Object.fromEntries(options.map((option) => [option, false])))
   }
 
   const disableOption = (option: string) => {
@@ -1494,23 +1484,13 @@ export const SidebarTeams = ({ className }: { className?: string }) => {
       <HourlyRate />
       <CheckboxGroup
         title="Avg Years of Experience"
-        options={[
-          "1 - 3 years",
-          "3 - 5 years",
-          "5 - 10 years",
-          "10+ years",
-        ]}
+        options={["1 - 3 years", "3 - 5 years", "5 - 10 years", "10+ years"]}
       />
       <LocationFilter label="Locations" />
       <Skills />
       <CheckboxGroup
         title="Previous Client Tier"
-        options={[
-          "Fortune 500",
-          "Enterprise",
-          "Mid-market",
-          "Startup",
-        ]}
+        options={["Fortune 500", "Enterprise", "Mid-market", "Startup"]}
       />
       <CheckboxGroup
         title="Availability"
@@ -1570,13 +1550,8 @@ export const SidebarJobs = ({ className }: { className?: string }) => {
           "Custom Range",
         ]}
       />
-      <Budget
-        title="Earnings Opportunity"
-      />
-      <Skills
-        title="Skills"
-        placeholder="Add skills by keyword"
-      />
+      <Budget title="Earnings Opportunity" />
+      <Skills title="Skills" placeholder="Add skills by keyword" />
       <Skills
         title="Client Location"
         placeholder="Add location"

@@ -24,14 +24,18 @@ export interface ContractDTO {
 export const getContractsForTalent = async (
   talentId: string
 ): Promise<ContractDTO[]> => {
-  const res = await AxiosRequest.get(`/contracts/talent/${encodeURIComponent(talentId)}`)
+  const res = await AxiosRequest.get(
+    `/contracts/talent/${encodeURIComponent(talentId)}`
+  )
   return Array.isArray(res.data) ? res.data : []
 }
 
 export const getContractsForClient = async (
   clientId: string
 ): Promise<ContractDTO[]> => {
-  const res = await AxiosRequest.get(`/contracts/client/${encodeURIComponent(clientId)}`)
+  const res = await AxiosRequest.get(
+    `/contracts/client/${encodeURIComponent(clientId)}`
+  )
   return Array.isArray(res.data) ? res.data : []
 }
 

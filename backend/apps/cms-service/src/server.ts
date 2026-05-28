@@ -7,9 +7,11 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { CmsEventPublisher } from "./rabbitmq/cms-event.publisher";
 import { ContractsEventConsumer } from "./rabbitmq/contracts-event.consumer";
+import { UserEventConsumer } from "./rabbitmq/user-event.consumer";
 
 const app = express();
 const PORT = Number(process.env.CMS_PORT) || 3020;
+app.use(express.json());
 
 async function seedFirstAdminUser() {
   const adminEmail = process.env.CMS_ADMIN_EMAIL;
@@ -88,6 +90,29 @@ app.get("/cms-autocomplete/:type", async (req, res) => {
   } catch (err) {
     payload.logger?.warn({ err, upstreamUrl }, "cms-autocomplete proxy failed");
     res.status(502).json({ error: "autocomplete proxy failed" });
+  }
+});
+
+app.post("/cms-autocomplete/submit", async (req, res) => {
+  const upstreamUrl = `${autocompleteOrigin}/autocomplete/submit`;
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(req.body ?? {}),
+    });
+    const text = await upstream.text();
+    res.status(upstream.status);
+    res.setHeader(
+      "content-type",
+      upstream.headers.get("content-type") || "application/json",
+    );
+    res.send(text);
+  } catch (err) {
+    payload.logger?.warn({ err, upstreamUrl }, "cms-autocomplete submit proxy failed");
+    res.status(502).json({ error: "autocomplete submit proxy failed" });
   }
 });
 
@@ -190,6 +215,17 @@ async function start() {
       payload.logger.error(
         { err },
         "contracts-event consumer failed to start — orders will not be auto-created from contracts",
+      );
+    }
+
+    // Inbound consumer: user-service → talent profile updates (Bidirectional Sync).
+    try {
+      const userConsumer = new UserEventConsumer(payload);
+      await userConsumer.connect(rabbitmqUrl);
+    } catch (err) {
+      payload.logger.error(
+        { err },
+        "user-event consumer failed to start — talent profiles will not be auto-updated from platform",
       );
     }
   } else {

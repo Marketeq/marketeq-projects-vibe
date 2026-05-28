@@ -356,10 +356,12 @@ export class ScreenshotsService {
     return this.repo.save(screenshot);
   }
 
-  async getFlaggedScreenshots(): Promise<Screenshot[]> {
+  async getFlaggedScreenshots(page = 1, pageSize = 50): Promise<Screenshot[]> {
     return this.repo.find({
       where: { isFlagged: true, isDeleted: false },
       order: { flaggedAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
   }
 
@@ -396,3 +398,4 @@ export class ScreenshotsService {
     return settings;
   }
 }
+

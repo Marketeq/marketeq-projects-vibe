@@ -121,11 +121,7 @@ const EXPIRATION_OPTIONS = [
 
 const ACCESS_OPTIONS = ["Anyone with the link", "Only invited people"]
 
-const InviteSettingsPanel = ({
-  onBack,
-}: {
-  onBack: () => void
-}) => {
+const InviteSettingsPanel = ({ onBack }: { onBack: () => void }) => {
   const [allowAnyone, setAllowAnyone] = useState(true)
   const [requireApproval, setRequireApproval] = useState(false)
   const [accessLevel, setAccessLevel] = useState(ACCESS_OPTIONS[0])
@@ -168,10 +164,7 @@ const InviteSettingsPanel = ({
                 Anyone with the link can request to join your team
               </p>
             </div>
-            <Switch
-              checked={allowAnyone}
-              onCheckedChange={setAllowAnyone}
-            />
+            <Switch checked={allowAnyone} onCheckedChange={setAllowAnyone} />
           </div>
           <div className="flex items-start justify-between gap-x-4">
             <div className="space-y-1">
@@ -266,12 +259,7 @@ const InviteSettingsPanel = ({
           </div>
 
           <div className="flex items-center justify-end gap-x-3 pt-2">
-            <Button
-              variant="outlined"
-              visual="gray"
-              size="sm"
-              onClick={onBack}
-            >
+            <Button variant="outlined" visual="gray" size="sm" onClick={onBack}>
               Cancel
             </Button>
             <Button size="sm" onClick={onBack}>
@@ -287,7 +275,11 @@ const InviteSettingsPanel = ({
 export const InviteWindow = () => {
   const [invitees, setInvitees] = useState<Invitees>([])
   const [inputValue, setInputValue] = useState("")
-  const { open, title: storeTitle, toggle: toggleInviteWindow } = useInviteWindowStore()
+  const {
+    open,
+    title: storeTitle,
+    toggle: toggleInviteWindow,
+  } = useInviteWindowStore()
   const [view, setView] = useState<InviteView>("invite")
   const [inviteSent, setInviteSent] = useState(false)
   const [defaultRole] = useState<InviteRole>("viewer")
@@ -334,7 +326,10 @@ export const InviteWindow = () => {
   const handleAddContact = (contact: (typeof contacts)[0]) => {
     const normalizedEmail = contact.email.toLowerCase()
     if (!invitees.some((i) => i.email.toLowerCase() === normalizedEmail)) {
-      setInvitees((prev) => [...prev, { ...contact, email: normalizedEmail, role: defaultRole }])
+      setInvitees((prev) => [
+        ...prev,
+        { ...contact, email: normalizedEmail, role: defaultRole },
+      ])
       setInputValue("")
       setShowSuggestions(false)
     }
@@ -356,7 +351,9 @@ export const InviteWindow = () => {
 
     if (inputValue.trim()) {
       const values = parseEmails(inputValue)
-      const existing = new Set(finalInvitees.map((item) => item.email.toLowerCase()))
+      const existing = new Set(
+        finalInvitees.map((item) => item.email.toLowerCase())
+      )
       const additions = values
         .filter((email) => isEmail(email) && !existing.has(email))
         .map((email) => ({ email, role: defaultRole as InviteRole }))
@@ -393,7 +390,7 @@ export const InviteWindow = () => {
         acc[invitee.role].push(invitee.email)
         return acc
       },
-      {} as Record<InviteRole, string[]>,
+      {} as Record<InviteRole, string[]>
     )
 
     try {
@@ -406,8 +403,8 @@ export const InviteWindow = () => {
               role,
               emails,
               note: message || undefined,
-            }),
-          ),
+            })
+          )
       )
 
       setInviteSent(true)
@@ -444,8 +441,9 @@ export const InviteWindow = () => {
     try {
       let teamName = (user as any)?.teamName || "Client Team"
       try {
-        const teamResponse =
-          await (await import("@/service/http/teams")).TeamsAPI.getTeam(teamId)
+        const teamResponse = await (
+          await import("@/service/http/teams")
+        ).TeamsAPI.getTeam(teamId)
         const teamData = teamResponse?.data
         teamName = teamData?.name || teamData?.teamName || teamName
       } catch {
@@ -464,7 +462,9 @@ export const InviteWindow = () => {
           : "")
 
       if (!inviteLink) {
-        throw new Error("We couldn't generate the invite link. Please try again.")
+        throw new Error(
+          "We couldn't generate the invite link. Please try again."
+        )
       }
 
       await navigator.clipboard.writeText(inviteLink)
@@ -690,8 +690,8 @@ export const InviteWindow = () => {
                                   prev.map((item) =>
                                     item.email === email
                                       ? { ...item, role: nextRole }
-                                      : item,
-                                  ),
+                                      : item
+                                  )
                                 )
                               }}
                             >

@@ -1,6 +1,6 @@
 import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
-export const HL = <T,>(v: T) => v
+export const HL = <T>(v: T) => v
 
 export type HttpConfig = {
   baseURL?: string

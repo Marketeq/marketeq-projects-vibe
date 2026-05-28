@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   CatalogCategory,
   NotificationsAPI,
   PreferencesResponse,
   UpdatePreferencesPayload,
 } from "@/service/http/notifications"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 const KEYS = {
   catalog: ["notifications", "catalog"] as const,
@@ -16,7 +16,7 @@ const DEBOUNCE_MS = 400
 
 function mergePayload(
   current: PreferencesResponse,
-  patch: UpdatePreferencesPayload,
+  patch: UpdatePreferencesPayload
 ): PreferencesResponse {
   const channels = current.channels
     ? {
@@ -37,12 +37,16 @@ function mergePayload(
               {
                 enabled: value.enabled ?? existing?.enabled ?? false,
                 channels: {
-                  ...(existing?.channels ?? { inApp: false, email: false, sms: false }),
+                  ...(existing?.channels ?? {
+                    inApp: false,
+                    email: false,
+                    sms: false,
+                  }),
                   ...(value.channels ?? {}),
                 },
               },
             ]
-          }),
+          })
         ),
       }
     : current.categories
@@ -58,12 +62,16 @@ function mergePayload(
               {
                 enabled: value.enabled ?? existing?.enabled ?? false,
                 channels: {
-                  ...(existing?.channels ?? { inApp: false, email: false, sms: false }),
+                  ...(existing?.channels ?? {
+                    inApp: false,
+                    email: false,
+                    sms: false,
+                  }),
                   ...(value.channels ?? {}),
                 },
               },
             ]
-          }),
+          })
         ),
       }
     : current.notifications
@@ -76,10 +84,9 @@ function mergePayload(
   }
 }
 
-function mergeRecordPatches<T extends { enabled?: boolean; channels?: Record<string, boolean> }>(
-  a?: Record<string, T>,
-  b?: Record<string, T>,
-): Record<string, T> | undefined {
+function mergeRecordPatches<
+  T extends { enabled?: boolean; channels?: Record<string, boolean> },
+>(a?: Record<string, T>, b?: Record<string, T>): Record<string, T> | undefined {
   if (!a && !b) return undefined
   const out: Record<string, T> = { ...(a ?? {}) }
   if (b) {
@@ -101,18 +108,31 @@ function mergeRecordPatches<T extends { enabled?: boolean; channels?: Record<str
 
 function mergeUpdatePayloads(
   a: UpdatePreferencesPayload,
-  b: UpdatePreferencesPayload,
+  b: UpdatePreferencesPayload
 ): UpdatePreferencesPayload {
   return {
-    channels: a.channels || b.channels
-      ? {
-          inApp: { ...(a.channels?.inApp ?? {}), ...(b.channels?.inApp ?? {}) },
-          email: { ...(a.channels?.email ?? {}), ...(b.channels?.email ?? {}) },
-          sms: { ...(a.channels?.sms ?? {}), ...(b.channels?.sms ?? {}) },
-        }
-      : undefined,
-    categories: mergeRecordPatches(a.categories as any, b.categories as any) as any,
-    notifications: mergeRecordPatches(a.notifications as any, b.notifications as any) as any,
+    channels:
+      a.channels || b.channels
+        ? {
+            inApp: {
+              ...(a.channels?.inApp ?? {}),
+              ...(b.channels?.inApp ?? {}),
+            },
+            email: {
+              ...(a.channels?.email ?? {}),
+              ...(b.channels?.email ?? {}),
+            },
+            sms: { ...(a.channels?.sms ?? {}), ...(b.channels?.sms ?? {}) },
+          }
+        : undefined,
+    categories: mergeRecordPatches(
+      a.categories as any,
+      b.categories as any
+    ) as any,
+    notifications: mergeRecordPatches(
+      a.notifications as any,
+      b.notifications as any
+    ) as any,
   }
 }
 
@@ -147,14 +167,17 @@ export function useNotificationPreferences() {
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: KEYS.preferences })
-      const snapshot = queryClient.getQueryData<PreferencesResponse>(KEYS.preferences)
+      const snapshot = queryClient.getQueryData<PreferencesResponse>(
+        KEYS.preferences
+      )
       return { snapshot }
     },
     onSuccess: (data) => {
       queryClient.setQueryData(KEYS.preferences, data)
     },
     onError: (_err, _vars, ctx) => {
-      const snapshot = (ctx as { snapshot?: PreferencesResponse } | undefined)?.snapshot
+      const snapshot = (ctx as { snapshot?: PreferencesResponse } | undefined)
+        ?.snapshot
       if (snapshot) {
         queryClient.setQueryData(KEYS.preferences, snapshot)
       }
@@ -171,12 +194,12 @@ export function useNotificationPreferences() {
   const update = useCallback(
     (patch: UpdatePreferencesPayload) => {
       const current = queryClient.getQueryData<PreferencesResponse>(
-        KEYS.preferences,
+        KEYS.preferences
       )
       if (current) {
         queryClient.setQueryData<PreferencesResponse>(
           KEYS.preferences,
-          mergePayload(current, patch),
+          mergePayload(current, patch)
         )
       }
       pendingRef.current = mergeUpdatePayloads(pendingRef.current, patch)
@@ -191,7 +214,7 @@ export function useNotificationPreferences() {
         })
       }, DEBOUNCE_MS)
     },
-    [flush, queryClient],
+    [flush, queryClient]
   )
 
   const resetMutation = useMutation({

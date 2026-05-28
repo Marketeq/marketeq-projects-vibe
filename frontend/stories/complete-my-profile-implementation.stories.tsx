@@ -817,8 +817,8 @@ export const MoreInfoDialog = ({
                   <DialogClose
                     onClick={() => {
                       if (indexToRemove !== undefined) {
-                        setInfoChunks(
-                          (prev) => prev?.filter((_, i) => i !== indexToRemove)
+                        setInfoChunks((prev) =>
+                          prev?.filter((_, i) => i !== indexToRemove)
                         )
                         setIndexToRemove(undefined)
                       } else {
@@ -2234,7 +2234,10 @@ export const Languages = ({
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
   const onRemove = (index: number) => {
-    setValue("languages", selected?.filter((_, i) => i !== index))
+    setValue(
+      "languages",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger()
   }
 
@@ -2427,7 +2430,10 @@ export const Skills = ({
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
   const onRemove = (index: number) => {
-    setValue("skills", selected?.filter((_, i) => i !== index))
+    setValue(
+      "skills",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger()
   }
 
@@ -2618,7 +2624,10 @@ export const IndustryExpertise = ({
             .includes(query.toLowerCase().replace(/\s+/g, ""))
         )
   const onRemove = (index: number) => {
-    setValue("industries", selected?.filter((_, i) => i !== index))
+    setValue(
+      "industries",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger()
   }
   const onSubmit: SubmitHandler<IndustriesFormValues> = (values) => {
@@ -2848,7 +2857,10 @@ export const Certifications = ({
   }
 
   const onRemove = (index: number) => {
-    setValue("skills", selected?.filter((_, i) => i !== index))
+    setValue(
+      "skills",
+      selected?.filter((_, i) => i !== index)
+    )
     trigger("skills")
   }
 

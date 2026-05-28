@@ -468,7 +468,7 @@ async function bootstrap(): Promise<void> {
     // Resolve tray icon dir from packaged resources or dev tree.
     const resourcesRoot = app.isPackaged
       ? process.resourcesPath
-      : path.join(__dirname, '..', '..', 'resources');
+      : path.join(__dirname, '..', '..', '..', 'resources');
     const fallbackIcon = path.join(resourcesRoot, 'icon.png');
 
     trayService = createTrayService({

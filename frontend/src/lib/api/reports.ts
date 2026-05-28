@@ -10,6 +10,7 @@ interface Report {
   contextMessageId: string | null
   status: "pending" | "reviewing" | "actioned" | "dismissed"
   createdAt: string
+  wasAlreadyReported?: boolean
 }
 
 interface ReportPayload {
@@ -25,7 +26,7 @@ function authHeaders(): Record<string, string> {
 
 export async function reportUser(
   userId: string,
-  payload: ReportPayload,
+  payload: ReportPayload
 ): Promise<Report> {
   return apiFetch<Report>(`/users/${userId}/report`, {
     method: "POST",

@@ -1,19 +1,19 @@
 "use client"
 
 import React from "react"
-import { fromLength, cn } from "@/utils/functions"
+import { cn, fromLength } from "@/utils/functions"
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   Star,
-  Check,
 } from "@blend-metrics/icons"
 import { SwiperSlide } from "swiper/react"
+import { Blocks1 } from "@/components/blocks-1"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
-import { Blocks1 } from "@/components/blocks-1"
 import {
   SwiperContent,
   SwiperNextTrigger,

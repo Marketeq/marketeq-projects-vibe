@@ -707,8 +707,8 @@ export const Default = () => {
                               <TabsTrigger value="Description">
                                 Description
                               </TabsTrigger>
-                              <TabsTrigger value="Delierables">
-                                Delierables
+                              <TabsTrigger value="Deliverables">
+                                Deliverables
                               </TabsTrigger>
                               <TabsTrigger value="Project Details">
                                 Project Details

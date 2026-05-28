@@ -19,6 +19,7 @@ import {
   TimeZoneResolution,
   TimezoneResolutionService,
 } from "./timezone-resolution.service";
+import { UserEventPublisher } from "./user-event.publisher";
 
 @Injectable()
 export class UserService {
@@ -28,6 +29,7 @@ export class UserService {
     @InjectRepository(Skill)
     private readonly skillRepository: Repository<Skill>,
     private readonly timezoneResolutionService: TimezoneResolutionService,
+    private readonly eventPublisher: UserEventPublisher,
   ) {}
 
   async createUser(dto: CreateUserDto): Promise<User> {
@@ -50,7 +52,17 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: [
+        'languages',
+        'experiences',
+        'educations',
+        'certifications',
+        'industries',
+        'portfolioItems',
+      ],
+    });
     if (!user) throw new NotFoundException("User not found");
 
     try {
@@ -67,7 +79,12 @@ export class UserService {
       user.skills = [];
     }
 
-    return user;
+    return {
+      ...user,
+      experience: user.experiences,
+      education: user.educations,
+      portfolio: user.portfolioItems,
+    } as User;
   }
 
   async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
@@ -182,7 +199,13 @@ export class UserService {
   async updateUser(id: string, dto: UpdateUserDto): Promise<User> {
     const user = await this.getUserById(id);
     Object.assign(user, dto);
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    
+    // Publish sync event for CMS (asynchronous, don't await if you want max performance,
+    // but here we await to ensure consistency in logs)
+    await this.eventPublisher.publishProfileUpdated(saved);
+    
+    return saved;
   }
 
   async updateAvailability(
@@ -241,10 +264,9 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
-  async updateRate(id: string, dto: { rateMin?: number; rateMax?: number }) {
+  async updateRate(id: string, dto: { rate?: number }) {
     return this.updateUser(id, {
-      rateMin: dto.rateMin,
-      rateMax: dto.rateMax,
+      rate: dto.rate,
     });
   }
 
@@ -256,10 +278,19 @@ export class UserService {
           ? "client"
           : undefined;
 
+    const now = new Date().toISOString();
+    const roleTimestamp =
+      role === UserRole.TALENT
+        ? { talentOnboardedAt: now }
+        : role === UserRole.CLIENT
+          ? { clientOnboardedAt: now }
+          : {};
+
     return this.updateUser(id, {
       onboardingDismissed: true,
       ...(userType ? { userType } : {}),
-    });
+      ...roleTimestamp,
+    } as any);
   }
 
   async deactivateUser(id: string): Promise<void> {

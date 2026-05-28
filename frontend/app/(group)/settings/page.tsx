@@ -1,14 +1,20 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useAuth, resolveDashboardRole } from "@/contexts/auth"
-import { UserAPI, UserProfilePayload } from "@/service/http/user"
-import SecuritySettingsStepper from "@/components/security-settings"
-import ActiveSessionsModal from "@/components/active-sessions-modal"
-import { TwoFactorSetupModal, DisableTwoFactorModal } from "@/components/two-factor-setup"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import SettingsSidebar, { settingsTabItems } from "@/components/settings-sidebar"
+import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import { cn } from "@/utils/functions"
+import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
+import SecuritySettingsStepper from "@/components/security-settings"
+import SettingsSidebar, {
+  settingsTabItems,
+} from "@/components/settings-sidebar"
+import {
+  DisableTwoFactorModal,
+  TwoFactorSetupModal,
+} from "@/components/two-factor-setup"
 import {
   Avatar,
   AvatarFallback,
@@ -19,7 +25,6 @@ import {
   Switch,
   useToast,
 } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
@@ -126,8 +131,12 @@ export default function SettingsPage() {
 
             <div className="flex-1 min-w-0">
               <div className="min-[1024px]:hidden mb-6">
-                <h1 className="text-2xl font-semibold text-dark-blue-400">Settings</h1>
-                <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
+                <h1 className="text-2xl font-semibold text-dark-blue-400">
+                  Settings
+                </h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Manage your account settings and preferences
+                </p>
                 <div className="flex gap-1 mt-4 border-b border-gray-200 overflow-x-auto">
                   {settingsTabItems.map((item) => (
                     <button
@@ -151,11 +160,20 @@ export default function SettingsPage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-semibold text-dark-blue-400">Profile Information</h2>
-                      <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+                      <h2 className="text-lg font-semibold text-dark-blue-400">
+                        Profile Information
+                      </h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Update your personal details
+                      </p>
                     </div>
                     {!isEditing && (
-                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setIsEditing(true)}>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={() => setIsEditing(true)}
+                      >
                         Edit Profile
                       </Button>
                     )}
@@ -163,11 +181,18 @@ export default function SettingsPage() {
 
                   <div className="mt-6 flex items-center gap-x-4">
                     <Avatar className="size-16">
-                      <AvatarImage src={user?.avatarUrl ?? ""} alt={user?.firstName ?? "User"} />
-                      <AvatarFallback className="text-lg">{user?.firstName?.[0]?.toUpperCase()}</AvatarFallback>
+                      <AvatarImage
+                        src={user?.avatarUrl ?? ""}
+                        alt={user?.firstName ?? "User"}
+                      />
+                      <AvatarFallback className="text-lg">
+                        {user?.firstName?.[0]?.toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium text-dark-blue-400">{user?.firstName} {user?.lastName}</p>
+                      <p className="text-sm font-medium text-dark-blue-400">
+                        {user?.firstName} {user?.lastName}
+                      </p>
                       <p className="text-xs text-gray-500">{user?.email}</p>
                     </div>
                   </div>
@@ -177,7 +202,9 @@ export default function SettingsPage() {
                       <Label size="sm">First Name</Label>
                       <Input
                         value={profileForm.firstName}
-                        onChange={(e) => handleProfileChange("firstName", e.target.value)}
+                        onChange={(e) =>
+                          handleProfileChange("firstName", e.target.value)
+                        }
                         readOnly={!isEditing}
                         className={!isEditing ? "bg-gray-50" : ""}
                       />
@@ -186,20 +213,28 @@ export default function SettingsPage() {
                       <Label size="sm">Last Name</Label>
                       <Input
                         value={profileForm.lastName}
-                        onChange={(e) => handleProfileChange("lastName", e.target.value)}
+                        onChange={(e) =>
+                          handleProfileChange("lastName", e.target.value)
+                        }
                         readOnly={!isEditing}
                         className={!isEditing ? "bg-gray-50" : ""}
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label size="sm">Email</Label>
-                      <Input value={user?.email ?? ""} readOnly className="bg-gray-50" />
+                      <Input
+                        value={user?.email ?? ""}
+                        readOnly
+                        className="bg-gray-50"
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label size="sm">Username</Label>
                       <Input
                         value={profileForm.username}
-                        onChange={(e) => handleProfileChange("username", e.target.value)}
+                        onChange={(e) =>
+                          handleProfileChange("username", e.target.value)
+                        }
                         readOnly={!isEditing}
                         className={!isEditing ? "bg-gray-50" : ""}
                       />
@@ -208,10 +243,19 @@ export default function SettingsPage() {
 
                   {isEditing && (
                     <div className="mt-6 flex justify-end gap-x-3">
-                      <Button variant="outlined" visual="gray" size="sm" onClick={handleProfileCancel}>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={handleProfileCancel}
+                      >
                         Cancel
                       </Button>
-                      <Button size="sm" onClick={handleProfileSave} disabled={isSaving || !isProfileDirty}>
+                      <Button
+                        size="sm"
+                        onClick={handleProfileSave}
+                        disabled={isSaving || !isProfileDirty}
+                      >
                         {isSaving ? "Saving..." : "Save Changes"}
                       </Button>
                     </div>
@@ -221,50 +265,78 @@ export default function SettingsPage() {
 
               {activeTab === "account" && (
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-semibold text-dark-blue-400">Account Settings</h2>
-                  <p className="text-sm text-gray-500 mt-1">Manage your account preferences</p>
+                  <h2 className="text-lg font-semibold text-dark-blue-400">
+                    Account Settings
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Manage your account preferences
+                  </p>
 
                   <div className="mt-6 space-y-4">
                     <div className="flex items-center justify-between py-3 border-b border-gray-100">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Language</p>
-                        <p className="text-xs text-gray-500">Select your preferred language</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Language
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Select your preferred language
+                        </p>
                       </div>
-                      <span className="text-sm text-gray-500">English (US)</span>
+                      <span className="text-sm text-gray-500">
+                        English (US)
+                      </span>
                     </div>
                     <div className="flex items-center justify-between py-3 border-b border-gray-100">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Timezone</p>
-                        <p className="text-xs text-gray-500">Set your local timezone</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Timezone
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Set your local timezone
+                        </p>
                       </div>
-                      <span className="text-sm text-gray-500">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+                      <span className="text-sm text-gray-500">
+                        {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between py-3 border-b border-gray-100">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Account Type</p>
-                        <p className="text-xs text-gray-500">Your current account role</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Account Type
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Your current account role
+                        </p>
                       </div>
-                      <span className="text-sm text-gray-500 capitalize">{accountRole?.toLowerCase() ?? "—"}</span>
+                      <span className="text-sm text-gray-500 capitalize">
+                        {accountRole?.toLowerCase() ?? "—"}
+                      </span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {activeTab === "notifications" && (
-                <NotificationPreferences />
-              )}
+              {activeTab === "notifications" && <NotificationPreferences />}
 
               {activeTab === "security" && (
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-semibold text-dark-blue-400">Security</h2>
-                  <p className="text-sm text-gray-500 mt-1">Manage your security settings</p>
+                  <h2 className="text-lg font-semibold text-dark-blue-400">
+                    Security
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Manage your security settings
+                  </p>
 
                   <div className="mt-6 space-y-4">
                     <div className="flex items-center justify-between py-3 border-b border-gray-100">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Password</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Password
+                        </p>
                         <p className="text-xs text-gray-500">
-                          {user?.hasPassword ? "Password is set" : "No password set — secure your account"}
+                          {user?.hasPassword
+                            ? "Password is set"
+                            : "No password set — secure your account"}
                         </p>
                       </div>
                       <Button
@@ -278,7 +350,9 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex items-center justify-between py-3 border-b border-gray-100">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Two-Factor Authentication</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Two-Factor Authentication
+                        </p>
                         <p className="text-xs text-gray-500">
                           {user?.twoFactorEnabled
                             ? user?.twoFactorMethod === "sms"
@@ -297,10 +371,21 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex items-center justify-between py-3 border-b border-gray-100">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Active Sessions</p>
-                        <p className="text-xs text-gray-500">Manage your active login sessions</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Active Sessions
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Manage your active login sessions
+                        </p>
                       </div>
-                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setShowSessionsModal(true)}>View Sessions</Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={() => setShowSessionsModal(true)}
+                      >
+                        View Sessions
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -311,7 +396,9 @@ export default function SettingsPage() {
       </div>
 
       {showPasswordModal && (
-        <SecuritySettingsStepper onCloseModal={() => setShowPasswordModal(false)} />
+        <SecuritySettingsStepper
+          onCloseModal={() => setShowPasswordModal(false)}
+        />
       )}
 
       {show2FASetup && (

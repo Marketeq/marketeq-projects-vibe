@@ -1,0 +1,638 @@
+{
+  "info": {
+    "name": "Legal Service — QA Test Collection (LS-07)",
+    "description": "Complete test collection for legal-service covering all LS-07 test cases.\n\nAuth strategy: uses x-user-id header (bypasses JWT for local testing).\nRun seed script before executing tests:\n  node dist/apps/legal-service/seeds/run-seed.js\n\nSeed UUIDs:\n  talentA: 11111111-1111-4111-a111-111111111111\n  talentB: 22222222-2222-4222-a222-222222222222\n  clientA: 33333333-3333-4333-a333-333333333333\n  Seed Generated NDA: 44444444-4444-4444-a444-444444444444\n  Seed Voided NDA:    55555555-5555-4555-a555-555555555555",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",          "value": "http://localhost:3015" },
+    { "key": "internalSecret",   "value": "test-internal-secret" },
+    { "key": "adminToken",       "value": "test-admin-token" },
+    { "key": "talentAId",        "value": "11111111-1111-4111-a111-111111111111" },
+    { "key": "talentBId",        "value": "22222222-2222-4222-a222-222222222222" },
+    { "key": "clientAId",        "value": "33333333-3333-4333-a333-333333333333" },
+    { "key": "seedGeneratedNda", "value": "44444444-4444-4444-a444-444444444444" },
+    { "key": "seedVoidedNda",    "value": "55555555-5555-4555-a555-555555555555" },
+    { "key": "testListingId",    "value": "66666666-6666-4666-a666-666666666666" },
+    { "key": "testCompanyId",    "value": "77777777-7777-4777-a777-777777777777" },
+    { "key": "documentId",       "value": "" },
+    { "key": "signingEventId",   "value": "" }
+  ],
+  "item": [
+
+    {
+      "name": "🏥 Health Check",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));",
+            "pm.test('service name', () => pm.expect(pm.response.json().service).to.eql('legal-service'));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "📄 NDA Generation",
+      "item": [
+        {
+          "name": "TC-NDA-GEN-01 Generate NDA — individual client [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"jobListingId\": \"{{testListingId}}\",\n  \"clientUserId\": \"{{clientAId}}\",\n  \"listingTitle\": \"E-commerce Rebuild\",\n  \"displayNameFormat\": \"first_name_username\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('has documentId', () => pm.expect(pm.response.json().documentId).to.be.a('string'));",
+            "pm.test('status generated', () => pm.expect(pm.response.json().status).to.eql('generated'));",
+            "pm.collectionVariables.set('documentId', pm.response.json().documentId);",
+            "console.log('documentId saved:', pm.response.json().documentId);"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-GEN-04 Generate NDA — company representative [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"jobListingId\": \"{{testListingId}}\",\n  \"clientUserId\": \"{{clientAId}}\",\n  \"listingTitle\": \"Brand Redesign\",\n  \"displayNameFormat\": \"company_representative\",\n  \"companyId\": \"{{testCompanyId}}\",\n  \"jobTitleVisible\": true\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('has documentId', () => pm.expect(pm.response.json().documentId).to.be.a('string'));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-GEN-07 Missing jobListingId [expect 422]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"clientUserId\": \"{{clientAId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-GEN-08 Missing clientUserId [expect 422]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-GEN-09 Unauthenticated [expect 401]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"jobListingId\": \"{{testListingId}}\",\n  \"clientUserId\": \"{{clientAId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-GEN-11 listingTitle exactly 100 chars [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"jobListingId\": \"{{testListingId}}\",\n  \"clientUserId\": \"{{clientAId}}\",\n  \"listingTitle\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-GEN-12 listingTitle 101 chars [expect 422]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/generate",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"jobListingId\": \"{{testListingId}}\",\n  \"clientUserId\": \"{{clientAId}}\",\n  \"listingTitle\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "✍️ NDA Signing",
+      "item": [
+        {
+          "name": "TC-NDA-SIGN-01 Valid signing — exact name match [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": true,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('has eventId', () => pm.expect(pm.response.json().eventId).to.be.a('string'));",
+            "pm.test('has signedPdfUrl', () => pm.expect(pm.response.json().signedPdfUrl).to.include('r2.cloudflarestorage.com'));",
+            "pm.collectionVariables.set('signingEventId', pm.response.json().eventId);",
+            "console.log('signingEventId saved:', pm.response.json().eventId);"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-04 Consent false [expect 422]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentBId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": false,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-05 Missing consentCheckboxChecked [expect 422]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentBId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-06 Unauthenticated [expect 401]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/sign",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": true,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-07 Sign non-existent document [expect 404]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/00000000-0000-4000-a000-000000000000/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": true,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 404', () => pm.response.to.have.status(404));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-08 Sign voided NDA [expect 409]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedVoidedNda}}/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": true,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 409', () => pm.response.to.have.status(409));",
+            "pm.test('voided message', () => pm.expect(pm.response.json().message).to.include('voided'));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-10 Duplicate sign by same user [expect 409]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": true,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 409', () => pm.response.to.have.status(409));",
+            "pm.test('already signed message', () => pm.expect(pm.response.json().message).to.include('already signed'));"
+          ]}}]
+        },
+        {
+          "name": "TC-NDA-SIGN-09 Second user signs same NDA [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/sign",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentBId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"typedName\": \"Unknown User\",\n  \"signingMethod\": \"typed\",\n  \"consentCheckboxChecked\": true,\n  \"jobListingId\": \"{{testListingId}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('different signingEventId', () => pm.expect(pm.response.json().eventId).to.not.eql(pm.collectionVariables.get('signingEventId')));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "📋 NDA Retrieval",
+      "item": [
+        {
+          "name": "TC-DOCS-11 Get NDA by ID — owner [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}",
+            "header": [{ "key": "x-user-id", "value": "{{clientAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('has id', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('seedGeneratedNda')));",
+            "pm.test('has status', () => pm.expect(pm.response.json().status).to.be.a('string'));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-12 Get NDA — non-owner [expect 403]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}",
+            "header": [{ "key": "x-user-id", "value": "99999999-9999-4999-a999-999999999999" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 403', () => pm.response.to.have.status(403));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-13 Get NDA — not found [expect 404]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/nda/00000000-0000-4000-a000-000000000000",
+            "header": [{ "key": "x-user-id", "value": "{{clientAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 404', () => pm.response.to.have.status(404));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-14 Get NDA audit trail [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/audit",
+            "header": [{ "key": "x-user-id", "value": "{{clientAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('has signingEvents array', () => pm.expect(pm.response.json().signingEvents).to.be.an('array'));"
+          ]}}]
+        },
+        {
+          "name": "GET /v1/nda/:id/preview — owner [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/preview",
+            "header": [{ "key": "x-user-id", "value": "{{clientAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "📁 Legal Documents",
+      "item": [
+        {
+          "name": "TC-DOCS-01 List documents — talentA [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/legal-documents",
+            "header": [{ "key": "x-user-id", "value": "{{talentAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('has data array', () => pm.expect(pm.response.json().data).to.be.an('array'));",
+            "pm.test('has meta', () => pm.expect(pm.response.json().meta).to.be.an('object'));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-04 List documents — new user (empty) [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/legal-documents",
+            "header": [{ "key": "x-user-id", "value": "88888888-8888-4888-a888-888888888888" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('empty data', () => pm.expect(pm.response.json().data).to.eql([]));",
+            "pm.test('total 0', () => pm.expect(pm.response.json().meta.total).to.eql(0));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-05 List documents — unauthenticated [expect 401]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/legal-documents"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-07 Filter by type=nda [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/legal-documents?type=nda",
+              "query": [{ "key": "type", "value": "nda" }]
+            },
+            "header": [{ "key": "x-user-id", "value": "{{talentAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('all nda type', () => { const data = pm.response.json().data; data.forEach(r => pm.expect(r.documentType).to.eql('nda')); });"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-09 Pagination page=1 limit=1 [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/legal-documents?page=1&limit=1",
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "1" }]
+            },
+            "header": [{ "key": "x-user-id", "value": "{{talentAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('max 1 result', () => pm.expect(pm.response.json().data.length).to.be.at.most(1));"
+          ]}}]
+        },
+        {
+          "name": "TC-DOCS-10 Limit exceeds 100 [expect 422]",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/legal-documents?limit=101",
+              "query": [{ "key": "limit", "value": "101" }]
+            },
+            "header": [{ "key": "x-user-id", "value": "{{talentAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "✅ Acceptance Records",
+      "item": [
+        {
+          "name": "TC-ACC-01 Record ToS acceptance [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/acceptance/terms-of-service",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documentVersion\": \"3.2\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('documentType', () => pm.expect(pm.response.json().documentType).to.eql('terms_of_service'));",
+            "pm.test('documentVersion', () => pm.expect(pm.response.json().documentVersion).to.eql('3.2'));"
+          ]}}]
+        },
+        {
+          "name": "TC-ACC-03 Record Privacy Policy acceptance [expect 201]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/acceptance/privacy-policy",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documentVersion\": \"2.1\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('documentType', () => pm.expect(pm.response.json().documentType).to.eql('privacy_policy'));"
+          ]}}]
+        },
+        {
+          "name": "TC-ACC-05 ToS without JWT [expect 401]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/acceptance/terms-of-service",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documentVersion\": \"3.2\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "TC-ACC-06 Missing documentVersion [expect 422]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/acceptance/terms-of-service",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));"
+          ]}}]
+        },
+        {
+          "name": "TC-ACC-07 Two versions — both accepted [expect 201 x2]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/acceptance/terms-of-service",
+            "header": [
+              { "key": "x-internal-api-secret", "value": "{{internalSecret}}" },
+              { "key": "x-user-id", "value": "{{talentBId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documentVersion\": \"3.3\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('version 3.3', () => pm.expect(pm.response.json().documentVersion).to.eql('3.3'));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "⚙️ NDA Settings",
+      "item": [
+        {
+          "name": "TC-SETTINGS-02 Update requireNdaToViewScope [expect 200]",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/settings",
+            "header": [
+              { "key": "x-user-id", "value": "{{clientAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"requireNdaToViewScope\": false\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "pm.test('requireNdaToViewScope false', () => pm.expect(pm.response.json().requireNdaToViewScope).to.eql(false));"
+          ]}}]
+        },
+        {
+          "name": "TC-SETTINGS-05 Non-owner cannot update [expect 403]",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/settings",
+            "header": [
+              { "key": "x-user-id", "value": "{{talentAId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"requireNdaToViewScope\": false\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 403', () => pm.response.to.have.status(403));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "🔒 Void Endpoint",
+      "item": [
+        {
+          "name": "TC-VOID-03 Void — no internal secret [expect 401]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/void",
+            "header": []
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "TC-VOID-02 Void signed NDA [expect 409]",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/nda/{{seedGeneratedNda}}/void",
+            "header": [{ "key": "x-internal-api-secret", "value": "{{internalSecret}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 409', () => pm.response.to.have.status(409));"
+          ]}}]
+        }
+      ]
+    },
+
+    {
+      "name": "🛡️ Admin",
+      "item": [
+        {
+          "name": "Admin get signing event — no token [expect 401]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/admin/signing-events/{{signingEventId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "Admin get signing event — with token [expect 200]",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/admin/signing-events/{{signingEventId}}",
+            "header": [{ "key": "x-admin-token", "value": "{{adminToken}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200 or 404', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"
+          ]}}]
+        },
+        {
+          "name": "TC-AUDIT-15 PATCH signing event — no endpoint [expect 404]",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/v1/nda/signing-events/{{signingEventId}}",
+            "header": [{ "key": "x-user-id", "value": "{{talentAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 404', () => pm.response.to.have.status(404));"
+          ]}}]
+        },
+        {
+          "name": "TC-AUDIT-16 DELETE signing event — no endpoint [expect 404]",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/nda/signing-events/{{signingEventId}}",
+            "header": [{ "key": "x-user-id", "value": "{{talentAId}}" }]
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 404', () => pm.response.to.have.status(404));"
+          ]}}]
+        }
+      ]
+    }
+
+  ]
+}

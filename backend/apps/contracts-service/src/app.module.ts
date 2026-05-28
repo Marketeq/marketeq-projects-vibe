@@ -36,8 +36,8 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
         type: 'postgres' as const,
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: false,
-        ssl: config.get('NODE_ENV') === 'production'
+        synchronize: config.get<string>('CONTRACTS_DATABASE_SYNCHRONIZE') === 'true',
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
           ? { rejectUnauthorized: false }
           : false,
       }),

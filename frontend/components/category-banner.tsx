@@ -11,6 +11,15 @@
 import * as React from "react"
 import NextImage from "next/image"
 
+/**
+ * Shared category-page banner. Reuses the same blue multi-stop overlay,
+ * vignette, and staggered text-reveal animations from the home page hero
+ * (`(group)/(group)/page.tsx`) so every browse / category / entity-list
+ * page has a consistent look and feel.
+ *
+ * Single-image (not a carousel) — category pages don't rotate.
+ */
+
 interface CategoryBannerProps {
   image: string
   alt: string

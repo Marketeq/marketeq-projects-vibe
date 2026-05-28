@@ -83,7 +83,10 @@ export default function SettingsSidebar({
           <button
             disabled
             title="Coming soon"
-            className={cn(itemClass(false), "opacity-40 cursor-not-allowed hover:bg-transparent")}
+            className={cn(
+              itemClass(false),
+              "opacity-40 cursor-not-allowed hover:bg-transparent"
+            )}
           >
             <CreditCard className={iconClass} />
             Billing

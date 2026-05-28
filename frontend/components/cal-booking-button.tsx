@@ -55,7 +55,7 @@ function loadCalScript() {
   ensureCalStub()
 
   const existingScript = document.querySelector<HTMLScriptElement>(
-    `script[data-cal-embed-src="${CAL_SCRIPT_URL}"]`,
+    `script[data-cal-embed-src="${CAL_SCRIPT_URL}"]`
   )
 
   if (existingScript) {
@@ -70,12 +70,13 @@ function loadCalScript() {
           existingScript.dataset.loaded = "true"
           resolve()
         },
-        { once: true },
+        { once: true }
       )
       existingScript.addEventListener(
         "error",
-        () => reject(new Error(`Failed to load Cal embed from ${CAL_SCRIPT_URL}`)),
-        { once: true },
+        () =>
+          reject(new Error(`Failed to load Cal embed from ${CAL_SCRIPT_URL}`)),
+        { once: true }
       )
     })
   }
@@ -91,12 +92,13 @@ function loadCalScript() {
         script.dataset.loaded = "true"
         resolve()
       },
-      { once: true },
+      { once: true }
     )
     script.addEventListener(
       "error",
-      () => reject(new Error(`Failed to load Cal embed from ${CAL_SCRIPT_URL}`)),
-      { once: true },
+      () =>
+        reject(new Error(`Failed to load Cal embed from ${CAL_SCRIPT_URL}`)),
+      { once: true }
     )
     document.head.appendChild(script)
   })
@@ -139,7 +141,9 @@ export function CalBookingButton({
     }
   }, [])
 
-  const handleClick = React.useCallback<React.MouseEventHandler<HTMLButtonElement>>(
+  const handleClick = React.useCallback<
+    React.MouseEventHandler<HTMLButtonElement>
+  >(
     async (event) => {
       onClick?.(event)
 
@@ -163,7 +167,7 @@ export function CalBookingButton({
         console.error("Failed to open Cal modal", error)
       }
     },
-    [onClick],
+    [onClick]
   )
 
   return (

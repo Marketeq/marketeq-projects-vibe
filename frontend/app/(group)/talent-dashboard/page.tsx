@@ -35,6 +35,17 @@ export default function TalentDashboard() {
   const [showCompleteProfile, setShowCompleteProfile] = useState(false)
   const [profileProgress, setProfileProgress] = useState(0)
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("marketeq-profile-completion")
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      if (Object.values(parsed).some((v: unknown) => (v as Record<string, unknown>)?.opened)) {
+        setShowCompleteProfile(true)
+      }
+    } catch {}
+  }, [])
+
   const handleCompleteProfile = useCallback(() => {
     setShowCompleteProfile(true)
   }, [])

@@ -59,6 +59,34 @@ export class ThreadsService {
       : [];
     const stateByThread = new Map(states.map((s) => [s.threadId, s]));
 
+    // Single query: count unread messages per thread, joining
+    // thread_user_state so the lastReadAt filter is applied in SQL
+    // instead of looping per thread. Both sides of the comparison
+    // are timestamptz (see Promote… migration), so no cast needed.
+    const unreadCountMap = new Map<string, number>();
+    if (threadIds.length) {
+      const unreadRows: { threadId: string; cnt: string }[] = await this.repo.manager
+        .createQueryBuilder(Message, 'm')
+        .select('m."threadId"', 'threadId')
+        .addSelect('COUNT(*)', 'cnt')
+        .leftJoin(
+          ThreadUserState,
+          's',
+          's."threadId" = m."threadId" AND s."userId" = :userId',
+          { userId },
+        )
+        .where('m."threadId" IN (:...threadIds)', { threadIds })
+        .andWhere('m.deleted = false')
+        .andWhere('m."senderId" != :userId', { userId })
+        .andWhere('(s."lastReadAt" IS NULL OR m."createdAt" > s."lastReadAt")')
+        .groupBy('m."threadId"')
+        .getRawMany();
+
+      for (const row of unreadRows) {
+        unreadCountMap.set(row.threadId, parseInt(row.cnt, 10));
+      }
+    }
+
     const enriched = await Promise.all(
       threads.map(async (t) => {
         const lastMessage = await this.repo.manager
@@ -80,6 +108,7 @@ export class ThreadsService {
             .getRawOne();
         }
         const s = stateByThread.get(t.id);
+
         return {
           ...t,
           lastMessage: lastMessage
@@ -93,6 +122,7 @@ export class ThreadsService {
           isTrashed: s?.isTrashed ?? false,
           markedUnread: s?.markedUnread ?? false,
           lastReadAt: s?.lastReadAt ?? null,
+          unreadCount: unreadCountMap.get(t.id) ?? 0,
         };
       }),
     );

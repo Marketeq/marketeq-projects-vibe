@@ -9,15 +9,9 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { SubmitHandler, useForm } from "react-hook-form"
 import { z } from "zod"
-import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import { Spinner } from "@/components/ui/spinner/spinner"
-import {
-  Button,
-  ErrorMessage,
-  Input,
-  Label,
-  useToast,
-} from "@/components/ui"
+import { MarketeqLogo } from "@/components/icons/marketeq-logo"
+import { Button, ErrorMessage, Input, Label, useToast } from "@/components/ui"
 
 const schema = z.object({
   email: z

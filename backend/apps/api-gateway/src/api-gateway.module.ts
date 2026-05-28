@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { TypeOrmModule } from '@nestjs/typeorm'
 import { HttpModule } from '@nestjs/axios'
 import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
@@ -10,6 +11,7 @@ import { UserAvatarUploadController } from './controllers/user-avatar-upload.con
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
 import { HomepageModule } from './homepage/homepage.module'
+import { BlogModule } from './blog/blog.module'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
@@ -20,8 +22,21 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
       isGlobal: true,
       envFilePath: ['apps/api-gateway/.env', '.env'],
     }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres' as const,
+        url: config.get<string>('DATABASE_URL'),
+        autoLoadEntities: true,
+        synchronize: false,
+        ssl: (config.get<string>('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
+      }),
+    }),
     HttpModule.register({ timeout: 30000 }),
     HomepageModule,
+    BlogModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

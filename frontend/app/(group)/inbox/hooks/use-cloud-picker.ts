@@ -16,7 +16,10 @@
 //    API permissions: Microsoft Graph → Files.Read (delegated).
 //    Env: NEXT_PUBLIC_ONEDRIVE_CLIENT_ID
 
-const loadScript = (src: string, attrs?: Record<string, string>): Promise<void> =>
+const loadScript = (
+  src: string,
+  attrs?: Record<string, string>
+): Promise<void> =>
   new Promise((resolve, reject) => {
     if (typeof document === "undefined") {
       reject(new Error("Cloud pickers require a browser environment"))
@@ -278,11 +281,16 @@ async function getMsal(clientId: string) {
   return msalInstance
 }
 
-async function acquireGraphToken(instance: any): Promise<{ token: string; account: any }> {
+async function acquireGraphToken(
+  instance: any
+): Promise<{ token: string; account: any }> {
   // 1) Silent with a cached account — fastest, no popup
   if (msalAccount) {
     try {
-      const r = await instance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: msalAccount })
+      const r = await instance.acquireTokenSilent({
+        scopes: GRAPH_SCOPES,
+        account: msalAccount,
+      })
       return { token: r.accessToken, account: r.account }
     } catch {
       /* fall through */
@@ -319,10 +327,15 @@ export interface OneDriveItem {
   "@microsoft.graph.downloadUrl"?: string
 }
 
-export async function getOneDriveToken(): Promise<{ token: string; account: any }> {
+export async function getOneDriveToken(): Promise<{
+  token: string
+  account: any
+}> {
   const clientId = process.env.NEXT_PUBLIC_ONEDRIVE_CLIENT_ID
   if (!clientId) {
-    throw new Error("OneDrive not configured. Set NEXT_PUBLIC_ONEDRIVE_CLIENT_ID.")
+    throw new Error(
+      "OneDrive not configured. Set NEXT_PUBLIC_ONEDRIVE_CLIENT_ID."
+    )
   }
   const instance = await getMsal(clientId)
   return acquireGraphToken(instance)
@@ -338,7 +351,9 @@ export async function listOneDriveFolder(
   // Request enough fields + ask for download URLs up front so we can skip
   // a second call for each file.
   const url = `${base}?$top=200&$select=id,name,size,folder,file,parentReference,lastModifiedDateTime,webUrl&$expand=thumbnails($select=small)`
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   if (!res.ok) {
     throw new Error(`OneDrive list failed (${res.status})`)
   }
@@ -356,7 +371,9 @@ export async function downloadOneDriveItems(
     // works whether the file lives in the personal drive root or a
     // sub-folder; no need to construct the driveId path manually.
     const url = `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(item.id)}/content`
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
     if (!res.ok) {
       console.warn(`OneDrive download failed (${res.status}) for ${item.name}`)
       continue

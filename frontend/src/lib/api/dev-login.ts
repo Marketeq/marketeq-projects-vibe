@@ -11,21 +11,13 @@ const DEV_EMAIL = "harry.torres8@gmail.com"
  */
 export async function ensureDevAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false
-  if (process.env.NODE_ENV === "production") return !!Cookies.get("access_token")
+  if (process.env.NODE_ENV === "production")
+    return !!Cookies.get("access_token")
 
-  // If there's already a token, verify it decodes to the right user
+  // If there's already a token, respect it — don't replace another user's session
   const existing = Cookies.get("access_token")
   if (existing) {
-    try {
-      // Decode JWT payload (no verification, just read)
-      const payload = JSON.parse(atob(existing.split(".")[1]))
-      if (payload.email === DEV_EMAIL) return true
-      // Wrong user — clear and re-login
-      Cookies.remove("access_token", { path: "/" })
-    } catch {
-      // Corrupt token — clear and re-login
-      Cookies.remove("access_token", { path: "/" })
-    }
+    return true
   }
 
   try {

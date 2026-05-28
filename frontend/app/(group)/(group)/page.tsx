@@ -1,8 +1,8 @@
 import { cache } from "react"
-import { cookies } from "next/headers"
 import type { Metadata } from "next"
-import { getPublicHomepageUrl } from "@/lib/runtime-urls"
+import { cookies } from "next/headers"
 import type { HomepagePayload } from "@/types/homepage"
+import { getPublicHomepageUrl } from "@/lib/runtime-urls"
 import { HomepageClient } from "./homepage-client"
 
 const HOMEPAGE_BASE = getPublicHomepageUrl() || "http://localhost:4000"
@@ -49,7 +49,9 @@ export default async function Marketplace() {
   if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Homepage unavailable. Please try again later.</p>
+        <p className="text-gray-500">
+          Homepage unavailable. Please try again later.
+        </p>
       </div>
     )
   }

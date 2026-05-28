@@ -1,10 +1,7 @@
-import { cn } from "@/utils/functions"
 import * as React from "react"
+import { cn } from "@/utils/functions"
 
-const UserGroup = ({
-  className,
-  ...props
-}: React.SVGProps<SVGSVGElement>) => (
+const UserGroup = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => (
   <svg
     className={cn("size-4 text-primary-500", className)}
     viewBox="0 0 15 16"

@@ -47,7 +47,8 @@ const Autocomplete = React.forwardRef<
 Autocomplete.displayName = "Autocomplete"
 
 interface AutocompleteLabelProps
-  extends WithoutChildren<React.LabelHTMLAttributes<HTMLLabelElement>>,
+  extends
+    WithoutChildren<React.LabelHTMLAttributes<HTMLLabelElement>>,
     VariantProps<typeof labelVariants> {
   children?:
     | React.ReactNode
@@ -79,11 +80,10 @@ const AutocompleteTrigger = React.forwardRef<
 
 AutocompleteTrigger.displayName = "AutocompleteTrigger"
 
-interface AutocompleteInputProps<T = any>
-  extends Omit<
-    React.InputHTMLAttributes<HTMLInputElement>,
-    "children" | "defaultValue"
-  > {
+interface AutocompleteInputProps<T = any> extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "children" | "defaultValue"
+> {
   as?: React.ElementType
   defaultValue?: T
   displayValue?: (item: T) => string
@@ -111,8 +111,9 @@ const AutocompleteInput = React.forwardRef<
 
 AutocompleteInput.displayName = "AutocompleteInput"
 
-interface AutocompleteButtonProps
-  extends WithoutChildren<React.ButtonHTMLAttributes<HTMLButtonElement>> {
+interface AutocompleteButtonProps extends WithoutChildren<
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+> {
   children?:
     | React.ReactNode
     | ((bag: {
@@ -138,8 +139,9 @@ const AutocompleteButton = React.forwardRef<
 
 AutocompleteButton.displayName = "AutocompleteButton"
 
-interface AutocompleteOptionsProps
-  extends WithoutChildren<React.HTMLAttributes<HTMLUListElement>> {
+interface AutocompleteOptionsProps extends WithoutChildren<
+  React.HTMLAttributes<HTMLUListElement>
+> {
   children?:
     | React.ReactNode
     | ((bag: {
@@ -163,8 +165,10 @@ const AutocompleteOptions = React.forwardRef<
 
 AutocompleteOptions.displayName = "AutocompleteOptions"
 
-interface AutocompleteOptionProps<TValue = any>
-  extends Omit<React.LiHTMLAttributes<HTMLLIElement>, "value" | "children"> {
+interface AutocompleteOptionProps<TValue = any> extends Omit<
+  React.LiHTMLAttributes<HTMLLIElement>,
+  "value" | "children"
+> {
   value: TValue
   children?:
     | React.ReactNode

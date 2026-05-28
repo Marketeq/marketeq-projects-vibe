@@ -16,6 +16,7 @@ import { BasicInformation } from './entities/job-listing-basic-info.entity';
 // ── Controllers ─────────────────────────────────────────────────────────────
 import { JobListingController } from './controllers/job-listing.controller';
 import { JobListingPhaseController } from './controllers/job-listing-phase.controller';
+import { JobListingInternalController } from './controllers/job-listing-internal.controller';
 import { JobListingEventsConsumer } from './events/job-listing-events.consumer';
 
 // ── Services ─────────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ import { JobListingAiService } from './services/job-listing-ai.service';
 import { JobListingDraftService } from './services/job-listing-draft.service';
 import { JobListingPublishService } from './services/job-listing-publish.service';
 import { JobListingInviteService } from './services/job-listing-invite.service';
+import { JobListingCmsSyncService } from './services/job-listing-cms-sync.service';
 
 // ── Events ───────────────────────────────────────────────────────────────────
 import { JobListingEventsPublisher } from './events/job-listing-events.publisher';
@@ -85,6 +87,7 @@ import { AlgoliaService } from '../algolia/algolia.service';
   controllers: [
     JobListingController,
     JobListingPhaseController,
+    JobListingInternalController,
     // JobListingEventsConsumer is a @Controller() used for RabbitMQ event patterns.
     JobListingEventsConsumer,
   ],
@@ -103,6 +106,7 @@ import { AlgoliaService } from '../algolia/algolia.service';
     JobListingInviteService,
 
     // Infrastructure
+    JobListingCmsSyncService,
     JobListingEventsPublisher,
     AlgoliaService,
 

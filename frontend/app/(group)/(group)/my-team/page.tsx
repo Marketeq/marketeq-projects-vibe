@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState, useCallback } from "react"
-import { UserAPI } from "@/service/http/user"
-import { InvitationsAPI } from "@/service/http/invitations"
+import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth"
+import { InvitationsAPI } from "@/service/http/invitations"
+import { UserAPI } from "@/service/http/user"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -12,6 +12,7 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { getFirstItem } from "@/utils/functions"
+import { cn } from "@/utils/functions"
 import {
   ArrowDown,
   ArrowUp,
@@ -39,7 +40,6 @@ import { InviteWindow, InviteWindowTrigger } from "@/components/invite-window"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { TalentSearchCard } from "@/components/talent-search-card"
-import { cn } from "@/utils/functions"
 import { useToast } from "@/components/ui"
 import {
   Avatar,
@@ -193,105 +193,116 @@ const accountColumnHelper = createColumnHelper<AccountMember>()
 
 function buildAccountColumns(
   onResend: (id: string) => void,
-  onCancel: (id: string) => void,
+  onCancel: (id: string) => void
 ) {
   return [
-  accountColumnHelper.accessor("name", {
-    header: "Team Member",
-    cell: (info) => {
-      const row = info.row.original
-      const isPending = row.status === "pending"
-      return (
-        <div className="inline-flex items-center gap-x-3">
-          {isPending && !row.avatarSrc ? (
-            <div className="size-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-              <User01 className="size-5 text-gray-400" />
+    accountColumnHelper.accessor("name", {
+      header: "Team Member",
+      cell: (info) => {
+        const row = info.row.original
+        const isPending = row.status === "pending"
+        return (
+          <div className="inline-flex items-center gap-x-3">
+            {isPending && !row.avatarSrc ? (
+              <div className="size-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                <User01 className="size-5 text-gray-400" />
+              </div>
+            ) : (
+              <Avatar size="md">
+                <AvatarImage src={row.avatarSrc || "/man.jpg"} alt={row.name} />
+                <AvatarFallback>{row.name?.charAt(0) || "?"}</AvatarFallback>
+              </Avatar>
+            )}
+            <div className="flex flex-col">
+              {row.name && (
+                <span className="text-sm font-bold text-dark-blue-400">
+                  {row.name}
+                </span>
+              )}
+              <span className="text-sm text-gray-500">{row.email}</span>
             </div>
-          ) : (
-            <Avatar size="md">
-              <AvatarImage src={row.avatarSrc || "/man.jpg"} alt={row.name} />
-              <AvatarFallback>{row.name?.charAt(0) || "?"}</AvatarFallback>
-            </Avatar>
-          )}
-          <div className="flex flex-col">
-            {row.name && (
-              <span className="text-sm font-bold text-dark-blue-400">
-                {row.name}
-              </span>
-            )}
-            <span className="text-sm text-gray-500">{row.email}</span>
           </div>
-        </div>
-      )
-    },
-    enableMultiSort: true,
-  }),
-  accountColumnHelper.accessor("role", {
-    header: "Role",
-    cell: (info) => {
-      const val = info.getValue()
-      return val ? (
-        <span className="text-sm text-dark-blue-400">{val}</span>
-      ) : (
-        <span className="text-sm text-gray-300">&mdash;</span>
-      )
-    },
-  }),
-  accountColumnHelper.accessor("company", {
-    header: "Company",
-    cell: (info) => {
-      const val = info.getValue()
-      return val ? (
-        <Button className="text-sm p-0 h-auto" variant="link" visual="primary">
-          {val}
-        </Button>
-      ) : (
-        <span className="text-sm text-gray-300">&mdash;</span>
-      )
-    },
-  }),
-  accountColumnHelper.accessor("status", {
-    header: "Status",
-    cell: (info) => {
-      const val = info.getValue()
-      return val === "active" ? (
-        <span className="text-sm font-medium text-success-500">Active</span>
-      ) : (
-        <span className="text-sm text-gray-400">Invitation pending</span>
-      )
-    },
-  }),
-  accountColumnHelper.display({
-    id: "actions",
-    cell: ({ row }) => {
-      const isPending = row.original.status === "pending"
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton className="text-gray-400" visual="gray" variant="ghost">
-              <MoreHorizontal className="size-5" />
-            </IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[165px]">
-            <DropdownMenuItem>
-              <Edit03 className="h-4 w-4" /> Edit
-            </DropdownMenuItem>
-            {isPending && (
-              <DropdownMenuItem onSelect={() => onResend(row.original.id)}>
-                <RefreshCw04 className="h-4 w-4" /> Resend Invite
+        )
+      },
+      enableMultiSort: true,
+    }),
+    accountColumnHelper.accessor("role", {
+      header: "Role",
+      cell: (info) => {
+        const val = info.getValue()
+        return val ? (
+          <span className="text-sm text-dark-blue-400">{val}</span>
+        ) : (
+          <span className="text-sm text-gray-300">&mdash;</span>
+        )
+      },
+    }),
+    accountColumnHelper.accessor("company", {
+      header: "Company",
+      cell: (info) => {
+        const val = info.getValue()
+        return val ? (
+          <Button
+            className="text-sm p-0 h-auto"
+            variant="link"
+            visual="primary"
+          >
+            {val}
+          </Button>
+        ) : (
+          <span className="text-sm text-gray-300">&mdash;</span>
+        )
+      },
+    }),
+    accountColumnHelper.accessor("status", {
+      header: "Status",
+      cell: (info) => {
+        const val = info.getValue()
+        return val === "active" ? (
+          <span className="text-sm font-medium text-success-500">Active</span>
+        ) : (
+          <span className="text-sm text-gray-400">Invitation pending</span>
+        )
+      },
+    }),
+    accountColumnHelper.display({
+      id: "actions",
+      cell: ({ row }) => {
+        const isPending = row.original.status === "pending"
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                className="text-gray-400"
+                visual="gray"
+                variant="ghost"
+              >
+                <MoreHorizontal className="size-5" />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[165px]">
+              <DropdownMenuItem>
+                <Edit03 className="h-4 w-4" /> Edit
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem visual="destructive" onSelect={() => onCancel(row.original.id)}>
-              <Trash2 className="h-4 w-4" /> Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
-    },
-    enableSorting: false,
-  }),
-]
+              {isPending && (
+                <DropdownMenuItem onSelect={() => onResend(row.original.id)}>
+                  <RefreshCw04 className="h-4 w-4" /> Resend Invite
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                visual="destructive"
+                onSelect={() => onCancel(row.original.id)}
+              >
+                <Trash2 className="h-4 w-4" /> Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+      enableSorting: false,
+    }),
+  ]
 }
 
 const AccountMembersTable = ({
@@ -304,7 +315,10 @@ const AccountMembersTable = ({
   onCancel: (id: string) => void
 }) => {
   const [sorting, setSorting] = useState<SortingState>([])
-  const columns = React.useMemo(() => buildAccountColumns(onResend, onCancel), [onResend, onCancel])
+  const columns = React.useMemo(
+    () => buildAccountColumns(onResend, onCancel),
+    [onResend, onCancel]
+  )
 
   const table = useReactTable({
     data,
@@ -323,9 +337,7 @@ const AccountMembersTable = ({
             {headerGroup.headers.map((header) => (
               <TableHead
                 className={
-                  header.column.getCanSort()
-                    ? "cursor-pointer select-none"
-                    : ""
+                  header.column.getCanSort() ? "cursor-pointer select-none" : ""
                 }
                 key={header.id}
                 colSpan={header.colSpan}
@@ -380,7 +392,10 @@ const talentColumns = [
       return (
         <div className="inline-flex items-center gap-x-3">
           <NextLink href={profileHref} className="shrink-0">
-            <Avatar size="md" className="transition-transform duration-500 ease-out hover:scale-110">
+            <Avatar
+              size="md"
+              className="transition-transform duration-500 ease-out hover:scale-110"
+            >
               <AvatarImage src={row.avatarSrc} alt={row.name} />
               <AvatarFallback>{row.name.charAt(0)}</AvatarFallback>
             </Avatar>
@@ -486,9 +501,7 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
             {headerGroup.headers.map((header) => (
               <TableHead
                 className={
-                  header.column.getCanSort()
-                    ? "cursor-pointer select-none"
-                    : ""
+                  header.column.getCanSort() ? "cursor-pointer select-none" : ""
                 }
                 key={header.id}
                 colSpan={header.colSpan}
@@ -676,21 +689,127 @@ const SortDropdown = () => (
 
 // Common female first names for gender inference
 const FEMALE_NAMES = new Set([
-  "mary","patricia","jennifer","linda","barbara","elizabeth","susan","jessica",
-  "sarah","karen","lisa","nancy","betty","margaret","sandra","ashley","dorothy",
-  "kimberly","emily","donna","michelle","carol","amanda","melissa","deborah",
-  "stephanie","rebecca","sharon","laura","cynthia","kathleen","amy","angela",
-  "shirley","anna","brenda","pamela","emma","nicole","helen","samantha",
-  "katherine","christine","debra","rachel","carolyn","janet","catherine",
-  "maria","heather","diane","ruth","julie","olivia","joyce","virginia",
-  "victoria","kelly","lauren","christina","joan","evelyn","judith","megan",
-  "andrea","cheryl","hannah","jacqueline","martha","gloria","teresa","ann",
-  "sara","madison","frances","kathryn","janice","jean","abigail","alice",
-  "judy","sophia","grace","denise","amber","doris","marilyn","danielle",
-  "beverly","isabella","theresa","diana","natalie","brittany","charlotte",
-  "marie","kayla","alexis","lori","alicia","jenny","nadia","priya","aisha",
-  "fatima","mei","yuki","sofia","elena","rosa","carmen","lucia","nina",
-  "tanya","svetlana","ingrid","bianca","valentina","ngozi","amara","zara",
+  "mary",
+  "patricia",
+  "jennifer",
+  "linda",
+  "barbara",
+  "elizabeth",
+  "susan",
+  "jessica",
+  "sarah",
+  "karen",
+  "lisa",
+  "nancy",
+  "betty",
+  "margaret",
+  "sandra",
+  "ashley",
+  "dorothy",
+  "kimberly",
+  "emily",
+  "donna",
+  "michelle",
+  "carol",
+  "amanda",
+  "melissa",
+  "deborah",
+  "stephanie",
+  "rebecca",
+  "sharon",
+  "laura",
+  "cynthia",
+  "kathleen",
+  "amy",
+  "angela",
+  "shirley",
+  "anna",
+  "brenda",
+  "pamela",
+  "emma",
+  "nicole",
+  "helen",
+  "samantha",
+  "katherine",
+  "christine",
+  "debra",
+  "rachel",
+  "carolyn",
+  "janet",
+  "catherine",
+  "maria",
+  "heather",
+  "diane",
+  "ruth",
+  "julie",
+  "olivia",
+  "joyce",
+  "virginia",
+  "victoria",
+  "kelly",
+  "lauren",
+  "christina",
+  "joan",
+  "evelyn",
+  "judith",
+  "megan",
+  "andrea",
+  "cheryl",
+  "hannah",
+  "jacqueline",
+  "martha",
+  "gloria",
+  "teresa",
+  "ann",
+  "sara",
+  "madison",
+  "frances",
+  "kathryn",
+  "janice",
+  "jean",
+  "abigail",
+  "alice",
+  "judy",
+  "sophia",
+  "grace",
+  "denise",
+  "amber",
+  "doris",
+  "marilyn",
+  "danielle",
+  "beverly",
+  "isabella",
+  "theresa",
+  "diana",
+  "natalie",
+  "brittany",
+  "charlotte",
+  "marie",
+  "kayla",
+  "alexis",
+  "lori",
+  "alicia",
+  "jenny",
+  "nadia",
+  "priya",
+  "aisha",
+  "fatima",
+  "mei",
+  "yuki",
+  "sofia",
+  "elena",
+  "rosa",
+  "carmen",
+  "lucia",
+  "nina",
+  "tanya",
+  "svetlana",
+  "ingrid",
+  "bianca",
+  "valentina",
+  "ngozi",
+  "amara",
+  "zara",
 ])
 
 function inferGender(firstName: string): "women" | "men" {
@@ -713,11 +832,7 @@ function getReadableNameFromUser(u: any): string {
   if (fullName) return fullName
 
   const explicitName =
-    u.displayName ??
-    u.fullName ??
-    u.name ??
-    u.profileName ??
-    ""
+    u.displayName ?? u.fullName ?? u.name ?? u.profileName ?? ""
   if (typeof explicitName === "string" && explicitName.trim()) {
     return explicitName.trim()
   }
@@ -755,9 +870,13 @@ function mapUserToTalent(u: any, index: number): TalentMember {
       const d = e.startDate ?? e.start_date
       return d && d < min ? d : min
     }, new Date().toISOString())
-    yearsExp = Math.max(1, Math.round(
-      (Date.now() - new Date(earliest).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-    ))
+    yearsExp = Math.max(
+      1,
+      Math.round(
+        (Date.now() - new Date(earliest).getTime()) /
+          (365.25 * 24 * 60 * 60 * 1000)
+      )
+    )
   }
 
   const skills = (u.skills ?? []).map((s: any) => s.name).filter(Boolean)
@@ -781,11 +900,12 @@ function mapUserToTalent(u: any, index: number): TalentMember {
     rating: 4.0 + Math.round(Math.random() * 10) / 10,
     experience: `${yearsExp} years of experience`,
     country: u.location ?? "United States",
-    localTime: new Date().toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }) + " local time",
+    localTime:
+      new Date().toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }) + " local time",
     rate: `${rateMin} - ${rateMax}`,
     skills,
   }
@@ -832,7 +952,9 @@ export default function MyTeam() {
   const teamId = (user as any)?.id || (user as any)?.sub
   const signedInEmailRaw = (user as any)?.email
   const signedInEmail =
-    typeof signedInEmailRaw === "string" ? signedInEmailRaw.trim().toLowerCase() : undefined
+    typeof signedInEmailRaw === "string"
+      ? signedInEmailRaw.trim().toLowerCase()
+      : undefined
 
   const loadInvitations = useCallback(async () => {
     if (!teamId && !signedInEmail) return
@@ -841,59 +963,72 @@ export default function MyTeam() {
       // Fetch inviter-side records and invitee-side accepted membership in one pass.
       const requests: Promise<any>[] = []
       if (teamId) {
-        requests.push(InvitationsAPI.listInvitations({ teamId, status: "pending" }))
-        requests.push(InvitationsAPI.listInvitations({ teamId, status: "accepted" }))
+        requests.push(
+          InvitationsAPI.listInvitations({ teamId, status: "pending" })
+        )
+        requests.push(
+          InvitationsAPI.listInvitations({ teamId, status: "accepted" })
+        )
       }
       if (signedInEmail) {
         // Fetch all statuses for invitee and split locally to avoid backend/status-filter drift.
-        requests.push(InvitationsAPI.listInvitations({ invitedEmail: signedInEmail }))
+        requests.push(
+          InvitationsAPI.listInvitations({ invitedEmail: signedInEmail })
+        )
       }
 
       const settled = await Promise.allSettled(requests)
       const extractData = (result: PromiseSettledResult<any>) => {
         if (result.status !== "fulfilled") return []
-        return ((result.value as any)?.data?.data ?? (result.value as any)?.data ?? []) as any[]
+        return ((result.value as any)?.data?.data ??
+          (result.value as any)?.data ??
+          []) as any[]
       }
 
       const pending = teamId && settled[0] ? extractData(settled[0]) : []
-      const acceptedForTeam = teamId && settled[1] ? extractData(settled[1]) : []
+      const acceptedForTeam =
+        teamId && settled[1] ? extractData(settled[1]) : []
       const inviteeAll = signedInEmail
         ? extractData(settled[teamId ? 2 : 0] as PromiseSettledResult<any>)
         : []
       const normalizeStatus = (status: unknown) =>
         typeof status === "string" ? status.trim().toLowerCase() : ""
       const acceptedForInvitee = inviteeAll.filter(
-        (inv: any) => normalizeStatus(inv?.status) === "accepted",
+        (inv: any) => normalizeStatus(inv?.status) === "accepted"
       )
       const pendingForInvitee = inviteeAll.filter(
-        (inv: any) => normalizeStatus(inv?.status) === "pending",
+        (inv: any) => normalizeStatus(inv?.status) === "pending"
       )
 
-      const toMember = (inv: any, status: "pending" | "active"): AccountMember => {
+      const toMember = (
+        inv: any,
+        status: "pending" | "active"
+      ): AccountMember => {
         // For live members with no uploaded avatar, generate a stable per-user avatar.
         // This avoids showing one generic image for multiple different invitees.
-        const liveAvatarFallbackSeed = inv.invitedEmail ?? inv.email ?? inv.id ?? "member"
+        const liveAvatarFallbackSeed =
+          inv.invitedEmail ?? inv.email ?? inv.id ?? "member"
         const displayName =
           status === "pending"
             ? ""
-            : inv.inviteeName ??
+            : (inv.inviteeName ??
               inv.name ??
               inv.invitedEmail ??
               inv.email ??
-              ""
+              "")
 
         return {
-        id: inv.id,
-        name: displayName,
-        email: inv.invitedEmail ?? inv.email ?? "",
-        role: inv.role ?? "",
-        avatarSrc:
-          inv.avatarUrl ??
-          inv.avatarSrc ??
-          `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(liveAvatarFallbackSeed)}`,
-        // Never show internal UUIDs in UI labels; use a readable fallback.
-        company: inv.teamName ?? "Client Team",
-        status,
+          id: inv.id,
+          name: displayName,
+          email: inv.invitedEmail ?? inv.email ?? "",
+          role: inv.role ?? "",
+          avatarSrc:
+            inv.avatarUrl ??
+            inv.avatarSrc ??
+            `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(liveAvatarFallbackSeed)}`,
+          // Never show internal UUIDs in UI labels; use a readable fallback.
+          company: inv.teamName ?? "Client Team",
+          status,
         }
       }
 
@@ -907,20 +1042,23 @@ export default function MyTeam() {
       // Keep static placeholders, but let live API members override duplicates.
       const uniqueLive = Array.from(
         new Map(
-          liveMembers.map((member) => [member.email.toLowerCase() || member.id, member]),
-        ).values(),
+          liveMembers.map((member) => [
+            member.email.toLowerCase() || member.id,
+            member,
+          ])
+        ).values()
       )
 
       // Keep placeholders, but render live members first in the list/grid.
-      const mergedMembers = [
-        ...uniqueLive,
-        ...STATIC_INVITATION_PLACEHOLDERS,
-      ]
+      const mergedMembers = [...uniqueLive, ...STATIC_INVITATION_PLACEHOLDERS]
 
       const dedupedMembers = Array.from(
         new Map(
-          mergedMembers.map((member) => [member.email.toLowerCase() || member.id, member]),
-        ).values(),
+          mergedMembers.map((member) => [
+            member.email.toLowerCase() || member.id,
+            member,
+          ])
+        ).values()
       )
 
       // Always show static placeholders + any live data from the API
@@ -933,32 +1071,41 @@ export default function MyTeam() {
     }
   }, [signedInEmail, teamId])
 
-  const handleResend = useCallback(async (id: string) => {
-    try {
-      await InvitationsAPI.resendInvitation(id)
-      toast({ title: "Invite resent", description: "A new invitation email was sent." })
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to resend",
-        description: err?.response?.data?.message ?? "Please try again.",
-      })
-    }
-  }, [toast])
+  const handleResend = useCallback(
+    async (id: string) => {
+      try {
+        await InvitationsAPI.resendInvitation(id)
+        toast({
+          title: "Invite resent",
+          description: "A new invitation email was sent.",
+        })
+      } catch (err: any) {
+        toast({
+          variant: "destructive",
+          title: "Failed to resend",
+          description: err?.response?.data?.message ?? "Please try again.",
+        })
+      }
+    },
+    [toast]
+  )
 
-  const handleCancel = useCallback(async (id: string) => {
-    try {
-      await InvitationsAPI.cancelInvitation(id)
-      setTeamMembers((prev) => prev.filter((m) => m.id !== id))
-      toast({ title: "Invitation removed" })
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to remove",
-        description: err?.response?.data?.message ?? "Please try again.",
-      })
-    }
-  }, [toast])
+  const handleCancel = useCallback(
+    async (id: string) => {
+      try {
+        await InvitationsAPI.cancelInvitation(id)
+        setTeamMembers((prev) => prev.filter((m) => m.id !== id))
+        toast({ title: "Invitation removed" })
+      } catch (err: any) {
+        toast({
+          variant: "destructive",
+          title: "Failed to remove",
+          description: err?.response?.data?.message ?? "Please try again.",
+        })
+      }
+    },
+    [toast]
+  )
 
   useEffect(() => {
     setIsLoading(true)

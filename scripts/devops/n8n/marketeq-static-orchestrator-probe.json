@@ -1,0 +1,60 @@
+{
+  "updatedAt": "2026-04-28T20:41:30.619Z",
+  "createdAt": "2026-04-28T20:41:23.219Z",
+  "id": "TomiDAVYMeu1x6f8",
+  "name": "Marketeq Static Orchestrator Probe",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketeq-static-orchestrator-probe",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-static-orch",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "marketeq-static-orchestrator-probe"
+    },
+    {
+      "parameters": {
+        "command": "GH_TOKEN='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' VERCEL_TOKEN='vca_2fX5b9LjyDsOhsL6PkYNNFqg646Gz5BgZlC3NwxgQehqXnSMXR1bWedm' RENDER_TOKEN='rnd_aUwmRjyg2E07MFnNhHeZPJn9jPbm' EVENT='push' BRANCH='dev-main' SHA_INPUT='b586a2ef466e56b6c1fc365221f6d09e37fa8904' /usr/bin/curl -fsSL https://gist.githubusercontent.com/CTorres9800/640b424e591178b4b2f8a570cd099798/raw/bcb563b6b1fe4fa1fa9ace73df4e59ac90f34faa/marketeq_orchestrator_public.sh | /bin/zsh"
+      },
+      "id": "exec-static-orch",
+      "name": "Exec",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Exec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

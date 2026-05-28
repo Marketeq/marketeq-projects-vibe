@@ -135,14 +135,23 @@ export const TagsInputInput = React.forwardRef<
     },
     ref
   ) => {
-    const { inputValue, setInputValue, addValue, clearInputValue, focus } =
-      useTagsInputContext()
+    const {
+      inputValue,
+      setInputValue,
+      addValue,
+      clearInputValue,
+      focus,
+      value: currentTags,
+    } = useTagsInputContext()
     const onInputValueChangeRef = React.useRef(onInputValueChange)
     const [open, { off, on }] = useToggle(false)
     const isInputValueValid = inputValue !== ""
     const normalizedInputValue = inputValue.trim()
-    const filteredOptions = options?.filter((option) =>
-      option.toLowerCase().includes(inputValue.toLowerCase())
+    const currentTagsLower = new Set(currentTags.map((t) => t.toLowerCase()))
+    const filteredOptions = options?.filter(
+      (option) =>
+        option.toLowerCase().includes(inputValue.toLowerCase()) &&
+        !currentTagsLower.has(option.toLowerCase())
     )
     const canCreateOption =
       allowCreateOption &&
@@ -154,7 +163,8 @@ export const TagsInputInput = React.forwardRef<
     const exactMatchedOption = options?.find(
       (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
     )
-    const enterOptionValue = exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
+    const enterOptionValue =
+      exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
 
     useUpdateEffect(() => {
       isInputValueValid ? on() : off()
@@ -188,13 +198,16 @@ export const TagsInputInput = React.forwardRef<
               focus()
               off()
             }}
+            onBlur={() => {
+              setTimeout(() => off(), 150)
+            }}
             {...props}
             ref={ref}
           />
 
           <ScaleOutIn show={open}>
             <div className="absolute left-0 mt-2 w-[202px] px-0 pt-0 z-50 bg-white rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-              <Command shouldFilter={false}>
+              <Command>
                 <CommandInput
                   placeholder="Search"
                   containerClassName="sr-only"
@@ -202,6 +215,7 @@ export const TagsInputInput = React.forwardRef<
                   value={inputValue}
                   onValueChange={(value) => {
                     setInputValue(value)
+                    onInputValueChange?.(value)
                   }}
                 />
                 <CommandList>
@@ -209,20 +223,40 @@ export const TagsInputInput = React.forwardRef<
                     <CommandEmpty>No results found.</CommandEmpty>
                   )}
                   <CommandGroup className="pt-0">
-                    {filteredOptions?.map((option) => (
-                      <CommandItem
-                        key={option}
-                        value={option}
-                        onSelect={(currentValue) => {
-                          addValue(currentValue)
-                          clearInputValue()
-                          focus()
-                          off()
-                        }}
-                      >
-                        {option}
-                      </CommandItem>
-                    ))}
+                    {filteredOptions?.map((option) => {
+                      const matchIndex = option
+                        .toLowerCase()
+                        .indexOf(inputValue.toLowerCase())
+                      return (
+                        <CommandItem
+                          key={option}
+                          value={option}
+                          onSelect={(currentValue) => {
+                            addValue(currentValue)
+                            clearInputValue()
+                            focus()
+                            off()
+                          }}
+                        >
+                          <span>
+                            {matchIndex >= 0 ? (
+                              <>
+                                {option.slice(0, matchIndex)}
+                                <span className="font-bold">
+                                  {option.slice(
+                                    matchIndex,
+                                    matchIndex + inputValue.length
+                                  )}
+                                </span>
+                                {option.slice(matchIndex + inputValue.length)}
+                              </>
+                            ) : (
+                              option
+                            )}
+                          </span>
+                        </CommandItem>
+                      )
+                    })}
                     {canCreateOption ? (
                       <CommandItem
                         className="text-primary-500 font-semibold data-[selected=true]:text-primary-500 data-[selected=true]:bg-primary-50"

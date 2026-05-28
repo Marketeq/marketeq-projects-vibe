@@ -28,6 +28,7 @@ export function crossServiceUuidField(): Field {
       // nothing for a human to do here. Shown as a disabled input on edit so
       // admins can still read / copy the value.
       condition: (data) => Boolean((data as { id?: unknown } | undefined)?.id),
+      hidden: true,
     },
     hooks: {
       beforeValidate: [

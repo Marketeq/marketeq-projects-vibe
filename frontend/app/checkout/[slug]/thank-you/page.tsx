@@ -1,9 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { UserAPI } from "@/service/http/user"
-import type { UserProfile } from "@/types/user"
 import {
   ArrowRight,
   Bank,
@@ -14,9 +18,14 @@ import {
   Printer,
   Users03,
 } from "@blend-metrics/icons"
+import type { UserProfile } from "@/types/user"
 import { CalBookingButton } from "@/components/cal-booking-button"
 import { CheckoutNavigation } from "@/components/checkout-navigation"
-import { getDefaultJobTitle, getExperienceLabel, offerRates } from "@/components/hire-me-button"
+import {
+  getDefaultJobTitle,
+  getExperienceLabel,
+  offerRates,
+} from "@/components/hire-me-button"
 import NextImage from "@/components/next-image"
 import {
   Avatar,
@@ -119,7 +128,9 @@ export default function ConfirmationPage() {
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
-  const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
+  const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
+    null
+  )
   const [paymentSnapshot, setPaymentSnapshot] =
     React.useState<PaymentPageSnapshot | null>(null)
   const [selectedAddOnIds, setSelectedAddOnIds] = React.useState<string[]>([])
@@ -169,7 +180,8 @@ export default function ConfirmationPage() {
     const addOnStateStorageKey = `checkout-addons:${basePath}:${decodedSlug}`
 
     try {
-      const rawSelectedAddOnIds = window.sessionStorage.getItem(addOnStateStorageKey)
+      const rawSelectedAddOnIds =
+        window.sessionStorage.getItem(addOnStateStorageKey)
       if (!rawSelectedAddOnIds) return
       const nextSelectedAddOnIds = JSON.parse(rawSelectedAddOnIds) as string[]
       if (Array.isArray(nextSelectedAddOnIds)) {
@@ -205,14 +217,16 @@ export default function ConfirmationPage() {
     ]
     const selectedRecurringPlan =
       recurringPlanOptions.find(
-        (option) => option.id === paymentSnapshot?.selectedTalentPaymentPlanId,
+        (option) => option.id === paymentSnapshot?.selectedTalentPaymentPlanId
       ) || recurringPlanOptions[0]
     const recurringPlanAmount = selectedRecurringPlan.amount
     const formattedHourlyRate = `$${hourlyRate.toFixed(0)}/hr`
     const formattedEstimatedTaxHourly = `$${estimatedTaxHourly.toFixed(2)}/hr`
     const formattedTotalHourlyRate = `$${totalHourlyRate.toFixed(2)}/hr`
     const formattedRecurringPlanAmount = formatter.format(recurringPlanAmount)
-    const formattedInitialOneTimeAmount = formatter.format(recurringPlanAmount * 2)
+    const formattedInitialOneTimeAmount = formatter.format(
+      recurringPlanAmount * 2
+    )
     const formattedFullDueToday = formatter.format(fullDueToday)
     const talentName =
       talentProfile?.firstName ||
@@ -222,13 +236,17 @@ export default function ConfirmationPage() {
     const talentAvatarUrl = talentProfile?.avatarUrl || ""
     const talentJobTitle = getDefaultJobTitle(talentProfile)
     const talentExperienceLabel = getExperienceLabel(talentProfile)
-    const scheduleTitle = selectedSchedule === "part-time" ? "Part time" : "Full time"
+    const scheduleTitle =
+      selectedSchedule === "part-time" ? "Part time" : "Full time"
     const scheduleDetail =
-      selectedSchedule === "part-time" ? "Up to 30 hrs/week" : "Over 30 hrs/week"
+      selectedSchedule === "part-time"
+        ? "Up to 30 hrs/week"
+        : "Over 30 hrs/week"
     const paymentMode = paymentSnapshot?.pay || "AT_ONCE"
     const billingAddress = "2125 Chestnut Street, San Francisco, CA 94123"
     const fullPaymentMethods =
-      paymentSnapshot?.fullPaymentMethods && paymentSnapshot.fullPaymentMethods.length > 0
+      paymentSnapshot?.fullPaymentMethods &&
+      paymentSnapshot.fullPaymentMethods.length > 0
         ? paymentSnapshot.fullPaymentMethods
         : [
             {
@@ -240,7 +258,8 @@ export default function ConfirmationPage() {
             },
           ]
     const initialPaymentMethods = paymentSnapshot?.firstInstallmentMethods || []
-    const recurringPaymentMethods = paymentSnapshot?.secondInstallmentMethods || []
+    const recurringPaymentMethods =
+      paymentSnapshot?.secondInstallmentMethods || []
 
     const renderPaymentMethodIdentity = (method: InstallmentPaymentMethod) => {
       if (method.method === "BANK_ACCOUNT") {
@@ -304,7 +323,7 @@ export default function ConfirmationPage() {
       method: InstallmentPaymentMethod,
       amountLabel: string,
       showBillingAddress = true,
-      key?: string,
+      key?: string
     ) => {
       const identity = renderPaymentMethodIdentity(method)
       return (
@@ -321,7 +340,8 @@ export default function ConfirmationPage() {
                 </p>
               ) : null}
               <p className="text-xs font-light text-dark-blue-400">
-                Payment Amount: <span className="font-semibold">{amountLabel}</span>
+                Payment Amount:{" "}
+                <span className="font-semibold">{amountLabel}</span>
               </p>
             </div>
           </div>
@@ -344,7 +364,11 @@ export default function ConfirmationPage() {
 
     return (
       <div className="bg-gray-50 pt-[64px]">
-        <CheckoutNavigation currentStep={3} showSteps={false} logoHref="/client-dashboard" />
+        <CheckoutNavigation
+          currentStep={3}
+          showSteps={false}
+          logoHref="/client-dashboard"
+        />
 
         <div className="px-[150px] py-[36px]">
           <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -384,7 +408,11 @@ export default function ConfirmationPage() {
                     <Button
                       className="underline"
                       variant="link"
-                      onClick={() => router.push(`${basePath}/${slug}/confirmation?${searchParams.toString()}`)}
+                      onClick={() =>
+                        router.push(
+                          `${basePath}/${slug}/confirmation?${searchParams.toString()}`
+                        )
+                      }
                     >
                       Order Details
                     </Button>{" "}
@@ -418,7 +446,11 @@ export default function ConfirmationPage() {
                   <Button
                     variant="link"
                     visual="primary"
-                    onClick={() => router.push(`${basePath}/${slug}?${searchParams.toString()}`)}
+                    onClick={() =>
+                      router.push(
+                        `${basePath}/${slug}?${searchParams.toString()}`
+                      )
+                    }
                   >
                     Review Your Offer
                   </Button>
@@ -456,7 +488,9 @@ export default function ConfirmationPage() {
                   </div>
 
                   <div className="inline-flex flex-col items-end justify-between self-stretch">
-                    <Badge size="sm" visual="warning">Offer Pending</Badge>
+                    <Badge size="sm" visual="warning">
+                      Offer Pending
+                    </Badge>
                     <div className="inline-flex flex-col items-end gap-y-0.5">
                       <span className="inline-block text-dark-blue-400 text-[20px] leading-none font-semibold">
                         {formattedHourlyRate}
@@ -475,7 +509,8 @@ export default function ConfirmationPage() {
                       Set up your introductory call with {talentName}
                     </h1>
                     <p className="mt-1 text-sm font-light text-dark-blue-400">
-                      Reach out to your hire to align on expectations before work begins
+                      Reach out to your hire to align on expectations before
+                      work begins
                     </p>
                   </div>
 
@@ -495,7 +530,8 @@ export default function ConfirmationPage() {
                     Payment Methods
                   </h1>
                   <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                    The following payment methods will be billed for the total amount of{" "}
+                    The following payment methods will be billed for the total
+                    amount of{" "}
                     <span className="font-bold">{formattedFullDueToday}</span>
                   </p>
                   <p className="mt-1.5 text-sm font-light text-dark-blue-400">
@@ -511,12 +547,16 @@ export default function ConfirmationPage() {
                         renderSummaryRow(
                           method,
                           formatter.format(
-                            paymentSnapshot?.hasSplitFullPayment && fullPaymentMethods.length > 1
-                              ? Math.round(fullDueToday / fullPaymentMethods.length)
-                              : fullDueToday,
+                            paymentSnapshot?.hasSplitFullPayment &&
+                              fullPaymentMethods.length > 1
+                              ? Math.round(
+                                  fullDueToday / fullPaymentMethods.length
+                                )
+                              : fullDueToday
                           ),
-                          method.method !== "BANK_ACCOUNT" && method.method !== "WIRE_TRANSFER",
-                        ),
+                          method.method !== "BANK_ACCOUNT" &&
+                            method.method !== "WIRE_TRANSFER"
+                        )
                       )}
                     </div>
                   ) : (
@@ -531,23 +571,30 @@ export default function ConfirmationPage() {
                               renderSummaryRow(
                                 method,
                                 formatter.format(
-                                  Math.round((recurringPlanAmount * 2) / Math.max(initialPaymentMethods.length, 1)),
+                                  Math.round(
+                                    (recurringPlanAmount * 2) /
+                                      Math.max(initialPaymentMethods.length, 1)
+                                  )
                                 ),
-                                false,
-                              ),
+                                false
+                              )
                             )}
                           </div>
                         </div>
                       ) : null}
 
-                      <div className={initialPaymentMethods.length > 0 ? "mt-6" : ""}>
+                      <div
+                        className={
+                          initialPaymentMethods.length > 0 ? "mt-6" : ""
+                        }
+                      >
                         <h1 className="text-lg font-semibold text-dark-blue-400">
                           Recurring Payments
                         </h1>
                         <p className="mt-1.5 text-sm font-light text-dark-blue-400">
                           Your following payment methods will be debited on{" "}
-                          <span className="font-bold">1st of every</span> month for
-                          the amount referenced below until the{" "}
+                          <span className="font-bold">1st of every</span> month
+                          for the amount referenced below until the{" "}
                           <span className="font-bold">
                             completion of your project.
                           </span>
@@ -566,12 +613,13 @@ export default function ConfirmationPage() {
                                       recurringPaymentMethods.length > 0
                                         ? recurringPaymentMethods.length
                                         : fullPaymentMethods.length,
-                                      1,
-                                    ),
-                                ),
+                                      1
+                                    )
+                                )
                               ),
-                              method.method !== "BANK_ACCOUNT" && method.method !== "WIRE_TRANSFER",
-                            ),
+                              method.method !== "BANK_ACCOUNT" &&
+                                method.method !== "WIRE_TRANSFER"
+                            )
                           )}
                         </div>
                       </div>
@@ -689,7 +737,8 @@ export default function ConfirmationPage() {
                   {paymentMode === "IN_INSTALLMENTS" ? (
                     <div className="mt-5 rounded-[4px] p-2 bg-primary-25 flex items-center justify-between">
                       <span className="text-[10px] text-dark-blue-400">
-                        Your {selectedRecurringPlan.label.toLowerCase()} payments start from
+                        Your {selectedRecurringPlan.label.toLowerCase()}{" "}
+                        payments start from
                       </span>
                       <span className="text-[10px] font-medium text-dark-blue-400">
                         Jan 1st, 2025
@@ -707,11 +756,17 @@ export default function ConfirmationPage() {
                   <div className="mt-5">
                     <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
                       By submitting your payment, you agree to Marketeq&apos;s{" "}
-                      <Button className="text-[10px] leading-[14px] underline" variant="link">
+                      <Button
+                        className="text-[10px] leading-[14px] underline"
+                        variant="link"
+                      >
                         Terms of Use
                       </Button>{" "}
                       and{" "}
-                      <Button className="text-[10px] leading-[14px] underline" variant="link">
+                      <Button
+                        className="text-[10px] leading-[14px] underline"
+                        variant="link"
+                      >
                         Privacy Policy
                       </Button>
                     </span>
@@ -733,7 +788,11 @@ export default function ConfirmationPage() {
 
   return (
     <div className="bg-gray-50 pt-[64px]">
-      <CheckoutNavigation currentStep={3} showSteps={false} logoHref="/client-dashboard" />
+      <CheckoutNavigation
+        currentStep={3}
+        showSteps={false}
+        logoHref="/client-dashboard"
+      />
 
       <div className="px-[150px] py-[50px]">
         <div className="p-8 pr-[60px] rounded-lg flex items-start gap-x-5 border bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -1002,7 +1061,9 @@ export default function ConfirmationPage() {
                   in the right direction.{" "}
                 </p>
               </div>
-              <Button onClick={() => router.push(`${basePath}/${slug}/next-steps`)}>
+              <Button
+                onClick={() => router.push(`${basePath}/${slug}/next-steps`)}
+              >
                 Next Step <ArrowRight className="size-[15px]" />
               </Button>
             </div>
@@ -1074,7 +1135,6 @@ export default function ConfirmationPage() {
           </div>
         </div>
       </div>
-
     </div>
   )
 }

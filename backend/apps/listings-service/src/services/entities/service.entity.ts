@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('services')
+@Entity('services_v2')
 export class Service {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -92,6 +92,12 @@ export class Service {
 
   @Column()
   createdBy: string;
+
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  payloadId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  editorialLabel: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

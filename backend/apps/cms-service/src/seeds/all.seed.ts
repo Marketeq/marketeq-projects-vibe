@@ -4,6 +4,8 @@ import crypto from "crypto";
 import { seedCategories } from "./categories.seed";
 import { seedProjects } from "./projects.seed";
 import { seedDefaultHomepage } from "./homepage.seed";
+import { seedTalentProfiles } from "./talent-profiles.seed";
+import { seedCategoryPages } from "./category-pages.seed";
 import { lexicalText, upsertPlaceholderMedia } from "./seed-utils";
 
 function uuid(): string {
@@ -16,7 +18,12 @@ async function upsertByWhere(
   where: any,
   data: any,
 ): Promise<void> {
-  const existing = await payload.find({ collection, where, limit: 1, overrideAccess: true });
+  const existing = await payload.find({
+    collection,
+    where,
+    limit: 1,
+    overrideAccess: true,
+  });
   if (existing.totalDocs > 0) {
     await payload.update({
       collection,
@@ -35,7 +42,11 @@ async function upsertByWhere(
 }
 
 async function ensureUser(payload: Payload): Promise<number | null> {
-  const users = await payload.find({ collection: "users", limit: 1, overrideAccess: true });
+  const users = await payload.find({
+    collection: "users",
+    limit: 1,
+    overrideAccess: true,
+  });
   if (users.totalDocs > 0) return users.docs[0].id as number;
 
   // Users collection is auth-enabled => requires email/password.
@@ -63,11 +74,29 @@ export async function seedAll(payload: Payload): Promise<void> {
   await seedDefaultHomepage(payload);
   await seedProjects(payload);
 
+  console.log("Seeding category pages...");
+  await seedCategoryPages(payload);
+
   // Feature Flags
   for (const ff of [
-    { key: "projects.enabled", enabled: true, rolloutPercentage: 100, description: "Show projects marketplace." },
-    { key: "deliverables.ai.enabled", enabled: true, rolloutPercentage: 100, description: "Enable deliverables generator button." },
-    { key: "cms.seeded", enabled: true, rolloutPercentage: 100, description: "Marker flag for local seed runs." },
+    {
+      key: "projects.enabled",
+      enabled: true,
+      rolloutPercentage: 100,
+      description: "Show projects marketplace.",
+    },
+    {
+      key: "deliverables.ai.enabled",
+      enabled: true,
+      rolloutPercentage: 100,
+      description: "Enable deliverables generator button.",
+    },
+    {
+      key: "cms.seeded",
+      enabled: true,
+      rolloutPercentage: 100,
+      description: "Marker flag for local seed runs.",
+    },
   ]) {
     const existing = await payload.find({
       collection: "feature-flags",
@@ -93,64 +122,97 @@ export async function seedAll(payload: Payload): Promise<void> {
   }
 
   // Announcements (published banner)
-  await upsertByWhere(payload, "announcements", { title: { equals: "Welcome to Marketeq (local)" } }, {
-    title: "Welcome to Marketeq (local)",
-    message: lexicalText("This environment is seeded with sample content for CMS + marketplace testing.") as any,
-    audience: "all",
-    priority: 10,
-    status: "published",
-  });
+  await upsertByWhere(
+    payload,
+    "announcements",
+    { title: { equals: "Welcome to Marketeq (local)" } },
+    {
+      title: "Welcome to Marketeq (local)",
+      message: lexicalText(
+        "This environment is seeded with sample content for CMS + marketplace testing.",
+      ) as any,
+      audience: "all",
+      priority: 10,
+      status: "published",
+    },
+  );
 
   // Testimonials
   const testimonialAuthors = ["Ava Johnson", "Noah Chen", "Sophia Martinez"];
   for (const [i, name] of testimonialAuthors.entries()) {
-    await upsertByWhere(payload, "testimonials", { authorName: { equals: name } }, {
-      authorName: name,
-      authorCompany: "Acme Co.",
-      rating: 5,
-      featured: i === 0,
-      status: "published",
-      quote: "High quality work, fast communication, and a clean handoff.",
-      avatar: placeholderMediaId,
-    });
+    await upsertByWhere(
+      payload,
+      "testimonials",
+      { authorName: { equals: name } },
+      {
+        authorName: name,
+        authorCompany: "Acme Co.",
+        rating: 5,
+        featured: i === 0,
+        status: "published",
+        quote: "High quality work, fast communication, and a clean handoff.",
+        avatar: placeholderMediaId,
+      },
+    );
   }
 
   // Landing page
-  await upsertByWhere(payload, "landing-pages", { slug: { equals: "seed-landing" } }, {
-    title: "Hire a team to ship faster",
-    slug: "seed-landing",
-    status: "published",
-    hero: {
-      headline: "Launch in weeks, not months",
-      subheadline: "Browse proven teams and fixed-scope projects.",
-      ctaLabel: "Explore projects",
-      ctaUrl: "/projects",
+  await upsertByWhere(
+    payload,
+    "landing-pages",
+    { slug: { equals: "seed-landing" } },
+    {
+      title: "Hire a team to ship faster",
+      slug: "seed-landing",
+      status: "published",
+      hero: {
+        headline: "Launch in weeks, not months",
+        subheadline: "Browse proven teams and fixed-scope projects.",
+        ctaLabel: "Explore projects",
+        ctaUrl: "/projects",
+      },
+      sections: [],
     },
-    sections: [],
-  });
+  );
 
   // Blog + Help (published)
-  await upsertByWhere(payload, "blog-posts", { slug: { equals: "seed-blog-post" } }, {
-    title: "How Marketeq projects work",
-    slug: "seed-blog-post",
-    status: "published",
-    publishedAt: new Date().toISOString(),
-    author: userId,
-    coverImage: placeholderMediaId,
-    body: lexicalText("This is seeded content. Replace with real editorial copy.") as any,
-    tags: [{ tag: "platform" }, { tag: "projects" }],
-  });
+  await upsertByWhere(
+    payload,
+    "blog-posts",
+    { slug: { equals: "seed-blog-post" } },
+    {
+      title: "How Marketeq projects work",
+      slug: "seed-blog-post",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      author: userId,
+      coverImage: placeholderMediaId,
+      body: lexicalText(
+        "This is seeded content. Replace with real editorial copy.",
+      ) as any,
+      tags: [{ tag: "platform" }, { tag: "projects" }],
+    },
+  );
 
-  await upsertByWhere(payload, "help-articles", { slug: { equals: "seed-help-article" } }, {
-    title: "Getting started",
-    slug: "seed-help-article",
-    status: "published",
-    topic: "getting-started",
-    body: lexicalText("Seeded help content. Add your real FAQ here.") as any,
-  });
+  await upsertByWhere(
+    payload,
+    "help-articles",
+    { slug: { equals: "seed-help-article" } },
+    {
+      title: "Getting started",
+      slug: "seed-help-article",
+      status: "published",
+      topic: "getting-started",
+      body: lexicalText("Seeded help content. Add your real FAQ here.") as any,
+    },
+  );
 
   // Listings (CMS mirror rows, sourceId is required + unique)
-  const listingsExisting = await payload.find({ collection: "listings", limit: 1, overrideAccess: true });
+  const listingsExisting = await payload.find({
+    collection: "listings",
+    limit: 1,
+    overrideAccess: true,
+  });
   if (listingsExisting.totalDocs === 0) {
     await payload.create({
       collection: "listings",
@@ -187,17 +249,20 @@ export async function seedAll(payload: Payload): Promise<void> {
           {
             icon: "shield-zap",
             title: "Refund protection",
-            description: "If the project falls short, you can initiate a dispute for a full refund.",
+            description:
+              "If the project falls short, you can initiate a dispute for a full refund.",
           },
           {
             icon: "rocket",
             title: "Fast resolution",
-            description: "Clear milestones and fast support if anything goes off track.",
+            description:
+              "Clear milestones and fast support if anything goes off track.",
           },
         ],
         highlightedNotice: {
           icon: "shield-dollar",
-          description: "Payments are secured and released only when you approve delivery.",
+          description:
+            "Payments are secured and released only when you approve delivery.",
         },
         policy: {
           prefixText: "We securely process payments and release upon rating.",
@@ -206,9 +271,21 @@ export async function seedAll(payload: Payload): Promise<void> {
         },
         howItWorks: {
           steps: [
-            { stepNumber: "1", title: "Pick a project", description: "Browse proven teams and project templates." },
-            { stepNumber: "2", title: "Customize scope", description: "Tailor deliverables, timeline, and skills." },
-            { stepNumber: "3", title: "Launch", description: "Kick off with a clear plan and weekly progress." },
+            {
+              stepNumber: "1",
+              title: "Pick a project",
+              description: "Browse proven teams and project templates.",
+            },
+            {
+              stepNumber: "2",
+              title: "Customize scope",
+              description: "Tailor deliverables, timeline, and skills.",
+            },
+            {
+              stepNumber: "3",
+              title: "Launch",
+              description: "Kick off with a clear plan and weekly progress.",
+            },
           ],
         },
       } as any,
@@ -217,59 +294,15 @@ export async function seedAll(payload: Payload): Promise<void> {
     });
   }
 
-  // Category pages (minimal shell doc)
-  const cpExisting = await payload.find({
-    collection: "category-pages",
-    where: { path: { equals: "development" } },
+  // Talent profiles (delegated to separate seed file for full fixtures)
+  await seedTalentProfiles(payload);
+
+  // Orders (minimal, if we have a user)
+  const ordersExisting = await payload.find({
+    collection: "orders",
     limit: 1,
     overrideAccess: true,
   });
-  if (cpExisting.totalDocs === 0) {
-    await payload.create({
-      collection: "category-pages",
-      data: {
-        level: "l1",
-        displayTitle: "Development (L1)",
-        path: "development",
-        _status: "published",
-        categoryRef: {
-          categoryId: "seed-development",
-          slug: "development",
-          name: "Development",
-          breadcrumbs: [{ label: "Development", slug: "development" }],
-        },
-        hero: {
-          title: "Development projects",
-          subtitle: "Browse seeded projects grouped under development-related categories.",
-        },
-      } as any,
-      overrideAccess: true,
-      disableVerificationEmail: true,
-    });
-  }
-
-  // Talent profiles (minimal)
-  const tpExisting = await payload.find({ collection: "talent-profiles", limit: 1, overrideAccess: true });
-  if (tpExisting.totalDocs === 0) {
-    await payload.create({
-      collection: "talent-profiles",
-      data: {
-        sourceId: uuid(),
-        username: "seed-talent",
-        name: "Seed Talent",
-        headline: "Full-stack engineer",
-        skills: [{ name: "TypeScript" }, { name: "NestJS" }],
-        industries: [{ name: "SaaS" }],
-        languages: [{ language: "English", proficiency: "native" }],
-        status: "active",
-      } as any,
-      overrideAccess: true,
-      disableVerificationEmail: true,
-    });
-  }
-
-  // Orders (minimal, if we have a user)
-  const ordersExisting = await payload.find({ collection: "orders", limit: 1, overrideAccess: true });
   if (ordersExisting.totalDocs === 0 && userId != null) {
     await payload.create({
       collection: "orders",
@@ -285,4 +318,3 @@ export async function seedAll(payload: Payload): Promise<void> {
     });
   }
 }
-

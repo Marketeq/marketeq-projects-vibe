@@ -1,8 +1,8 @@
 import React from "react"
-import RmDialog from "../rm-dialog/rm-dialog"
-import { IconButton } from "@/components/ui"
 import { Trash03 } from "@blend-metrics/icons"
 import { ApplePay1, GPay1 } from "@/components/icons/payment-icons"
+import { IconButton } from "@/components/ui"
+import RmDialog from "../rm-dialog/rm-dialog"
 
 export default function ApplePayCard({
   onRemove,

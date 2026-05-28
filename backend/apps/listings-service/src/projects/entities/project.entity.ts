@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('projects')
+@Entity('projects_v2')
 export class Project {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -54,6 +54,9 @@ export class Project {
 
   @Column({ nullable: true, type: 'text' })
   shortDescription?: string;
+
+  @Column({ nullable: true, type: 'text' })
+  projectType?: string;
 
   @Column({ nullable: true, type: 'text' })
   videoUrl?: string;

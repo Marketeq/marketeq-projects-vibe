@@ -11,7 +11,6 @@
  *   2. Bank     — choose a linked bank account or add a new one
  *   3. Confirm  — review fees + ETA and submit
  */
-
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
@@ -168,7 +167,8 @@ const AmountStep = ({
                 selected === a
                   ? "border-primary-500 bg-primary-50 text-primary-600 ring-1 ring-primary-500"
                   : "border-gray-200 text-dark-blue-400 hover:border-gray-300 bg-white",
-                disabled && "opacity-40 cursor-not-allowed hover:border-gray-200"
+                disabled &&
+                  "opacity-40 cursor-not-allowed hover:border-gray-200"
               )}
             >
               ${a.toLocaleString()}
@@ -231,8 +231,9 @@ const BankStep = ({
 }) => {
   const [adding, setAdding] = React.useState(false)
   const [bankName, setBankName] = React.useState("")
-  const [accountType, setAccountType] =
-    React.useState<"Checking" | "Savings">("Checking")
+  const [accountType, setAccountType] = React.useState<"Checking" | "Savings">(
+    "Checking"
+  )
   const [routing, setRouting] = React.useState("")
   const [account, setAccount] = React.useState("")
   const [accountConfirm, setAccountConfirm] = React.useState("")
@@ -611,9 +612,7 @@ export default function TransferFundsPage() {
           </p>
 
           <div className="mt-6">
-            {step === 1 && (
-              <AmountStep amount={amount} setAmount={setAmount} />
-            )}
+            {step === 1 && <AmountStep amount={amount} setAmount={setAmount} />}
             {step === 2 && (
               <BankStep
                 banks={banks}

@@ -34,6 +34,14 @@ export class ProxyService {
       contracts: config.get('CONTRACTS_SERVICE_URL') || 'http://localhost:3010',
       categories: config.get('CATEGORY_SERVICE_URL') || 'http://localhost:3023',
       timeTracking: config.get('TIME_TRACKING_SERVICE_URL') || 'http://localhost:3017',
+      admin: config.get('ADMIN_SERVICE_URL') || 'http://localhost:3024',
+      affiliateReferral: config.get('AFFILIATE_REFERRAL_SERVICE_URL') || 'http://localhost:3025',
+      billing: config.get('BILLING_SERVICE_URL') || 'http://localhost:3026',
+      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3027',
+      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3028',
+      pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
+      wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
+      wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
     }
   }
 

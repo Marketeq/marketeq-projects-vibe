@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { ChevronRight, File, Folder, X } from "@blend-metrics/icons"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   Button,
   Dialog,
@@ -9,12 +10,11 @@ import {
   DialogContent,
   IconButton,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
 import {
+  OneDriveItem,
   downloadOneDriveItems,
   getOneDriveToken,
   listOneDriveFolder,
-  OneDriveItem,
 } from "../hooks/use-cloud-picker"
 
 type Crumb = { id: string | null; name: string }
@@ -131,15 +131,27 @@ export function OneDrivePickerDialog({
 
   const fileItems = items.filter((i) => !i.folder)
   const folderItems = items.filter((i) => i.folder)
-  const pickableSelectedCount = fileItems.filter((f) => selected.has(f.id)).length
+  const pickableSelectedCount = fileItems.filter((f) =>
+    selected.has(f.id)
+  ).length
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[640px] p-0" accessibilityTitle="OneDrive file picker">
+      <DialogContent
+        className="max-w-[640px] p-0"
+        accessibilityTitle="OneDrive file picker"
+      >
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
-          <h3 className="text-sm font-semibold text-gray-900">Upload from OneDrive</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            Upload from OneDrive
+          </h3>
           <DialogClose asChild>
-            <IconButton visual="gray" variant="ghost" size="sm" className="rounded-full">
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="sm"
+              className="rounded-full"
+            >
               <X className="size-4" />
             </IconButton>
           </DialogClose>
@@ -148,7 +160,10 @@ export function OneDrivePickerDialog({
         {/* Breadcrumb */}
         <div className="flex items-center gap-x-1 px-5 py-2 text-xs text-gray-500">
           {path.map((crumb, i) => (
-            <div key={`${crumb.id ?? "root"}-${i}`} className="inline-flex items-center gap-x-1">
+            <div
+              key={`${crumb.id ?? "root"}-${i}`}
+              className="inline-flex items-center gap-x-1"
+            >
               {i > 0 && <ChevronRight className="size-3 text-gray-400" />}
               <button
                 type="button"
@@ -200,7 +215,9 @@ export function OneDrivePickerDialog({
                   onClick={() => enterFolder(f)}
                 >
                   <Folder className="size-5 text-primary-500 shrink-0" />
-                  <span className="flex-1 truncate text-sm text-gray-900">{f.name}</span>
+                  <span className="flex-1 truncate text-sm text-gray-900">
+                    {f.name}
+                  </span>
                   <ChevronRight className="size-4 text-gray-400 shrink-0" />
                 </button>
               ))}
@@ -224,9 +241,13 @@ export function OneDrivePickerDialog({
                       onChange={() => toggleSelect(f.id)}
                     />
                     <File className="size-5 text-gray-500 shrink-0" />
-                    <span className="flex-1 truncate text-sm text-gray-900">{f.name}</span>
+                    <span className="flex-1 truncate text-sm text-gray-900">
+                      {f.name}
+                    </span>
                     {sizeLabel && (
-                      <span className="shrink-0 text-[11px] text-gray-500">{sizeLabel}</span>
+                      <span className="shrink-0 text-[11px] text-gray-500">
+                        {sizeLabel}
+                      </span>
                     )}
                   </label>
                 )

@@ -63,8 +63,8 @@ export class AblyService {
     return this.publish(`chat:thread-${threadId}`, 'message:reaction', data);
   }
 
-  publishMessageRead(userId: string, messageId: string) {
-    return this.publish(`user:${userId}`, 'message:read', { messageId });
+  publishMessageRead(userId: string, messageId: string, readerId: string) {
+    return this.publish(`user:${userId}`, 'message:read', { messageId, readerId });
   }
 
   publishThreadStateChanged(

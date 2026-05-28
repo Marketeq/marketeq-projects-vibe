@@ -107,7 +107,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 
-
 export const Toolbar = ({ className }: { className?: string }) => {
   return (
     <div className={cn("inline-flex flex-col", className)}>
@@ -2964,7 +2963,10 @@ const reducer = (state: State, action: Action) => {
       const idx = state.regions.findIndex((r) => r.id === action.payload)
       if (idx <= 0) return state
       const newRegions = [...state.regions]
-      ;[newRegions[idx - 1], newRegions[idx]] = [newRegions[idx], newRegions[idx - 1]]
+      ;[newRegions[idx - 1], newRegions[idx]] = [
+        newRegions[idx],
+        newRegions[idx - 1],
+      ]
       return { ...state, regions: newRegions }
     }
 
@@ -2972,7 +2974,10 @@ const reducer = (state: State, action: Action) => {
       const idx = state.regions.findIndex((r) => r.id === action.payload)
       if (idx === -1 || idx >= state.regions.length - 1) return state
       const newRegions = [...state.regions]
-      ;[newRegions[idx], newRegions[idx + 1]] = [newRegions[idx + 1], newRegions[idx]]
+      ;[newRegions[idx], newRegions[idx + 1]] = [
+        newRegions[idx + 1],
+        newRegions[idx],
+      ]
       return { ...state, regions: newRegions }
     }
 
@@ -3017,7 +3022,9 @@ const CaseStudyBuilder = ({
   const handleSave = () => {
     setIsSaved(true)
     const now = new Date()
-    setLastSavedAt(now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))
+    setLastSavedAt(
+      now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    )
   }
 
   const handlePublish = () => {
@@ -3095,11 +3102,14 @@ const CaseStudyBuilder = ({
                     type="button"
                     onClick={handleSave}
                   >
-                    <Clock className="size-[15px]" /> {lastSavedAt ? `Saved at ${lastSavedAt}` : "Save"}
+                    <Clock className="size-[15px]" />{" "}
+                    {lastSavedAt ? `Saved at ${lastSavedAt}` : "Save"}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent sideOffset={9} visual="gray" side="bottom">
-                  {lastSavedAt ? `Last saved at ${lastSavedAt}` : "Click to save"}
+                  {lastSavedAt
+                    ? `Last saved at ${lastSavedAt}`
+                    : "Click to save"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -3112,13 +3122,25 @@ const CaseStudyBuilder = ({
               type="button"
               onClick={() => setIsPreview(!isPreview)}
             >
-              {isPreview ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+              {isPreview ? (
+                <EyeOff className="size-3" />
+              ) : (
+                <Eye className="size-3" />
+              )}
             </IconButton>
 
-            <Button type="button" onClick={handlePublish}>Publish</Button>
+            <Button type="button" onClick={handlePublish}>
+              Publish
+            </Button>
           </div>
 
-          <IconButton className="text-gray-500" variant="ghost" visual="gray" type="button" onClick={onClose}>
+          <IconButton
+            className="text-gray-500"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={onClose}
+          >
             <X className="size-6" />
           </IconButton>
         </div>
@@ -3153,10 +3175,18 @@ const CaseStudyBuilder = ({
                 key={region.id}
                 value={region.id}
                 onAdd={() => setOpen(true)}
-                onRemove={() => dispatch({ type: "remove", payload: region.id })}
-                onDuplicate={() => dispatch({ type: "duplicate", payload: region.id })}
-                onMoveUp={() => dispatch({ type: "move-up", payload: region.id })}
-                onMoveDown={() => dispatch({ type: "move-down", payload: region.id })}
+                onRemove={() =>
+                  dispatch({ type: "remove", payload: region.id })
+                }
+                onDuplicate={() =>
+                  dispatch({ type: "duplicate", payload: region.id })
+                }
+                onMoveUp={() =>
+                  dispatch({ type: "move-up", payload: region.id })
+                }
+                onMoveDown={() =>
+                  dispatch({ type: "move-down", payload: region.id })
+                }
                 isFirst={index === 0}
                 isLast={index === state.regions.length - 1}
               >

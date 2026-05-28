@@ -16,14 +16,14 @@ export class ActivityWatchController {
   @Get('healthz')    health()                                             { return this.svc.getHealth(); }
 
   @UseGuards(JwtAuthGuard)
-  @Post('events')    ingest(@Body() body: IngestActivityWatchEventsDto, @Req() req: any) { return this.svc.ingest(body, req.user?.sub); }
+  @Post('events')    ingest(@Body() body: IngestActivityWatchEventsDto, @Req() req: any) { return this.svc.ingest(body, req.user.sub); }
 
   @UseGuards(JwtAuthGuard)
-  @Get('events')     list(@Query() q: QueryActivityWatchEventsDto)        { return this.svc.findMany(q); }
+  @Get('events')     list(@Query() q: QueryActivityWatchEventsDto, @Req() req: any)      { return this.svc.findMany(q, req.user.sub, req.user.role === 'admin'); }
 
   @UseGuards(JwtAuthGuard)
-  @Get('events/:id') getById(@Param() params: IdParamDto)                 { return this.svc.findById(params.id); }
+  @Get('events/:id') getById(@Param() params: IdParamDto)                                { return this.svc.findById(params.id); }
 
   @UseGuards(JwtAuthGuard)
-  @Get('fraud/scan') scan(@Query() q: ScanActivityDto)                    { return this.svc.scanForAnomalies(q); }
+  @Get('fraud/scan') scan(@Query() q: ScanActivityDto, @Req() req: any)                  { return this.svc.scanForAnomalies(q, req.user.sub, req.user.role === 'admin'); }
 }

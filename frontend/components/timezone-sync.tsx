@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect } from "react"
-import AxiosRequest from "../service/index"
 import Cookies from "js-cookie"
+import AxiosRequest from "../service/index"
 
 export function TimezoneSync() {
   useEffect(() => {

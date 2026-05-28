@@ -7,13 +7,13 @@ import { GoogleOAuthProvider } from "@react-oauth/google"
 import "react-international-phone/style.css"
 import "swiper/css"
 import "swiper/css/effect-fade"
+import "swiper/css/free-mode"
 import "swiper/css/navigation"
 import "swiper/css/pagination"
-import "swiper/css/free-mode"
-import { InviteWindow } from "@/components/invite-window"
-import { TimezoneSync } from "@/components/timezone-sync"
-import { NProgressBar } from "@/components/n-progress-bar"
 import { Toaster } from "@/components/ui/toast/toaster"
+import { InviteWindow } from "@/components/invite-window"
+import { NProgressBar } from "@/components/n-progress-bar"
+import { TimezoneSync } from "@/components/timezone-sync"
 import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
@@ -52,7 +52,11 @@ export default function RootLayout({
   )
 
   return (
-    <html className={`scroll-smooth ${font.variable}`} lang="en">
+    <html
+      className={`scroll-smooth ${font.variable}`}
+      lang="en"
+      suppressHydrationWarning
+    >
       <body>
         {googleClientId ? (
           <GoogleOAuthProvider clientId={googleClientId}>

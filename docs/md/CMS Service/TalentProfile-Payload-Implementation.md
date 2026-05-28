@@ -141,11 +141,6 @@ export const TalentProfiles: CollectionConfig = {
             { label: '40 hrs/week', value: '40' },
           ],
         },
-        {
-          name: 'isAvailable',
-          type: 'checkbox',
-          defaultValue: true,
-        },
       ],
     },
     {
@@ -159,11 +154,9 @@ export const TalentProfiles: CollectionConfig = {
 
     // ─── Rate ───────────────────────────────────────────
     {
-      type: 'row',
-      fields: [
-        { name: 'rateMin', type: 'number', admin: { description: 'Min hourly rate (USD)' } },
-        { name: 'rateMax', type: 'number', admin: { description: 'Max hourly rate (USD)' } },
-      ],
+      name: 'rate',
+      type: 'number',
+      admin: { description: 'Hourly rate (USD)' },
     },
 
     // ─── Bio ────────────────────────────────────────────
@@ -278,9 +271,9 @@ The `type: 'row'` fields above handle the two-column layout. The visual ordering
 |---------|--------|--------|
 | Identity | `username`, `name` | 2 columns |
 | | `headline` | full width |
-| Availability | `availability`, `isAvailable` | 2 columns |
+| Availability | `availability` | 1 column |
 | Location | `location`, `country`, `timezone` | 3 columns |
-| Rate | `rateMin`, `rateMax` | 2 columns |
+| Rate | `rate` | 1 column |
 | Bio | `overview` | full width, rich text |
 | Skills & Expertise | `skills`, `industryExpertise`, `languages` | full width arrays |
 | Certifications | `certifications` | full width array |
@@ -318,12 +311,10 @@ export const syncTalentProfileToService: CollectionAfterChangeHook = async ({
       name: doc.name,
       headline: doc.headline || null,
       availability: doc.availability || null,
-      isAvailable: doc.isAvailable ?? true,
       location: doc.location || null,
       country: doc.country || null,
       timezone: doc.timezone || null,
-      rateMin: doc.rateMin || null,
-      rateMax: doc.rateMax || null,
+      rate: doc.rate || null,
       overview: doc.overview || null,
       skills: (doc.skills || []).map((s: any) => s.name),
       industryExpertise: (doc.industryExpertise || []).map((i: any) => i.name),
@@ -410,12 +401,10 @@ interface TalentProfileSavedEvent {
   name: string;
   headline: string | null;
   availability: string | null;
-  isAvailable: boolean;
   location: string | null;
   country: string | null;
   timezone: string | null;
-  rateMin: number | null;
-  rateMax: number | null;
+  rate: number | null;
   overview: unknown | null;        // Lexical rich text JSON
   skills: string[];
   industryExpertise: string[];
@@ -524,12 +513,10 @@ export const talentProfileSyncPlugin: Plugin = (incomingConfig) => {
                 name: profile.name as string,
                 headline: (profile as any).headline || null,
                 availability: (profile as any).availability || null,
-                isAvailable: (profile as any).isAvailable ?? true,
                 location: (profile as any).location || null,
                 country: (profile as any).country || null,
                 timezone: (profile as any).timezone || null,
-                rateMin: (profile as any).rateMin || null,
-                rateMax: (profile as any).rateMax || null,
+                rate: (profile as any).rate || null,
                 overview: (profile as any).overview || null,
                 skills: ((profile as any).skills || []).map((s: any) => s.name),
                 industryExpertise: ((profile as any).industryExpertise || []).map((i: any) => i.name),
@@ -649,9 +636,6 @@ export class TalentProfile {
   @Column({ type: 'varchar', length: 10, nullable: true })
   availability: string | null;       // "10", "20", "30", "40"
 
-  @Column({ type: 'boolean', default: true })
-  isAvailable: boolean;
-
   @Column({ type: 'varchar', length: 180, nullable: true })
   location: string | null;
 
@@ -662,10 +646,7 @@ export class TalentProfile {
   timezone: string | null;
 
   @Column({ type: 'int', nullable: true })
-  rateMin: number | null;
-
-  @Column({ type: 'int', nullable: true })
-  rateMax: number | null;
+  rate: number | null;
 
   @Column({ type: 'jsonb', nullable: true })
   overview: unknown | null;          // Lexical rich text JSON
@@ -783,12 +764,10 @@ export class TalentProfileSyncService {
       name: event.name,
       headline: event.headline,
       availability: event.availability,
-      isAvailable: event.isAvailable,
       location: event.location,
       country: event.country,
       timezone: event.timezone,
-      rateMin: event.rateMin,
-      rateMax: event.rateMax,
+      rate: event.rate,
       overview: event.overview,
       skills: event.skills,
       industryExpertise: event.industryExpertise,
