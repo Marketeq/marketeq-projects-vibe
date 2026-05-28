@@ -2330,14 +2330,14 @@ const RichTextEditor = ({
           <DialogContent
             accessibilityTitle="Fullscreen rich text editor"
             data-rich-text-fullscreen-dialog="true"
-            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none p-0 gap-0 flex flex-col shadow-none"
+            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none !p-0 gap-0 overflow-y-auto shadow-none"
           >
             <DialogTitle className="sr-only">Project Description</DialogTitle>
             <DialogDescription className="sr-only">
               Edit your project description in fullscreen.
             </DialogDescription>
 
-            <nav className="h-[68px] flex items-center justify-between px-3 bg-white border-b border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] flex-none">
+            <nav className="sticky top-0 z-20 h-[68px] flex items-center justify-between px-3 bg-white border-b border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
               <div className="flex items-center gap-x-6">
                 <div className="inline-flex items-center gap-x-1">
                   <TooltipProvider delayDuration={75}>
@@ -2458,7 +2458,7 @@ const RichTextEditor = ({
               </div>
             </nav>
 
-            <div className="relative flex-1 min-h-0 overflow-y-auto bg-gray-50">
+            <div className="relative min-h-0 bg-gray-50">
               <div className="px-[50px]">
                 <div
                   data-rich-text-fullscreen-content="true"
