@@ -3808,13 +3808,17 @@ export default function ProjectDetails() {
                                         FULL_DESCRIPTION_MAX_LENGTH))
                                 }
                                 onClick={() => {
+                                  const savedDesc =
+                                    getRichTextCharacterCount(descDraft) === 0
+                                      ? ""
+                                      : descDraft
                                   setProject((prev: any) => ({
                                     ...prev,
-                                    description: descDraft,
+                                    description: savedDesc,
                                   }))
                                   setDescDialogOpen(false)
                                   saveProjectFields({
-                                    fullDescription: descDraft,
+                                    fullDescription: savedDesc,
                                   })
                                 }}
                               >
