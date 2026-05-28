@@ -257,17 +257,14 @@ const DescriptionCard = ({
       )}
       ref={contentRef}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex-auto" />
-        <IconButton
-          className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-          variant="ghost"
-          visual="gray"
-          onClick={onEdit}
-        >
-          <Edit03 className="size-4" />
-        </IconButton>
-      </div>
+      <IconButton
+        className="absolute top-4 right-4 rounded-full text-gray-500 hover:text-gray-800 shrink-0 z-10"
+        variant="ghost"
+        visual="gray"
+        onClick={onEdit}
+      >
+        <Edit03 className="size-4" />
+      </IconButton>
 
       <div>
         <div
