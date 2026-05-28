@@ -195,6 +195,18 @@ body {
   font-weight: 700;
 }
 
+/* ── Images inside lists — cancel list indentation ── */
+.rich-text-content :is(ul, ol, li) > img {
+  margin-left: -40px;
+}
+.rich-text-content :is(ul, ol, li) > img[data-align="full-width"] {
+  width: calc(100% + 40px);
+  max-width: none;
+}
+.rich-text-content :is(ul, ol, li) > img[data-align="right"] {
+  margin-left: 0;
+}
+
 /* ── Image alignment — full width (default) ── */
 .rich-text-content img {
   max-width: 100%;
