@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class CreateLanguageDto {
   @ApiProperty({ example : 'English'})
@@ -7,8 +7,8 @@ export class CreateLanguageDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiPropertyOptional({ example : 'Fluent'})
+  @ApiProperty({ example : 'Fluent'})
   @IsString()
-  @IsOptional()
-  fluency?: string;
+  @IsNotEmpty()
+  fluency: string;
 }

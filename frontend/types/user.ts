@@ -52,50 +52,41 @@ export type UserSkill = {
 export type UserLanguage = {
   id: string
   name: string
-  fluency?: string | null
+  proficiency?: string | null
 }
 
 export type UserEducation = {
   id: string
-  school: string
+  institution: string
   degree: string
-  fieldOfStudy?: string | null
-  startYear: number
-  startMonth?: number | null
-  endYear?: number | null
-  endMonth?: number | null
-  currentlyStudying?: boolean | null
+  field: string
+  startDate: string
+  endDate?: string | null
   institutionLogoUrl?: string | null
 }
 
 export type UserExperience = {
   id: string
   company: string
-  title: string
-  location?: string | null
+  role: string
   startDate: string
   endDate?: string | null
-  isCurrentRole?: boolean | null
   description?: string | null
-  skills?: string[] | null
   companyLogoUrl?: string | null
 }
 
 export type UserCertification = {
   id: string
   name: string
-  issuer: string
-  issueDate: string
-  expirationDate?: string | null
-  credentialId?: string | null
+  issuingOrganization?: string | null
+  issueDate?: string | null
+  expiryDate?: string | null
   credentialUrl?: string | null
 }
 
 export type UserIndustry = {
   id: string
-  industry: string
-  yearsOfExperience?: number | null
-  description?: string | null
+  name: string
 }
 
 export type UserProfile = User & {

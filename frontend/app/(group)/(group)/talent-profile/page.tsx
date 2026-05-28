@@ -500,7 +500,7 @@ function Default() {
       setDeleteConfirm({
         type: "experience",
         id: expId,
-        label: exp?.title || "this work experience",
+        label: exp?.role || "this work experience",
       })
     },
     [profile?.experience]
@@ -514,7 +514,7 @@ function Default() {
       setDeleteConfirm({
         type: "education",
         id: eduId,
-        label: edu?.school || "this education",
+        label: edu?.institution || "this education",
       })
     },
     [profile?.education]
@@ -525,9 +525,9 @@ function Default() {
     setIsDeleting(true)
     try {
       if (deleteConfirm.type === "experience") {
-        await UserAPI.removeExperience(deleteConfirm.id)
+        await UserAPI.removeExperience(profile.id, deleteConfirm.id)
       } else {
-        await UserAPI.removeEducation(deleteConfirm.id)
+        await UserAPI.removeEducation(profile.id, deleteConfirm.id)
       }
       refreshProfile()
     } catch {
@@ -830,10 +830,10 @@ function Default() {
                         <div className="flex items-center gap-x-1 mt-1">
                           <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
                             {(profile as any)?.jobTitles?.find(
-                              (j: any) => j.saveAsDefault
+                              (j: any) => j.isDefault
                             )?.jobTitle ||
                               (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                              profile?.recentJobTitle ||
+                              profile?.role ||
                               "Unknown"}
                           </h2>
                           {isEditMode && isOwnProfile && (
@@ -1141,10 +1141,10 @@ function Default() {
                       </span>
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
                         {(profile as any)?.jobTitles?.find(
-                          (j: any) => j.saveAsDefault
+                          (j: any) => j.isDefault
                         )?.jobTitle ||
                           (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                          profile?.recentJobTitle ||
+                          profile?.role ||
                           ""}
                       </span>
                     </div>
@@ -1249,7 +1249,7 @@ function Default() {
             id="portfolio"
           >
             <div className="pt-6 flex gap-x-8">
-              <div className="flex-auto min-w-0">
+              <div className="flex-auto">
                 {isEditMode &&
                   isOwnProfile &&
                   (() => {
@@ -1952,8 +1952,8 @@ function Default() {
                         return (
                           <LineClampText
                             text={bioText}
-                            lines={3}
-                            className="text-sm font-extralight text-gray-700 leading-relaxed"
+                            lines={5}
+                            className="mt-6 text-sm font-extralight text-gray-700 leading-relaxed"
                             toggleClassName="mt-6"
                             expandLabel="View More"
                             collapseLabel="View Less"
@@ -6817,20 +6817,14 @@ function Default() {
                                           const [y, m] = d.split("-")
                                           return `${months[parseInt(m, 10) - 1]} ${y}`
                                         }
-                                        const toDate = (d: string) => {
-                                          const [y, m, day] = d.split("-")
-                                          return new Date(
-                                            Number(y),
-                                            Number(m) - 1,
-                                            Number(day || 1)
-                                          )
-                                        }
                                         const calcDuration = (
                                           start: string,
                                           end: string | null
                                         ) => {
-                                          const s = toDate(start)
-                                          const e = end ? toDate(end) : new Date()
+                                          const s = new Date(start + "-01")
+                                          const e = end
+                                            ? new Date(end + "-01")
+                                            : new Date()
                                           let totalMonths =
                                             (e.getFullYear() -
                                               s.getFullYear()) *
@@ -6884,11 +6878,11 @@ function Default() {
                                               )}
                                             </div>
 
-                                            <div className="flex-auto min-w-0">
+                                            <div className="flex-auto">
                                               <div className="pb-8">
                                                 <div className="flex items-center justify-between">
                                                   <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                                    {exp.title}
+                                                    {exp.role}
                                                   </h1>
                                                   {isEditMode &&
                                                     isOwnProfile && (
@@ -6954,7 +6948,7 @@ function Default() {
                                                         toggle,
                                                       }) => (
                                                         <>
-                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
+                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700">
                                                             {text}{" "}
                                                             <Button
                                                               className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
@@ -6972,20 +6966,6 @@ function Default() {
                                                       )}
                                                     </ReadMoreLessComp>
                                                   </ReadMoreLessRoot>
-                                                )}
-                                                {Array.isArray(exp.skills) && exp.skills.length > 0 && (
-                                                  <div className="mt-3 flex flex-wrap gap-2">
-                                                    {exp.skills.map((skill: string, sIdx: number) => (
-                                                      <Badge
-                                                        key={`${exp.id || idx}-${sIdx}`}
-                                                        className="text-gray-700"
-                                                        visual="gray"
-                                                        size="sm"
-                                                      >
-                                                        {skill}
-                                                      </Badge>
-                                                    ))}
-                                                  </div>
                                                 )}
                                               </div>
                                             </div>
@@ -7042,10 +7022,10 @@ function Default() {
                                   {profile?.education &&
                                   profile.education.length > 0 ? (
                                     profile.education
-                                      .sort(
-                                        (a: any, b: any) =>
-                                          (b.startYear ?? 0) - (a.startYear ?? 0) ||
-                                          (b.startMonth ?? 0) - (a.startMonth ?? 0)
+                                      .sort((a: any, b: any) =>
+                                        (b.startDate || "").localeCompare(
+                                          a.startDate || ""
+                                        )
                                       )
                                       .map((edu: any, idx: number) => {
                                         const months = [
@@ -7062,13 +7042,10 @@ function Default() {
                                           "November",
                                           "December",
                                         ]
-                                        const fmtYearMonth = (
-                                          year?: number | null,
-                                          month?: number | null
-                                        ) => {
-                                          if (!year) return "Present"
-                                          if (!month) return String(year)
-                                          return `${months[month - 1]} ${year}`
+                                        const fmtDate = (d: string | null) => {
+                                          if (!d) return "Present"
+                                          const [y, m] = d.split("-")
+                                          return `${months[parseInt(m, 10) - 1]} ${y}`
                                         }
                                         return (
                                           <div
@@ -7079,14 +7056,14 @@ function Default() {
                                               {edu.institutionLogoUrl ? (
                                                 <NextImage
                                                   src={edu.institutionLogoUrl}
-                                                  alt={edu.school || ""}
+                                                  alt={edu.institution || ""}
                                                   fill
                                                   sizes="55px"
                                                   className="object-contain p-1"
                                                 />
                                               ) : (
                                                 <span className="text-lg font-bold text-gray-400">
-                                                  {edu.school?.charAt(0) ||
+                                                  {edu.institution?.charAt(0) ||
                                                     "E"}
                                                 </span>
                                               )}
@@ -7095,7 +7072,7 @@ function Default() {
                                             <div className="flex-auto">
                                               <div className="flex items-start justify-between">
                                                 <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                                  {edu.school}
+                                                  {edu.institution}
                                                 </h1>
                                                 {isEditMode && isOwnProfile && (
                                                   <div className="flex items-center">
@@ -7135,15 +7112,13 @@ function Default() {
                                                 </span>
                                                 <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
                                                 <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                                  {edu.fieldOfStudy}
+                                                  {edu.field}
                                                 </span>
                                               </div>
                                               <div className="mt-1.5">
                                                 <span className="text-dark-blue-400 text-xs leading-none">
-                                                  {fmtYearMonth(edu.startYear, edu.startMonth)} -{" "}
-                                                  {edu.currentlyStudying
-                                                    ? "Present"
-                                                    : fmtYearMonth(edu.endYear, edu.endMonth)}
+                                                  {fmtDate(edu.startDate)} -{" "}
+                                                  {fmtDate(edu.endDate)}
                                                 </span>
                                               </div>
                                             </div>
