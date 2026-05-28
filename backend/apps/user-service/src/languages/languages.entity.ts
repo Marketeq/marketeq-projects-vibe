@@ -17,8 +17,8 @@ export class Language {
   @Column()
   name: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  fluency?: string | null;
+  @Column()
+  fluency: string;
 
   @ManyToOne(() => User, (user) => user.languages, {
     onDelete: 'CASCADE',
