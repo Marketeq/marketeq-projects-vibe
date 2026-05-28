@@ -442,7 +442,7 @@ const RichTextImageToolbar = ({
       style={style}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="absolute z-20 inline-flex overflow-hidden rounded-[5px] border border-gray-300 bg-white shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] divide-x divide-gray-300"
+      className="absolute z-10 inline-flex overflow-hidden rounded-[5px] border border-gray-300 bg-white shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] divide-x divide-gray-300"
     >
       <ImageEditor
         variant="image"
@@ -1936,7 +1936,7 @@ const ActiveEditor = ({
   return (
     <div
       ref={containerRef}
-      className="relative min-w-0 group/editor"
+      className="relative min-w-0 group/editor isolate"
       onMouseMove={handleEditorMouseMove}
       onMouseLeave={handleEditorMouseLeave}
     >
