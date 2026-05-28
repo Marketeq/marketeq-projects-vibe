@@ -3729,14 +3729,9 @@ export default function ProjectDetails() {
                               <DialogTitle className="text-lg font-bold text-dark-blue-400">
                                 Project Description
                               </DialogTitle>
-                              <div className="flex items-center gap-x-2">
-                                <button className="text-gray-400 hover:text-gray-600 focus-visible:outline-none">
-                                  <Expand06 className="size-5" />
-                                </button>
-                                <DialogClose className="text-gray-400 hover:text-gray-600 focus-visible:outline-none">
-                                  <X className="size-5" />
-                                </DialogClose>
-                              </div>
+                              <DialogClose className="text-gray-400 hover:text-gray-600 focus-visible:outline-none">
+                                <X className="size-5" />
+                              </DialogClose>
                             </div>
 
                             <div className="px-6 pt-6 pb-6">
