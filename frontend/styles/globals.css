@@ -101,14 +101,22 @@ body {
 
 /* ── Padding ── */
 .rich-text-content .ProseMirror {
-  padding: 16px;
+  padding: 24px;
+}
+
+/* ── Vertical spacing between block elements ── */
+.rich-text-content .ProseMirror > * + * {
+  margin-top: 24px;
+}
+.rich-text-content .ProseMirror > p + p {
+  margin-top: 0;
 }
 
 /* ── Heading spacing ── */
 .rich-text-content p + h1,
 .rich-text-content p + h2,
 .rich-text-content p + h3 {
-  margin-top: 1rem;
+  margin-top: 24px;
 }
 
 /* ── Strikethrough — keep centered at all font sizes ── */
@@ -159,15 +167,13 @@ body {
 .rich-text-content ul {
   list-style-type: disc;
   padding-left: 1.5em;
-  margin: 0.5em 0;
 }
 .rich-text-content ol {
   list-style-type: decimal;
   padding-left: 1.5em;
-  margin: 0.5em 0;
 }
 .rich-text-content li {
-  margin: 0.25em 0;
+  margin: 4px 0;
 }
 .rich-text-content li > p {
   margin: 0;
@@ -193,7 +199,7 @@ body {
 .rich-text-content img {
   max-width: 100%;
   height: auto;
-  margin: 12px 0;
+  margin: 24px 0;
   display: block;
   border-radius: 8px;
 }
@@ -208,8 +214,8 @@ body {
 .rich-text-content img[data-align="left"] {
   float: left;
   width: 50%;
-  margin-right: 16px;
-  margin-bottom: 8px;
+  margin-right: 24px;
+  margin-bottom: 24px;
   margin-left: 0;
 }
 
@@ -217,8 +223,8 @@ body {
 .rich-text-content img[data-align="right"] {
   float: right;
   width: 50%;
-  margin-left: 16px;
-  margin-bottom: 8px;
+  margin-left: 24px;
+  margin-bottom: 24px;
   margin-right: 0;
 }
 
@@ -266,14 +272,14 @@ body.rich-text-image-dragging * {
 .prose img[data-align="left"] {
   float: left;
   width: 50%;
-  margin-right: 16px;
-  margin-bottom: 8px;
+  margin-right: 24px;
+  margin-bottom: 24px;
 }
 .prose img[data-align="right"] {
   float: right;
   width: 50%;
-  margin-left: 16px;
-  margin-bottom: 8px;
+  margin-left: 24px;
+  margin-bottom: 24px;
 }
 .prose s,
 .prose del {
