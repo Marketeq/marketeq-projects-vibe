@@ -13,6 +13,7 @@ import { PublishRichTextImageController } from './controllers/publish-rich-text-
 import { HomepageModule } from './homepage/homepage.module'
 import { BlogModule } from './blog/blog.module'
 import { JwtStrategy } from './guards/jwt-auth.guard'
+import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
 
@@ -69,6 +70,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(LoggingMiddleware).forRoutes('*')
+    consumer.apply(CsrfOriginMiddleware).forRoutes('*')
     consumer.apply(JwtMiddleware).forRoutes('*')
   }
 }
