@@ -187,11 +187,11 @@ export default function SignIn() {
     }
   }
 
-  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
+  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
     setIsLoading(true)
 
     setLoginError(null)
-    AuthAPI.LoginWithEmail({ email, password })
+    AuthAPI.LoginWithEmail({ email, password, rememberMe })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           setPartialToken(response.data.partialToken)
