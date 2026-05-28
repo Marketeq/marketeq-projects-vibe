@@ -101,7 +101,7 @@ body {
 
 /* ── Padding ── */
 .rich-text-content.ProseMirror {
-  padding: 14px;
+  padding: 10px 14px;
 }
 
 /* ── Vertical spacing between block elements ── */
