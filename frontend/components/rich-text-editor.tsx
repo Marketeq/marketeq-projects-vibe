@@ -1485,9 +1485,21 @@ const ActiveEditor = ({
         }
 
         hoveredImageElementRef.current = targetImage
+
+        // Hide toolbar if image is scrolled out of the editor's visible area
+        const toolbarTop = imageRect.top - containerRect.top + 20
+        const isImageVisible =
+          imageRect.bottom > containerRect.top &&
+          imageRect.top < containerRect.bottom
+
+        if (!isImageVisible) {
+          clearHoveredImage()
+          return
+        }
+
         setHoveredImage({
           pos,
-          top: imageRect.top - containerRect.top + 20,
+          top: toolbarTop,
           left: imageRect.left - containerRect.left + 16,
           alignment:
             node.attrs.align === "left" ||
@@ -1705,12 +1717,18 @@ const ActiveEditor = ({
           insertChain.setTextSelection(selection)
         }
 
+        // Use insertContent to always add a new image node instead of
+        // replacing the current node (which setImage does when cursor
+        // is on an existing image)
         insertChain
-          .setImage({
-            src: imageSource,
-            alt: file.name,
-            align: DEFAULT_IMAGE_ALIGN,
-          } as any)
+          .insertContent({
+            type: "image",
+            attrs: {
+              src: imageSource,
+              alt: file.name,
+              align: DEFAULT_IMAGE_ALIGN,
+            },
+          })
           .run()
       } catch (error: any) {
         const message =
@@ -2217,14 +2235,22 @@ const RichTextEditor = ({
       event.stopPropagation()
       if (!isEditing) {
         setIsEditing(true)
-      }
-      // Defer so the ActiveEditor mounts and its file input is in the DOM
-      requestAnimationFrame(() => {
-        const fileInput = containerRef.current?.querySelector<HTMLInputElement>(
-          "input[data-rich-text-file-input]"
-        )
+        // Defer so the ActiveEditor mounts, then trigger its insert-image flow
+        requestAnimationFrame(() => {
+          const fileInput =
+            containerRef.current?.querySelector<HTMLInputElement>(
+              "input[data-rich-text-file-input]"
+            )
+          fileInput?.click()
+        })
+      } else {
+        // Already editing — trigger the file input directly (insert mode)
+        const fileInput =
+          containerRef.current?.querySelector<HTMLInputElement>(
+            "input[data-rich-text-file-input]"
+          )
         fileInput?.click()
-      })
+      }
     },
     [isEditing]
   )
