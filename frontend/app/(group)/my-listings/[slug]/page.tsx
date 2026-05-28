@@ -3775,7 +3775,7 @@ export default function ProjectDetails() {
                                     ? "border-error-500"
                                     : "border-gray-300"
                                 )}
-                                editorClassName="min-h-[200px] max-h-[40vh] overflow-y-auto"
+                                editorClassName="min-h-[200px] max-h-[40vh] overflow-y-auto !p-3.5"
                                 onUpdate={(html) => setDescDraft(html)}
                               />
                               {getRichTextCharacterCount(descDraft) > 0 &&
