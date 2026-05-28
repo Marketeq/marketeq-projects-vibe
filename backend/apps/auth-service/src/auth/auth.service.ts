@@ -883,6 +883,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async refresh(dto: RefreshDto): Promise<JwtPair & { sessionId?: string }> {
+    if (!dto.refresh_token) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
     const refreshSecret = this.getRefreshSecret();
     let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean };
 

@@ -255,8 +255,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Refresh' })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.authService.refresh(dto);
+  async refresh(@Body() dto: RefreshDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken =
+      (req as any).cookies?.refresh_token ??
+      dto?.refresh_token;
+    const result = await this.authService.refresh({ refresh_token: refreshToken });
     this.setAuthCookies(res, result);
     return result;
   }
@@ -267,7 +270,10 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: Request, @Body() body: { refresh_token?: string } | undefined, @Res({ passthrough: true }) res: Response) {
-    const result = await this.authService.logout(req.user!, body?.refresh_token);
+    const refreshToken =
+      body?.refresh_token ??
+      (req as any).cookies?.refresh_token;
+    const result = await this.authService.logout(req.user!, refreshToken);
     this.clearAuthCookies(res);
     return result;
   }

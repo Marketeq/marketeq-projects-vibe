@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import * as cookieParser from 'cookie-parser';
 import { AuthServiceModule } from './auth-service.module';
 // import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AuthServiceModule);
+  app.use(cookieParser());
   const configuredOrigins = (process.env.FRONTEND_URL || '')
     .split(',')
     .map((origin) => origin.trim())
