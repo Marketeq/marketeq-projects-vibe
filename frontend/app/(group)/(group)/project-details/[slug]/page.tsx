@@ -518,9 +518,6 @@ export default function ProjectDetails() {
       ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
     ]
 
-    // Initial payment = first month cost (docs §01 L224)
-    const initialPayment = costPerMonth > 0 ? costPerMonth : null
-
     // Minimum team members = unique roles from scope (docs §01 L88-91)
     const scopeArr = Array.isArray(project.scope) ? project.scope : []
     const uniqueRoles = new Set(
@@ -541,7 +538,7 @@ export default function ProjectDetails() {
       formattedDuration = `${months} month`
     }
 
-    return { totalCost, periodOptions, initialPayment, minTeamMembers: uniqueRoles.size, formattedDuration }
+    return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
   }, [project])
 
   // Check if this item is already favorited (ensure dev auth first)
@@ -4363,13 +4360,18 @@ export default function ProjectDetails() {
                 </FavoriteRoot>
               </div>
 
-              {sidebarPricing?.initialPayment != null && (
-                <div className="mt-3">
-                  <span className="text-sm leading-none font-light text-dark-blue-400">
-                    with an initial payment of ${sidebarPricing.initialPayment.toLocaleString()} to kickoff
-                  </span>
-                </div>
-              )}
+              {(() => {
+                const activePeriod = sidebarPricing?.periodOptions.find(
+                  (p) => p.value === selectedPeriod
+                ) ?? sidebarPricing?.periodOptions[0]
+                return activePeriod?.cost ? (
+                  <div className="mt-3">
+                    <span className="text-sm leading-none font-light text-dark-blue-400">
+                      with an initial payment of ${activePeriod.cost.toLocaleString()} to kickoff
+                    </span>
+                  </div>
+                ) : null
+              })()}
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
