@@ -2330,7 +2330,7 @@ const RichTextEditor = ({
           <DialogContent
             accessibilityTitle="Fullscreen rich text editor"
             data-rich-text-fullscreen-dialog="true"
-            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none !p-0 gap-0 overflow-y-auto shadow-none"
+            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none !p-0 gap-0 overflow-y-auto shadow-none flex flex-col"
           >
             <DialogTitle className="sr-only">Project Description</DialogTitle>
             <DialogDescription className="sr-only">
@@ -2458,7 +2458,7 @@ const RichTextEditor = ({
               </div>
             </nav>
 
-            <div className="relative min-h-0 bg-gray-50">
+            <div className="relative flex-1 bg-gray-50">
               <div className="px-[50px]">
                 <div
                   data-rich-text-fullscreen-content="true"
