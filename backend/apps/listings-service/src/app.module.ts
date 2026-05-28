@@ -15,6 +15,7 @@ import { MediaModule } from './media/media.module';
 import { TestimonialsModule } from './testimonials/testimonials.module';
 import { CmsBackfillModule } from './cms-backfill/cms-backfill.module';
 import { JobsModule } from './jobs/job.module';
+import { RecentlyViewedModule } from './recently-viewed/recently-viewed.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { JobsModule } from './jobs/job.module';
     TestimonialsModule,
     CmsBackfillModule,
     JobsModule,
+    RecentlyViewedModule,
   ],
   controllers: [AppController, ListingsController],
   providers: [],
