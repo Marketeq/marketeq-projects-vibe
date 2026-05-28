@@ -2200,7 +2200,7 @@ const RichTextEditor = ({
   }, [])
 
   useEffect(() => {
-    if (!isEditing) {
+    if (!isEditing && !isFullscreenOpen) {
       const nextValue = normalizeRichTextHtml(defaultValue || "")
       setContent(nextValue)
       historyEntriesRef.current = [nextValue]
@@ -2208,7 +2208,7 @@ const RichTextEditor = ({
       suppressNextHistoryEntryRef.current = false
       syncHistoryVersion()
     }
-  }, [defaultValue, isEditing, syncHistoryVersion])
+  }, [defaultValue, isEditing, isFullscreenOpen, syncHistoryVersion])
 
   useClickOutside([containerRef], () => {
     if (!isEditing || isFullscreenOpen || typeof document === "undefined")
@@ -2458,16 +2458,13 @@ const RichTextEditor = ({
               </div>
             </nav>
 
-            <div className="relative flex-1 min-h-0 overflow-hidden">
-              <div className="pointer-events-none absolute inset-0 bg-gray-50" />
-              <div className="relative z-10 h-full overflow-y-auto">
-                <div className="px-[50px]">
-                  <div
-                    data-rich-text-fullscreen-content="true"
-                    className="mx-auto w-full max-w-[818px]"
-                  >
-                    {fullscreenEditor}
-                  </div>
+            <div className="relative flex-1 min-h-0 overflow-y-auto bg-gray-50">
+              <div className="px-[50px]">
+                <div
+                  data-rich-text-fullscreen-content="true"
+                  className="mx-auto w-full max-w-[818px]"
+                >
+                  {fullscreenEditor}
                 </div>
               </div>
             </div>
