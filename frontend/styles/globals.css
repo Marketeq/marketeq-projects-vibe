@@ -217,6 +217,9 @@ body.rich-text-image-dragging * {
 }
 
 /* ── Published / prose view — same alignment rules ── */
+.prose img {
+  border-radius: 8px;
+}
 .prose img[data-align="full-width"] {
   width: 100%;
   float: none;
