@@ -24,6 +24,7 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
+import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -7213,8 +7214,15 @@ function PublishProject({
         if (cancelled) return
 
         // If no project found by slug, create a new draft so edits still save
+        //    If the slug matches a seed listing, use its title/description
         if (!response?.data) {
-          response = await ProjectAPI.CreateProjectDraft({})
+          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === params.slug)
+          response = await ProjectAPI.CreateProjectDraft({
+            title: seedListing?.title || "",
+            shortDescription: seedListing?.description || "",
+            fullDescription: seedListing?.description || "",
+            listingType: seedListing?.projectType || "Website",
+          })
         }
 
         if (cancelled) return
