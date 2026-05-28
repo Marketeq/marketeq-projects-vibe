@@ -17,8 +17,8 @@ export class Skill {
   @Column()
   name: string;
 
-  @Column()
-  proficiency: string;
+  @Column({ type: 'varchar', nullable: true })
+  proficiency?: string | null;
 
   @Column()
   userId: string;

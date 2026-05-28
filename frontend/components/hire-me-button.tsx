@@ -39,7 +39,7 @@ import {
 export const getDefaultJobTitle = (profile?: Partial<UserProfile> | null) => {
   const jobTitles = (profile as any)?.jobTitles
   return (
-    jobTitles?.find((job: any) => job.isDefault)?.jobTitle ||
+    jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
     profile?.role ||
     "Full Stack Developer"

@@ -1,5 +1,7 @@
 import {
+  IsArray,
   IsEmail,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -123,6 +125,39 @@ export class CreateUserDto {
   @IsNumber()
   @Min(0)
   rate?: number;
+
+  @ApiPropertyOptional({ example: 50 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  rateMin?: number;
+
+  @ApiPropertyOptional({ example: 120 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  rateMax?: number;
+
+  @ApiPropertyOptional({ example: [{ jobTitle: 'Senior Frontend Engineer', clientRate: 120, earning: 96, fee: 24, saveAsDefault: true }] })
+  @IsOptional()
+  @IsArray()
+  jobTitles?: any[];
+
+  @ApiPropertyOptional({ example: 'Finance' })
+  @IsOptional()
+  @IsString()
+  industry?: string;
+
+  @ApiPropertyOptional({ example: 'Hire talent' })
+  @IsOptional()
+  @IsString()
+  businessGoals?: string;
+
+  @ApiPropertyOptional({ example: 2 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  gettingStartedStep?: number;
 
   // `client_success_rating`, `repeat_hire_rate`, and `response_time` are
   // derived metrics that are never set by user input. They are excluded
