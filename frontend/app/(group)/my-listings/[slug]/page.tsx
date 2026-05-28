@@ -12,6 +12,9 @@ import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
+  TEAM_SEED_LISTINGS,
+} from "@/src/lib/my-listings"
+import {
   addFavorite,
   findFavoriteByItemId,
   removeFavorite,
@@ -2222,7 +2225,10 @@ export default function ProjectDetails() {
             role: d.category || d.categories?.[0] || "Software Development",
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
-            featuredImage: featuredImage || d.featuredImage || null,
+            featuredImage:
+              featuredImage ||
+              d.featuredImage ||
+              null,
             featuredVideo: featuredVideo || d.featuredVideo || null,
             mediaUrls:
               galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? []),
@@ -2479,17 +2485,25 @@ export default function ProjectDetails() {
       }
 
       // 4. Nothing found anywhere — create a new backend draft so edits persist
+      //    If the slug matches a seed listing, use its title/description
+      const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === rawSlug)
       try {
         await ensureDevAuth()
         const draftRes = await ProjectAPI.CreateProjectDraft({
-          title: "",
-          shortDescription: "",
-          fullDescription: "",
-          listingType: "project",
+          title: seedListing?.title || "",
+          shortDescription: seedListing?.description || "",
+          fullDescription: seedListing?.description || "",
+          listingType: seedListing?.projectType || "Website",
         })
         if (draftRes?.data?.id) {
           const newId = draftRes.data.id
-          setProject((prev: any) => ({ ...prev, id: newId }))
+          const seedTitle = seedListing?.title || ""
+          setProject((prev: any) => ({
+            ...prev,
+            id: newId,
+            title: seedTitle || prev.title,
+          }))
+          if (seedTitle) setInfoTitle(seedTitle)
           // Replace URL with the real backend UUID so reloads work
           router.replace(`/my-listings/${newId}`, { scroll: false })
         }
@@ -4237,11 +4251,14 @@ export default function ProjectDetails() {
                           {Array.isArray(project.deliverables) &&
                           project.deliverables.length > 0 ? (
                             <ShowMoreLessRoot>
-                              {({ isShowing, setIsShowing }) => (
+                              {({ isShowing, setIsShowing, scrollHeight }) => {
+                                const needsOverflow = scrollHeight > 456
+                                return (
                                 <div
                                   className={cn(
-                                    "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 h-[456px] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                                    isShowing && "h-auto"
+                                    "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+                                    needsOverflow && !isShowing && "h-[456px]",
+                                    (isShowing || !needsOverflow) && "h-auto"
                                   )}
                                 >
                                   <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
@@ -4307,29 +4324,32 @@ export default function ProjectDetails() {
                                     </AlertContent>
                                   </Alert>
 
-                                  {isShowing ? (
-                                    <div className="flex mt-6 items-center justify-center">
-                                      <Button
-                                        visual="gray"
-                                        variant="link"
-                                        onClick={() => setIsShowing(false)}
-                                      >
-                                        View Less
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
-                                      <Button
-                                        visual="gray"
-                                        variant="link"
-                                        onClick={() => setIsShowing(true)}
-                                      >
-                                        View More
-                                      </Button>
-                                    </div>
+                                  {needsOverflow && (
+                                    isShowing ? (
+                                      <div className="flex mt-6 items-center justify-center">
+                                        <Button
+                                          visual="gray"
+                                          variant="link"
+                                          onClick={() => setIsShowing(false)}
+                                        >
+                                          View Less
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
+                                        <Button
+                                          visual="gray"
+                                          variant="link"
+                                          onClick={() => setIsShowing(true)}
+                                        >
+                                          View More
+                                        </Button>
+                                      </div>
+                                    )
                                   )}
                                 </div>
-                              )}
+                                )
+                              }}
                             </ShowMoreLessRoot>
                           ) : (
                             <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
@@ -4880,8 +4900,8 @@ export default function ProjectDetails() {
                               )}
                             </div>
                           ) : (
-                            <div className="mt-6 border-2 border-gray-200 bg-gray-25 rounded-lg">
-                              <div className="p-6 border-b border-gray-200 flex items-start justify-between">
+                            <div className="mt-6 rounded-lg overflow-hidden">
+                              <div className="p-6 border-2 border-gray-200 bg-gray-25 rounded-t-lg flex items-start justify-between">
                                 <div>
                                   <h1 className="text-lg font-semibold text-dark-blue-400">
                                     Project Details
@@ -4919,7 +4939,7 @@ export default function ProjectDetails() {
                               </div>
 
                               {/* About the Team — static fallback */}
-                              <div className="p-6 bg-white rounded-b-lg">
+                              <div className="p-6 bg-white rounded-b-lg border border-gray-200 border-t-0">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-base leading-none font-semibold text-dark-blue-400">
                                     About the Team

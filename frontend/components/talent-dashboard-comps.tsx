@@ -1076,11 +1076,11 @@ const RecentListingsTableRow = ({ listing }: { listing: MyListing }) => {
   return (
     <tr
       className="hover:bg-gray-50 cursor-pointer"
-      onClick={() => router.push("/my-listings")}
+      onClick={() => router.push(`/my-listings/${listing.id}`)}
     >
       <td className="px-6 py-4">
         <NextLink
-          href="/my-listings"
+          href={`/my-listings/${listing.id}`}
           className="text-sm font-semibold text-dark-blue-400 hover:underline"
         >
           {listing.title}
