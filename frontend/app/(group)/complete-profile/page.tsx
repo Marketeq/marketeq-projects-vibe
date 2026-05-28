@@ -470,6 +470,8 @@ export const StatusDialog = ({
   const [dialogsState, setDialogsState] =
     useState<DialogsStateType>(defaultDialogsState)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState(false)
 
   // Load from localStorage on mount (client-side only — localStorage unavailable during SSR)
   useEffect(() => {
@@ -483,7 +485,7 @@ export const StatusDialog = ({
               ...acc,
               [name]: {
                 finished: parsed[name]?.finished ?? false,
-                opened: false,
+                opened: parsed[name]?.opened ?? false,
               },
             }),
             {} as DialogsStateType
@@ -493,16 +495,24 @@ export const StatusDialog = ({
     } catch {}
   }, [])
 
-  // Persist finished state to localStorage whenever it changes
+  const persistInitialized = useRef(false)
   useEffect(() => {
+    if (!persistInitialized.current) {
+      persistInitialized.current = true
+      return
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dialogsState))
     } catch {}
   }, [dialogsState])
 
-  // On mount, derive completion from API profile data
-  useEffect(() => {
-    if (!user?.id) return
+  const loadProfile = React.useCallback(() => {
+    if (!user?.id) {
+      setProfileLoading(false)
+      return
+    }
+    setProfileLoading(true)
+    setProfileError(false)
     UserAPI.getProfile(user.id)
       .then((res) => {
         const p = res?.data
@@ -532,8 +542,13 @@ export const StatusDialog = ({
           },
         }))
       })
-      .catch(() => {})
+      .catch(() => setProfileError(true))
+      .finally(() => setProfileLoading(false))
   }, [user?.id])
+
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
 
   // Open a specific step dialog when initialStep is provided
   const isDirectStep = Boolean(initialStep)
@@ -552,7 +567,11 @@ export const StatusDialog = ({
     onOpenChange?.(false)
   }, [onOpenChange])
 
+  const advancingRef = useRef(false)
   const next = () => {
+    if (advancingRef.current) return
+    advancingRef.current = true
+    setTimeout(() => { advancingRef.current = false }, 300)
     // If opened directly to a single step, skip to next incomplete step (or close if all done)
     if (isDirectStep) {
       let openedDialogName: keyof typeof dialogsState | null = null
@@ -697,6 +716,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <Portfolio
         onFinished={(finished) =>
@@ -719,6 +741,9 @@ export const StatusDialog = ({
         next={next}
         previous={previous}
         progressPercent={progressPercent}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <SkillsDialog
         onFinished={(finished) =>
@@ -743,6 +768,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <WorkExperienceDialog
         onFinished={(finished) =>
@@ -767,6 +795,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <EducationDialog
         onFinished={(finished) =>
@@ -790,6 +821,9 @@ export const StatusDialog = ({
         previous={previous}
         userId={user?.id ?? ""}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <MoreInfoDialog
         onFinished={(finished) =>
@@ -814,6 +848,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <Congratulations
         opened={dialogsState["CONGRATULATIONS"].opened}
@@ -825,7 +862,7 @@ export const StatusDialog = ({
         }
       />
 
-      <Dialog open={isOpen && !isDirectStep} onOpenChange={setIsOpen}>
+      <Dialog open={isOpen && !isDirectStep && !Object.values(dialogsState).some((s) => s.opened)} onOpenChange={setIsOpen}>
         <DialogContent
           dialogOverlay={<DialogOverlay className="bg-gray-700/50" />}
           variant="unanimated"
@@ -994,6 +1031,9 @@ const MoreInfoDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1003,6 +1043,9 @@ const MoreInfoDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -1164,12 +1207,18 @@ const MoreInfoDialog = ({
             </div>
 
             <div className="px-[30px] mt-6 pb-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Job Title & Rate
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Tell us what you do and set your hourly rates
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Job Title & Rate
+                </h1>
+              </DialogTitle>
+              {state === "default" && profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Tell us what you do and set your hourly rates
+                </p>
+              )}
             </div>
 
             <ScrollArea
@@ -1178,7 +1227,21 @@ const MoreInfoDialog = ({
             >
               <div className="pb-[30px] px-1">
                 <div className="mt-6">
-                  {state === "default" && (
+                  {state === "default" && profileError && (
+                    <div className="flex flex-col items-start gap-y-3">
+                      <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                      <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && profileLoading && (
+                    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                      <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && !profileLoading && (
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
@@ -1551,6 +1614,7 @@ const MoreInfoDialog = ({
                   visual="gray"
                   type="button"
                   onClick={previous}
+                  disabled={profileLoading || profileError}
                 >
                   Back
                 </Button>
@@ -1561,13 +1625,14 @@ const MoreInfoDialog = ({
                     variant="ghost"
                     visual="gray"
                     type="button"
+                    disabled={profileLoading || profileError}
                   >
                     Skip
                   </Button>
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(workExperiences?.length)}
+                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
                     onClick={next}
                   >
                     Save & Continue
@@ -1661,6 +1726,7 @@ const MoreInfoDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -1716,6 +1782,9 @@ const AboutMeDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1724,6 +1793,9 @@ const AboutMeDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1779,30 +1851,45 @@ const AboutMeDialog = ({
             </div>
 
             <div className="mt-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                About Me
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Create a connection and let clients feel like they already know
-                you!
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  About Me
+                </h1>
+              </DialogTitle>
+              {profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Create a connection and let clients feel like they already know
+                  you!
+                </p>
+              )}
             </div>
 
-            <div className="mt-6 space-y-1.5">
-              <Textarea
-                className="h-[345px]"
-                placeholder="Enter your bio here..."
-                {...register("aboutMe")}
-                isInvalid={hookFormHasError({ errors, name: "aboutMe" })}
-              />
-              <HookFormErrorMessage
-                name="aboutMe"
-                errors={errors}
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
+            {profileError ? (
+              <div className="mt-6 flex flex-col items-start gap-y-3">
+                <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+              </div>
+            ) : profileLoading ? (
+              <div className="mt-6 h-[345px] bg-gray-200 rounded animate-pulse" aria-busy="true" aria-label="Loading" />
+            ) : (
+              <div className="mt-6 space-y-1.5">
+                <Textarea
+                  className="h-[345px]"
+                  placeholder="Enter your bio here..."
+                  {...register("aboutMe")}
+                  isInvalid={hookFormHasError({ errors, name: "aboutMe" })}
+                />
+                <HookFormErrorMessage
+                  name="aboutMe"
+                  errors={errors}
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
+              </div>
+            )}
           </div>
           <div className="border rounded-b-[10px] flex items-center gap-x-3 justify-end border-gray-200 bg-white py-4 px-6">
             <Button
@@ -1811,10 +1898,11 @@ const AboutMeDialog = ({
               variant="ghost"
               visual="gray"
               onClick={next}
+              disabled={profileLoading || profileError}
             >
               Skip
             </Button>
-            <Button size="md" disabled={!isValid}>
+            <Button size="md" disabled={!isValid || profileLoading || profileError}>
               Save & Continue
             </Button>
           </div>
@@ -1826,6 +1914,7 @@ const AboutMeDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -1904,6 +1993,9 @@ const SkillsDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1913,6 +2005,9 @@ const SkillsDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -2003,14 +2098,35 @@ const SkillsDialog = ({
             </div>
 
             <div className="mt-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Skills
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Share your expertise and make your profile unforgettable!
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Skills
+                </h1>
+              </DialogTitle>
+              {profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Share your expertise and make your profile unforgettable!
+                </p>
+              )}
             </div>
 
+            {profileError && (
+              <div className="mt-6 flex flex-col items-start gap-y-3">
+                <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+              </div>
+            )}
+
+            {!profileError && profileLoading && (
+              <div className="mt-6 space-y-3" aria-busy="true" aria-label="Loading">
+                <div className="h-11 w-full bg-gray-200 rounded animate-pulse" />
+                <div className="h-8 w-[160px] bg-gray-200 rounded animate-pulse" />
+              </div>
+            )}
+
+            {!profileError && !profileLoading && (
             <div className="mt-6">
               <Controller
                 name="skills"
@@ -2082,6 +2198,7 @@ const SkillsDialog = ({
                 ))}
               </div>
             </div>
+            )}
           </div>
           <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
             <Button
@@ -2091,6 +2208,7 @@ const SkillsDialog = ({
               visual="gray"
               type="button"
               onClick={previous}
+              disabled={profileLoading || profileError}
             >
               Back
             </Button>
@@ -2101,10 +2219,11 @@ const SkillsDialog = ({
                 variant="ghost"
                 visual="gray"
                 onClick={next}
+                disabled={profileLoading || profileError}
               >
                 Skip
               </Button>
-              <Button size="md" disabled={!isValid}>
+              <Button size="md" disabled={!isValid || profileLoading || profileError}>
                 Save & Continue
               </Button>
             </div>
@@ -2117,6 +2236,7 @@ const SkillsDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -2248,6 +2368,9 @@ const WorkExperienceDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -2257,6 +2380,9 @@ const WorkExperienceDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -2454,12 +2580,18 @@ const WorkExperienceDialog = ({
             </div>
 
             <div className="px-[30px] mt-6 pb-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Work Experience
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Tell us where you&apos;ve worked before!
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Work Experience
+                </h1>
+              </DialogTitle>
+              {state === "default" && profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Tell us where you&apos;ve worked before!
+                </p>
+              )}
             </div>
 
             <ScrollArea
@@ -2468,7 +2600,28 @@ const WorkExperienceDialog = ({
             >
               <div className="pb-[30px] px-1">
                 <div className="mt-6">
-                  {state === "default" && (
+                  {state === "default" && profileError && (
+                    <div className="flex flex-col items-start gap-y-3">
+                      <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => onReloadProfile?.()}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && profileLoading && (
+                    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                      <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && !profileLoading && (
                     <Button
                       onClick={() => setState("action")}
                       className="bg-white"
@@ -2930,6 +3083,7 @@ const WorkExperienceDialog = ({
                   visual="gray"
                   type="button"
                   onClick={previous}
+                  disabled={profileLoading || profileError}
                 >
                   Back
                 </Button>
@@ -2940,14 +3094,15 @@ const WorkExperienceDialog = ({
                     variant="ghost"
                     visual="gray"
                     type="button"
+                    disabled={profileLoading || profileError}
                   >
                     Skip
                   </Button>
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(workExperiences?.length)}
                     onClick={next}
+                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
                   >
                     Save & Continue
                   </Button>
@@ -3039,6 +3194,7 @@ const WorkExperienceDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -3156,6 +3312,9 @@ const EducationDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -3165,6 +3324,9 @@ const EducationDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useControllableState({
@@ -3274,7 +3436,7 @@ const EducationDialog = ({
             scrollBar={<ScrollBar className="w-4 p-1" />}
             className="h-[571px]"
           >
-            <div className="border-x min-h-full border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
+            <div className="border-x min-h-[567px] border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
               {state !== "action" ? (
                 <div className="flex items-start justify-between">
                   <div className="max-w-[157px] flex-auto flex items-center gap-x-3">
@@ -3328,16 +3490,36 @@ const EducationDialog = ({
               )}
 
               <div className="mt-6">
-                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                  Education
-                </h1>
-                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                  Show your qualifications to give clients confidence.
-                </p>
+                <DialogTitle asChild>
+                  <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                    Education
+                  </h1>
+                </DialogTitle>
+                {state === "default" && profileLoading && !profileError ? (
+                  <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                    Show your qualifications to give clients confidence.
+                  </p>
+                )}
               </div>
 
               <div className="mt-6">
-                {state === "default" && (
+                {state === "default" && profileError && (
+                  <div className="flex flex-col items-start gap-y-3">
+                    <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                    <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                  </div>
+                )}
+
+                {state === "default" && !profileError && profileLoading && (
+                  <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                    <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
+                  </div>
+                )}
+
+                {state === "default" && !profileError && !profileLoading && (
                   <Button
                     onClick={() => setState("action")}
                     className="bg-white"
@@ -3689,6 +3871,7 @@ const EducationDialog = ({
                   visual="gray"
                   type="button"
                   onClick={previous}
+                  disabled={profileLoading || profileError}
                 >
                   Back
                 </Button>
@@ -3699,13 +3882,14 @@ const EducationDialog = ({
                     variant="ghost"
                     visual="gray"
                     type="button"
+                    disabled={profileLoading || profileError}
                   >
                     Skip
                   </Button>
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(educationQualifications?.length)}
+                    disabled={!Boolean(educationQualifications?.length) || profileLoading || profileError}
                     onClick={next}
                   >
                     Save & Continue
@@ -3799,6 +3983,7 @@ const EducationDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -3876,6 +4061,9 @@ const Portfolio = ({
   next,
   previous,
   progressPercent,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -3883,6 +4071,9 @@ const Portfolio = ({
   next?: () => void
   previous?: () => void
   progressPercent?: number
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const [open, setOpen] = useControllableState({
     value: opened,
@@ -3923,14 +4114,35 @@ const Portfolio = ({
               </div>
 
               <div className="mt-6">
-                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                  Portfolio
-                </h1>
-                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                  Show the quality and style that clients are looking for.
-                </p>
+                <DialogTitle asChild>
+                  <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                    Portfolio
+                  </h1>
+                </DialogTitle>
+                {profileLoading && !profileError ? (
+                  <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                    Show the quality and style that clients are looking for.
+                  </p>
+                )}
               </div>
 
+              {profileError && (
+                <div className="mt-6 flex flex-col items-start gap-y-3">
+                  <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                  <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                </div>
+              )}
+
+              {!profileError && profileLoading && (
+                <div className="mt-6 grid grid-cols-2 gap-3" aria-busy="true" aria-label="Loading">
+                  <div className="h-[150px] bg-gray-200 rounded animate-pulse" />
+                  <div className="h-[150px] bg-gray-200 rounded animate-pulse" />
+                </div>
+              )}
+
+              {!profileError && !profileLoading && (
               <div className="mt-6 grid grid-cols-2 gap-3">
                 {portfolioItems.map((item, index) => (
                   <article
@@ -3972,6 +4184,7 @@ const Portfolio = ({
                   </h3>
                 </button>
               </div>
+              )}
             </div>
             <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
               <Button
@@ -3981,6 +4194,7 @@ const Portfolio = ({
                 visual="gray"
                 type="button"
                 onClick={previous}
+                disabled={profileLoading || profileError}
               >
                 Back
               </Button>
@@ -3991,13 +4205,14 @@ const Portfolio = ({
                   variant="ghost"
                   visual="gray"
                   onClick={next}
+                  disabled={profileLoading || profileError}
                 >
                   Skip
                 </Button>
                 <Button
                   size="md"
                   type="button"
-                  disabled={portfolioItems.length === 0}
+                  disabled={portfolioItems.length === 0 || profileLoading || profileError}
                   onClick={() => {
                     onFinished?.(true)
                     next?.()
@@ -4015,6 +4230,7 @@ const Portfolio = ({
                 size="md"
                 variant="ghost"
                 visual="gray"
+                aria-label="Close"
               >
                 <X className="size-5" />
               </IconButton>
@@ -4141,6 +4357,7 @@ const Congratulations = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
