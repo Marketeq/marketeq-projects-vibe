@@ -2069,6 +2069,21 @@ const ActiveEditor = ({
           }}
         />
       ) : null}
+      <TooltipProvider delayDuration={75}>
+        <Tooltip>
+          <TooltipTrigger
+            type="button"
+            onClick={() => handleInsertImage()}
+            disabled={isUploadingImage}
+            className="absolute right-[50px] top-3 z-10 inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50"
+          >
+            <ImageIcon className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="top" visual="white" sideOffset={8}>
+            Add image
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <EditorContent editor={editor} />
     </div>
   )
@@ -2333,29 +2348,14 @@ const RichTextEditor = ({
       className={cn("relative min-w-0 cursor-text", className)}
       onClick={handleClick}
     >
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-x-1.5">
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <TooltipTrigger
-              type="button"
-              onClick={() => handleInsertImage()}
-              disabled={isUploadingImage}
-              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50"
-            >
-              <ImageIcon className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent side="top" visual="white" sideOffset={8}>
-              Add image
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        {allowFullscreen ? (
+      {allowFullscreen ? (
+        <div className="absolute right-3 top-3 z-10">
           <FullscreenToggleButton
             isFullscreen={false}
             onClick={handleFullscreenToggle}
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {editorSurface}
       {allowFullscreen ? (
         <Dialog
