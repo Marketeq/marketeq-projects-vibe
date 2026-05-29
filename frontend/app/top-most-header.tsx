@@ -1390,7 +1390,9 @@ export const TopMostHeader = ({
                 }}
               >
                 <Repeat className="size-4" />
-                {user?.accountType === "TALENT"
+                {user?.accountType?.toUpperCase() === "TALENT" ||
+                user?.userType?.toLowerCase() === "talent" ||
+                user?.role?.toUpperCase() === "TALENT"
                   ? "Switch to Client"
                   : "Switch to Talent"}
               </DropdownMenuItem>

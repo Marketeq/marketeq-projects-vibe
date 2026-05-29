@@ -1,870 +1,2132 @@
 [
   {
-    "id": "2.A.1.a",
-    "label": "Reading Comprehension",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "3D Animation"
   },
   {
-    "id": "2.A.1.b",
-    "label": "Active Listening",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "3D Modeling"
   },
   {
-    "id": "2.A.1.c",
-    "label": "Writing",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "3D Printing"
   },
   {
-    "id": "2.A.1.d",
-    "label": "Speaking",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "3D Rendering"
   },
   {
-    "id": "2.A.1.e",
-    "label": "Mathematics",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "A/B Testing"
   },
   {
-    "id": "2.A.1.f",
-    "label": "Science",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Accessibility (WCAG)"
   },
   {
-    "id": "2.A.2.a",
-    "label": "Critical Thinking",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Account Management"
   },
   {
-    "id": "2.A.2.b",
-    "label": "Active Learning",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Accounting"
   },
   {
-    "id": "2.A.2.c",
-    "label": "Learning Strategies",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Active Directory"
   },
   {
-    "id": "2.A.2.d",
-    "label": "Monitoring",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "ActiveMQ"
   },
   {
-    "id": "2.B.1.a",
-    "label": "Social Perceptiveness",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Ada"
   },
   {
-    "id": "2.B.1.b",
-    "label": "Coordination",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe After Effects"
   },
   {
-    "id": "2.B.1.c",
-    "label": "Persuasion",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Animate"
   },
   {
-    "id": "2.B.1.d",
-    "label": "Negotiation",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Audition"
   },
   {
-    "id": "2.B.1.e",
-    "label": "Instructing",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Creative Suite"
   },
   {
-    "id": "2.B.1.f",
-    "label": "Service Orientation",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Illustrator"
   },
   {
-    "id": "2.B.2.i",
-    "label": "Complex Problem Solving",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe InDesign"
   },
   {
-    "id": "2.B.3.a",
-    "label": "Operations Analysis",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Lightroom"
   },
   {
-    "id": "2.B.3.b",
-    "label": "Technology Design",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Photoshop"
   },
   {
-    "id": "2.B.3.c",
-    "label": "Equipment Selection",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe Premiere Pro"
   },
   {
-    "id": "2.B.3.d",
-    "label": "Installation",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Adobe XD"
   },
   {
-    "id": "2.B.3.e",
-    "label": "Programming",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Affiliate Marketing"
   },
   {
-    "id": "2.B.3.g",
-    "label": "Operations Monitoring",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Agile Methodology"
   },
   {
-    "id": "2.B.3.h",
-    "label": "Operation and Control",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "AI Ethics"
   },
   {
-    "id": "2.B.3.j",
-    "label": "Equipment Maintenance",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "AI Prompt Engineering"
   },
   {
-    "id": "2.B.3.k",
-    "label": "Troubleshooting",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Airflow"
   },
   {
-    "id": "2.B.3.l",
-    "label": "Repairing",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Airtable"
   },
   {
-    "id": "2.B.3.m",
-    "label": "Quality Control Analysis",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "AJAX"
   },
   {
-    "id": "2.B.4.e",
-    "label": "Judgment and Decision Making",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Akka"
   },
   {
-    "id": "2.B.4.g",
-    "label": "Systems Analysis",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Alexa Skills Development"
   },
   {
-    "id": "2.B.4.h",
-    "label": "Systems Evaluation",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Algorithm Design"
   },
   {
-    "id": "2.B.5.a",
-    "label": "Time Management",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Amazon DynamoDB"
   },
   {
-    "id": "2.B.5.b",
-    "label": "Management of Financial Resources",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Amazon EC2"
   },
   {
-    "id": "2.B.5.c",
-    "label": "Management of Material Resources",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Amazon ECS"
   },
   {
-    "id": "2.B.5.d",
-    "label": "Management of Personnel Resources",
-    "category": "Basic Skills",
-    "domain": "General",
-    "source": "O*NET"
+    "label": "Amazon EKS"
   },
   {
-    "id": "3.T.1.a",
-    "label": "Software Development",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Amazon Lambda"
   },
   {
-    "id": "3.T.1.b",
-    "label": "Frontend Development",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Amazon RDS"
   },
   {
-    "id": "3.T.1.c",
-    "label": "Backend Development",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Amazon Redshift"
   },
   {
-    "id": "3.T.1.d",
-    "label": "Full Stack Development",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Amazon S3"
   },
   {
-    "id": "3.T.2.a",
-    "label": "Data Analysis",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Amazon SageMaker"
   },
   {
-    "id": "3.T.2.b",
-    "label": "Data Cleaning",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Amazon SNS"
   },
   {
-    "id": "3.T.2.c",
-    "label": "Data Visualization",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Amazon SQS"
   },
   {
-    "id": "3.T.2.d",
-    "label": "SQL",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Anaconda"
   },
   {
-    "id": "3.T.3.a",
-    "label": "Cloud Computing",
-    "category": "Technical Skills",
-    "domain": "Cloud",
-    "source": "Generated"
+    "label": "Android Development"
   },
   {
-    "id": "3.T.3.b",
-    "label": "AWS",
-    "category": "Technical Skills",
-    "domain": "Cloud",
-    "source": "Generated"
+    "label": "Angular"
   },
   {
-    "id": "3.T.3.c",
-    "label": "Docker",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "AngularJS"
   },
   {
-    "id": "3.T.3.d",
-    "label": "Kubernetes",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Ansible"
   },
   {
-    "id": "3.T.4.a",
-    "label": "Machine Learning",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "Apache Cassandra"
   },
   {
-    "id": "3.T.4.b",
-    "label": "Deep Learning",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "Apache Flink"
   },
   {
-    "id": "3.T.4.c",
-    "label": "Natural Language Processing",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "Apache Hadoop"
   },
   {
-    "id": "3.T.4.d",
-    "label": "Model Deployment",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "Apache Hive"
   },
   {
-    "id": "3.T.5.a",
-    "label": "Cybersecurity",
-    "category": "Technical Skills",
-    "domain": "Security",
-    "source": "Generated"
+    "label": "Apache Kafka"
   },
   {
-    "id": "3.T.5.b",
-    "label": "Penetration Testing",
-    "category": "Technical Skills",
-    "domain": "Security",
-    "source": "Generated"
+    "label": "Apache NiFi"
   },
   {
-    "id": "3.T.5.c",
-    "label": "Network Security",
-    "category": "Technical Skills",
-    "domain": "Security",
-    "source": "Generated"
+    "label": "Apache Spark"
   },
   {
-    "id": "3.T.6.a",
-    "label": "Mobile App Development",
-    "category": "Technical Skills",
-    "domain": "Mobile Development",
-    "source": "Generated"
+    "label": "Apache Tomcat"
   },
   {
-    "id": "3.T.6.b",
-    "label": "iOS Development",
-    "category": "Technical Skills",
-    "domain": "Mobile Development",
-    "source": "Generated"
+    "label": "Apex (Salesforce)"
   },
   {
-    "id": "3.T.6.c",
-    "label": "Android Development",
-    "category": "Technical Skills",
-    "domain": "Mobile Development",
-    "source": "Generated"
+    "label": "API Design"
   },
   {
-    "id": "3.T.7.a",
-    "label": "Data Engineering",
-    "category": "Technical Skills",
-    "domain": "Data Engineering",
-    "source": "Generated"
+    "label": "API Development"
   },
   {
-    "id": "3.T.7.b",
-    "label": "ETL Pipelines",
-    "category": "Technical Skills",
-    "domain": "Data Engineering",
-    "source": "Generated"
+    "label": "API Gateway"
   },
   {
-    "id": "3.T.7.c",
-    "label": "Big Data Processing",
-    "category": "Technical Skills",
-    "domain": "Data Engineering",
-    "source": "Generated"
+    "label": "API Integration"
   },
   {
-    "id": "3.T.8.a",
-    "label": "Product Management",
-    "category": "Technical Skills",
-    "domain": "Product",
-    "source": "Generated"
+    "label": "API Testing"
   },
   {
-    "id": "3.T.8.b",
-    "label": "Agile Methodologies",
-    "category": "Technical Skills",
-    "domain": "Product",
-    "source": "Generated"
+    "label": "App Store Optimization (ASO)"
   },
   {
-    "id": "3.T.9.a",
-    "label": "UI/UX Design",
-    "category": "Technical Skills",
-    "domain": "Design",
-    "source": "Generated"
+    "label": "AppDynamics"
   },
   {
-    "id": "3.T.9.b",
-    "label": "Wireframing",
-    "category": "Technical Skills",
-    "domain": "Design",
-    "source": "Generated"
+    "label": "AR/VR Development"
   },
   {
-    "id": "3.T.9.c",
-    "label": "Prototyping",
-    "category": "Technical Skills",
-    "domain": "Design",
-    "source": "Generated"
+    "label": "Arduino"
   },
   {
-    "id": "3.T.10.a",
-    "label": "QA Testing",
-    "category": "Technical Skills",
-    "domain": "Quality Assurance",
-    "source": "Generated"
+    "label": "Artificial Intelligence"
   },
   {
-    "id": "3.T.10.b",
-    "label": "Test Automation",
-    "category": "Technical Skills",
-    "domain": "Quality Assurance",
-    "source": "Generated"
+    "label": "ASP.NET"
   },
   {
-    "id": "3.T.added.1000",
-    "label": "Version Control (Git)",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Astro"
   },
   {
-    "id": "3.T.added.1001",
-    "label": "CI/CD Pipelines",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Atlassian Suite"
   },
   {
-    "id": "3.T.added.1002",
-    "label": "Terraform",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Attention to Detail"
   },
   {
-    "id": "3.T.added.1003",
-    "label": "Ansible",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Audio Engineering"
   },
   {
-    "id": "3.T.added.1004",
-    "label": "RESTful APIs",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Audio Mixing"
   },
   {
-    "id": "3.T.added.1005",
-    "label": "GraphQL",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Audio Production"
   },
   {
-    "id": "3.T.added.1006",
-    "label": "TypeScript",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Augmented Reality"
   },
   {
-    "id": "3.T.added.1007",
-    "label": "Python",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "AutoCAD"
   },
   {
-    "id": "3.T.added.1008",
-    "label": "Java",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "Automation Testing"
   },
   {
-    "id": "3.T.added.1009",
-    "label": "C++",
-    "category": "Technical Skills",
-    "domain": "Software Engineering",
-    "source": "Generated"
+    "label": "AWS"
   },
   {
-    "id": "3.T.added.1010",
-    "label": "React",
-    "category": "Technical Skills",
-    "domain": "Frontend",
-    "source": "Generated"
+    "label": "AWS CDK"
   },
   {
-    "id": "3.T.added.1011",
-    "label": "Angular",
-    "category": "Technical Skills",
-    "domain": "Frontend",
-    "source": "Generated"
+    "label": "AWS CloudFormation"
   },
   {
-    "id": "3.T.added.1012",
-    "label": "Vue.js",
-    "category": "Technical Skills",
-    "domain": "Frontend",
-    "source": "Generated"
+    "label": "AWS CloudWatch"
   },
   {
-    "id": "3.T.added.1013",
-    "label": "Node.js",
-    "category": "Technical Skills",
-    "domain": "Backend",
-    "source": "Generated"
+    "label": "AWS Cognito"
   },
   {
-    "id": "3.T.added.1014",
-    "label": "Express.js",
-    "category": "Technical Skills",
-    "domain": "Backend",
-    "source": "Generated"
+    "label": "AWS Glue"
   },
   {
-    "id": "3.T.added.1015",
-    "label": "MongoDB",
-    "category": "Technical Skills",
-    "domain": "Databases",
-    "source": "Generated"
+    "label": "AWS IAM"
   },
   {
-    "id": "3.T.added.1016",
-    "label": "PostgreSQL",
-    "category": "Technical Skills",
-    "domain": "Databases",
-    "source": "Generated"
+    "label": "AWS Step Functions"
   },
   {
-    "id": "3.T.added.1017",
-    "label": "Apache Spark",
-    "category": "Technical Skills",
-    "domain": "Big Data",
-    "source": "Generated"
+    "label": "Azure"
   },
   {
-    "id": "3.T.added.1018",
-    "label": "Hadoop",
-    "category": "Technical Skills",
-    "domain": "Big Data",
-    "source": "Generated"
+    "label": "Azure Active Directory"
   },
   {
-    "id": "3.T.added.1019",
-    "label": "Airflow",
-    "category": "Technical Skills",
-    "domain": "Data Engineering",
-    "source": "Generated"
+    "label": "Azure DevOps"
   },
   {
-    "id": "3.T.added.1020",
-    "label": "Pandas",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Azure Functions"
   },
   {
-    "id": "3.T.added.1021",
-    "label": "NumPy",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Azure Kubernetes Service"
   },
   {
-    "id": "3.T.added.1022",
-    "label": "Matplotlib",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "Babel"
   },
   {
-    "id": "3.T.added.1023",
-    "label": "Scikit-learn",
-    "category": "Technical Skills",
-    "domain": "Machine Learning",
-    "source": "Generated"
+    "label": "Backbone.js"
   },
   {
-    "id": "3.T.added.1024",
-    "label": "TensorFlow",
-    "category": "Technical Skills",
-    "domain": "Machine Learning",
-    "source": "Generated"
+    "label": "Backend Development"
   },
   {
-    "id": "3.T.added.1025",
-    "label": "PyTorch",
-    "category": "Technical Skills",
-    "domain": "Machine Learning",
-    "source": "Generated"
+    "label": "Bash Scripting"
   },
   {
-    "id": "3.T.extended.2000",
-    "label": "Next.js",
-    "category": "Technical Skills",
-    "domain": "Frontend",
-    "source": "Generated"
+    "label": "Bayesian Statistics"
   },
   {
-    "id": "3.T.extended.2001",
-    "label": "NestJS",
-    "category": "Technical Skills",
-    "domain": "Backend",
-    "source": "Generated"
+    "label": "Behavior-Driven Development (BDD)"
   },
   {
-    "id": "3.T.extended.2002",
-    "label": "FastAPI",
-    "category": "Technical Skills",
-    "domain": "Backend",
-    "source": "Generated"
+    "label": "BigQuery"
   },
   {
-    "id": "3.T.extended.2003",
-    "label": "Flask",
-    "category": "Technical Skills",
-    "domain": "Backend",
-    "source": "Generated"
+    "label": "Bitbucket"
   },
   {
-    "id": "3.T.extended.2004",
-    "label": "Django",
-    "category": "Technical Skills",
-    "domain": "Backend",
-    "source": "Generated"
+    "label": "Blockchain Development"
   },
   {
-    "id": "3.T.extended.2005",
-    "label": "Bootstrap",
-    "category": "Technical Skills",
-    "domain": "Frontend",
-    "source": "Generated"
+    "label": "Blog Writing"
   },
   {
-    "id": "3.T.extended.2006",
-    "label": "Tailwind CSS",
-    "category": "Technical Skills",
-    "domain": "Frontend",
-    "source": "Generated"
+    "label": "Bluetooth Low Energy (BLE)"
   },
   {
-    "id": "3.T.extended.2007",
-    "label": "Figma",
-    "category": "Technical Skills",
-    "domain": "Design",
-    "source": "Generated"
+    "label": "Bookkeeping"
   },
   {
-    "id": "3.T.extended.2008",
-    "label": "Adobe XD",
-    "category": "Technical Skills",
-    "domain": "Design",
-    "source": "Generated"
+    "label": "Bootstrap"
   },
   {
-    "id": "3.T.extended.2009",
-    "label": "Jira",
-    "category": "Technical Skills",
-    "domain": "Project Management",
-    "source": "Generated"
+    "label": "Brand Identity Design"
   },
   {
-    "id": "3.T.extended.2010",
-    "label": "Confluence",
-    "category": "Technical Skills",
-    "domain": "Project Management",
-    "source": "Generated"
+    "label": "Brand Strategy"
   },
   {
-    "id": "3.T.extended.2011",
-    "label": "Bitbucket",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Branding"
   },
   {
-    "id": "3.T.extended.2012",
-    "label": "GitHub Actions",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Budget Management"
   },
   {
-    "id": "3.T.extended.2013",
-    "label": "Azure DevOps",
-    "category": "Technical Skills",
-    "domain": "DevOps",
-    "source": "Generated"
+    "label": "Bug Tracking"
   },
   {
-    "id": "3.T.extended.2014",
-    "label": "Google Cloud Platform",
-    "category": "Technical Skills",
-    "domain": "Cloud",
-    "source": "Generated"
+    "label": "Buildkite"
   },
   {
-    "id": "3.T.extended.2015",
-    "label": "Microsoft Azure",
-    "category": "Technical Skills",
-    "domain": "Cloud",
-    "source": "Generated"
+    "label": "Bulma CSS"
   },
   {
-    "id": "3.T.extended.2016",
-    "label": "Databricks",
-    "category": "Technical Skills",
-    "domain": "Big Data",
-    "source": "Generated"
+    "label": "Bun"
   },
   {
-    "id": "3.T.extended.2017",
-    "label": "Snowflake",
-    "category": "Technical Skills",
-    "domain": "Big Data",
-    "source": "Generated"
+    "label": "Business Analysis"
   },
   {
-    "id": "3.T.extended.2018",
-    "label": "Redshift",
-    "category": "Technical Skills",
-    "domain": "Big Data",
-    "source": "Generated"
+    "label": "Business Development"
   },
   {
-    "id": "3.T.extended.2019",
-    "label": "Power BI",
-    "category": "Technical Skills",
-    "domain": "Data Visualization",
-    "source": "Generated"
+    "label": "Business Intelligence"
   },
   {
-    "id": "3.T.extended.2020",
-    "label": "Tableau",
-    "category": "Technical Skills",
-    "domain": "Data Visualization",
-    "source": "Generated"
+    "label": "Business Process Automation"
   },
   {
-    "id": "3.T.extended.2021",
-    "label": "Looker",
-    "category": "Technical Skills",
-    "domain": "Data Visualization",
-    "source": "Generated"
+    "label": "Business Strategy"
   },
   {
-    "id": "3.T.extended.2022",
-    "label": "LangChain",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "Business Writing"
   },
   {
-    "id": "3.T.extended.2023",
-    "label": "Hugging Face Transformers",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "C"
   },
   {
-    "id": "3.T.extended.2024",
-    "label": "OpenCV",
-    "category": "Technical Skills",
-    "domain": "AI/ML",
-    "source": "Generated"
+    "label": "C#"
   },
   {
-    "id": "3.T.extended.2025",
-    "label": "Jupyter Notebook",
-    "category": "Technical Skills",
-    "domain": "Data Science",
-    "source": "Generated"
+    "label": "C++"
   },
   {
-    "id": "3.T.extended.2026",
-    "label": "VS Code",
-    "category": "Technical Skills",
-    "domain": "Developer Tools",
-    "source": "Generated"
+    "label": "CakePHP"
   },
   {
-    "id": "3.T.extended.2027",
-    "label": "Postman",
-    "category": "Technical Skills",
-    "domain": "API Testing",
-    "source": "Generated"
+    "label": "Canva"
   },
   {
-    "id": "3.T.extended.2028",
-    "label": "Swagger",
-    "category": "Technical Skills",
-    "domain": "API Testing",
-    "source": "Generated"
+    "label": "Capacitor"
   },
   {
-    "id": "3.T.extended.2029",
-    "label": "Kibana",
-    "category": "Technical Skills",
-    "domain": "Monitoring",
-    "source": "Generated"
+    "label": "Celery"
   },
   {
-    "id": "3.T.extended.2030",
-    "label": "Grafana",
-    "category": "Technical Skills",
-    "domain": "Monitoring",
-    "source": "Generated"
+    "label": "Chai"
+  },
+  {
+    "label": "Change Management"
+  },
+  {
+    "label": "ChatGPT API"
+  },
+  {
+    "label": "Chef"
+  },
+  {
+    "label": "CI/CD Pipelines"
+  },
+  {
+    "label": "CircleCI"
+  },
+  {
+    "label": "Cisco Networking"
+  },
+  {
+    "label": "Client Communication"
+  },
+  {
+    "label": "Clojure"
+  },
+  {
+    "label": "Cloud Architecture"
+  },
+  {
+    "label": "Cloud Computing"
+  },
+  {
+    "label": "Cloud Migration"
+  },
+  {
+    "label": "Cloud Security"
+  },
+  {
+    "label": "CloudFront"
+  },
+  {
+    "label": "COBOL"
+  },
+  {
+    "label": "CocoaPods"
+  },
+  {
+    "label": "Code Review"
+  },
+  {
+    "label": "CodeIgniter"
+  },
+  {
+    "label": "CoffeeScript"
+  },
+  {
+    "label": "Color Grading"
+  },
+  {
+    "label": "Color Theory"
+  },
+  {
+    "label": "Communication"
+  },
+  {
+    "label": "Community Management"
+  },
+  {
+    "label": "Competitive Analysis"
+  },
+  {
+    "label": "Compliance Management"
+  },
+  {
+    "label": "Composer"
+  },
+  {
+    "label": "Computer Networking"
+  },
+  {
+    "label": "Computer Vision"
+  },
+  {
+    "label": "Conflict Resolution"
+  },
+  {
+    "label": "Confluence"
+  },
+  {
+    "label": "Consul"
+  },
+  {
+    "label": "Content Creation"
+  },
+  {
+    "label": "Content Management Systems (CMS)"
+  },
+  {
+    "label": "Content Marketing"
+  },
+  {
+    "label": "Content Moderation"
+  },
+  {
+    "label": "Content Strategy"
+  },
+  {
+    "label": "Content Writing"
+  },
+  {
+    "label": "Continuous Delivery"
+  },
+  {
+    "label": "Continuous Integration"
+  },
+  {
+    "label": "Conversion Rate Optimization (CRO)"
+  },
+  {
+    "label": "Copyediting"
+  },
+  {
+    "label": "Copywriting"
+  },
+  {
+    "label": "CorelDRAW"
+  },
+  {
+    "label": "CouchDB"
+  },
+  {
+    "label": "Creative Direction"
+  },
+  {
+    "label": "Creative Writing"
+  },
+  {
+    "label": "Critical Thinking"
+  },
+  {
+    "label": "Cross-Browser Compatibility"
+  },
+  {
+    "label": "Cross-Platform Development"
+  },
+  {
+    "label": "Crowdfunding Strategy"
+  },
+  {
+    "label": "Crystal Reports"
+  },
+  {
+    "label": "CSS"
+  },
+  {
+    "label": "CSS Grid"
+  },
+  {
+    "label": "CSS Modules"
+  },
+  {
+    "label": "CSS-in-JS"
+  },
+  {
+    "label": "Customer Experience (CX)"
+  },
+  {
+    "label": "Customer Journey Mapping"
+  },
+  {
+    "label": "Customer Relationship Management (CRM)"
+  },
+  {
+    "label": "Customer Success"
+  },
+  {
+    "label": "Customer Support"
+  },
+  {
+    "label": "Cypress"
+  },
+  {
+    "label": "D3.js"
+  },
+  {
+    "label": "Dart"
+  },
+  {
+    "label": "Data Analysis"
+  },
+  {
+    "label": "Data Cleaning"
+  },
+  {
+    "label": "Data Engineering"
+  },
+  {
+    "label": "Data Entry"
+  },
+  {
+    "label": "Data Governance"
+  },
+  {
+    "label": "Data Lake Architecture"
+  },
+  {
+    "label": "Data Mining"
+  },
+  {
+    "label": "Data Modeling"
+  },
+  {
+    "label": "Data Pipelines"
+  },
+  {
+    "label": "Data Science"
+  },
+  {
+    "label": "Data Visualization"
+  },
+  {
+    "label": "Data Warehousing"
+  },
+  {
+    "label": "Database Administration"
+  },
+  {
+    "label": "Database Design"
+  },
+  {
+    "label": "Databricks"
+  },
+  {
+    "label": "Datadog"
+  },
+  {
+    "label": "dbt (Data Build Tool)"
+  },
+  {
+    "label": "Debugging"
+  },
+  {
+    "label": "Decision Making"
+  },
+  {
+    "label": "Deep Learning"
+  },
+  {
+    "label": "Delphi"
+  },
+  {
+    "label": "Deno"
+  },
+  {
+    "label": "Design Patterns"
+  },
+  {
+    "label": "Design Systems"
+  },
+  {
+    "label": "Design Thinking"
+  },
+  {
+    "label": "Desktop Application Development"
+  },
+  {
+    "label": "DevOps"
+  },
+  {
+    "label": "DevSecOps"
+  },
+  {
+    "label": "Digital Advertising"
+  },
+  {
+    "label": "Digital Illustration"
+  },
+  {
+    "label": "Digital Marketing"
+  },
+  {
+    "label": "Digital Strategy"
+  },
+  {
+    "label": "Discord Bot Development"
+  },
+  {
+    "label": "Distributed Systems"
+  },
+  {
+    "label": "Django"
+  },
+  {
+    "label": "Django REST Framework"
+  },
+  {
+    "label": "Docker"
+  },
+  {
+    "label": "Docker Compose"
+  },
+  {
+    "label": "Document Management"
+  },
+  {
+    "label": "Documentation"
+  },
+  {
+    "label": "Domain-Driven Design (DDD)"
+  },
+  {
+    "label": "Drizzle ORM"
+  },
+  {
+    "label": "Drupal"
+  },
+  {
+    "label": "E-commerce Development"
+  },
+  {
+    "label": "Eclipse IDE"
+  },
+  {
+    "label": "Editing"
+  },
+  {
+    "label": "Elastic Stack (ELK)"
+  },
+  {
+    "label": "Elasticsearch"
+  },
+  {
+    "label": "Electron"
+  },
+  {
+    "label": "Elixir"
+  },
+  {
+    "label": "Elm"
+  },
+  {
+    "label": "Email Automation"
+  },
+  {
+    "label": "Email Design"
+  },
+  {
+    "label": "Email Marketing"
+  },
+  {
+    "label": "Embedded Systems"
+  },
+  {
+    "label": "Ember.js"
+  },
+  {
+    "label": "Emotional Intelligence"
+  },
+  {
+    "label": "Encryption"
+  },
+  {
+    "label": "Enterprise Architecture"
+  },
+  {
+    "label": "Entity Framework"
+  },
+  {
+    "label": "Envoy Proxy"
+  },
+  {
+    "label": "Erlang"
+  },
+  {
+    "label": "ESLint"
+  },
+  {
+    "label": "ETL (Extract Transform Load)"
+  },
+  {
+    "label": "Event Planning"
+  },
+  {
+    "label": "Event-Driven Architecture"
+  },
+  {
+    "label": "Excel"
+  },
+  {
+    "label": "Express.js"
+  },
+  {
+    "label": "F#"
+  },
+  {
+    "label": "Facebook Ads"
+  },
+  {
+    "label": "FastAPI"
+  },
+  {
+    "label": "Fastify"
+  },
+  {
+    "label": "Feature Engineering"
+  },
+  {
+    "label": "Figma"
+  },
+  {
+    "label": "Financial Analysis"
+  },
+  {
+    "label": "Financial Modeling"
+  },
+  {
+    "label": "Firebase"
+  },
+  {
+    "label": "Firewall Management"
+  },
+  {
+    "label": "Flask"
+  },
+  {
+    "label": "Flexbox"
+  },
+  {
+    "label": "Flutter"
+  },
+  {
+    "label": "Fortran"
+  },
+  {
+    "label": "Framer"
+  },
+  {
+    "label": "Framer Motion"
+  },
+  {
+    "label": "Freelance Consulting"
+  },
+  {
+    "label": "Frontend Development"
+  },
+  {
+    "label": "Full-Stack Development"
+  },
+  {
+    "label": "Functional Programming"
+  },
+  {
+    "label": "Fundraising"
+  },
+  {
+    "label": "Game Design"
+  },
+  {
+    "label": "Game Development"
+  },
+  {
+    "label": "Gatsby"
+  },
+  {
+    "label": "GCP (Google Cloud Platform)"
+  },
+  {
+    "label": "GDPR Compliance"
+  },
+  {
+    "label": "Generative AI"
+  },
+  {
+    "label": "Ghostwriting"
+  },
+  {
+    "label": "GIMP"
+  },
+  {
+    "label": "Git"
+  },
+  {
+    "label": "GitHub"
+  },
+  {
+    "label": "GitHub Actions"
+  },
+  {
+    "label": "GitLab"
+  },
+  {
+    "label": "GitLab CI/CD"
+  },
+  {
+    "label": "Go (Golang)"
+  },
+  {
+    "label": "Google Ads"
+  },
+  {
+    "label": "Google Analytics"
+  },
+  {
+    "label": "Google Apps Script"
+  },
+  {
+    "label": "Google Cloud Functions"
+  },
+  {
+    "label": "Google Cloud Storage"
+  },
+  {
+    "label": "Google Data Studio"
+  },
+  {
+    "label": "Google Kubernetes Engine (GKE)"
+  },
+  {
+    "label": "Google Maps API"
+  },
+  {
+    "label": "Google Sheets"
+  },
+  {
+    "label": "Google Tag Manager"
+  },
+  {
+    "label": "Grafana"
+  },
+  {
+    "label": "Grant Writing"
+  },
+  {
+    "label": "Graph Databases"
+  },
+  {
+    "label": "Graphic Design"
+  },
+  {
+    "label": "GraphQL"
+  },
+  {
+    "label": "Groovy"
+  },
+  {
+    "label": "Growth Hacking"
+  },
+  {
+    "label": "Growth Marketing"
+  },
+  {
+    "label": "Grunt"
+  },
+  {
+    "label": "Gulp"
+  },
+  {
+    "label": "HAML"
+  },
+  {
+    "label": "Handlebars"
+  },
+  {
+    "label": "Hardware Design"
+  },
+  {
+    "label": "Haskell"
+  },
+  {
+    "label": "Helm Charts"
+  },
+  {
+    "label": "Heroku"
+  },
+  {
+    "label": "Hibernate"
+  },
+  {
+    "label": "High Availability Systems"
+  },
+  {
+    "label": "HIPAA Compliance"
+  },
+  {
+    "label": "HTML"
+  },
+  {
+    "label": "HTML5"
+  },
+  {
+    "label": "HTTP/HTTPS"
+  },
+  {
+    "label": "HubSpot"
+  },
+  {
+    "label": "Hugging Face"
+  },
+  {
+    "label": "Hugo"
+  },
+  {
+    "label": "Human Resources"
+  },
+  {
+    "label": "Hybrid App Development"
+  },
+  {
+    "label": "IBM Cloud"
+  },
+  {
+    "label": "Icon Design"
+  },
+  {
+    "label": "Identity Management"
+  },
+  {
+    "label": "Illustration"
+  },
+  {
+    "label": "Image Processing"
+  },
+  {
+    "label": "Incident Response"
+  },
+  {
+    "label": "InfluxDB"
+  },
+  {
+    "label": "Information Architecture"
+  },
+  {
+    "label": "Information Security"
+  },
+  {
+    "label": "Infrastructure as Code (IaC)"
+  },
+  {
+    "label": "IntelliJ IDEA"
+  },
+  {
+    "label": "Interaction Design"
+  },
+  {
+    "label": "Interior Design Visualization"
+  },
+  {
+    "label": "Internet of Things (IoT)"
+  },
+  {
+    "label": "Interpersonal Skills"
+  },
+  {
+    "label": "InVision"
+  },
+  {
+    "label": "Ionic"
+  },
+  {
+    "label": "iOS Development"
+  },
+  {
+    "label": "ISO 27001"
+  },
+  {
+    "label": "IT Consulting"
+  },
+  {
+    "label": "IT Support"
+  },
+  {
+    "label": "ITIL"
+  },
+  {
+    "label": "Jakarta EE"
+  },
+  {
+    "label": "Jasmine"
+  },
+  {
+    "label": "Java"
+  },
+  {
+    "label": "JavaFX"
+  },
+  {
+    "label": "JavaScript"
+  },
+  {
+    "label": "Jekyll"
+  },
+  {
+    "label": "Jenkins"
+  },
+  {
+    "label": "Jest"
+  },
+  {
+    "label": "Jinja2"
+  },
+  {
+    "label": "JIRA"
+  },
+  {
+    "label": "JMeter"
+  },
+  {
+    "label": "jQuery"
+  },
+  {
+    "label": "JSON"
+  },
+  {
+    "label": "Julia"
+  },
+  {
+    "label": "Jupyter Notebooks"
+  },
+  {
+    "label": "JWT (JSON Web Tokens)"
+  },
+  {
+    "label": "Kanban"
+  },
+  {
+    "label": "Keras"
+  },
+  {
+    "label": "Keynote"
+  },
+  {
+    "label": "Kibana"
+  },
+  {
+    "label": "Kotlin"
+  },
+  {
+    "label": "Kubernetes"
+  },
+  {
+    "label": "LangChain"
+  },
+  {
+    "label": "Laravel"
+  },
+  {
+    "label": "LaTeX"
+  },
+  {
+    "label": "Lead Generation"
+  },
+  {
+    "label": "Leadership"
+  },
+  {
+    "label": "Lean Methodology"
+  },
+  {
+    "label": "Less CSS"
+  },
+  {
+    "label": "Linear Algebra"
+  },
+  {
+    "label": "LinkedIn Ads"
+  },
+  {
+    "label": "LinkedIn Marketing"
+  },
+  {
+    "label": "Linux Administration"
+  },
+  {
+    "label": "Linux Server Management"
+  },
+  {
+    "label": "Lisp"
+  },
+  {
+    "label": "LLM Fine-Tuning"
+  },
+  {
+    "label": "Load Balancing"
+  },
+  {
+    "label": "Load Testing"
+  },
+  {
+    "label": "Localization"
+  },
+  {
+    "label": "Logo Design"
+  },
+  {
+    "label": "Logstash"
+  },
+  {
+    "label": "Looker"
+  },
+  {
+    "label": "Lua"
+  },
+  {
+    "label": "Machine Learning"
+  },
+  {
+    "label": "macOS Development"
+  },
+  {
+    "label": "Magento"
+  },
+  {
+    "label": "Mailchimp"
+  },
+  {
+    "label": "Make (Integromat)"
+  },
+  {
+    "label": "Malware Analysis"
+  },
+  {
+    "label": "MapReduce"
+  },
+  {
+    "label": "MariaDB"
+  },
+  {
+    "label": "Market Research"
+  },
+  {
+    "label": "Marketing Automation"
+  },
+  {
+    "label": "Marketing Strategy"
+  },
+  {
+    "label": "Material UI (MUI)"
+  },
+  {
+    "label": "MATLAB"
+  },
+  {
+    "label": "Matplotlib"
+  },
+  {
+    "label": "Maven"
+  },
+  {
+    "label": "Memcached"
+  },
+  {
+    "label": "Mercurial"
+  },
+  {
+    "label": "Metabase"
+  },
+  {
+    "label": "Metadata Management"
+  },
+  {
+    "label": "Microcontrollers"
+  },
+  {
+    "label": "Microservices Architecture"
+  },
+  {
+    "label": "Microsoft 365"
+  },
+  {
+    "label": "Microsoft Azure"
+  },
+  {
+    "label": "Microsoft Power Automate"
+  },
+  {
+    "label": "Microsoft Teams Development"
+  },
+  {
+    "label": "Middleware Development"
+  },
+  {
+    "label": "MLflow"
+  },
+  {
+    "label": "MLOps"
+  },
+  {
+    "label": "Mobile App Design"
+  },
+  {
+    "label": "Mobile App Development"
+  },
+  {
+    "label": "Mobile Responsive Design"
+  },
+  {
+    "label": "Mocha"
+  },
+  {
+    "label": "Monday.com"
+  },
+  {
+    "label": "MongoDB"
+  },
+  {
+    "label": "Monitoring & Observability"
+  },
+  {
+    "label": "Motion Design"
+  },
+  {
+    "label": "Motion Graphics"
+  },
+  {
+    "label": "MQTT"
+  },
+  {
+    "label": "MSSQL Server"
+  },
+  {
+    "label": "Multithreading"
+  },
+  {
+    "label": "MySQL"
+  },
+  {
+    "label": "n8n"
+  },
+  {
+    "label": "Natural Language Processing (NLP)"
+  },
+  {
+    "label": "Negotiation"
+  },
+  {
+    "label": "Neo4j"
+  },
+  {
+    "label": "NestJS"
+  },
+  {
+    "label": "Netlify"
+  },
+  {
+    "label": "Network Administration"
+  },
+  {
+    "label": "Network Security"
+  },
+  {
+    "label": "Next.js"
+  },
+  {
+    "label": "Nginx"
+  },
+  {
+    "label": "Node.js"
+  },
+  {
+    "label": "NoSQL Databases"
+  },
+  {
+    "label": "Notion"
+  },
+  {
+    "label": "npm"
+  },
+  {
+    "label": "NumPy"
+  },
+  {
+    "label": "Nuxt.js"
+  },
+  {
+    "label": "OAuth"
+  },
+  {
+    "label": "Object-Oriented Programming (OOP)"
+  },
+  {
+    "label": "Objective-C"
+  },
+  {
+    "label": "OCR (Optical Character Recognition)"
+  },
+  {
+    "label": "OKR Planning"
+  },
+  {
+    "label": "OpenAI API"
+  },
+  {
+    "label": "OpenCV"
+  },
+  {
+    "label": "OpenGL"
+  },
+  {
+    "label": "OpenShift"
+  },
+  {
+    "label": "OpenTelemetry"
+  },
+  {
+    "label": "Operations Management"
+  },
+  {
+    "label": "Oracle Database"
+  },
+  {
+    "label": "Organizational Skills"
+  },
+  {
+    "label": "OWASP Security"
+  },
+  {
+    "label": "Package Design"
+  },
+  {
+    "label": "Package Management"
+  },
+  {
+    "label": "Pandas"
+  },
+  {
+    "label": "Payment Gateway Integration"
+  },
+  {
+    "label": "PCI DSS Compliance"
+  },
+  {
+    "label": "PDF Generation"
+  },
+  {
+    "label": "Penetration Testing"
+  },
+  {
+    "label": "Performance Marketing"
+  },
+  {
+    "label": "Performance Optimization"
+  },
+  {
+    "label": "Performance Testing"
+  },
+  {
+    "label": "Perl"
+  },
+  {
+    "label": "Persona Development"
+  },
+  {
+    "label": "Phoenix Framework"
+  },
+  {
+    "label": "PHP"
+  },
+  {
+    "label": "Pinterest Marketing"
+  },
+  {
+    "label": "PL/SQL"
+  },
+  {
+    "label": "Playwright"
+  },
+  {
+    "label": "PLCs (Programmable Logic Controllers)"
+  },
+  {
+    "label": "Podcast Production"
+  },
+  {
+    "label": "PostCSS"
+  },
+  {
+    "label": "PostgreSQL"
+  },
+  {
+    "label": "Postman"
+  },
+  {
+    "label": "Power BI"
+  },
+  {
+    "label": "PowerPoint"
+  },
+  {
+    "label": "PowerShell"
+  },
+  {
+    "label": "Presentation Design"
+  },
+  {
+    "label": "Prettier"
+  },
+  {
+    "label": "Pricing Strategy"
+  },
+  {
+    "label": "Print Design"
+  },
+  {
+    "label": "Prisma ORM"
+  },
+  {
+    "label": "Problem Solving"
+  },
+  {
+    "label": "Process Improvement"
+  },
+  {
+    "label": "Product Design"
+  },
+  {
+    "label": "Product Management"
+  },
+  {
+    "label": "Product Marketing"
+  },
+  {
+    "label": "Product Strategy"
+  },
+  {
+    "label": "Programming"
+  },
+  {
+    "label": "Project Estimation"
+  },
+  {
+    "label": "Project Management"
+  },
+  {
+    "label": "Project Planning"
+  },
+  {
+    "label": "Prometheus"
+  },
+  {
+    "label": "Proofreading"
+  },
+  {
+    "label": "Protobuf"
+  },
+  {
+    "label": "Prototyping"
+  },
+  {
+    "label": "Public Relations (PR)"
+  },
+  {
+    "label": "Public Speaking"
+  },
+  {
+    "label": "Pulumi"
+  },
+  {
+    "label": "Puppet"
+  },
+  {
+    "label": "Puppeteer"
+  },
+  {
+    "label": "PySpark"
+  },
+  {
+    "label": "Python"
+  },
+  {
+    "label": "PyTorch"
+  },
+  {
+    "label": "QA Engineering"
+  },
+  {
+    "label": "Quality Assurance"
+  },
+  {
+    "label": "Quantum Computing"
+  },
+  {
+    "label": "Quarkus"
+  },
+  {
+    "label": "R"
+  },
+  {
+    "label": "RabbitMQ"
+  },
+  {
+    "label": "Raspberry Pi"
+  },
+  {
+    "label": "React"
+  },
+  {
+    "label": "React Native"
+  },
+  {
+    "label": "React Query"
+  },
+  {
+    "label": "Recommendation Systems"
+  },
+  {
+    "label": "Redis"
+  },
+  {
+    "label": "Redux"
+  },
+  {
+    "label": "Regex (Regular Expressions)"
+  },
+  {
+    "label": "Reinforcement Learning"
+  },
+  {
+    "label": "Relational Databases"
+  },
+  {
+    "label": "Remote Team Management"
+  },
+  {
+    "label": "Reporting"
+  },
+  {
+    "label": "Responsive Web Design"
+  },
+  {
+    "label": "REST API Development"
+  },
+  {
+    "label": "Retool"
+  },
+  {
+    "label": "Risk Management"
+  },
+  {
+    "label": "Robotics"
+  },
+  {
+    "label": "ROS (Robot Operating System)"
+  },
+  {
+    "label": "Ruby"
+  },
+  {
+    "label": "Ruby on Rails"
+  },
+  {
+    "label": "Rust"
+  },
+  {
+    "label": "SaaS Development"
+  },
+  {
+    "label": "Sales"
+  },
+  {
+    "label": "Salesforce"
+  },
+  {
+    "label": "Salesforce Administration"
+  },
+  {
+    "label": "Salesforce Development"
+  },
+  {
+    "label": "SaltStack"
+  },
+  {
+    "label": "SAP"
+  },
+  {
+    "label": "SAS"
+  },
+  {
+    "label": "Sass/SCSS"
+  },
+  {
+    "label": "Scala"
+  },
+  {
+    "label": "Scikit-learn"
+  },
+  {
+    "label": "Scrapy"
+  },
+  {
+    "label": "Scrum"
+  },
+  {
+    "label": "Search Engine Marketing (SEM)"
+  },
+  {
+    "label": "Search Engine Optimization (SEO)"
+  },
+  {
+    "label": "Security Auditing"
+  },
+  {
+    "label": "Security Information and Event Management (SIEM)"
+  },
+  {
+    "label": "Security Operations Center (SOC)"
+  },
+  {
+    "label": "Selenium"
+  },
+  {
+    "label": "Semantic HTML"
+  },
+  {
+    "label": "Sentry"
+  },
+  {
+    "label": "Serverless Architecture"
+  },
+  {
+    "label": "Service Mesh"
+  },
+  {
+    "label": "ServiceNow"
+  },
+  {
+    "label": "Shell Scripting"
+  },
+  {
+    "label": "Shopify"
+  },
+  {
+    "label": "Shopify Development"
+  },
+  {
+    "label": "Signal Processing"
+  },
+  {
+    "label": "Single Page Applications (SPA)"
+  },
+  {
+    "label": "Sketch"
+  },
+  {
+    "label": "Slack Bot Development"
+  },
+  {
+    "label": "Smart Contract Development"
+  },
+  {
+    "label": "Snowflake"
+  },
+  {
+    "label": "SOAP"
+  },
+  {
+    "label": "Social Media Management"
+  },
+  {
+    "label": "Social Media Marketing"
+  },
+  {
+    "label": "Socket.io"
+  },
+  {
+    "label": "Software Architecture"
+  },
+  {
+    "label": "Software Development Life Cycle (SDLC)"
+  },
+  {
+    "label": "Software Testing"
+  },
+  {
+    "label": "Solidity"
+  },
+  {
+    "label": "SolidJS"
+  },
+  {
+    "label": "SonarQube"
+  },
+  {
+    "label": "Sound Design"
+  },
+  {
+    "label": "Sound Editing"
+  },
+  {
+    "label": "Speech Recognition"
+  },
+  {
+    "label": "Splunk"
+  },
+  {
+    "label": "Spring Boot"
+  },
+  {
+    "label": "Spring Framework"
+  },
+  {
+    "label": "SPSS"
+  },
+  {
+    "label": "SQL"
+  },
+  {
+    "label": "SQLAlchemy"
+  },
+  {
+    "label": "SQLite"
+  },
+  {
+    "label": "Squarespace"
+  },
+  {
+    "label": "Stakeholder Management"
+  },
+  {
+    "label": "Stata"
+  },
+  {
+    "label": "Statistical Analysis"
+  },
+  {
+    "label": "Storybook"
+  },
+  {
+    "label": "Storytelling"
+  },
+  {
+    "label": "Strategic Planning"
+  },
+  {
+    "label": "Streaming Architecture"
+  },
+  {
+    "label": "Stripe Integration"
+  },
+  {
+    "label": "Styled Components"
+  },
+  {
+    "label": "Supabase"
+  },
+  {
+    "label": "Supply Chain Management"
+  },
+  {
+    "label": "Svelte"
+  },
+  {
+    "label": "SvelteKit"
+  },
+  {
+    "label": "SVG Animation"
+  },
+  {
+    "label": "Swagger/OpenAPI"
+  },
+  {
+    "label": "Swift"
+  },
+  {
+    "label": "SwiftUI"
+  },
+  {
+    "label": "Symfony"
+  },
+  {
+    "label": "System Administration"
+  },
+  {
+    "label": "System Design"
+  },
+  {
+    "label": "System Integration"
+  },
+  {
+    "label": "Tableau"
+  },
+  {
+    "label": "Tailwind CSS"
+  },
+  {
+    "label": "Team Building"
+  },
+  {
+    "label": "Team Management"
+  },
+  {
+    "label": "Technical Architecture"
+  },
+  {
+    "label": "Technical Consulting"
+  },
+  {
+    "label": "Technical Documentation"
+  },
+  {
+    "label": "Technical SEO"
+  },
+  {
+    "label": "Technical Support"
+  },
+  {
+    "label": "Technical Writing"
+  },
+  {
+    "label": "Telegram Bot Development"
+  },
+  {
+    "label": "TensorFlow"
+  },
+  {
+    "label": "Terraform"
+  },
+  {
+    "label": "Test Automation"
+  },
+  {
+    "label": "Test-Driven Development (TDD)"
+  },
+  {
+    "label": "Three.js"
+  },
+  {
+    "label": "TikTok Marketing"
+  },
+  {
+    "label": "Time Management"
+  },
+  {
+    "label": "Time Series Analysis"
+  },
+  {
+    "label": "Trello"
+  },
+  {
+    "label": "Troubleshooting"
+  },
+  {
+    "label": "Turbo (Hotwire)"
+  },
+  {
+    "label": "Twilio"
+  },
+  {
+    "label": "Twitter/X Marketing"
+  },
+  {
+    "label": "TypeORM"
+  },
+  {
+    "label": "TypeScript"
+  },
+  {
+    "label": "Typography"
+  },
+  {
+    "label": "Ubuntu"
+  },
+  {
+    "label": "UI Design"
+  },
+  {
+    "label": "UI Development"
+  },
+  {
+    "label": "UML Diagrams"
+  },
+  {
+    "label": "Unit Testing"
+  },
+  {
+    "label": "Unity"
+  },
+  {
+    "label": "Unix/Linux"
+  },
+  {
+    "label": "Unreal Engine"
+  },
+  {
+    "label": "Usability Testing"
+  },
+  {
+    "label": "User Acceptance Testing (UAT)"
+  },
+  {
+    "label": "User Interface Design"
+  },
+  {
+    "label": "User Research"
+  },
+  {
+    "label": "UX Design"
+  },
+  {
+    "label": "UX Research"
+  },
+  {
+    "label": "UX Writing"
+  },
+  {
+    "label": "Vagrant"
+  },
+  {
+    "label": "VBA (Visual Basic for Applications)"
+  },
+  {
+    "label": "Vector Databases"
+  },
+  {
+    "label": "Vercel"
+  },
+  {
+    "label": "Version Control"
+  },
+  {
+    "label": "Video Editing"
+  },
+  {
+    "label": "Video Production"
+  },
+  {
+    "label": "Video Scripting"
+  },
+  {
+    "label": "Virtual Reality"
+  },
+  {
+    "label": "Virtualization"
+  },
+  {
+    "label": "Visual Basic .NET"
+  },
+  {
+    "label": "Visual Studio Code"
+  },
+  {
+    "label": "Vite"
+  },
+  {
+    "label": "VMware"
+  },
+  {
+    "label": "Voice Over"
+  },
+  {
+    "label": "VPN Configuration"
+  },
+  {
+    "label": "Vue.js"
+  },
+  {
+    "label": "Vuex"
+  },
+  {
+    "label": "Vulnerability Assessment"
+  },
+  {
+    "label": "Web Accessibility"
+  },
+  {
+    "label": "Web Analytics"
+  },
+  {
+    "label": "Web Application Security"
+  },
+  {
+    "label": "Web Design"
+  },
+  {
+    "label": "Web Development"
+  },
+  {
+    "label": "Web Performance Optimization"
+  },
+  {
+    "label": "Web Scraping"
+  },
+  {
+    "label": "Web3"
+  },
+  {
+    "label": "WebAssembly (WASM)"
+  },
+  {
+    "label": "WebGL"
+  },
+  {
+    "label": "Webhooks"
+  },
+  {
+    "label": "WebRTC"
+  },
+  {
+    "label": "WebSocket"
+  },
+  {
+    "label": "Windows Administration"
+  },
+  {
+    "label": "Windows Server"
+  },
+  {
+    "label": "Wireframing"
+  },
+  {
+    "label": "WooCommerce"
+  },
+  {
+    "label": "WordPress"
+  },
+  {
+    "label": "WordPress Development"
+  },
+  {
+    "label": "Workflow Automation"
+  },
+  {
+    "label": "Writing"
+  },
+  {
+    "label": "Xamarin"
+  },
+  {
+    "label": "XML"
+  },
+  {
+    "label": "XPath"
+  },
+  {
+    "label": "YAML"
+  },
+  {
+    "label": "Yarn"
+  },
+  {
+    "label": "YouTube Marketing"
+  },
+  {
+    "label": "Zapier"
+  },
+  {
+    "label": "Zend Framework"
+  },
+  {
+    "label": "Zero Trust Security"
+  },
+  {
+    "label": "Zig"
+  },
+  {
+    "label": "Zoho CRM"
+  },
+  {
+    "label": "Zustand"
   }
 ]

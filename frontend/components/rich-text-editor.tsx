@@ -16,6 +16,7 @@ import {
   Maximize01,
   Minimize01,
   Trash01,
+  Type02,
   Upload,
   X,
 } from "@blend-metrics/icons"
@@ -332,6 +333,17 @@ const formatSavedTime = (value: Date) =>
     hour: "numeric",
     minute: "2-digit",
   })
+
+const formatRelativeTime = (value: Date) => {
+  const seconds = Math.floor((Date.now() - value.getTime()) / 1000)
+  if (seconds < 60) return "Edited just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes === 1) return "Edited 1 min ago"
+  if (minutes < 60) return `Edited ${minutes} mins ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours === 1) return "Edited 1 hour ago"
+  return `Edited ${hours} hours ago`
+}
 
 const UndoArrowIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
@@ -945,7 +957,12 @@ const ActiveEditor = ({
   onUpdate,
   onBlur,
   onEditorReady,
+  onInsertImageReady,
+  onToolbarToggleReady,
+  onToolbarPinnedChange,
   initialFocusPoint,
+  stickyToolbar = false,
+  stickyToolbarActions,
 }: {
   defaultValue: string
   editorClassName?: string
@@ -953,10 +970,15 @@ const ActiveEditor = ({
   onUpdate?: (html: string) => void
   onBlur?: (html: string) => void
   onEditorReady?: (editor: Editor | null) => void
+  onInsertImageReady?: (fn: () => void) => void
+  onToolbarToggleReady?: (fn: (pinned: boolean) => void) => void
+  onToolbarPinnedChange?: (pinned: boolean) => void
   initialFocusPoint?: {
     left: number
     top: number
   } | null
+  stickyToolbar?: boolean
+  stickyToolbarActions?: React.ReactNode
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1176,13 +1198,6 @@ const ActiveEditor = ({
           }
 
           const currentAlign = draggedImageRef.current.align
-          if (currentAlign === "full-width") {
-            document.body.dataset.richTextDragAlign = currentAlign
-            delete document.body.dataset.richTextDropSide
-            syncDropCursorPreview(currentAlign)
-            return false
-          }
-
           const containerRect = containerRef.current.getBoundingClientRect()
           const midpoint = containerRect.left + containerRect.width / 2
           const nextSide = event.clientX >= midpoint ? "right" : "left"
@@ -1201,8 +1216,7 @@ const ActiveEditor = ({
 
           if (
             draggedImage &&
-            containerRef.current &&
-            draggedImage.align !== "full-width"
+            containerRef.current
           ) {
             const containerRect = containerRef.current.getBoundingClientRect()
             const midpoint = containerRect.left + containerRect.width / 2
@@ -1263,6 +1277,31 @@ const ActiveEditor = ({
                       node.attrs.align !== nextSide
                     ) {
                       updateImageAtPos(pos, { align: nextSide })
+                    }
+
+                    // Side-by-side: if the adjacent node is also an image,
+                    // align it to the opposite side for a 50/50 layout
+                    const oppositeSide = nextSide === "left" ? "right" : "left"
+                    const adjacentPos = pos + node!.nodeSize
+                    const adjacentNode = editor.state.doc.nodeAt(adjacentPos)
+                    if (
+                      adjacentNode?.type.name === "image" &&
+                      adjacentNode.attrs.align !== oppositeSide
+                    ) {
+                      updateImageAtPos(adjacentPos, { align: oppositeSide })
+                    } else {
+                      // Also check the node before
+                      const prevPos = pos - 1
+                      if (prevPos >= 0) {
+                        const resolved = editor.state.doc.resolve(prevPos)
+                        const prevNode = resolved.nodeBefore
+                        if (
+                          prevNode?.type.name === "image" &&
+                          prevNode.attrs.align !== oppositeSide
+                        ) {
+                          updateImageAtPos(prevPos - prevNode.nodeSize, { align: oppositeSide })
+                        }
+                      }
                     }
                   } catch {
                     return
@@ -1667,6 +1706,12 @@ const ActiveEditor = ({
     [editor, isUploadingImage]
   )
 
+  useEffect(() => {
+    if (onInsertImageReady) {
+      onInsertImageReady(() => handleInsertImage("insert"))
+    }
+  }, [onInsertImageReady, handleInsertImage])
+
   const handleImageFileChange = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
@@ -1710,10 +1755,9 @@ const ActiveEditor = ({
 
         // Always INSERT a new image after the current position — never
         // replace the existing selected node.
-        const endPos = editor.state.doc.content.size
         const insertPos = selectionRef.current
           ? selectionRef.current.to
-          : endPos
+          : editor.state.selection.to
 
         editor
           .chain()
@@ -1878,6 +1922,18 @@ const ActiveEditor = ({
   )
 
   useEffect(() => {
+    if (onToolbarToggleReady) {
+      onToolbarToggleReady((pinned: boolean) => {
+        handleToolbarPinnedChange(pinned)
+      })
+    }
+  }, [onToolbarToggleReady, handleToolbarPinnedChange])
+
+  useEffect(() => {
+    onToolbarPinnedChange?.(isToolbarPinned)
+  }, [isToolbarPinned, onToolbarPinnedChange])
+
+  useEffect(() => {
     if (!editor || isToolbarPinned || !shouldRestoreBubbleMenuRef.current) {
       return
     }
@@ -1987,10 +2043,12 @@ const ActiveEditor = ({
         className="hidden"
         onChange={handleImageFileChange}
       />
-      {editor && isToolbarPinned && shouldKeepToolbarVisible ? (
+      {editor && isToolbarPinned ? (
         <div
           className={cn(
-            "absolute left-0 -top-[51px] z-20 inline-flex",
+            stickyToolbar
+              ? "sticky top-0 z-20 flex items-center justify-between w-full bg-white px-3 py-2 border-b border-gray-200 rounded-t-xl"
+              : "absolute left-0 -top-[51px] z-20 inline-flex",
             toolbarClassName
           )}
         >
@@ -2005,6 +2063,11 @@ const ActiveEditor = ({
             isPinned={isToolbarPinned}
             onTogglePinned={() => handleToolbarPinnedChange(false)}
           />
+          {stickyToolbar && stickyToolbarActions ? (
+            <div className="flex items-center gap-x-1.5 shrink-0 ml-3">
+              {stickyToolbarActions}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {editor &&
@@ -2108,6 +2171,11 @@ const RichTextEditor = ({
   onUpdate,
   onBlur,
   allowFullscreen = false,
+  fullscreenOpen: controlledFullscreenOpen,
+  onFullscreenOpenChange,
+  fullscreenHelperText,
+  fullscreenCharacterCount,
+  fullscreenMaxCharacterCount,
 }: {
   defaultValue?: string
   placeholder?: string
@@ -2117,9 +2185,23 @@ const RichTextEditor = ({
   onUpdate?: (html: string) => void
   onBlur?: (html: string) => void
   allowFullscreen?: boolean
+  fullscreenOpen?: boolean
+  onFullscreenOpenChange?: (open: boolean) => void
+  fullscreenHelperText?: string
+  fullscreenCharacterCount?: number
+  fullscreenMaxCharacterCount?: number
 }) => {
   const [isEditing, setIsEditing] = useState(false)
-  const [isFullscreenOpen, setIsFullscreenOpen] = useState(false)
+  const [internalFullscreenOpen, setInternalFullscreenOpen] = useState(false)
+  const isFullscreenControlled = controlledFullscreenOpen !== undefined
+  const isFullscreenOpen = isFullscreenControlled ? controlledFullscreenOpen : internalFullscreenOpen
+  const setIsFullscreenOpen = useCallback((open: boolean) => {
+    if (isFullscreenControlled) {
+      onFullscreenOpenChange?.(open)
+    } else {
+      setInternalFullscreenOpen(open)
+    }
+  }, [isFullscreenControlled, onFullscreenOpenChange])
   const [content, setContent] = useState(() =>
     normalizeRichTextHtml(defaultValue || "")
   )
@@ -2132,6 +2214,9 @@ const RichTextEditor = ({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const shouldResumeInlineEditingRef = useRef(false)
   const fullscreenEditorRef = useRef<Editor | null>(null)
+  const fullscreenInsertImageRef = useRef<(() => void) | null>(null)
+  const fullscreenToolbarToggleRef = useRef<((pinned: boolean) => void) | null>(null)
+  const [isFullscreenToolbarPinned, setIsFullscreenToolbarPinned] = useState(false)
   const historyEntriesRef = useRef<string[]>([
     normalizeRichTextHtml(defaultValue || ""),
   ])
@@ -2233,7 +2318,7 @@ const RichTextEditor = ({
       setInitialFocusPoint(null)
       setIsEditing(false)
     },
-    [isEditing, isFullscreenOpen]
+    [isEditing, isFullscreenOpen, setIsFullscreenOpen]
   )
 
   const handleImageButtonClick = useCallback(
@@ -2269,7 +2354,7 @@ const RichTextEditor = ({
       setIsEditing(shouldResumeInlineEditingRef.current)
       shouldResumeInlineEditingRef.current = false
     }
-  }, [])
+  }, [setIsFullscreenOpen])
 
   useEffect(() => {
     if (!isEditing && !isFullscreenOpen) {
@@ -2359,8 +2444,35 @@ const RichTextEditor = ({
   )
 
   const fullscreenEditorClassName = cn(
-    contentClassName,
-    "min-h-[calc(100vh-168px)] [&_.ProseMirror]:min-h-[calc(100vh-220px)]"
+    "[&_.ProseMirror]:min-h-[300px] [&_.ProseMirror]:p-6"
+  )
+
+  const fullscreenToolbarActions = (
+    <>
+      <TooltipProvider delayDuration={75}>
+        <Tooltip>
+          <TooltipTrigger
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              fullscreenInsertImageRef.current?.()
+            }}
+            className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+          >
+            <ImageIcon className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="top" visual="white" sideOffset={8}>
+            Add image
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <FullscreenToggleButton
+        isFullscreen={true}
+        onClick={handleFullscreenToggle}
+      />
+    </>
   )
 
   const fullscreenEditor = (
@@ -2370,6 +2482,11 @@ const RichTextEditor = ({
       toolbarClassName={toolbarClassName}
       initialFocusPoint={null}
       onEditorReady={handleFullscreenEditorReady}
+      onInsertImageReady={(fn) => { fullscreenInsertImageRef.current = fn }}
+      onToolbarToggleReady={(fn) => { fullscreenToolbarToggleRef.current = fn }}
+      onToolbarPinnedChange={setIsFullscreenToolbarPinned}
+      stickyToolbar
+      stickyToolbarActions={fullscreenToolbarActions}
       onUpdate={(html) => {
         handleEditorUpdate(html)
       }}
@@ -2416,14 +2533,14 @@ const RichTextEditor = ({
           <DialogContent
             accessibilityTitle="Fullscreen rich text editor"
             data-rich-text-fullscreen-dialog="true"
-            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none !p-0 gap-0 overflow-y-auto shadow-none flex flex-col"
+            className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !h-dvh w-screen !rounded-none !p-0 gap-0 overflow-hidden shadow-none flex flex-col"
           >
             <DialogTitle className="sr-only">Project Description</DialogTitle>
             <DialogDescription className="sr-only">
               Edit your project description in fullscreen.
             </DialogDescription>
 
-            <nav className="sticky top-0 z-20 h-[68px] flex items-center justify-between px-3 bg-white border-b border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+            <nav className="sticky top-0 z-20 h-[70px] flex items-center justify-between px-3 bg-white border-b border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
               <div className="flex items-center gap-x-6">
                 <div className="inline-flex items-center gap-x-1">
                   <TooltipProvider delayDuration={75}>
@@ -2497,7 +2614,7 @@ const RichTextEditor = ({
                         visual="gray"
                         side="bottom"
                       >
-                        Edited recently
+                        {formatRelativeTime(lastSavedAt)}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -2545,13 +2662,82 @@ const RichTextEditor = ({
             </nav>
 
             <div className="relative flex-1 bg-gray-50">
-              <div className="px-[50px]">
-                <div
-                  data-rich-text-fullscreen-content="true"
-                  className="mx-auto w-full max-w-[818px]"
-                >
-                  {fullscreenEditor}
+              <div className="absolute inset-0 overflow-y-auto">
+              <div className="px-[50px] pt-[50px] pb-[100px]">
+                <div className="mx-auto w-full max-w-[818px]">
+                  {(fullscreenHelperText || fullscreenMaxCharacterCount != null) && (
+                    <div className="flex items-center justify-between mb-2">
+                      {fullscreenHelperText && (
+                        <p className="text-sm font-light text-dark-blue-400">
+                          {fullscreenHelperText}
+                        </p>
+                      )}
+                      {fullscreenMaxCharacterCount != null && (
+                        <span className={cn(
+                          "text-xs shrink-0 ml-auto",
+                          (fullscreenCharacterCount ?? 0) > fullscreenMaxCharacterCount
+                            ? "text-error-500"
+                            : "text-gray-400"
+                        )}>
+                          {(fullscreenCharacterCount ?? 0).toLocaleString()}/{fullscreenMaxCharacterCount.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    data-rich-text-fullscreen-content="true"
+                    className="relative bg-white border border-gray-200 rounded-xl shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-h-[calc(100vh-252px)]"
+                  >
+                    {!isFullscreenToolbarPinned && (
+                      <div className="sticky top-3 float-right mr-3 mt-3 z-10 flex items-center gap-x-1.5">
+                        <TooltipProvider delayDuration={75}>
+                          <Tooltip>
+                            <TooltipTrigger
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                fullscreenToolbarToggleRef.current?.(true)
+                              }}
+                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                            >
+                              <Type02 className="size-4" />
+                            </TooltipTrigger>
+                            <TooltipContent side="top" visual="white" sideOffset={8}>
+                              Show toolbar
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider delayDuration={75}>
+                          <Tooltip>
+                            <TooltipTrigger
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                fullscreenInsertImageRef.current?.()
+                              }}
+                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                            >
+                              <ImageIcon className="size-4" />
+                            </TooltipTrigger>
+                            <TooltipContent side="top" visual="white" sideOffset={8}>
+                              Add image
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <FullscreenToggleButton
+                          isFullscreen={true}
+                          onClick={handleFullscreenToggle}
+                        />
+                      </div>
+                    )}
+                    {fullscreenEditor}
+                  </div>
                 </div>
+              </div>
               </div>
             </div>
           </DialogContent>

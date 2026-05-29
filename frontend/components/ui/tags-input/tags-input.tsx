@@ -49,9 +49,9 @@ export const TagsInputControl = React.forwardRef<
 >(({ className, invalid, ...props }, ref) => (
   <TagsInput.Control
     className={cn(
-      "min-h-11 bg-white border border-gray-300 focus-visible:outline-none py-2.5 px-3.5 flex flex-wrap gap-x-3 gap-y-1 items-center rounded-[5px]",
+      "min-h-11 bg-white border border-gray-300 shadow-xs focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50 focus-visible:outline-none py-2.5 px-3.5 flex flex-wrap gap-x-3 gap-y-1 items-center rounded-[5px]",
       {
-        "border-error-500 focus:border-error-500": invalid,
+        "border-error-300 focus-within:border-error-300 focus-within:ring-error-100": invalid,
       },
       className
     )}
@@ -180,7 +180,7 @@ export const TagsInputInput = React.forwardRef<
 
     return (
       <>
-        <div className="relative inline-block">
+        <div className="relative inline-block flex-1 min-w-[120px]">
           <TagsInput.Input
             className={cn(
               "text-base leading-6 grow text-gray-900 placeholder:text-gray-500 font-normal focus-visible:outline-none border-0 focus:ring-0 p-0 h-max",

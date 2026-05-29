@@ -108,9 +108,7 @@ body {
 .rich-text-content > * + * {
   margin-top: 24px;
 }
-.rich-text-content > p + p {
-  margin-top: 0;
-}
+
 
 /* ── Heading spacing ── */
 .rich-text-content p + h1,
