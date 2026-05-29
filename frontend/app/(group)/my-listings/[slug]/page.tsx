@@ -239,13 +239,18 @@ const DescriptionCard = ({
   descHtml: string
   onEdit: () => void
 }) => {
-  const contentRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
   const [needsTruncation, setNeedsTruncation] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
 
   useEffect(() => {
-    if (!contentRef.current) return
-    setNeedsTruncation(contentRef.current.scrollHeight > DESC_MAX_HEIGHT)
+    const el = innerRef.current
+    if (!el) return
+    const check = () => setNeedsTruncation(el.scrollHeight > DESC_MAX_HEIGHT)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [descHtml])
 
   return (
@@ -254,7 +259,6 @@ const DescriptionCard = ({
         "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
         needsTruncation && !isExpanded && "h-[530px]"
       )}
-      ref={contentRef}
     >
       <IconButton
         className="absolute top-6 right-6 rounded-full text-gray-500 hover:text-gray-800 shrink-0 z-10"
@@ -265,7 +269,7 @@ const DescriptionCard = ({
         <Edit03 className="size-4" />
       </IconButton>
 
-      <div>
+      <div ref={innerRef}>
         <div
           className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
           dangerouslySetInnerHTML={{ __html: descHtml }}
