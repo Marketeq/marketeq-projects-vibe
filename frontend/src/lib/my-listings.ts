@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { ProjectAPI } from "@/service/http/project"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 
 export type MyListingType = "project" | "service"
 
@@ -305,7 +304,6 @@ export function formatActivityDate(iso?: string): string {
 
 async function fetchBackendListings(): Promise<MyListing[]> {
   try {
-    await ensureDevAuth()
     const res = await ProjectAPI.GetMyProjects()
     const projects = res?.data ?? []
     if (!Array.isArray(projects)) return []
@@ -350,7 +348,6 @@ async function ensureSeedListingsInBackend(): Promise<void> {
   if (migrated === "true") return
 
   try {
-    await ensureDevAuth()
     // Fetch existing backend listings to find already-migrated seeds
     const existingRes = await ProjectAPI.GetMyProjects()
     const existing = existingRes?.data ?? []

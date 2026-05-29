@@ -11,7 +11,6 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { TeamsAPI } from "@/service/http/teams"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   TEAM_SEED_LISTINGS,
 } from "@/src/lib/my-listings"
@@ -2240,14 +2239,12 @@ export default function ProjectDetails() {
 
   const [isFavorited, setIsFavorited] = React.useState(false)
 
-  // Check if this item is already favorited (ensure dev auth first)
+
   React.useEffect(() => {
     if (!project?.id) return
-    ensureDevAuth().then(() =>
-      findFavoriteByItemId(String(project.id)).then((fav) => {
-        setIsFavorited(!!fav)
-      })
-    )
+    findFavoriteByItemId(String(project.id)).then((fav) => {
+      setIsFavorited(!!fav)
+    })
   }, [project?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
@@ -2265,9 +2262,6 @@ export default function ProjectDetails() {
   React.useEffect(() => {
     async function fetchProject() {
       try {
-        // Ensure auth token is available before calling authenticated endpoints
-        await ensureDevAuth()
-
         const rawSlug = params.slug as string
         // The URL param is typically a UUID (draft ID), not a slug.
         // e.g. /my-listings/abc123-def456-...
@@ -2610,7 +2604,6 @@ export default function ProjectDetails() {
       //    If the slug matches a seed listing, use its title/description
       const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === rawSlug)
       try {
-        await ensureDevAuth()
         const draftRes = await ProjectAPI.CreateProjectDraft({
           title: seedListing?.title || "",
           shortDescription: seedListing?.description || "",
