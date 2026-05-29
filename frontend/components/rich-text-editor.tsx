@@ -390,7 +390,7 @@ const FullscreenToggleButton = ({
   isFullscreen: boolean
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
 }) => {
-  const tooltipLabel = isFullscreen ? "Exit fullscreen" : "Edit fullscreen"
+  const tooltipLabel = isFullscreen ? "Close" : "Edit fullscreen"
 
   return (
     <TooltipProvider delayDuration={75}>
@@ -399,10 +399,10 @@ const FullscreenToggleButton = ({
           type="button"
           data-rich-text-fullscreen-toggle="true"
           onClick={onClick}
-          className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+          className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
         >
           {isFullscreen ? (
-            <Minimize01 className="size-4" />
+            <X className="size-4" />
           ) : (
             <Maximize01 className="size-4" />
           )}
@@ -605,40 +605,70 @@ const RichTextToolbar = ({
   if (!editor || !toolbarState) return null
 
   const handleHeadingChange = (value: string) => {
-    const chain = editor.chain().focus()
     const selectionSnapshot = getSelectionSnapshot()
+    const cursorFrom = selectionSnapshot?.from ?? editor.state.selection.from
+    const cursorTo = selectionSnapshot?.to ?? editor.state.selection.to
+    const isCollapsed = cursorFrom === cursorTo
     const isLegacyHeading = editor.isActive("heading")
 
-    if (selectionSnapshot && selectionSnapshot.from !== selectionSnapshot.to) {
-      chain.setTextSelection(selectionSnapshot)
+    if (isCollapsed) {
+      // No text selected — set stored marks directly on the transaction
+      // so the next typed characters use this font size.
+      // We cannot use setMark/unsetMark here because they don't reliably
+      // preserve stored marks with a collapsed cursor.
+      if (isLegacyHeading) {
+        editor.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run()
+      }
+
+      const { tr } = editor.state
+      const fontSizeMarkType = editor.schema.marks.fontSize
+
+      if (value === "Normal Text") {
+        // Remove fontSize from stored marks
+        const currentStored = tr.storedMarks ?? editor.state.selection.$from.marks()
+        const filtered = currentStored.filter((m) => m.type !== fontSizeMarkType)
+        tr.setStoredMarks(filtered)
+      } else {
+        const sizeMap: Record<string, string> = {
+          "Large Heading": "large-heading",
+          "Normal Heading": "normal-heading",
+          "Small Heading": "small-heading",
+        }
+        const currentStored = tr.storedMarks ?? editor.state.selection.$from.marks()
+        const filtered = currentStored.filter((m) => m.type !== fontSizeMarkType)
+        const newMark = fontSizeMarkType.create({ size: sizeMap[value] })
+        tr.setStoredMarks([...filtered, newMark])
+      }
+
+      editor.view.dispatch(tr)
+      editor.view.focus()
+      return
     }
+
+    // Text is selected — apply to selection
+    const chain = editor.chain().focus(undefined, { scrollIntoView: false })
+    chain.setTextSelection({ from: cursorFrom, to: cursorTo })
 
     switch (value) {
       case "Large Heading":
-        if (isLegacyHeading) {
-          chain.setParagraph()
-        }
-        chain.setFontSize("large-heading").run()
+        if (isLegacyHeading) chain.setParagraph()
+        chain.setFontSize("large-heading")
         break
       case "Normal Heading":
-        if (isLegacyHeading) {
-          chain.setParagraph()
-        }
-        chain.setFontSize("normal-heading").run()
+        if (isLegacyHeading) chain.setParagraph()
+        chain.setFontSize("normal-heading")
         break
       case "Small Heading":
-        if (isLegacyHeading) {
-          chain.setParagraph()
-        }
-        chain.setFontSize("small-heading").run()
+        if (isLegacyHeading) chain.setParagraph()
+        chain.setFontSize("small-heading")
         break
       case "Normal Text":
-        if (isLegacyHeading) {
-          chain.setParagraph()
-        }
-        chain.extendMarkRange("fontSize").unsetFontSize().run()
+        if (isLegacyHeading) chain.setParagraph()
+        chain.extendMarkRange("fontSize").unsetFontSize()
         break
     }
+
+    chain.setTextSelection({ from: cursorFrom, to: cursorTo }).run()
   }
 
   const getActiveInlineMarks = () => ({
@@ -674,24 +704,28 @@ const RichTextToolbar = ({
 
   const handleBulletListToggle = () => {
     if (editor.isActive("bulletList")) {
-      editor.chain().focus().toggleBulletList().run()
+      editor.chain().focus(undefined, { scrollIntoView: false }).toggleBulletList().run()
       return
     }
 
     const activeMarks = getActiveInlineMarks()
-    const chain = editor.chain().focus().setParagraph().toggleBulletList()
+    const chain = editor.chain().focus(undefined, { scrollIntoView: false })
+    if (editor.isActive("heading")) chain.setParagraph()
+    chain.toggleBulletList()
     restoreInlineMarks(chain, activeMarks)
     chain.run()
   }
 
   const handleOrderedListToggle = () => {
     if (editor.isActive("orderedList")) {
-      editor.chain().focus().toggleOrderedList().run()
+      editor.chain().focus(undefined, { scrollIntoView: false }).toggleOrderedList().run()
       return
     }
 
     const activeMarks = getActiveInlineMarks()
-    const chain = editor.chain().focus().setParagraph().toggleOrderedList()
+    const chain = editor.chain().focus(undefined, { scrollIntoView: false })
+    if (editor.isActive("heading")) chain.setParagraph()
+    chain.toggleOrderedList()
     restoreInlineMarks(chain, activeMarks)
     chain.run()
   }
@@ -1055,16 +1089,21 @@ const ActiveEditor = ({
           return
         }
 
-        const proseMirrorWidth =
-          proseMirrorElement.getBoundingClientRect().width
+        const proseMirrorRect = proseMirrorElement.getBoundingClientRect()
+        const proseMirrorWidth = proseMirrorRect.width
+        const paddingLeft = parseFloat(getComputedStyle(proseMirrorElement).paddingLeft) || 0
+        const paddingRight = parseFloat(getComputedStyle(proseMirrorElement).paddingRight) || 0
+        const contentWidth = proseMirrorWidth - paddingLeft - paddingRight
+        const halfGap = 24 // 24px gap on each side of center
+        const halfWidth = (contentWidth - halfGap * 2) / 2
         const nextWidth =
-          align === "full-width" ? proseMirrorWidth : proseMirrorWidth / 2
+          align === "full-width" ? contentWidth : halfWidth
         const nextLeft =
           align === "full-width"
-            ? 0
+            ? paddingLeft
             : dropSide === "right"
-              ? proseMirrorWidth - nextWidth
-              : 0
+              ? paddingLeft + contentWidth - halfWidth
+              : paddingLeft
 
         dropCursor.style.width = `${nextWidth}px`
         dropCursor.style.left = `${nextLeft}px`
@@ -1197,14 +1236,32 @@ const ActiveEditor = ({
             return false
           }
 
+          // Hide drop cursor when hovering over an image
+          const elementUnderCursor = document.elementFromPoint(event.clientX, event.clientY)
+          const isOverImage = elementUnderCursor?.tagName === "IMG" ||
+            elementUnderCursor?.closest("img") !== null
+          const dropCursor = containerRef.current.querySelector(
+            ".rich-text-dropcursor"
+          ) as HTMLElement | null
+          if (dropCursor) {
+            dropCursor.style.display = isOverImage ? "none" : ""
+          }
+
           const currentAlign = draggedImageRef.current.align
+          if (currentAlign === "full-width") {
+            document.body.dataset.richTextDragAlign = currentAlign
+            delete document.body.dataset.richTextDropSide
+            if (!isOverImage) syncDropCursorPreview(currentAlign)
+            return false
+          }
+
           const containerRect = containerRef.current.getBoundingClientRect()
           const midpoint = containerRect.left + containerRect.width / 2
           const nextSide = event.clientX >= midpoint ? "right" : "left"
 
           document.body.dataset.richTextDragAlign = currentAlign
           document.body.dataset.richTextDropSide = nextSide
-          syncDropCursorPreview(currentAlign, nextSide)
+          if (!isOverImage) syncDropCursorPreview(currentAlign, nextSide)
           return false
         },
         dragend: () => {
@@ -1214,104 +1271,107 @@ const ActiveEditor = ({
         drop: (_view, event) => {
           const draggedImage = draggedImageRef.current
 
-          if (
-            draggedImage &&
-            containerRef.current
-          ) {
-            const containerRect = containerRef.current.getBoundingClientRect()
-            const midpoint = containerRect.left + containerRect.width / 2
-            const nextSide: ImageAlignValue =
-              event.clientX >= midpoint ? "right" : "left"
-
-            if (nextSide !== draggedImage.align) {
-              window.requestAnimationFrame(() => {
-                window.requestAnimationFrame(() => {
-                  if (!editor || !containerRef.current) {
-                    return
-                  }
-
-                  const images = Array.from(
-                    containerRef.current.querySelectorAll("img")
-                  ) as HTMLImageElement[]
-
-                  const draggedImageElement = images.find((image) =>
-                    image.hasAttribute("data-rich-text-drag-source")
-                  )
-
-                  const matchingImages = draggedImage.src
-                    ? images.filter(
-                        (image) =>
-                          (image.currentSrc ||
-                            image.getAttribute("src") ||
-                            "") === draggedImage.src
-                      )
-                    : images
-
-                  const candidateImage =
-                    draggedImageElement ??
-                    matchingImages
-                      .map((image) => {
-                        const rect = image.getBoundingClientRect()
-                        const centerX = rect.left + rect.width / 2
-                        const centerY = rect.top + rect.height / 2
-                        const distance = Math.hypot(
-                          centerX - event.clientX,
-                          centerY - event.clientY
-                        )
-
-                        return { image, distance }
-                      })
-                      .sort((left, right) => left.distance - right.distance)[0]
-                      ?.image
-
-                  if (!(candidateImage instanceof HTMLImageElement)) {
-                    return
-                  }
-
-                  try {
-                    const pos = editor.view.posAtDOM(candidateImage, 0)
-                    const node = editor.state.doc.nodeAt(pos)
-
-                    if (
-                      node?.type.name === "image" &&
-                      node.attrs.align !== nextSide
-                    ) {
-                      updateImageAtPos(pos, { align: nextSide })
-                    }
-
-                    // Side-by-side: if the adjacent node is also an image,
-                    // align it to the opposite side for a 50/50 layout
-                    const oppositeSide = nextSide === "left" ? "right" : "left"
-                    const adjacentPos = pos + node!.nodeSize
-                    const adjacentNode = editor.state.doc.nodeAt(adjacentPos)
-                    if (
-                      adjacentNode?.type.name === "image" &&
-                      adjacentNode.attrs.align !== oppositeSide
-                    ) {
-                      updateImageAtPos(adjacentPos, { align: oppositeSide })
-                    } else {
-                      // Also check the node before
-                      const prevPos = pos - 1
-                      if (prevPos >= 0) {
-                        const resolved = editor.state.doc.resolve(prevPos)
-                        const prevNode = resolved.nodeBefore
-                        if (
-                          prevNode?.type.name === "image" &&
-                          prevNode.attrs.align !== oppositeSide
-                        ) {
-                          updateImageAtPos(prevPos - prevNode.nodeSize, { align: oppositeSide })
-                        }
-                      }
-                    }
-                  } catch {
-                    return
-                  }
-                })
-              })
-            }
+          if (!draggedImage || !containerRef.current || !editor) {
+            clearImageDragPreviewState()
+            return false
           }
 
+          const dropClientX = event.clientX
+          const dropClientY = event.clientY
+          const containerRect = containerRef.current.getBoundingClientRect()
+          const midpoint = containerRect.left + containerRect.width / 2
+          const dropSide: "left" | "right" =
+            dropClientX >= midpoint ? "right" : "left"
+          const dragSrc = draggedImage.src
+
+          // Let ProseMirror handle the drop normally, then post-process
           clearImageDragPreviewState()
+
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              if (!editor || !containerRef.current) return
+
+              // Find the dropped image by matching src and proximity to drop point
+              const allImages = Array.from(
+                containerRef.current.querySelectorAll("img")
+              ) as HTMLImageElement[]
+
+              const droppedImg = allImages
+                .filter((img) => {
+                  const src = img.currentSrc || img.getAttribute("src") || ""
+                  return src === dragSrc
+                })
+                .map((img) => {
+                  const rect = img.getBoundingClientRect()
+                  const dist = Math.hypot(
+                    rect.left + rect.width / 2 - dropClientX,
+                    rect.top + rect.height / 2 - dropClientY
+                  )
+                  return { img, dist }
+                })
+                .sort((a, b) => a.dist - b.dist)[0]?.img
+
+              if (!droppedImg) return
+
+              let droppedPos: number
+              try {
+                droppedPos = editor.view.posAtDOM(droppedImg, 0)
+              } catch {
+                return
+              }
+
+              const droppedNode = editor.state.doc.nodeAt(droppedPos)
+              if (!droppedNode || droppedNode.type.name !== "image") return
+
+              // Check for adjacent image after
+              const afterPos = droppedPos + droppedNode.nodeSize
+              const afterNode = editor.state.doc.nodeAt(afterPos)
+
+              // Check for adjacent image before
+              let beforePos: number | null = null
+              let beforeNode = null
+              if (droppedPos > 0) {
+                const $pos = editor.state.doc.resolve(droppedPos)
+                if ($pos.nodeBefore?.type.name === "image") {
+                  beforeNode = $pos.nodeBefore
+                  beforePos = droppedPos - beforeNode.nodeSize
+                }
+              }
+
+              const adjacentIsAfter = afterNode?.type.name === "image"
+              const adjacentIsBefore = beforeNode?.type.name === "image"
+
+              if (!adjacentIsAfter && !adjacentIsBefore) return
+
+              // Pick the closest adjacent image
+              const oppositeSide = dropSide === "left" ? "right" : "left"
+              const tr = editor.state.tr
+
+              if (adjacentIsAfter) {
+                tr.setNodeMarkup(droppedPos, undefined, {
+                  ...droppedNode.attrs,
+                  align: dropSide,
+                })
+                tr.setNodeMarkup(afterPos, undefined, {
+                  ...afterNode!.attrs,
+                  align: oppositeSide,
+                })
+              } else if (adjacentIsBefore && beforePos !== null) {
+                tr.setNodeMarkup(beforePos, undefined, {
+                  ...beforeNode!.attrs,
+                  align: oppositeSide,
+                })
+                tr.setNodeMarkup(droppedPos, undefined, {
+                  ...droppedNode.attrs,
+                  align: dropSide,
+                })
+              }
+
+              editor.view.dispatch(tr)
+            })
+          })
+
+          // Return false — let ProseMirror handle the actual move
           return false
         },
       },
@@ -1366,8 +1426,13 @@ const ActiveEditor = ({
       return
     }
 
+    // Position toolbar 49px above the selection top, but clamp so it
+    // never goes above the visible viewport (e.g. when Select All pushes
+    // the selection start off-screen).
+    const idealTop = rect.top - containerRect.top - 49
+    const minVisibleTop = -containerRect.top + 8 // 8px below viewport top
     setFloatingToolbarPosition({
-      top: rect.top - containerRect.top - 49,
+      top: Math.max(idealTop, minVisibleTop),
       left: rect.left - containerRect.left,
     })
   }, [editor, hasFontMenuAnchorSelection])
@@ -1375,18 +1440,30 @@ const ActiveEditor = ({
   const handleFontMenuOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
-        fontMenuAnchorSelectionRef.current = false
-        fontMenuSelectionRef.current = null
         setIsFontMenuOpen(false)
-        setHasFontMenuAnchorSelection(false)
+        fontMenuSelectionRef.current = null
+        // If text is still selected after closing the menu (e.g. after a
+        // font-size change), schedule a toolbar position update so the
+        // floating toolbar stays visible instead of flickering away.
+        if (editor && selectionHasTextContent(editor)) {
+          requestAnimationFrame(() => {
+            updateFloatingToolbarPosition()
+          })
+        }
         return
       }
 
+      if (!editor) {
+        return
+      }
+
+      // Allow opening with a collapsed cursor (for stored marks / type-ahead formatting)
+      // Only block if there's truly no editor focus
       if (
-        !editor ||
-        (!selectionHasTextContent(editor) &&
-          !hasFontMenuAnchorSelection &&
-          !fontMenuAnchorSelectionRef.current)
+        !selectionHasTextContent(editor) &&
+        !hasFontMenuAnchorSelection &&
+        !fontMenuAnchorSelectionRef.current &&
+        !isToolbarPinned
       ) {
         return
       }
@@ -1405,11 +1482,11 @@ const ActiveEditor = ({
         )
       }
     },
-    [editor, hasFontMenuAnchorSelection, isToolbarPinned]
+    [editor, hasFontMenuAnchorSelection, isToolbarPinned, updateFloatingToolbarPosition]
   )
 
   const handleFontMenuTriggerMouseDown = useCallback(() => {
-    if (editor && selectionHasTextContent(editor)) {
+    if (editor) {
       fontMenuAnchorSelectionRef.current = true
       fontMenuSelectionRef.current = {
         from: editor.state.selection.from,
@@ -2012,6 +2089,15 @@ const ActiveEditor = ({
     }
   }, [hoveredImage, refreshHoveredImageAtPos])
 
+  // Clear the font menu anchor when text is no longer selected
+  // and the font menu is closed
+  useEffect(() => {
+    if (!hasSelectedText && !isFontMenuOpen && hasFontMenuAnchorSelection) {
+      fontMenuAnchorSelectionRef.current = false
+      setHasFontMenuAnchorSelection(false)
+    }
+  }, [hasSelectedText, isFontMenuOpen, hasFontMenuAnchorSelection])
+
   useEffect(() => {
     if (!shouldKeepToolbarVisible || isToolbarPinned) {
       if (!isFontMenuOpen) {
@@ -2468,10 +2554,6 @@ const RichTextEditor = ({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <FullscreenToggleButton
-        isFullscreen={true}
-        onClick={handleFullscreenToggle}
-      />
     </>
   )
 
@@ -2645,7 +2727,7 @@ const RichTextEditor = ({
                           visual="gray"
                           onClick={handleFullscreenToggle}
                         >
-                          <Minimize01 className="size-5" />
+                          <X className="size-5" />
                         </IconButton>
                       </TooltipTrigger>
                       <TooltipContent
@@ -2653,7 +2735,7 @@ const RichTextEditor = ({
                         visual="gray"
                         side="bottom"
                       >
-                        Minimize
+                        Close
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -2689,7 +2771,9 @@ const RichTextEditor = ({
                     className="relative bg-white border border-gray-200 rounded-xl shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-h-[calc(100vh-252px)]"
                   >
                     {!isFullscreenToolbarPinned && (
-                      <div className="sticky top-3 float-right mr-3 mt-3 z-10 flex items-center gap-x-1.5">
+                      <div className="sticky top-6 z-10 h-0 overflow-visible"
+                      >
+                        <div className="flex items-center gap-x-1.5 justify-end mr-6 mt-6">
                         <TooltipProvider delayDuration={75}>
                           <Tooltip>
                             <TooltipTrigger
@@ -2700,7 +2784,7 @@ const RichTextEditor = ({
                                 e.stopPropagation()
                                 fullscreenToolbarToggleRef.current?.(true)
                               }}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
                             >
                               <Type02 className="size-4" />
                             </TooltipTrigger>
@@ -2719,7 +2803,7 @@ const RichTextEditor = ({
                                 e.stopPropagation()
                                 fullscreenInsertImageRef.current?.()
                               }}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
                             >
                               <ImageIcon className="size-4" />
                             </TooltipTrigger>
@@ -2728,10 +2812,7 @@ const RichTextEditor = ({
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <FullscreenToggleButton
-                          isFullscreen={true}
-                          onClick={handleFullscreenToggle}
-                        />
+                        </div>
                       </div>
                     )}
                     {fullscreenEditor}
