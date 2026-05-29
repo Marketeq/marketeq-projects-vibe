@@ -18,7 +18,6 @@ import Cookies from "js-cookie"
 import { Controller, SubmitHandler, useForm } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton"
 import LinkedInLoginButton from "@/components/auth/LinkedInLoginButton"
@@ -57,7 +56,6 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
-  const [isDevLoading, setIsDevLoading] = useState(false)
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [partialToken, setPartialToken] = useState("")
   const [twoFactorMethod, setTwoFactorMethod] = useState<string>("totp")
@@ -569,91 +567,6 @@ export default function SignIn() {
                     "Login to my account"
                   )}
                 </Button>
-
-                {process.env.NODE_ENV !== "production" && (
-                  <Button
-                    className="mt-3 w-full border-dashed border-2 border-orange-400 text-orange-600 hover:bg-orange-50"
-                    size="lg"
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    disabled={isDevLoading}
-                    onClick={async () => {
-                      setIsDevLoading(true)
-                      try {
-                        const gateway =
-                          getPublicApiUrl() || "http://localhost:4000"
-                        const res = await fetch(`${gateway}/auth/dev-login`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            email: "CHRISTOPHERTORRES17@GMAIL.COM",
-                          }),
-                        })
-                        if (!res.ok) throw new Error("Dev login failed")
-                        const data = await res.json()
-                        if (data.access_token) {
-                          Cookies.set("access_token", data.access_token, {
-                            path: "/",
-                          })
-                          if (data.refresh_token) {
-                            Cookies.set("refresh_token", data.refresh_token, {
-                              path: "/",
-                            })
-                          }
-                          if (data.sessionId) {
-                            Cookies.set("session_id", data.sessionId, {
-                              path: "/",
-                            })
-                          }
-                          let nextUser = data.user
-                          try {
-                            const meResponse = await UserAPI.me()
-                            if (meResponse?.status === 200) {
-                              const profileUser =
-                                meResponse?.data?.user ??
-                                meResponse?.data?.data?.user ??
-                                meResponse?.data
-                              if (
-                                profileUser &&
-                                typeof profileUser === "object"
-                              ) {
-                                nextUser = mergeDashboardUserFields(
-                                  nextUser,
-                                  profileUser
-                                )
-                              }
-                            }
-                          } catch {}
-                          if (nextUser) {
-                            nextUser.role = nextUser.role || "CLIENT"
-                            nextUser.onboardingDismissed = true
-                            setUser(nextUser)
-                          }
-                          router.push("/client-dashboard")
-                        }
-                      } catch (err) {
-                        toast({
-                          title: "Dev login failed",
-                          variant: "destructive",
-                        })
-                      } finally {
-                        setIsDevLoading(false)
-                      }
-                    }}
-                  >
-                    {isDevLoading ? (
-                      <Spinner
-                        size={24}
-                        className="stroke-orange-500"
-                        trackClassName="stroke-orange-200"
-                        strokeWidth={2}
-                      />
-                    ) : (
-                      "Dev Login (CLIENT)"
-                    )}
-                  </Button>
-                )}
 
                 <div className="flex gap-x-1 mt-10 md:mt-[50px] items-center">
                   <span className="text-sm leading-6 text-[#68707B]">

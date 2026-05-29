@@ -3,7 +3,6 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -547,14 +546,12 @@ export default function ProjectDetails() {
     return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
   }, [project])
 
-  // Check if this item is already favorited (ensure dev auth first)
+
   React.useEffect(() => {
     if (!project?.id) return
-    ensureDevAuth().then(() =>
-      findFavoriteByItemId(String(project.id)).then((fav) => {
-        setIsFavorited(!!fav)
-      })
-    )
+    findFavoriteByItemId(String(project.id)).then((fav) => {
+      setIsFavorited(!!fav)
+    })
   }, [project?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
@@ -611,7 +608,6 @@ export default function ProjectDetails() {
               )
             if (isUuid) {
               try {
-                await ensureDevAuth()
                 const draftRes = await ProjectAPI.GetProjectDraft(rawSlug)
                 if (draftRes?.data) {
                   const d = draftRes.data

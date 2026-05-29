@@ -3,6 +3,7 @@
 import React, { useCallback, useMemo, useState } from "react"
 import { useEffect } from "react"
 import { useSearchParams } from "next/navigation"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { getAccessToken, getCurrentUser } from "@/utils/auth"
@@ -209,6 +210,7 @@ export default function InboxRoot() {
   })
 
   return (
+    <AuthenticatedRoute>
     <Inbox>
       <div
         className="flex w-full bg-white overflow-hidden"
@@ -247,5 +249,6 @@ export default function InboxRoot() {
         )}
       </div>
     </Inbox>
+    </AuthenticatedRoute>
   )
 }
