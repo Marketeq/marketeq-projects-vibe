@@ -1,22 +1,935 @@
 [
-  { "label": "Web App" },
-  { "label": "Mobile App" },
-  { "label": "AI" },
-  { "label": "Blockchain" },
-  { "label": "UI/UX" },
-  { "label": "SaaS" },
-  { "label": "Analytics" },
-  { "label": "Security" },
-  { "label": "E-commerce" },
-  { "label": "Automation" },
-  { "label": "API Integration" },
-  { "label": "Machine Learning" },
-  { "label": "Data Visualization" },
-  { "label": "Cloud Infrastructure" },
-  { "label": "DevOps" },
-  { "label": "Brand Identity" },
-  { "label": "Design Systems" },
-  { "label": "Product Strategy" },
-  { "label": "Performance Optimization" },
-  { "label": "Marketplace" }
+  {
+    "label": "A/B Testing"
+  },
+  {
+    "label": "Accessibility Audit"
+  },
+  {
+    "label": "Accounting Software"
+  },
+  {
+    "label": "Admin Panel"
+  },
+  {
+    "label": "Agile"
+  },
+  {
+    "label": "AI"
+  },
+  {
+    "label": "AI Chatbot"
+  },
+  {
+    "label": "AI Integration"
+  },
+  {
+    "label": "Alexa Skill"
+  },
+  {
+    "label": "Analytics Dashboard"
+  },
+  {
+    "label": "Android"
+  },
+  {
+    "label": "Angular"
+  },
+  {
+    "label": "Animation"
+  },
+  {
+    "label": "API"
+  },
+  {
+    "label": "API Development"
+  },
+  {
+    "label": "API Integration"
+  },
+  {
+    "label": "App Modernization"
+  },
+  {
+    "label": "App Store Optimization"
+  },
+  {
+    "label": "AR/VR"
+  },
+  {
+    "label": "Architecture Design"
+  },
+  {
+    "label": "Artificial Intelligence"
+  },
+  {
+    "label": "Audio Processing"
+  },
+  {
+    "label": "Augmented Reality"
+  },
+  {
+    "label": "Authentication"
+  },
+  {
+    "label": "Automation"
+  },
+  {
+    "label": "AWS"
+  },
+  {
+    "label": "Azure"
+  },
+  {
+    "label": "Backend Development"
+  },
+  {
+    "label": "Big Data"
+  },
+  {
+    "label": "Billing System"
+  },
+  {
+    "label": "Blockchain"
+  },
+  {
+    "label": "Blog"
+  },
+  {
+    "label": "Booking System"
+  },
+  {
+    "label": "Bootstrap"
+  },
+  {
+    "label": "Bot Development"
+  },
+  {
+    "label": "Brand Identity"
+  },
+  {
+    "label": "Browser Extension"
+  },
+  {
+    "label": "Bug Fixing"
+  },
+  {
+    "label": "Business Intelligence"
+  },
+  {
+    "label": "Calendar Integration"
+  },
+  {
+    "label": "Chatbot"
+  },
+  {
+    "label": "Chrome Extension"
+  },
+  {
+    "label": "CI/CD Pipeline"
+  },
+  {
+    "label": "Cloud Architecture"
+  },
+  {
+    "label": "Cloud Infrastructure"
+  },
+  {
+    "label": "Cloud Migration"
+  },
+  {
+    "label": "CMS"
+  },
+  {
+    "label": "Code Audit"
+  },
+  {
+    "label": "Code Optimization"
+  },
+  {
+    "label": "Code Review"
+  },
+  {
+    "label": "Community Platform"
+  },
+  {
+    "label": "Compliance"
+  },
+  {
+    "label": "Computer Vision"
+  },
+  {
+    "label": "Consulting"
+  },
+  {
+    "label": "Content Management System"
+  },
+  {
+    "label": "Continuous Integration"
+  },
+  {
+    "label": "Conversion Optimization"
+  },
+  {
+    "label": "CRM"
+  },
+  {
+    "label": "Cross-platform"
+  },
+  {
+    "label": "Cryptocurrency"
+  },
+  {
+    "label": "CSS"
+  },
+  {
+    "label": "Custom Software"
+  },
+  {
+    "label": "Customer Portal"
+  },
+  {
+    "label": "Cybersecurity"
+  },
+  {
+    "label": "Dashboard"
+  },
+  {
+    "label": "Data Analysis"
+  },
+  {
+    "label": "Data Engineering"
+  },
+  {
+    "label": "Data Migration"
+  },
+  {
+    "label": "Data Pipeline"
+  },
+  {
+    "label": "Data Scraping"
+  },
+  {
+    "label": "Data Visualization"
+  },
+  {
+    "label": "Data Warehouse"
+  },
+  {
+    "label": "Database Design"
+  },
+  {
+    "label": "Database Optimization"
+  },
+  {
+    "label": "DeFi"
+  },
+  {
+    "label": "Design System"
+  },
+  {
+    "label": "Desktop"
+  },
+  {
+    "label": "Desktop App"
+  },
+  {
+    "label": "DevOps"
+  },
+  {
+    "label": "Discord Bot"
+  },
+  {
+    "label": "Django"
+  },
+  {
+    "label": "Docker"
+  },
+  {
+    "label": "Document Management"
+  },
+  {
+    "label": "Drupal"
+  },
+  {
+    "label": "E-commerce"
+  },
+  {
+    "label": "E-learning Platform"
+  },
+  {
+    "label": "Edge Computing"
+  },
+  {
+    "label": "EdTech"
+  },
+  {
+    "label": "Elasticsearch"
+  },
+  {
+    "label": "Electron"
+  },
+  {
+    "label": "Email Integration"
+  },
+  {
+    "label": "Email Marketing"
+  },
+  {
+    "label": "Email Template"
+  },
+  {
+    "label": "Embedded Systems"
+  },
+  {
+    "label": "Enterprise Software"
+  },
+  {
+    "label": "ERP"
+  },
+  {
+    "label": "ETL Pipeline"
+  },
+  {
+    "label": "Event Management"
+  },
+  {
+    "label": "Express.js"
+  },
+  {
+    "label": "FastAPI"
+  },
+  {
+    "label": "Feature Development"
+  },
+  {
+    "label": "Figma to Code"
+  },
+  {
+    "label": "File Upload"
+  },
+  {
+    "label": "FinTech"
+  },
+  {
+    "label": "Firebase"
+  },
+  {
+    "label": "Flask"
+  },
+  {
+    "label": "Flutter"
+  },
+  {
+    "label": "Food Delivery App"
+  },
+  {
+    "label": "Form Builder"
+  },
+  {
+    "label": "Freelance Marketplace"
+  },
+  {
+    "label": "Frontend Development"
+  },
+  {
+    "label": "Full Stack Development"
+  },
+  {
+    "label": "Game Development"
+  },
+  {
+    "label": "GDPR Compliance"
+  },
+  {
+    "label": "Generative AI"
+  },
+  {
+    "label": "Geolocation"
+  },
+  {
+    "label": "GIS"
+  },
+  {
+    "label": "Go"
+  },
+  {
+    "label": "Google Cloud"
+  },
+  {
+    "label": "Google Maps Integration"
+  },
+  {
+    "label": "GraphQL"
+  },
+  {
+    "label": "Healthcare"
+  },
+  {
+    "label": "Help Desk"
+  },
+  {
+    "label": "HIPAA Compliance"
+  },
+  {
+    "label": "HRMS"
+  },
+  {
+    "label": "HTML"
+  },
+  {
+    "label": "Image Processing"
+  },
+  {
+    "label": "Infrastructure as Code"
+  },
+  {
+    "label": "Insurance Tech"
+  },
+  {
+    "label": "Internal Tool"
+  },
+  {
+    "label": "Inventory Management"
+  },
+  {
+    "label": "iOS"
+  },
+  {
+    "label": "IoT"
+  },
+  {
+    "label": "Java"
+  },
+  {
+    "label": "JavaScript"
+  },
+  {
+    "label": "Job Board"
+  },
+  {
+    "label": "Kanban"
+  },
+  {
+    "label": "Knowledge Base"
+  },
+  {
+    "label": "Kotlin"
+  },
+  {
+    "label": "Kubernetes"
+  },
+  {
+    "label": "Landing Page"
+  },
+  {
+    "label": "Laravel"
+  },
+  {
+    "label": "Lead Generation"
+  },
+  {
+    "label": "Lean"
+  },
+  {
+    "label": "Legacy System Migration"
+  },
+  {
+    "label": "Linux"
+  },
+  {
+    "label": "Live Streaming"
+  },
+  {
+    "label": "Load Testing"
+  },
+  {
+    "label": "Localization"
+  },
+  {
+    "label": "Logistics"
+  },
+  {
+    "label": "Low-Code"
+  },
+  {
+    "label": "Machine Learning"
+  },
+  {
+    "label": "macOS"
+  },
+  {
+    "label": "Magento"
+  },
+  {
+    "label": "Map Integration"
+  },
+  {
+    "label": "Marketplace"
+  },
+  {
+    "label": "Membership Site"
+  },
+  {
+    "label": "Messaging System"
+  },
+  {
+    "label": "Microservices"
+  },
+  {
+    "label": "Mobile App"
+  },
+  {
+    "label": "MongoDB"
+  },
+  {
+    "label": "Monitoring"
+  },
+  {
+    "label": "Multi-tenant Architecture"
+  },
+  {
+    "label": "MVP Development"
+  },
+  {
+    "label": "MySQL"
+  },
+  {
+    "label": "Natural Language Processing"
+  },
+  {
+    "label": "NestJS"
+  },
+  {
+    "label": "Next.js"
+  },
+  {
+    "label": "NFT"
+  },
+  {
+    "label": "NLP"
+  },
+  {
+    "label": "No-Code"
+  },
+  {
+    "label": "Node.js"
+  },
+  {
+    "label": "Notification System"
+  },
+  {
+    "label": "Nuxt.js"
+  },
+  {
+    "label": "OAuth Integration"
+  },
+  {
+    "label": "On-demand App"
+  },
+  {
+    "label": "Online Marketplace"
+  },
+  {
+    "label": "Open Source"
+  },
+  {
+    "label": "Order Management"
+  },
+  {
+    "label": "Payment Gateway"
+  },
+  {
+    "label": "Payment Integration"
+  },
+  {
+    "label": "PCI Compliance"
+  },
+  {
+    "label": "PDF Generation"
+  },
+  {
+    "label": "Penetration Testing"
+  },
+  {
+    "label": "Performance Optimization"
+  },
+  {
+    "label": "PHP"
+  },
+  {
+    "label": "Platform Development"
+  },
+  {
+    "label": "Plugin"
+  },
+  {
+    "label": "Point of Sale"
+  },
+  {
+    "label": "Portfolio Website"
+  },
+  {
+    "label": "PostgreSQL"
+  },
+  {
+    "label": "Power BI"
+  },
+  {
+    "label": "Product Design"
+  },
+  {
+    "label": "Product Management"
+  },
+  {
+    "label": "Progressive Web App"
+  },
+  {
+    "label": "Project Management Tool"
+  },
+  {
+    "label": "PropTech"
+  },
+  {
+    "label": "Prototyping"
+  },
+  {
+    "label": "Push Notifications"
+  },
+  {
+    "label": "PWA"
+  },
+  {
+    "label": "Python"
+  },
+  {
+    "label": "QA Testing"
+  },
+  {
+    "label": "RabbitMQ"
+  },
+  {
+    "label": "React"
+  },
+  {
+    "label": "React Native"
+  },
+  {
+    "label": "Real Estate Platform"
+  },
+  {
+    "label": "Real-time Chat"
+  },
+  {
+    "label": "Real-time Data"
+  },
+  {
+    "label": "Recommendation Engine"
+  },
+  {
+    "label": "Redis"
+  },
+  {
+    "label": "Refactoring"
+  },
+  {
+    "label": "Reporting Dashboard"
+  },
+  {
+    "label": "Responsive Design"
+  },
+  {
+    "label": "REST API"
+  },
+  {
+    "label": "Retail Tech"
+  },
+  {
+    "label": "Ride-sharing App"
+  },
+  {
+    "label": "Role-based Access Control"
+  },
+  {
+    "label": "Ruby on Rails"
+  },
+  {
+    "label": "Rust"
+  },
+  {
+    "label": "SaaS"
+  },
+  {
+    "label": "Salesforce Integration"
+  },
+  {
+    "label": "Scheduling System"
+  },
+  {
+    "label": "Scraping"
+  },
+  {
+    "label": "Scrum"
+  },
+  {
+    "label": "SDK Development"
+  },
+  {
+    "label": "Search Engine"
+  },
+  {
+    "label": "Search Optimization"
+  },
+  {
+    "label": "Security Audit"
+  },
+  {
+    "label": "SEO"
+  },
+  {
+    "label": "Server Configuration"
+  },
+  {
+    "label": "Serverless"
+  },
+  {
+    "label": "Shopify"
+  },
+  {
+    "label": "Shopify App"
+  },
+  {
+    "label": "Single Page Application"
+  },
+  {
+    "label": "Single Sign-On"
+  },
+  {
+    "label": "Slack Integration"
+  },
+  {
+    "label": "Smart Contract"
+  },
+  {
+    "label": "SMS Integration"
+  },
+  {
+    "label": "Social Login"
+  },
+  {
+    "label": "Social Media"
+  },
+  {
+    "label": "Social Media Integration"
+  },
+  {
+    "label": "Social Network"
+  },
+  {
+    "label": "Socket.io"
+  },
+  {
+    "label": "Software Architecture"
+  },
+  {
+    "label": "Solidity"
+  },
+  {
+    "label": "SPA"
+  },
+  {
+    "label": "Spring Boot"
+  },
+  {
+    "label": "SQL"
+  },
+  {
+    "label": "SSO"
+  },
+  {
+    "label": "Startup MVP"
+  },
+  {
+    "label": "Stripe Integration"
+  },
+  {
+    "label": "Subscription System"
+  },
+  {
+    "label": "Supply Chain"
+  },
+  {
+    "label": "Svelte"
+  },
+  {
+    "label": "Swift"
+  },
+  {
+    "label": "System Design"
+  },
+  {
+    "label": "System Integration"
+  },
+  {
+    "label": "Tableau"
+  },
+  {
+    "label": "Tailwind CSS"
+  },
+  {
+    "label": "Task Management"
+  },
+  {
+    "label": "Team Collaboration Tool"
+  },
+  {
+    "label": "Technical Writing"
+  },
+  {
+    "label": "Telegram Bot"
+  },
+  {
+    "label": "Telemedicine"
+  },
+  {
+    "label": "Terraform"
+  },
+  {
+    "label": "Test Automation"
+  },
+  {
+    "label": "Third-party Integration"
+  },
+  {
+    "label": "Ticket System"
+  },
+  {
+    "label": "Time Tracking"
+  },
+  {
+    "label": "Trading Platform"
+  },
+  {
+    "label": "Translation"
+  },
+  {
+    "label": "Travel Tech"
+  },
+  {
+    "label": "Twilio Integration"
+  },
+  {
+    "label": "Two-Factor Authentication"
+  },
+  {
+    "label": "TypeScript"
+  },
+  {
+    "label": "UI Design"
+  },
+  {
+    "label": "UI Kit"
+  },
+  {
+    "label": "UI/UX Audit"
+  },
+  {
+    "label": "Unit Testing"
+  },
+  {
+    "label": "Unity"
+  },
+  {
+    "label": "Unreal Engine"
+  },
+  {
+    "label": "User Management"
+  },
+  {
+    "label": "User Research"
+  },
+  {
+    "label": "UX Design"
+  },
+  {
+    "label": "UX Research"
+  },
+  {
+    "label": "Video Conferencing"
+  },
+  {
+    "label": "Video Processing"
+  },
+  {
+    "label": "Video Streaming"
+  },
+  {
+    "label": "Virtual Reality"
+  },
+  {
+    "label": "Voice Assistant"
+  },
+  {
+    "label": "Vue.js"
+  },
+  {
+    "label": "Warehouse Management"
+  },
+  {
+    "label": "Waterfall"
+  },
+  {
+    "label": "Wearable App"
+  },
+  {
+    "label": "Web"
+  },
+  {
+    "label": "Web App"
+  },
+  {
+    "label": "Web Scraping"
+  },
+  {
+    "label": "Web3"
+  },
+  {
+    "label": "Webhook Integration"
+  },
+  {
+    "label": "WebRTC"
+  },
+  {
+    "label": "WebSocket"
+  },
+  {
+    "label": "White Label"
+  },
+  {
+    "label": "Widget"
+  },
+  {
+    "label": "Windows"
+  },
+  {
+    "label": "Wireframing"
+  },
+  {
+    "label": "WooCommerce"
+  },
+  {
+    "label": "WordPress"
+  },
+  {
+    "label": "WordPress Plugin"
+  },
+  {
+    "label": "Workflow Automation"
+  },
+  {
+    "label": "Xamarin"
+  },
+  {
+    "label": "Zapier Integration"
+  }
 ]

@@ -1,0 +1,1979 @@
+[
+  {
+    "label": "3M"
+  },
+  {
+    "label": "Abbott Laboratories"
+  },
+  {
+    "label": "AbbVie"
+  },
+  {
+    "label": "Accenture"
+  },
+  {
+    "label": "Acquia"
+  },
+  {
+    "label": "Activision Blizzard"
+  },
+  {
+    "label": "Adidas"
+  },
+  {
+    "label": "Adobe"
+  },
+  {
+    "label": "ADP"
+  },
+  {
+    "label": "Advanced Micro Devices (AMD)"
+  },
+  {
+    "label": "Affirm"
+  },
+  {
+    "label": "Agilent Technologies"
+  },
+  {
+    "label": "AIG"
+  },
+  {
+    "label": "Airbnb"
+  },
+  {
+    "label": "Airtable"
+  },
+  {
+    "label": "Alchemy"
+  },
+  {
+    "label": "Alibaba Group"
+  },
+  {
+    "label": "Allegion"
+  },
+  {
+    "label": "Allstate"
+  },
+  {
+    "label": "Alphabet"
+  },
+  {
+    "label": "Alteryx"
+  },
+  {
+    "label": "Amadeus IT"
+  },
+  {
+    "label": "Amazon"
+  },
+  {
+    "label": "Amazon Web Services (AWS)"
+  },
+  {
+    "label": "AMD"
+  },
+  {
+    "label": "American Airlines"
+  },
+  {
+    "label": "American Express"
+  },
+  {
+    "label": "Amgen"
+  },
+  {
+    "label": "Amplitude"
+  },
+  {
+    "label": "Analog Devices"
+  },
+  {
+    "label": "Anaplan"
+  },
+  {
+    "label": "Anduril Industries"
+  },
+  {
+    "label": "Anthropic"
+  },
+  {
+    "label": "Aon"
+  },
+  {
+    "label": "Apollo Global Management"
+  },
+  {
+    "label": "AppDynamics"
+  },
+  {
+    "label": "Apple"
+  },
+  {
+    "label": "Applied Materials"
+  },
+  {
+    "label": "Archer Daniels Midland"
+  },
+  {
+    "label": "Arm Holdings"
+  },
+  {
+    "label": "Asana"
+  },
+  {
+    "label": "ASML"
+  },
+  {
+    "label": "Assurant"
+  },
+  {
+    "label": "AT&T"
+  },
+  {
+    "label": "Atlassian"
+  },
+  {
+    "label": "Audible"
+  },
+  {
+    "label": "Autodesk"
+  },
+  {
+    "label": "Automattic"
+  },
+  {
+    "label": "Avalara"
+  },
+  {
+    "label": "Avery Dennison"
+  },
+  {
+    "label": "Avis Budget Group"
+  },
+  {
+    "label": "AXA"
+  },
+  {
+    "label": "BAE Systems"
+  },
+  {
+    "label": "Baidu"
+  },
+  {
+    "label": "Bain & Company"
+  },
+  {
+    "label": "Baker Hughes"
+  },
+  {
+    "label": "Bank of America"
+  },
+  {
+    "label": "Barclays"
+  },
+  {
+    "label": "Baxter International"
+  },
+  {
+    "label": "Bayer"
+  },
+  {
+    "label": "BBDO"
+  },
+  {
+    "label": "BCG (Boston Consulting Group)"
+  },
+  {
+    "label": "Becton Dickinson"
+  },
+  {
+    "label": "Bentley Systems"
+  },
+  {
+    "label": "Berkshire Hathaway"
+  },
+  {
+    "label": "Best Buy"
+  },
+  {
+    "label": "Bill & Melinda Gates Foundation"
+  },
+  {
+    "label": "BJ's Wholesale Club"
+  },
+  {
+    "label": "BlackBerry"
+  },
+  {
+    "label": "BlackRock"
+  },
+  {
+    "label": "Blackstone"
+  },
+  {
+    "label": "Block (Square)"
+  },
+  {
+    "label": "Bloomberg"
+  },
+  {
+    "label": "BMW Group"
+  },
+  {
+    "label": "BNP Paribas"
+  },
+  {
+    "label": "BNY Mellon"
+  },
+  {
+    "label": "Boeing"
+  },
+  {
+    "label": "Bolt"
+  },
+  {
+    "label": "Booking Holdings"
+  },
+  {
+    "label": "Booz Allen Hamilton"
+  },
+  {
+    "label": "Boston Scientific"
+  },
+  {
+    "label": "Box"
+  },
+  {
+    "label": "BP"
+  },
+  {
+    "label": "Brex"
+  },
+  {
+    "label": "Bristol-Myers Squibb"
+  },
+  {
+    "label": "Broadcom"
+  },
+  {
+    "label": "Broadridge Financial"
+  },
+  {
+    "label": "Brookfield Asset Management"
+  },
+  {
+    "label": "Brown-Forman"
+  },
+  {
+    "label": "Bumble"
+  },
+  {
+    "label": "Burlington Stores"
+  },
+  {
+    "label": "BuzzFeed"
+  },
+  {
+    "label": "ByteDance"
+  },
+  {
+    "label": "C.H. Robinson"
+  },
+  {
+    "label": "C3.ai"
+  },
+  {
+    "label": "Cadence Design Systems"
+  },
+  {
+    "label": "Calm"
+  },
+  {
+    "label": "Campbell Soup"
+  },
+  {
+    "label": "Canoo"
+  },
+  {
+    "label": "Canva"
+  },
+  {
+    "label": "Capgemini"
+  },
+  {
+    "label": "Capital One"
+  },
+  {
+    "label": "Cardinal Health"
+  },
+  {
+    "label": "Cargill"
+  },
+  {
+    "label": "Carlyle Group"
+  },
+  {
+    "label": "Carnival Corporation"
+  },
+  {
+    "label": "Caterpillar"
+  },
+  {
+    "label": "CDW"
+  },
+  {
+    "label": "Celonis"
+  },
+  {
+    "label": "Centene"
+  },
+  {
+    "label": "Cerner"
+  },
+  {
+    "label": "Charles Schwab"
+  },
+  {
+    "label": "Charter Communications"
+  },
+  {
+    "label": "Chewy"
+  },
+  {
+    "label": "Chick-fil-A"
+  },
+  {
+    "label": "Church & Dwight"
+  },
+  {
+    "label": "Cigna"
+  },
+  {
+    "label": "Cisco Systems"
+  },
+  {
+    "label": "Citigroup"
+  },
+  {
+    "label": "Citrix"
+  },
+  {
+    "label": "Cleveland Clinic"
+  },
+  {
+    "label": "Cloudera"
+  },
+  {
+    "label": "Cloudflare"
+  },
+  {
+    "label": "CNA Financial"
+  },
+  {
+    "label": "CNET"
+  },
+  {
+    "label": "Coca-Cola"
+  },
+  {
+    "label": "Cognizant"
+  },
+  {
+    "label": "Cohere"
+  },
+  {
+    "label": "Coinbase"
+  },
+  {
+    "label": "Colgate-Palmolive"
+  },
+  {
+    "label": "Columbia Sportswear"
+  },
+  {
+    "label": "Comcast"
+  },
+  {
+    "label": "Compass"
+  },
+  {
+    "label": "Confluent"
+  },
+  {
+    "label": "ConocoPhillips"
+  },
+  {
+    "label": "Continental"
+  },
+  {
+    "label": "Corning"
+  },
+  {
+    "label": "Corteva Agriscience"
+  },
+  {
+    "label": "Costco"
+  },
+  {
+    "label": "Coupa Software"
+  },
+  {
+    "label": "Coupang"
+  },
+  {
+    "label": "Coursera"
+  },
+  {
+    "label": "CrowdStrike"
+  },
+  {
+    "label": "Cummins"
+  },
+  {
+    "label": "CVS Health"
+  },
+  {
+    "label": "Daimler"
+  },
+  {
+    "label": "Danaher"
+  },
+  {
+    "label": "Databricks"
+  },
+  {
+    "label": "Datadog"
+  },
+  {
+    "label": "Datto"
+  },
+  {
+    "label": "DaVita"
+  },
+  {
+    "label": "DeepMind"
+  },
+  {
+    "label": "Deere & Company"
+  },
+  {
+    "label": "Delivery Hero"
+  },
+  {
+    "label": "Dell Technologies"
+  },
+  {
+    "label": "Deloitte"
+  },
+  {
+    "label": "Delta Air Lines"
+  },
+  {
+    "label": "Dentsu"
+  },
+  {
+    "label": "Deutsche Bank"
+  },
+  {
+    "label": "DHL"
+  },
+  {
+    "label": "DigitalOcean"
+  },
+  {
+    "label": "Dior"
+  },
+  {
+    "label": "Discord"
+  },
+  {
+    "label": "Discovery"
+  },
+  {
+    "label": "Disney (The Walt Disney Company)"
+  },
+  {
+    "label": "DocuSign"
+  },
+  {
+    "label": "Dollar General"
+  },
+  {
+    "label": "Dollar Tree"
+  },
+  {
+    "label": "Domino's Pizza"
+  },
+  {
+    "label": "DoorDash"
+  },
+  {
+    "label": "Dow"
+  },
+  {
+    "label": "DraftKings"
+  },
+  {
+    "label": "Dropbox"
+  },
+  {
+    "label": "Duolingo"
+  },
+  {
+    "label": "DuPont"
+  },
+  {
+    "label": "Dynatrace"
+  },
+  {
+    "label": "Dyson"
+  },
+  {
+    "label": "Eaton"
+  },
+  {
+    "label": "eBay"
+  },
+  {
+    "label": "Edwards Lifesciences"
+  },
+  {
+    "label": "Elastic"
+  },
+  {
+    "label": "Electronic Arts (EA)"
+  },
+  {
+    "label": "Eli Lilly"
+  },
+  {
+    "label": "Embraer"
+  },
+  {
+    "label": "Emerson Electric"
+  },
+  {
+    "label": "Enphase Energy"
+  },
+  {
+    "label": "Epic Games"
+  },
+  {
+    "label": "Epic Systems"
+  },
+  {
+    "label": "Equifax"
+  },
+  {
+    "label": "Equinix"
+  },
+  {
+    "label": "Ericsson"
+  },
+  {
+    "label": "Ernst & Young (EY)"
+  },
+  {
+    "label": "Estee Lauder"
+  },
+  {
+    "label": "Ethos"
+  },
+  {
+    "label": "Etsy"
+  },
+  {
+    "label": "Eventbrite"
+  },
+  {
+    "label": "Evercore"
+  },
+  {
+    "label": "Everi Holdings"
+  },
+  {
+    "label": "Expedia Group"
+  },
+  {
+    "label": "Exxon Mobil"
+  },
+  {
+    "label": "F5 Networks"
+  },
+  {
+    "label": "Facebook (Meta Platforms)"
+  },
+  {
+    "label": "FactSet"
+  },
+  {
+    "label": "FanDuel"
+  },
+  {
+    "label": "Fannie Mae"
+  },
+  {
+    "label": "Fast Retailing (Uniqlo)"
+  },
+  {
+    "label": "Fastly"
+  },
+  {
+    "label": "FedEx"
+  },
+  {
+    "label": "Fender"
+  },
+  {
+    "label": "Ferrari"
+  },
+  {
+    "label": "Fidelity Investments"
+  },
+  {
+    "label": "Figma"
+  },
+  {
+    "label": "Finastra"
+  },
+  {
+    "label": "FIS"
+  },
+  {
+    "label": "Fiserv"
+  },
+  {
+    "label": "Five Below"
+  },
+  {
+    "label": "Five9"
+  },
+  {
+    "label": "Fiverr"
+  },
+  {
+    "label": "Flatiron Health"
+  },
+  {
+    "label": "Flexera"
+  },
+  {
+    "label": "FlexPort"
+  },
+  {
+    "label": "Flipkart"
+  },
+  {
+    "label": "Ford Motor Company"
+  },
+  {
+    "label": "Fortinet"
+  },
+  {
+    "label": "Fortive"
+  },
+  {
+    "label": "Fox Corporation"
+  },
+  {
+    "label": "Franklin Templeton"
+  },
+  {
+    "label": "Freddie Mac"
+  },
+  {
+    "label": "FreshBooks"
+  },
+  {
+    "label": "Freshworks"
+  },
+  {
+    "label": "Frog Design"
+  },
+  {
+    "label": "Frontier Communications"
+  },
+  {
+    "label": "Fujitsu"
+  },
+  {
+    "label": "Gartner"
+  },
+  {
+    "label": "GE (General Electric)"
+  },
+  {
+    "label": "General Dynamics"
+  },
+  {
+    "label": "General Mills"
+  },
+  {
+    "label": "General Motors (GM)"
+  },
+  {
+    "label": "Genesys"
+  },
+  {
+    "label": "Genpact"
+  },
+  {
+    "label": "Gilead Sciences"
+  },
+  {
+    "label": "GitHub"
+  },
+  {
+    "label": "GitLab"
+  },
+  {
+    "label": "GlaxoSmithKline (GSK)"
+  },
+  {
+    "label": "GoDaddy"
+  },
+  {
+    "label": "Goldman Sachs"
+  },
+  {
+    "label": "Google"
+  },
+  {
+    "label": "GoPro"
+  },
+  {
+    "label": "Grab"
+  },
+  {
+    "label": "Grammarly"
+  },
+  {
+    "label": "Greylock Partners"
+  },
+  {
+    "label": "Grindr"
+  },
+  {
+    "label": "Grubhub"
+  },
+  {
+    "label": "Gucci (Kering)"
+  },
+  {
+    "label": "Guidewire Software"
+  },
+  {
+    "label": "Halliburton"
+  },
+  {
+    "label": "HashiCorp"
+  },
+  {
+    "label": "Havas Group"
+  },
+  {
+    "label": "HCA Healthcare"
+  },
+  {
+    "label": "Hershey"
+  },
+  {
+    "label": "Hewlett Packard Enterprise (HPE)"
+  },
+  {
+    "label": "Hilton"
+  },
+  {
+    "label": "Hims & Hers Health"
+  },
+  {
+    "label": "HireVue"
+  },
+  {
+    "label": "Hitachi"
+  },
+  {
+    "label": "Home Depot"
+  },
+  {
+    "label": "Honda"
+  },
+  {
+    "label": "Honeywell"
+  },
+  {
+    "label": "Hootsuite"
+  },
+  {
+    "label": "Horizon Therapeutics"
+  },
+  {
+    "label": "HP Inc."
+  },
+  {
+    "label": "HSBC"
+  },
+  {
+    "label": "Huawei"
+  },
+  {
+    "label": "HubSpot"
+  },
+  {
+    "label": "Humana"
+  },
+  {
+    "label": "Hyundai"
+  },
+  {
+    "label": "IBM"
+  },
+  {
+    "label": "ICE (Intercontinental Exchange)"
+  },
+  {
+    "label": "IDEO"
+  },
+  {
+    "label": "iHeartMedia"
+  },
+  {
+    "label": "IKEA"
+  },
+  {
+    "label": "Illumina"
+  },
+  {
+    "label": "Imgur"
+  },
+  {
+    "label": "Improbable"
+  },
+  {
+    "label": "Indeed"
+  },
+  {
+    "label": "Infineon Technologies"
+  },
+  {
+    "label": "Informatica"
+  },
+  {
+    "label": "Infosys"
+  },
+  {
+    "label": "ING Group"
+  },
+  {
+    "label": "Instacart"
+  },
+  {
+    "label": "Instagram"
+  },
+  {
+    "label": "Intel"
+  },
+  {
+    "label": "Intercom"
+  },
+  {
+    "label": "Intuit"
+  },
+  {
+    "label": "Intuitive Surgical"
+  },
+  {
+    "label": "InVision"
+  },
+  {
+    "label": "iRobot"
+  },
+  {
+    "label": "J.P. Morgan Chase"
+  },
+  {
+    "label": "Jack Henry & Associates"
+  },
+  {
+    "label": "Jaguar Land Rover"
+  },
+  {
+    "label": "JetBrains"
+  },
+  {
+    "label": "JFrog"
+  },
+  {
+    "label": "John Deere"
+  },
+  {
+    "label": "Johnson & Johnson"
+  },
+  {
+    "label": "Johnson Controls"
+  },
+  {
+    "label": "Juniper Networks"
+  },
+  {
+    "label": "Kaiser Permanente"
+  },
+  {
+    "label": "Kayak"
+  },
+  {
+    "label": "Kellogg's"
+  },
+  {
+    "label": "Kforce"
+  },
+  {
+    "label": "Kia"
+  },
+  {
+    "label": "Kickstarter"
+  },
+  {
+    "label": "Kimberly-Clark"
+  },
+  {
+    "label": "KKR"
+  },
+  {
+    "label": "Klarna"
+  },
+  {
+    "label": "Kohler"
+  },
+  {
+    "label": "KPMG"
+  },
+  {
+    "label": "Kraft Heinz"
+  },
+  {
+    "label": "Kroger"
+  },
+  {
+    "label": "Kyndryl"
+  },
+  {
+    "label": "L3Harris Technologies"
+  },
+  {
+    "label": "Lam Research"
+  },
+  {
+    "label": "Lattice"
+  },
+  {
+    "label": "Lazard"
+  },
+  {
+    "label": "Lego Group"
+  },
+  {
+    "label": "Lenovo"
+  },
+  {
+    "label": "Leo Burnett"
+  },
+  {
+    "label": "LG Electronics"
+  },
+  {
+    "label": "Liberty Mutual"
+  },
+  {
+    "label": "Lincoln Financial Group"
+  },
+  {
+    "label": "LinkedIn"
+  },
+  {
+    "label": "Lionsgate"
+  },
+  {
+    "label": "LiveRamp"
+  },
+  {
+    "label": "Lockheed Martin"
+  },
+  {
+    "label": "Logitech"
+  },
+  {
+    "label": "LogMeIn"
+  },
+  {
+    "label": "Lookout"
+  },
+  {
+    "label": "Loom"
+  },
+  {
+    "label": "Lowe's"
+  },
+  {
+    "label": "Lucid Motors"
+  },
+  {
+    "label": "Lululemon"
+  },
+  {
+    "label": "LVMH"
+  },
+  {
+    "label": "Lyft"
+  },
+  {
+    "label": "Macy's"
+  },
+  {
+    "label": "Mailchimp"
+  },
+  {
+    "label": "Mapbox"
+  },
+  {
+    "label": "Marketo"
+  },
+  {
+    "label": "Marriott International"
+  },
+  {
+    "label": "Mars"
+  },
+  {
+    "label": "Marsh McLennan"
+  },
+  {
+    "label": "Marvell Technology"
+  },
+  {
+    "label": "MasterCard"
+  },
+  {
+    "label": "Masterclass"
+  },
+  {
+    "label": "Match Group"
+  },
+  {
+    "label": "Mayo Clinic"
+  },
+  {
+    "label": "McAfee"
+  },
+  {
+    "label": "McDonald's"
+  },
+  {
+    "label": "McKesson"
+  },
+  {
+    "label": "McKinsey & Company"
+  },
+  {
+    "label": "MediaMath"
+  },
+  {
+    "label": "Medtronic"
+  },
+  {
+    "label": "Mercado Libre"
+  },
+  {
+    "label": "Mercedes-Benz Group"
+  },
+  {
+    "label": "Merck"
+  },
+  {
+    "label": "Meta Platforms"
+  },
+  {
+    "label": "Micro Focus"
+  },
+  {
+    "label": "Micron Technology"
+  },
+  {
+    "label": "Microsoft"
+  },
+  {
+    "label": "MicroStrategy"
+  },
+  {
+    "label": "Mimecast"
+  },
+  {
+    "label": "Miro"
+  },
+  {
+    "label": "Mitsubishi"
+  },
+  {
+    "label": "Moderna"
+  },
+  {
+    "label": "Monday.com"
+  },
+  {
+    "label": "Mondelez International"
+  },
+  {
+    "label": "MongoDB"
+  },
+  {
+    "label": "Moody's"
+  },
+  {
+    "label": "Morgan Stanley"
+  },
+  {
+    "label": "Motorola Solutions"
+  },
+  {
+    "label": "Moxion Power"
+  },
+  {
+    "label": "MSCI"
+  },
+  {
+    "label": "Mulesoft"
+  },
+  {
+    "label": "Munich Re"
+  },
+  {
+    "label": "Nasdaq"
+  },
+  {
+    "label": "National Instruments"
+  },
+  {
+    "label": "NatWest Group"
+  },
+  {
+    "label": "NBCUniversal"
+  },
+  {
+    "label": "NEC"
+  },
+  {
+    "label": "Nestl\u00e9"
+  },
+  {
+    "label": "NetApp"
+  },
+  {
+    "label": "Netflix"
+  },
+  {
+    "label": "Netskope"
+  },
+  {
+    "label": "New Relic"
+  },
+  {
+    "label": "New York Life"
+  },
+  {
+    "label": "New York Times"
+  },
+  {
+    "label": "Nextdoor"
+  },
+  {
+    "label": "Nike"
+  },
+  {
+    "label": "Nintendo"
+  },
+  {
+    "label": "Nokia"
+  },
+  {
+    "label": "Noom"
+  },
+  {
+    "label": "Nordstrom"
+  },
+  {
+    "label": "Northrop Grumman"
+  },
+  {
+    "label": "Northwestern Mutual"
+  },
+  {
+    "label": "Notion"
+  },
+  {
+    "label": "Novartis"
+  },
+  {
+    "label": "Novo Nordisk"
+  },
+  {
+    "label": "Nubank"
+  },
+  {
+    "label": "Nutanix"
+  },
+  {
+    "label": "NVIDIA"
+  },
+  {
+    "label": "NXP Semiconductors"
+  },
+  {
+    "label": "NYSE (New York Stock Exchange)"
+  },
+  {
+    "label": "Oculus VR"
+  },
+  {
+    "label": "Okta"
+  },
+  {
+    "label": "Oliver Wyman"
+  },
+  {
+    "label": "Omnicom Group"
+  },
+  {
+    "label": "ON Semiconductor"
+  },
+  {
+    "label": "OneMain Financial"
+  },
+  {
+    "label": "OneSpan"
+  },
+  {
+    "label": "OpenAI"
+  },
+  {
+    "label": "Opendoor"
+  },
+  {
+    "label": "Opera"
+  },
+  {
+    "label": "Oracle"
+  },
+  {
+    "label": "Oscar Health"
+  },
+  {
+    "label": "Oshkosh Corporation"
+  },
+  {
+    "label": "Otter.ai"
+  },
+  {
+    "label": "Overstock"
+  },
+  {
+    "label": "Pacific Life"
+  },
+  {
+    "label": "Pagerduty"
+  },
+  {
+    "label": "Palantir Technologies"
+  },
+  {
+    "label": "Palo Alto Networks"
+  },
+  {
+    "label": "Panasonic"
+  },
+  {
+    "label": "Paramount Global"
+  },
+  {
+    "label": "Parker Hannifin"
+  },
+  {
+    "label": "Patagonia"
+  },
+  {
+    "label": "Paycom"
+  },
+  {
+    "label": "Paylocity"
+  },
+  {
+    "label": "PayPal"
+  },
+  {
+    "label": "PDD Holdings (Pinduoduo)"
+  },
+  {
+    "label": "Pegasystems"
+  },
+  {
+    "label": "Peloton"
+  },
+  {
+    "label": "Pentagram"
+  },
+  {
+    "label": "PepsiCo"
+  },
+  {
+    "label": "Persado"
+  },
+  {
+    "label": "Pfizer"
+  },
+  {
+    "label": "Philips"
+  },
+  {
+    "label": "Ping Identity"
+  },
+  {
+    "label": "Pinterest"
+  },
+  {
+    "label": "Plaid"
+  },
+  {
+    "label": "PNC Financial Services"
+  },
+  {
+    "label": "Porsche"
+  },
+  {
+    "label": "PricewaterhouseCoopers (PwC)"
+  },
+  {
+    "label": "Principal Financial Group"
+  },
+  {
+    "label": "Procter & Gamble (P&G)"
+  },
+  {
+    "label": "Prologis"
+  },
+  {
+    "label": "Proofpoint"
+  },
+  {
+    "label": "Prudential Financial"
+  },
+  {
+    "label": "Publicis Groupe"
+  },
+  {
+    "label": "Pure Storage"
+  },
+  {
+    "label": "QBE Insurance"
+  },
+  {
+    "label": "Qualcomm"
+  },
+  {
+    "label": "Qualtrics"
+  },
+  {
+    "label": "Quicken Loans (Rocket Mortgage)"
+  },
+  {
+    "label": "Quora"
+  },
+  {
+    "label": "Rackspace"
+  },
+  {
+    "label": "Ralph Lauren"
+  },
+  {
+    "label": "Raytheon Technologies (RTX)"
+  },
+  {
+    "label": "RBC (Royal Bank of Canada)"
+  },
+  {
+    "label": "Realogy"
+  },
+  {
+    "label": "Red Hat"
+  },
+  {
+    "label": "Reddit"
+  },
+  {
+    "label": "Redfin"
+  },
+  {
+    "label": "Regeneron Pharmaceuticals"
+  },
+  {
+    "label": "Relativity"
+  },
+  {
+    "label": "Renault"
+  },
+  {
+    "label": "Revolut"
+  },
+  {
+    "label": "Ring"
+  },
+  {
+    "label": "Riot Games"
+  },
+  {
+    "label": "Ripple"
+  },
+  {
+    "label": "Rivian"
+  },
+  {
+    "label": "Robinhood"
+  },
+  {
+    "label": "Roblox"
+  },
+  {
+    "label": "Roche"
+  },
+  {
+    "label": "Rockwell Automation"
+  },
+  {
+    "label": "Roku"
+  },
+  {
+    "label": "Rolls-Royce"
+  },
+  {
+    "label": "Ronin"
+  },
+  {
+    "label": "Royal Caribbean"
+  },
+  {
+    "label": "S&P Global"
+  },
+  {
+    "label": "Saatchi & Saatchi"
+  },
+  {
+    "label": "Salesforce"
+  },
+  {
+    "label": "Samsara"
+  },
+  {
+    "label": "Samsung Electronics"
+  },
+  {
+    "label": "Sanofi"
+  },
+  {
+    "label": "SAP"
+  },
+  {
+    "label": "Scale AI"
+  },
+  {
+    "label": "Schlumberger"
+  },
+  {
+    "label": "Schneider Electric"
+  },
+  {
+    "label": "Scotiabank"
+  },
+  {
+    "label": "Seagate Technology"
+  },
+  {
+    "label": "Sega"
+  },
+  {
+    "label": "SEMrush"
+  },
+  {
+    "label": "SentinelOne"
+  },
+  {
+    "label": "Sequoia Capital"
+  },
+  {
+    "label": "ServiceNow"
+  },
+  {
+    "label": "ServiceTitan"
+  },
+  {
+    "label": "Shell"
+  },
+  {
+    "label": "Shopify"
+  },
+  {
+    "label": "Shutterstock"
+  },
+  {
+    "label": "Siemens"
+  },
+  {
+    "label": "SiriusXM"
+  },
+  {
+    "label": "Slack Technologies"
+  },
+  {
+    "label": "Snap Inc."
+  },
+  {
+    "label": "Snowflake"
+  },
+  {
+    "label": "SoftBank"
+  },
+  {
+    "label": "SolarWinds"
+  },
+  {
+    "label": "Sonos"
+  },
+  {
+    "label": "Sony"
+  },
+  {
+    "label": "SoundCloud"
+  },
+  {
+    "label": "Southwest Airlines"
+  },
+  {
+    "label": "SpaceX"
+  },
+  {
+    "label": "Splunk"
+  },
+  {
+    "label": "Spotify"
+  },
+  {
+    "label": "Sprinklr"
+  },
+  {
+    "label": "Square (Block)"
+  },
+  {
+    "label": "Squarespace"
+  },
+  {
+    "label": "Standard Chartered"
+  },
+  {
+    "label": "Stanley Black & Decker"
+  },
+  {
+    "label": "Starbucks"
+  },
+  {
+    "label": "State Farm"
+  },
+  {
+    "label": "State Street"
+  },
+  {
+    "label": "Stellantis"
+  },
+  {
+    "label": "Stitch Fix"
+  },
+  {
+    "label": "Strava"
+  },
+  {
+    "label": "Stripe"
+  },
+  {
+    "label": "Stryker"
+  },
+  {
+    "label": "Subaru"
+  },
+  {
+    "label": "Sumo Logic"
+  },
+  {
+    "label": "SurveyMonkey (Momentive)"
+  },
+  {
+    "label": "Sweetgreen"
+  },
+  {
+    "label": "Swiss Re"
+  },
+  {
+    "label": "Symantec"
+  },
+  {
+    "label": "Synopsys"
+  },
+  {
+    "label": "T-Mobile"
+  },
+  {
+    "label": "Tableau"
+  },
+  {
+    "label": "Take-Two Interactive"
+  },
+  {
+    "label": "Tanium"
+  },
+  {
+    "label": "Target"
+  },
+  {
+    "label": "TaskRabbit"
+  },
+  {
+    "label": "Tata Consultancy Services (TCS)"
+  },
+  {
+    "label": "TD Bank"
+  },
+  {
+    "label": "Teladoc Health"
+  },
+  {
+    "label": "Tencent"
+  },
+  {
+    "label": "Teradata"
+  },
+  {
+    "label": "Tesla"
+  },
+  {
+    "label": "Texas Instruments"
+  },
+  {
+    "label": "Thales"
+  },
+  {
+    "label": "The Home Depot"
+  },
+  {
+    "label": "The Trade Desk"
+  },
+  {
+    "label": "Thomson Reuters"
+  },
+  {
+    "label": "Thoughtworks"
+  },
+  {
+    "label": "TIAA"
+  },
+  {
+    "label": "Tiffany & Co."
+  },
+  {
+    "label": "TikTok"
+  },
+  {
+    "label": "TJX Companies"
+  },
+  {
+    "label": "Toast"
+  },
+  {
+    "label": "Toptal"
+  },
+  {
+    "label": "Toshiba"
+  },
+  {
+    "label": "TotalEnergies"
+  },
+  {
+    "label": "Toyota"
+  },
+  {
+    "label": "Trade Republic"
+  },
+  {
+    "label": "Travelers"
+  },
+  {
+    "label": "Trimble"
+  },
+  {
+    "label": "TripAdvisor"
+  },
+  {
+    "label": "Truist Financial"
+  },
+  {
+    "label": "Trulia"
+  },
+  {
+    "label": "Tumblr"
+  },
+  {
+    "label": "Twilio"
+  },
+  {
+    "label": "Twitch"
+  },
+  {
+    "label": "Twitter (X)"
+  },
+  {
+    "label": "Tyler Technologies"
+  },
+  {
+    "label": "Uber"
+  },
+  {
+    "label": "Uber Freight"
+  },
+  {
+    "label": "UBS"
+  },
+  {
+    "label": "UiPath"
+  },
+  {
+    "label": "Under Armour"
+  },
+  {
+    "label": "Unilever"
+  },
+  {
+    "label": "Union Pacific"
+  },
+  {
+    "label": "United Airlines"
+  },
+  {
+    "label": "United Parcel Service (UPS)"
+  },
+  {
+    "label": "UnitedHealth Group"
+  },
+  {
+    "label": "Unity Technologies"
+  },
+  {
+    "label": "Unum Group"
+  },
+  {
+    "label": "Upwork"
+  },
+  {
+    "label": "US Bank"
+  },
+  {
+    "label": "USAA"
+  },
+  {
+    "label": "Valve Corporation"
+  },
+  {
+    "label": "Vanguard"
+  },
+  {
+    "label": "Varonis"
+  },
+  {
+    "label": "Veeva Systems"
+  },
+  {
+    "label": "Venmo"
+  },
+  {
+    "label": "Veritas Technologies"
+  },
+  {
+    "label": "Verizon"
+  },
+  {
+    "label": "Vertex Pharmaceuticals"
+  },
+  {
+    "label": "VF Corporation"
+  },
+  {
+    "label": "Viavi Solutions"
+  },
+  {
+    "label": "Visa"
+  },
+  {
+    "label": "VMware"
+  },
+  {
+    "label": "Vodafone"
+  },
+  {
+    "label": "Volkswagen"
+  },
+  {
+    "label": "Volvo"
+  },
+  {
+    "label": "Vonage"
+  },
+  {
+    "label": "Waabi"
+  },
+  {
+    "label": "Wabtec"
+  },
+  {
+    "label": "Walgreens"
+  },
+  {
+    "label": "Walgreens Boots Alliance"
+  },
+  {
+    "label": "Walmart"
+  },
+  {
+    "label": "Warby Parker"
+  },
+  {
+    "label": "Warner Bros. Discovery"
+  },
+  {
+    "label": "Wayfair"
+  },
+  {
+    "label": "Waymo"
+  },
+  {
+    "label": "Wealthfront"
+  },
+  {
+    "label": "Webflow"
+  },
+  {
+    "label": "Wells Fargo"
+  },
+  {
+    "label": "Western Digital"
+  },
+  {
+    "label": "WeWork"
+  },
+  {
+    "label": "WhatsApp"
+  },
+  {
+    "label": "Whole Foods Market"
+  },
+  {
+    "label": "WillowTree"
+  },
+  {
+    "label": "Wipro"
+  },
+  {
+    "label": "Wise"
+  },
+  {
+    "label": "Wix"
+  },
+  {
+    "label": "Wolt"
+  },
+  {
+    "label": "Wolters Kluwer"
+  },
+  {
+    "label": "Workato"
+  },
+  {
+    "label": "Workday"
+  },
+  {
+    "label": "WPP"
+  },
+  {
+    "label": "Wrike"
+  },
+  {
+    "label": "Wunderman Thompson"
+  },
+  {
+    "label": "Xero"
+  },
+  {
+    "label": "Xerox"
+  },
+  {
+    "label": "Xiaomi"
+  },
+  {
+    "label": "Yahoo"
+  },
+  {
+    "label": "Yammer"
+  },
+  {
+    "label": "Yandex"
+  },
+  {
+    "label": "Yelp"
+  },
+  {
+    "label": "Yokogawa Electric"
+  },
+  {
+    "label": "YouTube"
+  },
+  {
+    "label": "Zalando"
+  },
+  {
+    "label": "Zapier"
+  },
+  {
+    "label": "Zendesk"
+  },
+  {
+    "label": "Zillow"
+  },
+  {
+    "label": "Zoom Video Communications"
+  },
+  {
+    "label": "Zoomcar"
+  },
+  {
+    "label": "ZoomInfo"
+  },
+  {
+    "label": "Zora"
+  },
+  {
+    "label": "Zscaler"
+  },
+  {
+    "label": "Zuora"
+  },
+  {
+    "label": "Zurich Insurance Group"
+  },
+  {
+    "label": "Zynga"
+  }
+]
