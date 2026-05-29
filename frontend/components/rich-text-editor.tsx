@@ -1708,19 +1708,26 @@ const ActiveEditor = ({
           return
         }
 
-        const selection = selectionRef.current
-        const insertChain = editor.chain().focus(undefined, {
-          scrollIntoView: false,
-        })
+        // Always INSERT a new image after the current position — never
+        // replace the existing selected node.
+        const endPos = editor.state.doc.content.size
+        const insertPos = selectionRef.current
+          ? selectionRef.current.to
+          : endPos
 
-        if (selection) {
-          insertChain.setTextSelection(selection)
-        }
-
-        // Use insertContent to always add a new image node instead of
-        // replacing the current node (which setImage does when cursor
-        // is on an existing image)
-        insertChain
+        editor
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .command(({ tr }) => {
+            // Force a collapsed cursor so insertContent cannot replace
+            // an existing node selection.
+            tr.setSelection(
+              editor.state.selection.constructor.near(
+                tr.doc.resolve(Math.min(insertPos, tr.doc.content.size))
+              )
+            )
+            return true
+          })
           .insertContent({
             type: "image",
             attrs: {
