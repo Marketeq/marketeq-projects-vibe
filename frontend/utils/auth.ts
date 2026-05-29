@@ -1,6 +1,3 @@
-// utils/auth.ts
-import Cookies from "js-cookie"
-import { jwtDecode } from "jwt-decode"
 import { Conversation } from "@/types/conversation"
 
 export interface CurrentUser {
@@ -9,36 +6,46 @@ export interface CurrentUser {
   avatarUrl?: string
 }
 
-/** Read the access token from cookies (primary) or localStorage (fallback) */
+const CURRENT_USER_STORAGE_KEY = "marketeq-current-user"
+let currentUserSnapshot: CurrentUser | null = null
+
+/**
+ * Marketeq auth tokens are HttpOnly cookies and are intentionally unreadable
+ * from client JavaScript. This legacy shim remains only to avoid new token
+ * storage dependencies while callers are migrated to AuthContext/user data.
+ */
 export function getAccessToken(): string | null {
-  const cookie = Cookies.get("access_token") || Cookies.get("accessToken")
-  if (cookie) return cookie
-  if (typeof window === "undefined") return null
-  return (
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("token") ||
-    null
-  )
+  return "cookie-auth"
+}
+
+export function setCurrentUserSnapshot(user: CurrentUser | null): void {
+  currentUserSnapshot = user
+  if (typeof window === "undefined") return
+
+  try {
+    if (user) {
+      window.sessionStorage.setItem(
+        CURRENT_USER_STORAGE_KEY,
+        JSON.stringify(user)
+      )
+    } else {
+      window.sessionStorage.removeItem(CURRENT_USER_STORAGE_KEY)
+    }
+  } catch {}
 }
 
 export const getCurrentUser = (): CurrentUser | null => {
+  if (currentUserSnapshot) return currentUserSnapshot
   if (typeof window === "undefined") return null
-  const token = getAccessToken()
-  if (!token) return null
 
   try {
-    const decoded = jwtDecode<{
-      sub: string
-      username?: string
-      avatarUrl?: string
-    }>(token)
-    return {
-      id: decoded.sub,
-      username: decoded.username ?? "",
-      avatarUrl: decoded.avatarUrl,
-    }
-  } catch (err) {
-    console.error("Invalid token", err)
+    const raw = window.sessionStorage.getItem(CURRENT_USER_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CurrentUser
+    if (!parsed?.id) return null
+    currentUserSnapshot = parsed
+    return parsed
+  } catch {
     return null
   }
 }

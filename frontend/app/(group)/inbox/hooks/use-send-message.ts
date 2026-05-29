@@ -13,10 +13,9 @@ type SendResponse = Message
  * Returns a `send` function that AES‐encrypts a plaintext
  * and POSTs it to your NestJS API.
  *
- * @param token your JWT for Authorization
  */
 export function useSendMessage(
-  token: string,
+  _token: string,
   privateKey: CryptoKey | null,
   isGroup: boolean = false
 ) {
@@ -31,8 +30,8 @@ export function useSendMessage(
     replyToMessageId?: string,
     messageType: MessageType = "text"
   ) {
-    if (!convId || !token) {
-      throw new Error("Missing conversation ID or auth token")
+    if (!convId) {
+      throw new Error("Missing conversation ID")
     }
 
     // If no private key or no AES key available, send as plaintext fallback
@@ -46,8 +45,7 @@ export function useSendMessage(
     if (!key && privateKey) {
       try {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/messaging/conversations/${convId}/key?isGroup=${isGroup}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          `/messaging/conversations/${convId}/key?isGroup=${isGroup}`
         )
         const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
           c.charCodeAt(0)
@@ -75,7 +73,6 @@ export function useSendMessage(
     const ciphertext = await encryptAES(plaintext, key)
     return apiFetch<SendResponse>(`/v1/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
       body: {
         threadId: convId,
         ciphertext,

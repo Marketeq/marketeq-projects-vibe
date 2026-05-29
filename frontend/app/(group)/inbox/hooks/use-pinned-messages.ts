@@ -6,20 +6,17 @@ import { apiFetch } from "@/src/lib/api"
 import type { Message } from "@/types/conversation"
 import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 
-export function usePinnedMessages(convId: string, token: string) {
+export function usePinnedMessages(convId: string, _token?: string) {
   const [messages, setMessages] = useState<Message[]>([])
 
   useEffect(() => {
-    if (!convId || !token) return
+    if (!convId) return
     ;(async () => {
       try {
         // 1) Fetch all messages and filter pinned
         const { messages: data } = await apiFetch<{ messages: Message[] }>(
           `/v1/messages/thread/${convId}?all=true`,
-          {
-            method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          { method: "GET" }
         )
 
         const pinned = data.filter((m: any) => m.isPinned || m.pinned)
@@ -56,7 +53,7 @@ export function usePinnedMessages(convId: string, token: string) {
         console.error("usePinnedMessages error:", err)
       }
     })()
-  }, [convId, token])
+  }, [convId])
 
   return messages
 }

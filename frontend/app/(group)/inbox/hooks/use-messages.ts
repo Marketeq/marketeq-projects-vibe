@@ -52,7 +52,11 @@ async function decryptPage(
   )
 }
 
-export function useMessages(convId: string, token: string, keyReady?: boolean) {
+export function useMessages(
+  convId: string,
+  _token?: string,
+  keyReady?: boolean
+) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -67,7 +71,7 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
     inFlightOlderRef.current?.abort()
     inFlightOlderRef.current = null
 
-    if (!convId || !token) {
+    if (!convId) {
       setLoading(false)
       return
     }
@@ -83,7 +87,6 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
           `/v1/messages/thread/${convId}?limit=${PAGE_SIZE}`,
           {
             method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
             signal: ac.signal,
           }
         )
@@ -103,10 +106,10 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
       }
     })()
     return () => ac.abort()
-  }, [convId, token, keyReady])
+  }, [convId, keyReady])
 
   const loadOlder = useCallback(async () => {
-    if (!convId || !token) return
+    if (!convId) return
     if (!cursorRef.current || !hasMore) return
     if (inFlightOlderRef.current) return
     const ac = new AbortController()
@@ -117,7 +120,6 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
         `/v1/messages/thread/${convId}?limit=${PAGE_SIZE}&before=${cursorRef.current}`,
         {
           method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
           signal: ac.signal,
         }
       )
@@ -136,7 +138,7 @@ export function useMessages(convId: string, token: string, keyReady?: boolean) {
       if (inFlightOlderRef.current === ac) inFlightOlderRef.current = null
       if (!ac.signal.aborted) setLoadingOlder(false)
     }
-  }, [convId, token, hasMore])
+  }, [convId, hasMore])
 
   return { messages, loading, loadingOlder, hasMore, loadOlder }
 }

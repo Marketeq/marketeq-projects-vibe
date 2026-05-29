@@ -9,8 +9,8 @@ import {
   useRef,
   useState,
 } from "react"
+import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 // Global presence channel — every authenticated client joins on mount and
@@ -35,14 +35,14 @@ const OnlineUsersContext = createContext<OnlineUsersContextValue>({
 })
 
 export function OnlineUsersProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const [onlineIds, setOnlineIds] = useState<ReadonlySet<string>>(new Set())
   const pendingOfflineRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map()
   )
 
   useEffect(() => {
-    const currentUser = getCurrentUser()
-    if (!currentUser) return
+    if (!user?.id) return
 
     let cancelled = false
     let entered = false
@@ -51,12 +51,10 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
     const client = new Ably.Realtime({
       authCallback: async (_tokenParams, callback) => {
         try {
-          const token = getAccessToken()
           // No threadId — backend returns a token with the global
           // `presence:online` capability (plus `user:${userId}`).
           const tokenDetails = await apiFetch<any>("/v1/threads/ably-token", {
             method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
           })
           if (!tokenDetails) {
             callback("Realtime token unavailable", null)
@@ -67,7 +65,7 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
           callback(err instanceof Error ? err.message : String(err), null)
         }
       },
-      clientId: currentUser.id,
+      clientId: user.id,
     })
 
     const channel = client.channels.get(PRESENCE_CHANNEL)
@@ -179,7 +177,7 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
         }
       })()
     }
-  }, [])
+  }, [user?.id])
 
   const value = useMemo<OnlineUsersContextValue>(
     () => ({

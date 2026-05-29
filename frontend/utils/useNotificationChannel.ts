@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
+import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 type NotificationNewPayload = {
@@ -19,22 +19,20 @@ export function useNotificationChannel(handlers: {
   onNotificationNew?: (payload: NotificationNewPayload) => void
   onBadgeCount?: (payload: NotificationBadgePayload) => void
 }) {
+  const { user } = useAuth()
   const ref = useRef(handlers)
   useEffect(() => {
     ref.current = handlers
   }, [handlers])
 
   useEffect(() => {
-    const currentUser = getCurrentUser()
-    if (!currentUser) return
+    if (!user?.id) return
 
     const client = new Ably.Realtime({
       authCallback: async (_params, cb) => {
         try {
-          const token = getAccessToken()
           const details = await apiFetch<any>(`/v1/threads/ably-token`, {
             method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
           })
           if (!details) {
             cb("Ably realtime is not configured for this environment.", null)
@@ -45,10 +43,10 @@ export function useNotificationChannel(handlers: {
           cb(err instanceof Error ? err.message : String(err), null)
         }
       },
-      clientId: currentUser.id,
+      clientId: user.id,
     })
 
-    const channel = client.channels.get(`user:${currentUser.id}`)
+    const channel = client.channels.get(`user:${user.id}`)
 
     channel.subscribe((msg) => {
       if (msg.name === "notification:new") {
@@ -63,5 +61,5 @@ export function useNotificationChannel(handlers: {
       channel.unsubscribe()
       client.close()
     }
-  }, [])
+  }, [user?.id])
 }

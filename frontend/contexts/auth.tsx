@@ -11,6 +11,7 @@ import React, {
 import { useRouter } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
+import { setCurrentUserSnapshot } from "@/utils/auth"
 import Cookies from "js-cookie"
 import { ROLE, User } from "@/types/user"
 import { useToast } from "@/components/ui"
@@ -268,6 +269,18 @@ function useProvideAuth() {
   useEffect(() => {
     getUser()
   }, [])
+
+  useEffect(() => {
+    setCurrentUserSnapshot(
+      user
+        ? {
+            id: user.id,
+            username: user.username ?? "",
+            avatarUrl: user.avatarUrl ?? undefined,
+          }
+        : null
+    )
+  }, [user])
 
   // Heartbeat: keeps session alive and detects revocation
   useEffect(() => {
