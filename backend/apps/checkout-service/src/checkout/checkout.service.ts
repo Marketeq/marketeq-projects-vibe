@@ -55,7 +55,7 @@ export class CheckoutService {
   }) {
     let amount = dto.totalAmount;
     let giftCardAmountUsed = 0;
-    let walletAmountUsed = dto.walletBalanceUsed || 0;
+    const walletAmountUsed = dto.walletBalanceUsed || 0;
 
     // Apply gift card
     if (dto.giftCardCode) {
