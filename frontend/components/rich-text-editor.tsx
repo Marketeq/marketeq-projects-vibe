@@ -608,14 +608,18 @@ const RichTextToolbar = ({
     const selectionSnapshot = getSelectionSnapshot()
     const cursorFrom = selectionSnapshot?.from ?? editor.state.selection.from
     const cursorTo = selectionSnapshot?.to ?? editor.state.selection.to
-    const isCollapsed = cursorFrom === cursorTo
+    // Check BOTH the snapshot and the live editor selection for collapsed state.
+    // The snapshot can be stale if a previous interaction didn't clear it.
+    const isCollapsed =
+      cursorFrom === cursorTo ||
+      editor.state.selection.from === editor.state.selection.to
     const isLegacyHeading = editor.isActive("heading")
 
     if (isCollapsed) {
-      // No text selected — set stored marks directly on the transaction
-      // so the next typed characters use this font size.
-      // We cannot use setMark/unsetMark here because they don't reliably
-      // preserve stored marks with a collapsed cursor.
+      // No text selected — set stored marks only (type-ahead formatting).
+      // Do NOT modify existing text on the line.
+      const cursorPos = editor.state.selection.from
+
       if (isLegacyHeading) {
         editor.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run()
       }
@@ -624,7 +628,6 @@ const RichTextToolbar = ({
       const fontSizeMarkType = editor.schema.marks.fontSize
 
       if (value === "Normal Text") {
-        // Remove fontSize from stored marks
         const currentStored = tr.storedMarks ?? editor.state.selection.$from.marks()
         const filtered = currentStored.filter((m) => m.type !== fontSizeMarkType)
         tr.setStoredMarks(filtered)
@@ -641,6 +644,8 @@ const RichTextToolbar = ({
       }
 
       editor.view.dispatch(tr)
+      // Restore cursor position explicitly so it doesn't disappear
+      editor.commands.setTextSelection(cursorPos)
       editor.view.focus()
       return
     }
@@ -1276,102 +1281,98 @@ const ActiveEditor = ({
             return false
           }
 
-          const dropClientX = event.clientX
-          const dropClientY = event.clientY
           const containerRect = containerRef.current.getBoundingClientRect()
           const midpoint = containerRect.left + containerRect.width / 2
           const dropSide: "left" | "right" =
-            dropClientX >= midpoint ? "right" : "left"
-          const dragSrc = draggedImage.src
+            event.clientX >= midpoint ? "right" : "left"
+          const oppositeSide = dropSide === "left" ? "right" : "left"
 
-          // Let ProseMirror handle the drop normally, then post-process
-          clearImageDragPreviewState()
+          // Check if dropping onto another image (for side-by-side)
+          const elementUnderCursor = document.elementFromPoint(
+            event.clientX,
+            event.clientY
+          )
+          const targetImgEl =
+            elementUnderCursor?.tagName === "IMG"
+              ? (elementUnderCursor as HTMLImageElement)
+              : (elementUnderCursor?.closest("img") as HTMLImageElement | null)
 
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              if (!editor || !containerRef.current) return
+          const draggedEl = draggedImage.element
 
-              // Find the dropped image by matching src and proximity to drop point
-              const allImages = Array.from(
-                containerRef.current.querySelectorAll("img")
-              ) as HTMLImageElement[]
+          if (
+            targetImgEl &&
+            draggedEl &&
+            targetImgEl !== draggedEl
+          ) {
+            // Side-by-side drop: intercept completely
+            event.preventDefault()
+            clearImageDragPreviewState()
 
-              const droppedImg = allImages
-                .filter((img) => {
-                  const src = img.currentSrc || img.getAttribute("src") || ""
-                  return src === dragSrc
-                })
-                .map((img) => {
-                  const rect = img.getBoundingClientRect()
-                  const dist = Math.hypot(
-                    rect.left + rect.width / 2 - dropClientX,
-                    rect.top + rect.height / 2 - dropClientY
-                  )
-                  return { img, dist }
-                })
-                .sort((a, b) => a.dist - b.dist)[0]?.img
+            try {
+              const draggedPos = editor.view.posAtDOM(draggedEl, 0)
+              const targetPos = editor.view.posAtDOM(targetImgEl, 0)
+              const draggedNode = editor.state.doc.nodeAt(draggedPos)
+              const targetNode = editor.state.doc.nodeAt(targetPos)
+              if (
+                !draggedNode ||
+                !targetNode ||
+                draggedNode.type.name !== "image" ||
+                targetNode.type.name !== "image"
+              )
+                return true
 
-              if (!droppedImg) return
-
-              let droppedPos: number
-              try {
-                droppedPos = editor.view.posAtDOM(droppedImg, 0)
-              } catch {
-                return
-              }
-
-              const droppedNode = editor.state.doc.nodeAt(droppedPos)
-              if (!droppedNode || droppedNode.type.name !== "image") return
-
-              // Check for adjacent image after
-              const afterPos = droppedPos + droppedNode.nodeSize
-              const afterNode = editor.state.doc.nodeAt(afterPos)
-
-              // Check for adjacent image before
-              let beforePos: number | null = null
-              let beforeNode = null
-              if (droppedPos > 0) {
-                const $pos = editor.state.doc.resolve(droppedPos)
-                if ($pos.nodeBefore?.type.name === "image") {
-                  beforeNode = $pos.nodeBefore
-                  beforePos = droppedPos - beforeNode.nodeSize
-                }
-              }
-
-              const adjacentIsAfter = afterNode?.type.name === "image"
-              const adjacentIsBefore = beforeNode?.type.name === "image"
-
-              if (!adjacentIsAfter && !adjacentIsBefore) return
-
-              // Pick the closest adjacent image
-              const oppositeSide = dropSide === "left" ? "right" : "left"
               const tr = editor.state.tr
 
-              if (adjacentIsAfter) {
-                tr.setNodeMarkup(droppedPos, undefined, {
-                  ...droppedNode.attrs,
-                  align: dropSide,
+              // Delete dragged image first (use higher position first
+              // to keep lower positions stable)
+              if (draggedPos > targetPos) {
+                tr.delete(draggedPos, draggedPos + draggedNode.nodeSize)
+                // Insert after target
+                const insertPos = targetPos + targetNode.nodeSize
+                tr.insert(
+                  insertPos,
+                  draggedNode.type.create(
+                    { ...draggedNode.attrs, align: dropSide === "left" ? "right" : "left" },
+                    draggedNode.content,
+                    draggedNode.marks
+                  )
+                )
+                // Set target alignment
+                tr.setNodeMarkup(targetPos, undefined, {
+                  ...targetNode.attrs,
+                  align: dropSide === "left" ? "left" : "right",
                 })
-                tr.setNodeMarkup(afterPos, undefined, {
-                  ...afterNode!.attrs,
-                  align: oppositeSide,
-                })
-              } else if (adjacentIsBefore && beforePos !== null) {
-                tr.setNodeMarkup(beforePos, undefined, {
-                  ...beforeNode!.attrs,
-                  align: oppositeSide,
-                })
-                tr.setNodeMarkup(droppedPos, undefined, {
-                  ...droppedNode.attrs,
-                  align: dropSide,
-                })
+              } else {
+                // Target is after dragged — set target first, then
+                // delete dragged image and re-insert next to target
+                const newTargetPos = targetPos - draggedNode.nodeSize
+                tr.delete(draggedPos, draggedPos + draggedNode.nodeSize)
+                // Insert before target
+                tr.insert(
+                  newTargetPos,
+                  draggedNode.type.create(
+                    { ...draggedNode.attrs, align: dropSide },
+                    draggedNode.content,
+                    draggedNode.marks
+                  )
+                )
+                // Set target alignment (position shifted by insert)
+                tr.setNodeMarkup(
+                  newTargetPos + draggedNode.nodeSize,
+                  undefined,
+                  { ...targetNode.attrs, align: oppositeSide }
+                )
               }
 
               editor.view.dispatch(tr)
-            })
-          })
+            } catch {
+              // If position lookup fails, just let ProseMirror handle it
+            }
+            return true
+          }
 
-          // Return false — let ProseMirror handle the actual move
+          // Normal drop (not on image) — let ProseMirror handle the move
+          clearImageDragPreviewState()
           return false
         },
       },
