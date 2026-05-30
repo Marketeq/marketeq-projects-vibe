@@ -100,10 +100,6 @@ export class ProjectSyncDto {
   @IsString()
   shortDescription: string;
 
-  @IsOptional()
-  @IsString()
-  projectType?: string;
-
   // Spec §16 L15 / data-dictionary: project owner. Stored in
   // listings-service as `createdBy` so `projectHistoryRatings`
   // (§14.14) can group past projects by the same owner.

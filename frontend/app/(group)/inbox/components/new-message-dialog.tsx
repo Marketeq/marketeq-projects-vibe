@@ -62,7 +62,6 @@ export function NewMessageDialog({
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [fetchKey, setFetchKey] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const currentUser = getCurrentUser()
 
@@ -115,21 +114,13 @@ export function NewMessageDialog({
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") return
         console.error("[NewMessageDialog] failed to fetch users", err)
-        const msg = (err as Error)?.message || ""
-        if (msg.includes("401") || msg.includes("UNAUTHORIZED")) {
-          setError("Session expired — please log in again")
-        } else if (msg.includes("502") || msg.includes("503")) {
-          setError("Server is starting up — please retry in a moment")
-        } else {
-          setError("Failed to load users — please try again")
-        }
+        setError("Failed to load users")
       } finally {
         if (!controller.signal.aborted) setIsLoading(false)
       }
     })()
     return () => controller.abort()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, currentUser?.id, fetchKey])
+  }, [open, currentUser?.id])
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -194,18 +185,8 @@ export function NewMessageDialog({
               Loading...
             </div>
           ) : error ? (
-            <div className="px-4 py-6 text-center">
-              <p className="text-sm text-error-500">{error}</p>
-              <button
-                type="button"
-                className="mt-2 text-xs font-medium text-primary-500 hover:text-primary-600 hover:underline transition"
-                onClick={() => {
-                  setError(null)
-                  setFetchKey((k) => k + 1)
-                }}
-              >
-                Retry
-              </button>
+            <div className="px-4 py-6 text-center text-sm text-error-500">
+              {error}
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-gray-500">
