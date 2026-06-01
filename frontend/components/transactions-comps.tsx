@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { SVGProps, useState } from "react"
+import { SVGProps, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
+import { getEarningsSummary, getEarnings, getBalance, type EarningsSummary, type EarningsListResponse, type BalanceResponse } from "@/service/http/earnings"
 import { useToast } from "@/components/ui"
 import {
   AlertCircle,
@@ -277,7 +278,14 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const router = useRouter()
   const { toast } = useToast()
   const [showBanner, setShowBanner] = useState(true)
+  const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
+  const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
   const comingSoon = (feature: string) => toast({ title: feature, description: "This feature is coming soon." })
+
+  useEffect(() => {
+    getEarningsSummary().then(setSummary).catch(e => console.error("Earnings summary fetch failed:", e))
+    getBalance().then(setBalance).catch(e => console.error("Balance fetch failed:", e))
+  }, [])
 
   return (
     <div className="flex gap-6">
@@ -288,7 +296,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           <div className="flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
-              You&apos;ve earned over <span className="font-semibold text-success-600">$5,000</span> this year, that&apos;s <span className="font-semibold text-success-600">22%</span> more than last year!
+              You&apos;ve earned <span className="font-semibold text-success-600">${balance ? parseFloat(balance.totalEarnedUsd).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) : "..."}</span> total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
             </p>
             <IconButton
               size="sm"
@@ -334,16 +342,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </TooltipProvider>
               </div>
               <p className="text-3xl font-bold text-dark-blue-400">
-                <span className="text-base align-top">$</span>520<span className="text-lg">.00</span>
+                <span className="text-base align-top">$</span>{summary ? summary.today.amount : "—"}
               </p>
               <div className="flex items-center gap-1.5 mt-1">
-                <span className="inline-flex items-center gap-0.5 text-xs font-medium text-error-500">
-                  <ArrowDown className="size-3" />
-                  5.2%
-                </span>
-                <span className="text-xs text-gray-400">since yesterday</span>
+                {summary?.today.changeLabel && (
+                  <>
+                    <span className={cn("inline-flex items-center gap-0.5 text-xs font-medium", summary.today.changeDirection === "up" ? "text-success-500" : summary.today.changeDirection === "down" ? "text-error-500" : "text-gray-400")}>
+                      {summary.today.changeDirection === "up" ? <ArrowUp className="size-3" /> : summary.today.changeDirection === "down" ? <ArrowDown className="size-3" /> : null}
+                      {summary.today.changePercent != null ? Math.abs(summary.today.changePercent) + "%" : ""}
+                    </span>
+                    <span className="text-xs text-gray-400">{summary.today.changeLabel?.replace(/^[\d.]+%\s*/, "")}</span>
+                  </>
+                )}
               </div>
-              <p className="text-sm text-gray-500 mt-1"><span className="font-semibold">4h 30m</span> Logged</p>
+              <p className="text-sm text-gray-500 mt-1"><span className="font-semibold">{summary?.today.hoursLabel ?? "—"}</span> Logged</p>
             </div>
 
             {/* This Week + This Month */}
@@ -364,14 +376,18 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">$</span>2,460<span className="text-base">.00</span>
+                    <span className="text-sm align-top">$</span>{summary ? summary.thisWeek.amount : "—"}
                   </p>
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium text-success-500">
-                    <ArrowUp className="size-3" />
-                    5.2%
-                  </span>
-                  <span className="text-xs text-gray-400">since last week</span>
-                  <span className="text-sm text-gray-500 ml-auto"><span className="font-semibold">19h 15m</span> Logged</span>
+                  {summary?.thisWeek.changeLabel && (
+                    <>
+                      <span className={cn("inline-flex items-center gap-0.5 text-xs font-medium", summary.thisWeek.changeDirection === "up" ? "text-success-500" : "text-error-500")}>
+                        {summary.thisWeek.changeDirection === "up" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+                        {summary.thisWeek.changePercent != null ? Math.abs(summary.thisWeek.changePercent) + "%" : ""}
+                      </span>
+                      <span className="text-xs text-gray-400">{summary.thisWeek.changeLabel?.replace(/^[\d.]+%\s*/, "")}</span>
+                    </>
+                  )}
+                  <span className="text-sm text-gray-500 ml-auto"><span className="font-semibold">{summary?.thisWeek.hoursLabel ?? "—"}</span> Logged</span>
                 </div>
               </div>
 
@@ -391,14 +407,18 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">$</span>13,870<span className="text-base">.00</span>
+                    <span className="text-sm align-top">$</span>{summary ? summary.thisMonth.amount : "—"}
                   </p>
-                  <span className="inline-flex items-center gap-0.5 text-xs font-medium text-error-500">
-                    <ArrowDown className="size-3" />
-                    2.7%
-                  </span>
-                  <span className="text-xs text-gray-400">since last month</span>
-                  <span className="text-sm text-gray-500 ml-auto"><span className="font-semibold">52h 45m</span> Logged</span>
+                  {summary?.thisMonth.changeLabel && (
+                    <>
+                      <span className={cn("inline-flex items-center gap-0.5 text-xs font-medium", summary.thisMonth.changeDirection === "up" ? "text-success-500" : "text-error-500")}>
+                        {summary.thisMonth.changeDirection === "up" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+                        {summary.thisMonth.changePercent != null ? Math.abs(summary.thisMonth.changePercent) + "%" : ""}
+                      </span>
+                      <span className="text-xs text-gray-400">{summary.thisMonth.changeLabel?.replace(/^[\d.]+%\s*/, "")}</span>
+                    </>
+                  )}
+                  <span className="text-sm text-gray-500 ml-auto"><span className="font-semibold">{summary?.thisMonth.hoursLabel ?? "—"}</span> Logged</span>
                 </div>
               </div>
             </div>
@@ -560,7 +580,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           </div>
           <div className="flex items-center gap-2 mb-4">
             <p className="text-3xl font-bold text-dark-blue-400">
-              <span className="text-base align-top">$</span>567<span className="text-lg">.00</span>
+              <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
             </p>
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
               <BankIcon className="size-3.5" />
@@ -1134,6 +1154,25 @@ export const EarningsTab = () => {
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
+  const [earningsSummary, setEarningsSummary] = React.useState<EarningsSummary | null>(null)
+  const [earningsResult, setEarningsResult] = React.useState<EarningsListResponse | null>(null)
+  const [earningsLoading, setEarningsLoading] = React.useState(true)
+  const [dateRange, setDateRange] = React.useState("all_time")
+  const [entryType, setEntryType] = React.useState("")
+  const [statusFilter, setStatusFilter] = React.useState("")
+
+  useEffect(() => {
+    getEarningsSummary().then(setEarningsSummary).catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    setEarningsLoading(true)
+    const q: any = { view: viewMode, dateRange, page: currentPage, limit: 10, sortBy: "workStartAt", sortOrder: "desc" }
+    if (entryType) q.entryType = entryType
+    if (statusFilter) q.status = statusFilter
+    if (searchQuery.length >= 2) q.search = searchQuery
+    getEarnings(q).then(setEarningsResult).catch(console.error).finally(() => setEarningsLoading(false))
+  }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery])
 
   return (
     <div className="space-y-5">
@@ -1141,21 +1180,21 @@ export const EarningsTab = () => {
       <div className="flex gap-4">
         <StatCard
           label="Today"
-          amount="520.00"
-          extra="4h 30m Logged"
-          change={{ value: "5.2%", direction: "down", label: "since yesterday" }}
+          amount={earningsSummary?.today.amount ?? "—"}
+          extra={earningsSummary ? earningsSummary.today.hoursLabel + " Logged" : "Loading..."}
+          change={earningsSummary?.today.changePercent != null ? { value: Math.abs(earningsSummary.today.changePercent) + "%", direction: earningsSummary.today.changeDirection === "up" ? "up" : "down", label: earningsSummary.today.changeLabel?.replace(/^[\d.]+%\s*/, "") ?? "" } : undefined}
         />
         <StatCard
           label="This Week"
-          amount="2,460.00"
-          extra="4h 30m Logged"
-          change={{ value: "5.2%", direction: "up", label: "from last month" }}
+          amount={earningsSummary?.thisWeek.amount ?? "—"}
+          extra={earningsSummary ? earningsSummary.thisWeek.hoursLabel + " Logged" : "Loading..."}
+          change={earningsSummary?.thisWeek.changePercent != null ? { value: Math.abs(earningsSummary.thisWeek.changePercent) + "%", direction: earningsSummary.thisWeek.changeDirection === "up" ? "up" : "down", label: earningsSummary.thisWeek.changeLabel?.replace(/^[\d.]+%\s*/, "") ?? "" } : undefined}
         />
         <StatCard
           label="This Month"
-          amount="13,870.00"
-          extra="4h 30m Logged"
-          change={{ value: "2.7%", direction: "down", label: "since last month" }}
+          amount={earningsSummary?.thisMonth.amount ?? "—"}
+          extra={earningsSummary ? earningsSummary.thisMonth.hoursLabel + " Logged" : "Loading..."}
+          change={earningsSummary?.thisMonth.changePercent != null ? { value: Math.abs(earningsSummary.thisMonth.changePercent) + "%", direction: earningsSummary.thisMonth.changeDirection === "up" ? "up" : "down", label: earningsSummary.thisMonth.changeLabel?.replace(/^[\d.]+%\s*/, "") ?? "" } : undefined}
         />
       </div>
 
@@ -1172,9 +1211,22 @@ export const EarningsTab = () => {
           <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
         </ToggleGroupRoot>
 
-        <Button variant="outlined" visual="gray" size="sm" leftIcon={<Calendar className="size-4" />}>
-          All Time
-        </Button>
+        <Select value={dateRange} onValueChange={(v) => { setDateRange(v); setCurrentPage(1) }}>
+          <SelectTrigger className="h-9 w-auto min-w-[110px]">
+            <Calendar className="size-4 mr-1" />
+            <SelectValue placeholder="All Time" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all_time">All Time</SelectItem>
+            <SelectItem value="today">Today</SelectItem>
+            <SelectItem value="yesterday">Yesterday</SelectItem>
+            <SelectItem value="this_week">This Week</SelectItem>
+            <SelectItem value="last_week">Last Week</SelectItem>
+            <SelectItem value="this_month">This Month</SelectItem>
+            <SelectItem value="last_month">Last Month</SelectItem>
+            <SelectItem value="this_year">This Year</SelectItem>
+          </SelectContent>
+        </Select>
 
         <Select defaultValue="all-projects">
           <SelectTrigger className="h-9 w-auto min-w-[120px]">
@@ -1194,21 +1246,25 @@ export const EarningsTab = () => {
           </SelectContent>
         </Select>
 
-        <Select defaultValue="all-entry-types">
+        <Select value={entryType || "all-entry-types"} onValueChange={(v) => { setEntryType(v === "all-entry-types" ? "" : v); setCurrentPage(1) }}>
           <SelectTrigger className="h-9 w-auto min-w-[130px]">
             <SelectValue placeholder="All Entry Types" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all-entry-types">All Entry Types</SelectItem>
+            <SelectItem value="automated">Automated</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
           </SelectContent>
         </Select>
 
-        <Select defaultValue="all-statuses">
+        <Select value={statusFilter || "all-statuses"} onValueChange={(v) => { setStatusFilter(v === "all-statuses" ? "" : v); setCurrentPage(1) }}>
           <SelectTrigger className="h-9 w-auto min-w-[110px]">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all-statuses">All Statuses</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="failed">Reversed</SelectItem>
           </SelectContent>
         </Select>
 
@@ -1244,45 +1300,58 @@ export const EarningsTab = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {EARNINGS_DATA.map((row, i) => (
-              <TableRow key={i}>
-                <TableCell className="text-sm text-gray-500 whitespace-nowrap">{row.date}</TableCell>
+            {earningsLoading ? (
+              [...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={8} className="py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></TableCell>
+                </TableRow>
+              ))
+            ) : earningsResult?.data.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-sm text-gray-400 py-10">No earnings found for this period.</TableCell>
+              </TableRow>
+            ) : earningsResult?.data.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="text-sm text-gray-500 whitespace-nowrap">{row.date ?? row.weekRange ?? row.month ?? "—"}</TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2.5">
-                    <Avatar className="size-8">
-                      <AvatarImage src={row.clientImg} alt={row.client} />
-                      <AvatarFallback>{row.client[1]?.toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-semibold text-dark-blue-400">{row.project}</p>
-                      <p className="text-xs text-gray-400">{row.client}</p>
+                  {row.project ? (
+                    <div className="flex items-center gap-2.5">
+                      <Avatar className="size-8">
+                        <AvatarFallback>{row.project.clientHandle?.[1]?.toUpperCase() ?? "C"}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-semibold text-dark-blue-400">{row.project.name}</p>
+                        <p className="text-xs text-gray-400">{row.project.clientHandle}</p>
+                      </div>
                     </div>
-                  </div>
+                  ) : <span className="text-sm text-gray-400">—</span>}
                 </TableCell>
-                <TableCell className="text-sm text-gray-500">{row.task}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.startTime}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.endTime}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.duration}</TableCell>
+                <TableCell className="text-sm text-gray-500">{row.task?.name ?? "—"}</TableCell>
+                <TableCell className="text-sm text-gray-500">{row.startTime ?? "—"}</TableCell>
+                <TableCell className="text-sm text-gray-500">{row.endTime ?? "—"}</TableCell>
+                <TableCell className="text-sm text-gray-500">{row.durationLabel}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">{row.earnings}</span>
-                    {row.status && (
-                      <Badge visual="success" size="sm">{row.status}</Badge>
-                    )}
+                    <span className="text-sm text-gray-500">${row.netAmountDisplay ?? row.netAmount}</span>
+                    {row.status === "paid" && <Badge visual="success" size="sm">Paid</Badge>}
+                      {row.status === "confirmed" && <Badge visual="primary" size="sm">Confirmed</Badge>}
+                    {row.status === "failed" && <Badge visual="error" size="sm">Reversed</Badge>}
                   </div>
                 </TableCell>
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <IconButton size="sm" variant="ghost" visual="gray">
-                        <MoreHorizontal className="size-4" />
-                      </IconButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => toast({ title: "Transaction Details", description: `${row.project} — ${row.task} (${row.duration})` })}>View Details</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toast({ title: "Download", description: "Receipt download started." })}>Download</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex items-center gap-1">
+                    {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton size="sm" variant="ghost" visual="gray">
+                          <MoreHorizontal className="size-4" />
+                        </IconButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => toast({ title: "Transaction Details", description: `${row.project?.name ?? ""} — ${row.durationLabel}` })}>View Details</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -1292,7 +1361,7 @@ export const EarningsTab = () => {
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
           <p className="text-xs text-primary-500">
-            This timesheet includes 2h 20m of manual time{" "}
+            {earningsResult ? earningsResult.manualTimeLabel : "Loading earnings..."}{" "}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
@@ -1307,23 +1376,20 @@ export const EarningsTab = () => {
 
           {/* Pagination */}
           <div className="flex items-center gap-1">
-            {[1, 2, 3, "...", 8, 9, 10].map((page, i) => (
-              <button
-                key={i}
-                className={cn(
-                  "size-8 rounded-md text-sm font-medium flex items-center justify-center",
-                  page === currentPage
-                    ? "border border-gray-300 text-dark-blue-400 bg-white"
-                    : "text-gray-500 hover:bg-gray-100"
-                )}
-                onClick={() => typeof page === "number" && setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
             <button
-              className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100"
-              onClick={() => setCurrentPage((p) => Math.min(p + 1, 10))}
+              className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <span className="text-sm text-gray-500 px-2">
+              Page {currentPage} of {earningsResult?.totalPages ?? 1}
+            </span>
+            <button
+              className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+              disabled={currentPage >= (earningsResult?.totalPages ?? 1)}
+              onClick={() => setCurrentPage((p) => p + 1)}
             >
               <ChevronRight className="size-4" />
             </button>

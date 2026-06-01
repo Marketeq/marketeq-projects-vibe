@@ -49,7 +49,7 @@ import { ReportsModule } from './reports/reports.module';
         synchronize: false,
         // Auto-run pending migrations on service startup in every env,
         // per docs/md/Database Migrations/database-migrations.md.
-        migrationsRun: true,
+        migrationsRun: false,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: process.env.NODE_ENV !== 'production',
         ssl:

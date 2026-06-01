@@ -563,7 +563,7 @@ export function TimeTrackerApp({
       return next
     })
   }, [])
-  const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
+  const [days, setDays] = React.useState<DayGroup[]>(initialDays || [])
   const [contractsLoaded, setContractsLoaded] = React.useState(false)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
   const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
@@ -647,24 +647,38 @@ export function TimeTrackerApp({
 
         // Convert backend contracts into the DayGroup format the UI expects.
         // Group all active contracts under "Today" so they appear in the picker.
+        // Convert backend contracts into the DayGroup format the UI expects.
         const today = new Date()
         const fullDate = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
-        const uiContracts: Contract[] = contracts
+        const uiContractsPromises = contracts
           .filter((c) => c.status === 'ACTIVE' || c.status === 'active')
-          .map((c) => ({
-            id: c.id,
-            name: c.title || "Untitled Contract",
-            clientHandle: c.clientId?.slice(0, 12) || "client",
-            tasks: [
-              {
-                id: `task-${c.id}`,
-                name: c.title || "General work",
-                timeRange: "Not started",
-                duration: "00:00:00",
-              },
-            ],
-          }))
-
+          .map(async (c) => {
+            let tasks: { id: string; name: string; timeRange: string; duration: string }[] = []
+            try {
+              const res = await fetch(`http://localhost:3017/api/api/tasks/contract/${encodeURIComponent(c.id)}`)
+              if (res.ok) {
+                const data = await res.json()
+                if (Array.isArray(data) && data.length > 0) {
+                  tasks = data.map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    timeRange: "Not started",
+                    duration: "00:00:00",
+                  }))
+                }
+              }
+            } catch { /* fallback */ }
+            if (tasks.length === 0) {
+              tasks = [{ id: `task-${c.id}`, name: "General work", timeRange: "Not started", duration: "00:00:00" }]
+            }
+            return {
+              id: c.id,
+              name: c.title || "Untitled Contract",
+              clientHandle: c.clientName || c.clientId?.slice(0, 12) || "client",
+              tasks,
+            }
+          })
+        const uiContracts: Contract[] = await Promise.all(uiContractsPromises)
         if (uiContracts.length > 0) {
           const todayGroup: DayGroup = {
             label: "Today",
@@ -692,15 +706,19 @@ export function TimeTrackerApp({
 
   // ── Timer tick ──────────────────────────────────────────────────────────
   React.useEffect(() => {
-    if (isRunning && !isPaused) {
-      intervalRef.current = setInterval(() => {
-        setElapsed((e) => e + 1)
-      }, 1000)
+    if (isRunning && !isPaused && trackingStartTime) {
+      const tick = () => {
+        const now = Date.now()
+        const elapsedMs = now - trackingStartTime.getTime()
+        setElapsed(Math.floor(elapsedMs / 1000))
+      }
+      tick() // immediate update
+      intervalRef.current = setInterval(tick, 1000)
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [isRunning, isPaused])
+  }, [isRunning, isPaused, trackingStartTime])
 
   // ── Scroll handler — show minimized bar once expanded header + controls scroll away ──
   const handleContentScroll = React.useCallback(() => {

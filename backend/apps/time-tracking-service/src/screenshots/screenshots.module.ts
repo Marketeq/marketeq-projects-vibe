@@ -8,6 +8,7 @@ import { ScreenshotsController } from './screenshots.controller';
 import { ScreenshotsDevController } from './screenshots.dev.controller';
 import { ScreenshotsService } from './screenshots.service';
 import { BearerGuard } from '../common/guards/bearer.guard';
+import { EarningsSyncService } from '../services/earnings-sync.service';
 
 const devControllers =
   process.env.NODE_ENV !== 'production' ? [ScreenshotsDevController] : [];
@@ -15,7 +16,7 @@ const devControllers =
 @Module({
   imports: [StorageModule, EventsModule, TypeOrmModule.forFeature([Screenshot, AdminSettings])],
   controllers: [ScreenshotsController, ...devControllers],
-  providers: [ScreenshotsService, BearerGuard],
-  exports: [ScreenshotsService],
+  providers: [ScreenshotsService, BearerGuard, EarningsSyncService],
+  exports: [ScreenshotsService, EarningsSyncService],
 })
 export class ScreenshotsModule {}

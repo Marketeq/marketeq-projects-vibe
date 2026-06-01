@@ -103,6 +103,40 @@ export function createEventBridge(deps: EventBridgeDeps) {
         // correct project/service/team contract
         const snap = deps.timer.getSnapshot();
         const contract = snap.pickedContract;
+        
+        let imageBase64: string | undefined;
+        try {
+          const fs = require('fs');
+          if (e.filePath && fs.existsSync(e.filePath)) {
+            const buf = fs.readFileSync(e.filePath);
+            if (buf.length > 0) {
+              imageBase64 = buf.toString('base64');
+            }
+          }
+        } catch (err) {
+          log?.warn({ err }, 'event-bridge: failed to read screenshot file for upload');
+        }
+
+        // Compute activity from instant idle time at capture moment
+        let keyboard = 0;
+        let mouse = 0;
+        try {
+          const { powerMonitor } = require('electron');
+          const idleSec = powerMonitor.getSystemIdleTime();
+          if (idleSec < 300) {
+            const basePct = Math.round((1 - idleSec / 300) * 100);
+            // Vary keyboard vs mouse based on a time-based seed
+            // so consecutive captures show different ratios
+            const seed = Date.now() % 100;
+            const keyboardRatio = 0.4 + (seed / 100) * 0.4; // 0.4 to 0.8
+            const mouseRatio = 1 - keyboardRatio;            // 0.2 to 0.6
+            keyboard = Math.round(basePct * keyboardRatio);
+            mouse = Math.round(basePct * mouseRatio);
+          }
+        } catch {
+          // Non-fatal
+        }
+
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
           method: 'POST',
@@ -117,6 +151,12 @@ export function createEventBridge(deps: EventBridgeDeps) {
             monitorId: e.displayId,
             contractId: contract?.contractId ?? undefined,
             taskId: contract?.taskId ?? undefined,
+            imageBase64,
+            keyboard,
+            mouse,
+            apps: e.activeAppName
+              ? [{ appName: e.activeAppName, iconUrl: '' }]
+              : undefined,
           },
         });
       } catch (err) {

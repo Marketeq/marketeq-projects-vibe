@@ -102,7 +102,7 @@ export class ScreenshotsController {
 
   @Post('confirm')
   async confirm(@Body() dto: ConfirmScreenshotDto) {
-    if (!dto?.userId || !dto?.key || !dto?.mimeType || !dto?.bytes) {
+    if (!dto?.userId || !dto?.key || !dto?.mimeType || dto?.bytes == null) {
       throw new HttpException({ message: 'userId, key, mimeType, bytes are required' }, 400);
     }
     return this.svc.confirm(dto);
@@ -213,15 +213,13 @@ export class ScreenshotsController {
     return screenshot;
   }
 
-  @Patch(':id/meta')
+  @Patch(':id/unblur')
   @UseGuards(JwtAuthGuard)
-  async updateMeta(
+  async unblur(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
-    @Body() dto: UpdateScreenshotMetaDto,
-    @Query('scopeId') scopeId?: string,
   ) {
-    return this.svc.updateMeta(id, req.user.sub, req.user.role, dto, scopeId);
+    return this.svc.unblur(id, req.user.sub);
   }
 
   @Patch('batch/meta')
@@ -233,4 +231,15 @@ export class ScreenshotsController {
   ) {
     return this.svc.batchUpdateMeta(req.user.sub, req.user.role, dto, scopeId);
   }
+  @Patch(':id/meta')
+  @UseGuards(JwtAuthGuard)
+  async updateMeta(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Body() dto: UpdateScreenshotMetaDto,
+    @Query('scopeId') scopeId?: string,
+  ) {
+    return this.svc.updateMeta(id, req.user.sub, req.user.role, dto, scopeId);
+  }
+
 }

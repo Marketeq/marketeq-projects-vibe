@@ -140,7 +140,7 @@ export class EarningsService {
       id: row.id, transactionId: row.transactionId, contractorId: row.contractorId,
       contractId: row.contractId, projectId: row.projectId, taskId: row.taskId,
       entryType: row.entryType === 'screenshot' ? 'automated' : 'manual',
-      status: row.status === 'reversed' ? 'failed' : 'paid',
+      status: row.status === 'reversed' ? 'failed' : row.status,
       grossAmount: row.grossAmount, feeAmount: row.feeAmount, netAmount: row.netAmount,
       netAmountDisplay: netDisp.amount, currency: row.currency, displayCurrency: netDisp.currency,
       fxRateToUsd: row.fxRateToUsd, netAmountUsd: row.netAmountUsd,
@@ -313,13 +313,13 @@ export class EarningsService {
       weekRange:view==='weekly'?this.fmtWeek(row.workStartAt):null,
       month:view==='monthly'?this.fmtMonth(row.workStartAt):null,
       project:lbl?{id:row.projectId,name:lbl.projectName,clientHandle:'@'+lbl.clientDisplayName}:null,
-      task:view==='daily'?{id:row.taskId,name:null}:null,
+      task:view==='daily'?{id:row.taskId,name:(row as any).taskName||null}:null,
       startTime:view==='daily'?this.fmtTime(row.workStartAt):null,
       endTime:view==='daily'?this.fmtTime(row.workEndAt):null,
       durationMinutes:row.durationMinutes, durationLabel:this.fmtMins(row.durationMinutes),
       grossAmount:row.grossAmount, feeAmount:row.feeAmount, netAmount:row.netAmount,
       entryType:row.entryType==='screenshot'?'automated':'manual',
-      status:row.status==='reversed'?'failed':'paid',
+      status:row.status==='reversed'?'failed':row.status,
       avgKeyboardPct:view==='daily'?row.avgKeyboardPct:null,
       avgMousePct:view==='daily'?row.avgMousePct:null,
       weeklyHours:view==='weekly'?this.fmtMins(row.durationMinutes):null,
@@ -334,7 +334,7 @@ export class EarningsService {
   private startOfWeek(d:Date,tz:string):Date{const s=this.startOfDay(d,tz);s.setDate(s.getDate()-((s.getDay()+6)%7));return s;}
   private startOfMonth(d:Date,tz:string):Date{const s=this.startOfDay(d,tz);s.setDate(1);return s;}
   private fmtDate(d:Date):string{return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
-  private fmtTime(d:Date):string{return d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});}
+  private fmtTime(d:Date):string{return d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'America/Chicago'});}
   private fmtMonth(d:Date):string{return d.toLocaleDateString('en-US',{month:'long',year:'numeric'});}
   private fmtMins(m:number):string{return `${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`;}
   private fmtWeek(d:Date):string{const m=new Date(d);m.setDate(d.getDate()-((d.getDay()+6)%7));const s=new Date(m);s.setDate(m.getDate()+6);const f=(x:Date)=>x.toLocaleDateString('en-US',{month:'short',day:'numeric'});return `${f(m)} – ${f(s)}, ${s.getFullYear()}`;}

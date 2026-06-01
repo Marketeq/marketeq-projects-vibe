@@ -15,6 +15,8 @@ export interface ScreenshotCardDTO {
   capturedAt: string | null
   contractId: string | null
   taskId: string | null
+  contractName: string | null
+  taskName: string | null
   url: string | null
   keyboard: number
   mouse: number
@@ -28,6 +30,7 @@ export interface ScreenshotCardDTO {
   groupKey: string | null
   thumbnailUrl: string
   createdAt: string
+  
 }
 
 export interface ScreenshotCardsResponse {
@@ -44,6 +47,10 @@ export interface ScreenshotCardsParams {
   to?: string
   apps?: string[]
   activityLevel?: number
+  minKeyboard?: number
+  maxKeyboard?: number
+  minMouse?: number
+  maxMouse?: number
   sortBy?: "timestamp" | "keyboard" | "mouse" | "project"
   sortOrder?: "ASC" | "DESC"
   page?: number
@@ -72,10 +79,40 @@ export const blurScreenshot = async (id: string) => {
   return res.data
 }
 
+export const unblurScreenshot = async (id: string) => {
+  const res = await AxiosRequest.patch(`/screenshots/${id}/unblur`, {})
+  return res.data
+}
+
 export const updateScreenshotMeta = async (
   id: string,
   data: { contractId?: string; taskId?: string }
 ) => {
   const res = await AxiosRequest.patch(`/screenshots/${id}/meta`, data)
+  return res.data
+}
+
+export const bulkTransferScreenshots = async (
+  ids: string[],
+  contractId: string,
+  taskId?: string
+) => {
+  const axios = (await import("axios")).default
+  const Cookies = (await import("js-cookie")).default
+  const token = Cookies.get("access_token") || Cookies.get("accessToken")
+  const res = await axios.patch(
+    "http://localhost:3017/api/screenshots/batch/meta",
+    {
+      ids,
+      contractId,
+      ...(taskId ? { taskId } : {}),
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  )
   return res.data
 }

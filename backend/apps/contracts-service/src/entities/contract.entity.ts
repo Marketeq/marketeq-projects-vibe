@@ -28,6 +28,9 @@ export class Contract {
   @Column()
   clientId: string;
 
+  @Column({ name: 'client_name', default: '' })
+  clientName: string;
+
   @Column()
   talentId: string;
 

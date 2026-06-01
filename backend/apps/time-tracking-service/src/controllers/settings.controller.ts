@@ -8,7 +8,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
 import { SettingsService } from '../services/settings.service';
 import { UpdateAdminSettingsDto, UpdateUserPreferencesDto } from '../dtos/update-settings.dto';
 
@@ -17,16 +16,14 @@ import { UpdateAdminSettingsDto, UpdateUserPreferencesDto } from '../dtos/update
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
-  /** Admin: get settings for a scope (orgId or contractId) */
+  /** Get screenshot permission settings for a contract scope */
   @Get('admin/:scopeId')
-  @UseGuards(RolesGuard('admin'))
   async getAdminSettings(@Param('scopeId') scopeId: string) {
     return this.settingsService.getAdminSettings(scopeId);
   }
 
-  /** Admin: update settings for a scope */
+  /** Update screenshot permission settings for a contract scope */
   @Put('admin/:scopeId')
-  @UseGuards(RolesGuard('admin'))
   async updateAdminSettings(
     @Param('scopeId') scopeId: string,
     @Body() dto: UpdateAdminSettingsDto,
