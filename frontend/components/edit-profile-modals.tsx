@@ -106,7 +106,7 @@ import {
 // ============================================================
 
 const aboutMeFormSchema = z.object({
-  aboutMe: z.string().min(1, "Please enter at least 1 character(s)"),
+  aboutMe: z.string(),
 })
 
 type AboutMeFormValues = z.infer<typeof aboutMeFormSchema>
@@ -548,11 +548,9 @@ const languagesFormDefaultValue = {
 } satisfies LanguagesFormValues
 
 const skillsFormSchema = z.object({
-  skills: z
-    .array(
-      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
-    )
-    .min(1, "Please add at least 1 skill"),
+  skills: z.array(
+    z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+  ),
 })
 
 type SkillsFormValues = z.infer<typeof skillsFormSchema>
@@ -2107,9 +2105,9 @@ export const WorkExperienceDialog = ({
         formValues: value,
         edit,
       })}
-      <DialogContent className="max-w-[700px] rounded-[12px] p-0">
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="border-b border-gray-200 pt-6 px-6">
+      <DialogContent className="max-w-[700px] max-h-[calc(100vh-2rem)] rounded-[12px] p-0 flex flex-col overflow-hidden">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+          <div className="pt-6 px-6 flex-1 overflow-y-auto min-h-0">
             <div className="flex items-start gap-x-2">
               <div className="flex-auto">
                 <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
@@ -2524,7 +2522,7 @@ export const WorkExperienceDialog = ({
             </div>
           </div>
 
-          <div className="py-4 px-6 flex items-center justify-between">
+          <div className="py-4 px-6 flex items-center justify-between shrink-0 border-t border-gray-200 bg-white">
             <DialogClose onClick={() => reset()} asChild>
               <Button variant="link" visual="gray" type="button">
                 <X className="size-[15px]" />
@@ -3366,6 +3364,7 @@ export const SkillsDialog = ({
     trigger,
   } = useForm<SkillsFormValues>({
     resolver: zodResolver(skillsFormSchema),
+    defaultValues: skillsFormDefaultValue,
   })
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
@@ -3650,31 +3649,32 @@ export const IndustryExpertiseDialog = ({
   } = useForm<IndustriesFormValues>({
     resolver: zodResolver(industriesFormSchema),
   })
-  const [expertise] = useState([
-    { id: 1, name: "Expertise 0" },
-    { id: 2, name: "Expertise 1" },
-    { id: 3, name: "Expertise 2" },
-    { id: 4, name: "Expertise 3" },
-    { id: 5, name: "Expertise 4" },
-    { id: 6, name: "Expertise 5" },
-    { id: 7, name: "Expertise 6" },
-    { id: 8, name: "Expertise 7" },
-    { id: 9, name: "Expertise 8" },
-    { id: 10, name: "Expertise 9" },
-    { id: 11, name: "Expertise 10" },
-  ])
   const selected = useWatch({ control, name: "industries" })
   const [query, setQuery] = useState("")
+  const [filteredExpertise, setFilteredExpertise] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
-  const filteredExpertise =
-    query === ""
-      ? expertise
-      : expertise.filter((item) =>
-          item.name
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .includes(query.toLowerCase().replace(/\s+/g, ""))
-        )
+  const fetchIndustries = useCallback(async (q: string) => {
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/industries?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id?: string; label: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
+      setFilteredExpertise(
+        entries.map((e) => ({ id: e.id ?? e.label, name: e.label }))
+      )
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchIndustries(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchIndustries])
   const onRemove = (index: number) => {
     setValue(
       "industries",
@@ -3884,31 +3884,32 @@ export const CertificationsDialog = ({
     },
   })
   const [isShowing, setIsShowing] = useState(false)
-  const [skills] = useState([
-    { id: 1, name: "Expertise 0" },
-    { id: 2, name: "Expertise 1" },
-    { id: 3, name: "Expertise 2" },
-    { id: 4, name: "Expertise 3" },
-    { id: 5, name: "Expertise 4" },
-    { id: 6, name: "Expertise 5" },
-    { id: 7, name: "Expertise 6" },
-    { id: 8, name: "Expertise 7" },
-    { id: 9, name: "Expertise 8" },
-    { id: 10, name: "Expertise 9" },
-    { id: 11, name: "Expertise 10" },
-  ])
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
+  const [filteredSkills, setFilteredSkills] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
-  const filteredSkills =
-    query === ""
-      ? skills
-      : skills.filter((skill) =>
-          skill.name
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .includes(query.toLowerCase().replace(/\s+/g, ""))
-        )
+  const fetchSkills = useCallback(async (q: string) => {
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id?: string; label: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
+      setFilteredSkills(
+        entries.map((e) => ({ id: e.id ?? e.label, name: e.label }))
+      )
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkills(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchSkills])
   const onSubmit: SubmitHandler<CertificationsFormValues> = async (values) => {
     setOpen(false)
     setValueFn((prev) => (prev ? [...prev, values] : [values]))
@@ -3916,9 +3917,9 @@ export const CertificationsDialog = ({
     if (userId) {
       UserAPI.addCertification({
         name: values.name,
-        issuer: "",
-        issueDate: values.issuedDate?.toISOString() ?? "",
+        issueDate: values.issuedDate.toISOString(),
         expirationDate: values.expirationDate?.toISOString(),
+        credentialId: values.credentialId || undefined,
         credentialUrl: values.credentialsUrl || undefined,
       })
         .then(() => onSaved?.())
