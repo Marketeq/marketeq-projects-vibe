@@ -12,10 +12,10 @@ export class CreateCertificationDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'AWS Training and Certification' })
+  @ApiPropertyOptional({ example: 'AWS Training and Certification' })
   @IsString()
-  @IsNotEmpty()
-  issuer: string;
+  @IsOptional()
+  issuer?: string;
 
   @ApiProperty({ example: '2021' })
   @IsDateString()

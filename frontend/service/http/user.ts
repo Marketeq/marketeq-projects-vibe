@@ -37,7 +37,7 @@ export interface LanguagePayload {
 
 export interface CertificationPayload {
   name: string
-  issuer: string
+  issuer?: string
   issueDate: string
   expirationDate?: string
   credentialId?: string
