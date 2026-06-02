@@ -48,6 +48,7 @@ export interface CertificationPayload {
   expirationDate?: string
   credentialId?: string
   credentialUrl?: string
+  skills?: string[]
 }
 
 export interface IndustryPayload {
