@@ -20,7 +20,7 @@ export class TalentProfileController {
   ) {}
 
   private static readonly PUBLIC_FIELDS: (keyof TalentProfile)[] = [
-    'id', 'username', 'name', 'headline', 'jobTitles', 'availability',
+    'id', 'username', 'name', 'jobTitles', 'availability',
     'location', 'country', 'timezone', 'rate', 'overview', 'skills',
     'industryExpertise', 'languages', 'certifications', 'education',
     'workExperience', 'portfolio', 'status', 'rating', 'reviewsCount',

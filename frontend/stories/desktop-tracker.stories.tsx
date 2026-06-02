@@ -1,23 +1,26 @@
 import { Meta, StoryObj } from "@storybook/react"
 import {
-  TimeTrackerApp,
-  TimerDisplay,
-  TimerControls,
-  ContractEntry,
-  DaySummary,
-  TrackerHeader,
-  DateTimeBar,
   AccountMenu,
-  TaskSearch,
-  NewTaskForm,
   ActiveTrackingBar,
+  ContractEntry,
+  DateTimeBar,
+  DaySummary,
+  NewTaskForm,
+  TaskSearch,
+  TimeTrackerApp,
+  TimerControls,
+  TimerDisplay,
+  TrackerHeader,
 } from "@/components/desktop-tracker"
 
 const meta: Meta = {
   title: "Desktop Time Tracker",
   parameters: {
     layout: "centered",
-    backgrounds: { default: "light-gray", values: [{ name: "light-gray", value: "#F2F4F7" }] },
+    backgrounds: {
+      default: "light-gray",
+      values: [{ name: "light-gray", value: "#F2F4F7" }],
+    },
   },
   decorators: [
     (Story) => (
@@ -105,11 +108,39 @@ export const AppTracking: StoryObj = {
 export const AppWithTasks: StoryObj = {
   render: () => {
     const tasks = [
-      { id: "t1", name: "Card sorting features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 60 },
-      { id: "t2", name: "Low-fidelity wireframing", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-      { id: "t3", name: "Fine-tuning wireframes", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-      { id: "t4", name: "Competitive analysis of features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 80 },
-      { id: "t5", name: "Auditing 10 screenshots of each f...", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 40 },
+      {
+        id: "t1",
+        name: "Card sorting features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 60,
+      },
+      {
+        id: "t2",
+        name: "Low-fidelity wireframing",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
+      {
+        id: "t3",
+        name: "Fine-tuning wireframes",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
+      {
+        id: "t4",
+        name: "Competitive analysis of features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 80,
+      },
+      {
+        id: "t5",
+        name: "Auditing 10 screenshots of each f...",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 40,
+      },
     ]
 
     return (
@@ -122,7 +153,12 @@ export const AppWithTasks: StoryObj = {
         <div className="py-3">
           <TimerControls />
         </div>
-        <DaySummary label="Today" hoursTracked="5" totalHours="8" earned="$150" />
+        <DaySummary
+          label="Today"
+          hoursTracked="5"
+          totalHours="8"
+          earned="$150"
+        />
         <div className="flex-1 overflow-y-auto px-2 pb-2">
           <ContractEntry
             contractName="Detecting Edges Usi..."
@@ -147,16 +183,71 @@ export const AppWithTasks: StoryObj = {
 export const AllTasksView: StoryObj = {
   render: () => {
     const tasks = [
-      { id: "t1", name: "Card sorting features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 60 },
-      { id: "t2", name: "Low-fidelity wireframing", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-      { id: "t3", name: "Fine-tuning wireframes", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-      { id: "t4", name: "Competitive analysis of features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 80 },
-      { id: "t5", name: "Auditing 10 screenshots of each feature", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 40 },
-      { id: "t6", name: "Verify final wireframes with best-in-class screenshots", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-      { id: "t7", name: "Build high-fidelity wireframes", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-      { id: "t8", name: "Card sorting features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 60 },
-      { id: "t9", name: "Card sorting features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 60 },
-      { id: "t10", name: "Low-fidelity wireframing", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
+      {
+        id: "t1",
+        name: "Card sorting features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 60,
+      },
+      {
+        id: "t2",
+        name: "Low-fidelity wireframing",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
+      {
+        id: "t3",
+        name: "Fine-tuning wireframes",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
+      {
+        id: "t4",
+        name: "Competitive analysis of features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 80,
+      },
+      {
+        id: "t5",
+        name: "Auditing 10 screenshots of each feature",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 40,
+      },
+      {
+        id: "t6",
+        name: "Verify final wireframes with best-in-class screenshots",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
+      {
+        id: "t7",
+        name: "Build high-fidelity wireframes",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
+      {
+        id: "t8",
+        name: "Card sorting features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 60,
+      },
+      {
+        id: "t9",
+        name: "Card sorting features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 60,
+      },
+      {
+        id: "t10",
+        name: "Low-fidelity wireframing",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
     ]
 
     return (
@@ -165,13 +256,36 @@ export const AllTasksView: StoryObj = {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
           <button className="text-gray-500">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M12.5 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M12.5 15l-5-5 5-5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
           <div className="flex-1 relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <svg
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="none"
+            >
+              <circle
+                cx="9"
+                cy="9"
+                r="6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M13.5 13.5L17 17"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
             <input
               placeholder="Find a task..."
@@ -185,20 +299,36 @@ export const AllTasksView: StoryObj = {
         </div>
         <div className="flex-1 overflow-y-auto">
           {tasks.map((task) => (
-            <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 hover:bg-gray-25">
+            <div
+              key={task.id}
+              className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 hover:bg-gray-25"
+            >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-dark-blue-500 truncate">{task.name}</p>
+                <p className="text-sm font-medium text-dark-blue-500 truncate">
+                  {task.name}
+                </p>
                 <p className="text-xs text-gray-400">{task.timeRange}</p>
               </div>
               {task.progress !== undefined && (
                 <div className="w-10 h-1 rounded-full bg-gray-100 overflow-hidden shrink-0">
-                  <div className="h-full rounded-full bg-primary-500" style={{ width: `${task.progress}%` }} />
+                  <div
+                    className="h-full rounded-full bg-primary-500"
+                    style={{ width: `${task.progress}%` }}
+                  />
                 </div>
               )}
-              <span className="text-sm font-medium text-dark-blue-500 tabular-nums shrink-0">{task.duration}</span>
+              <span className="text-sm font-medium text-dark-blue-500 tabular-nums shrink-0">
+                {task.duration}
+              </span>
               <button className="text-gray-400 hover:text-primary-500 shrink-0">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.2" />
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="7"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                  />
                   <path d="M6.5 5l4 3-4 3V5z" fill="currentColor" />
                 </svg>
               </button>
@@ -253,18 +383,41 @@ export const CompactTimerIdle: StoryObj = {
       <div className="flex items-center gap-3 px-4 pb-3">
         <button className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-500 text-white shadow">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M7 4.5v11a.5.5 0 00.77.42l8.5-5.5a.5.5 0 000-.84l-8.5-5.5A.5.5 0 007 4.5z" fill="currentColor" />
+            <path
+              d="M7 4.5v11a.5.5 0 00.77.42l8.5-5.5a.5.5 0 000-.84l-8.5-5.5A.5.5 0 007 4.5z"
+              fill="currentColor"
+            />
           </svg>
         </button>
         <button className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="5" stroke="currentColor" strokeWidth="1.2" />
-            <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle
+              cx="8"
+              cy="8"
+              r="5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            />
+            <path
+              d="M8 5v3l2 2"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
         <button className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+            <rect
+              x="3.5"
+              y="3.5"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            />
           </svg>
         </button>
         <div className="flex-1" />
@@ -285,19 +438,53 @@ export const CompactTimerActive: StoryObj = {
       <div className="flex items-center gap-3 px-4 py-3">
         <button className="flex h-10 w-10 items-center justify-center rounded-full bg-dark-blue-500 text-white shadow">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect x="5.5" y="4" width="3" height="12" rx="0.5" fill="currentColor" />
-            <rect x="11.5" y="4" width="3" height="12" rx="0.5" fill="currentColor" />
+            <rect
+              x="5.5"
+              y="4"
+              width="3"
+              height="12"
+              rx="0.5"
+              fill="currentColor"
+            />
+            <rect
+              x="11.5"
+              y="4"
+              width="3"
+              height="12"
+              rx="0.5"
+              fill="currentColor"
+            />
           </svg>
         </button>
         <button className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="5" stroke="currentColor" strokeWidth="1.2" />
-            <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle
+              cx="8"
+              cy="8"
+              r="5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            />
+            <path
+              d="M8 5v3l2 2"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
         <button className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+            <rect
+              x="3.5"
+              y="3.5"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            />
           </svg>
         </button>
         <div className="flex-1" />
@@ -316,7 +503,12 @@ export const SearchStates: StoryObj = {
       <TaskSearch
         value="Wirefra"
         results={[
-          { id: "1", taskName: "Wireframing", contractName: "Referrizer Web Application", clientHandle: "referrizerllc" },
+          {
+            id: "1",
+            taskName: "Wireframing",
+            contractName: "Referrizer Web Application",
+            clientHandle: "referrizerllc",
+          },
         ]}
       />
       <TaskSearch
@@ -384,9 +576,25 @@ export const ContractEntryWithTasks: StoryObj = {
         totalHours="0 hrs"
         isExpanded
         tasks={[
-          { id: "1", name: "Card sorting features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 60 },
-          { id: "2", name: "Low-fidelity wireframing", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
-          { id: "3", name: "Fine-tuning wireframes", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
+          {
+            id: "1",
+            name: "Card sorting features",
+            timeRange: "10:32 am - 4:39 pm",
+            duration: "01:00:00",
+            progress: 60,
+          },
+          {
+            id: "2",
+            name: "Low-fidelity wireframing",
+            timeRange: "10:32 am - 4:39 pm",
+            duration: "01:00:00",
+          },
+          {
+            id: "3",
+            name: "Fine-tuning wireframes",
+            timeRange: "10:32 am - 4:39 pm",
+            duration: "01:00:00",
+          },
         ]}
       />
     </div>

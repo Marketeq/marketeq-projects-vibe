@@ -1888,11 +1888,15 @@ const TopSkills = ({
   })
   const [open, setOpen] = useState(false)
   const [customSkillOptions, setCustomSkillOptions] = useState<string[]>([])
-  const [skillOptions, setSkillOptions] =
-    useState<string[]>(sortAlphabetically(FALLBACK_TOP_SKILLS))
+  const [skillOptions, setSkillOptions] = useState<string[]>(
+    sortAlphabetically(FALLBACK_TOP_SKILLS)
+  )
   const requestIdRef = useRef(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const skillsVocabulary = useMemo(() => toVocabulary(skillOptions), [skillOptions])
+  const skillsVocabulary = useMemo(
+    () => toVocabulary(skillOptions),
+    [skillOptions]
+  )
 
   const resetInputValue = () => setInputValue("")
 
@@ -1904,7 +1908,9 @@ const TopSkills = ({
       (option) => option.trim().toLowerCase() === trimmedValue.toLowerCase()
     )
 
-    return exactMatch ? formatSkillLabel(exactMatch) : formatSkillLabel(trimmedValue)
+    return exactMatch
+      ? formatSkillLabel(exactMatch)
+      : formatSkillLabel(trimmedValue)
   }
 
   const addValue = async (nextValue = inputValue) => {
@@ -1949,9 +1955,7 @@ const TopSkills = ({
         sortAlphabetically([...prev, normalizedValue])
       )
     }
-    setSkillOptions((prev) =>
-      sortAlphabetically([...prev, normalizedValue])
-    )
+    setSkillOptions((prev) => sortAlphabetically([...prev, normalizedValue]))
     setValues((prev) => getUniqueOptions([...prev, normalizedValue]))
     resetInputValue()
     setOpen(false)
@@ -2048,12 +2052,11 @@ const TopSkills = ({
   }, [inputValue, customSkillOptions])
 
   const filteredRoles = inputValue.trim()
-    ? skillOptions
-        .filter(
-          (skill) =>
-            !hasCaseInsensitiveExactMatch(values, skill) &&
-            skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
-        )
+    ? skillOptions.filter(
+        (skill) =>
+          !hasCaseInsensitiveExactMatch(values, skill) &&
+          skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
+      )
     : []
 
   return (
@@ -2450,10 +2453,7 @@ const ShowcaseYourTalent = ({
                                   sortAlphabetically([...prev, normalizedValue])
                                 )
                                 setJobTitleOptions((prev) =>
-                                  sortAlphabetically([
-                                    ...prev,
-                                    normalizedValue,
-                                  ])
+                                  sortAlphabetically([...prev, normalizedValue])
                                 )
                                 clearErrors("recentJobTitle")
                                 setJobTitleQuery("")
@@ -3819,6 +3819,7 @@ const DoNext = ({
           nextUser = {
             ...fallbackUser,
             onboardingDismissed: true,
+            talentOnboardedAt: new Date().toISOString(),
             userType: "talent",
           }
         }

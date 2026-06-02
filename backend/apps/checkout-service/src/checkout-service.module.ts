@@ -31,7 +31,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       synchronize: process.env.NODE_ENV !== 'production',
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
     }),
     TypeOrmModule.forFeature([
       CheckoutSession, Wallet, GiftCard,

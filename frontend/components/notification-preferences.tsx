@@ -2,8 +2,6 @@
 
 import { useState } from "react"
 import { useAuth } from "@/contexts/auth"
-import { useToast } from "@/components/ui"
-import { useNotificationPreferences } from "@/src/hooks/useNotificationPreferences"
 import type {
   CategoryPref,
   ChannelKey,
@@ -11,10 +9,12 @@ import type {
   NotificationItemPref,
   ScopedChannelState,
 } from "@/service/http/notifications"
-import NotificationGlobalChannels from "./notifications/notification-global-channels"
+import { useNotificationPreferences } from "@/src/hooks/useNotificationPreferences"
+import { useToast } from "@/components/ui"
+import ResetDefaultsModal from "./notifications/modals/reset-defaults-modal"
 import NotificationCategoriesList from "./notifications/notification-categories-list"
 import NotificationCategoryDetail from "./notifications/notification-category-detail"
-import ResetDefaultsModal from "./notifications/modals/reset-defaults-modal"
+import NotificationGlobalChannels from "./notifications/notification-global-channels"
 import { EMPTY_CHANNELS } from "./notifications/shared"
 
 const defaultGlobalChannels: GlobalChannelPrefs = {
@@ -59,7 +59,7 @@ export default function NotificationPreferences() {
 
   const getItemState = (
     categoryId: string,
-    notificationId: string,
+    notificationId: string
   ): NotificationItemPref => {
     const pref = preferences?.notifications?.[notificationId]
     const fallback = catalog
@@ -75,8 +75,14 @@ export default function NotificationPreferences() {
   const handleToggleGlobalChannel = (channel: ChannelKey, next: boolean) => {
     update({ channels: { [channel]: { enabled: next } } })
     if (!next) {
-      const categoriesPatch: Record<string, { channels: Partial<ScopedChannelState> }> = {}
-      const notificationsPatch: Record<string, { channels: Partial<ScopedChannelState> }> = {}
+      const categoriesPatch: Record<
+        string,
+        { channels: Partial<ScopedChannelState> }
+      > = {}
+      const notificationsPatch: Record<
+        string,
+        { channels: Partial<ScopedChannelState> }
+      > = {}
       for (const category of catalog) {
         categoriesPatch[category.id] = { channels: { [channel]: false } }
         for (const item of category.notifications) {
@@ -123,14 +129,14 @@ export default function NotificationPreferences() {
         category.notifications.map((item) => [
           item.id,
           { enabled: nextEnabled, channels: nextChannels },
-        ]),
+        ])
       ),
     })
   }
 
   const handleToggleCategoryChannel = (
     categoryId: string,
-    channel: ChannelKey,
+    channel: ChannelKey
   ) => {
     if (!globalChannels[channel].enabled) return
     const current = getCategoryState(categoryId)
@@ -143,7 +149,7 @@ export default function NotificationPreferences() {
 
   const handleToggleItemEnabled = (
     categoryId: string,
-    notificationId: string,
+    notificationId: string
   ) => {
     const current = getItemState(categoryId, notificationId)
     const nextEnabled = !current.enabled
@@ -164,7 +170,7 @@ export default function NotificationPreferences() {
 
   const handleToggleItemChannel = (
     notificationId: string,
-    channel: ChannelKey,
+    channel: ChannelKey
   ) => {
     if (!globalChannels[channel].enabled) return
     const current = preferences?.notifications?.[notificationId]
@@ -180,7 +186,10 @@ export default function NotificationPreferences() {
     setResetLoading(true)
     try {
       await reset()
-      toast({ title: "Your notifications have been reset to default", variant: "success" })
+      toast({
+        title: "Your notifications have been reset to default",
+        variant: "success",
+      })
     } catch (err: any) {
       toast({
         title:

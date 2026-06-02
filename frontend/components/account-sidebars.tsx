@@ -1,8 +1,9 @@
 "use client"
 
-import { ComponentType } from "react"
+import { ComponentType, useMemo } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/utils/functions"
+import { useInboxThreads } from "@/utils/useInboxThreads"
 import {
   AlertCircle,
   BarChartSquare02,
@@ -14,17 +15,24 @@ import {
   Mail01,
   Search,
   Settings02,
+  Sidebar,
   UserCircle,
   Users,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
-import { Badge } from "@/components/ui"
+import { Badge, IconButton } from "@/components/ui"
 
 type SidebarItem = {
   href: string
   label: string
   icon: ComponentType<{ className?: string }>
   badge?: string
+}
+
+const formatBadge = (count: number) => {
+  if (count <= 0) return undefined
+  if (count > 99) return "99+"
+  return String(count)
 }
 
 type SidebarSection = {
@@ -40,7 +48,7 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
     cn(
       "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3",
       pathname === href || pathname?.startsWith(href + "/")
-        ? "bg-gray-100"
+        ? "bg-primary-50 text-primary-500"
         : "hover:bg-gray-100"
     )
 
@@ -79,7 +87,7 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
   ))
 }
 
-const talentSections: SidebarSection[] = [
+const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
   {
     label: "Work",
     items: [
@@ -95,7 +103,7 @@ const talentSections: SidebarSection[] = [
     label: "Account",
     items: [
       { href: "/talent-profile", label: "Profile", icon: UserCircle },
-      { href: "/inbox", label: "Inbox", icon: Mail01, badge: "3" },
+      { href: "/inbox", label: "Inbox", icon: Mail01, badge: inboxBadge },
       {
         href: "/notifications",
         label: "Notifications",
@@ -108,7 +116,7 @@ const talentSections: SidebarSection[] = [
   },
 ]
 
-const clientSections: SidebarSection[] = [
+const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
   {
     label: "Work",
     items: [
@@ -124,7 +132,7 @@ const clientSections: SidebarSection[] = [
     label: "Account",
     items: [
       { href: "/talent-profile", label: "Profile", icon: UserCircle },
-      { href: "/inbox", label: "Inbox", icon: Mail01, badge: "3" },
+      { href: "/inbox", label: "Inbox", icon: Mail01, badge: inboxBadge },
       {
         href: "/notifications",
         label: "Notifications",
@@ -139,20 +147,38 @@ const clientSections: SidebarSection[] = [
 
 export const TalentAccountSidebar = () => {
   const pathname = usePathname()
+  const { totalUnread } = useInboxThreads()
+  const sections = useMemo(
+    () => buildTalentSections(formatBadge(totalUnread)),
+    [totalUnread]
+  )
 
   return (
     <div className={sidebarFrameClass}>
-      {renderSections(talentSections, pathname)}
+      {renderSections(sections, pathname)}
     </div>
   )
 }
 
 export const ClientAccountSidebar = () => {
   const pathname = usePathname()
+  const { totalUnread } = useInboxThreads()
+  const sections = useMemo(
+    () => buildClientSections(formatBadge(totalUnread)),
+    [totalUnread]
+  )
 
   return (
     <div className={sidebarFrameClass}>
-      {renderSections(clientSections, pathname)}
+      <IconButton
+        className="bg-white absolute size-[23px] opacity-50 hover:opacity-100 top-2.5 right-2.5"
+        variant="outlined"
+        visual="gray"
+        size="md"
+      >
+        <Sidebar className="size-[15px]" />
+      </IconButton>
+      {renderSections(sections, pathname)}
     </div>
   )
 }

@@ -1,16 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
-import { UserAPI } from "@/service/http/user"
-import type { UserProfile } from "@/types/user"
 import {
-  Bank,
-  Edit03,
-  Users03,
-} from "@blend-metrics/icons"
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
+import { UserAPI } from "@/service/http/user"
+import { cn } from "@/utils/functions"
+import { Bank, Edit03, Users03 } from "@blend-metrics/icons"
+import type { UserProfile } from "@/types/user"
 import { CheckoutNavigation } from "@/components/checkout-navigation"
-import { OfferDialog, getDefaultJobTitle, getExperienceLabel, offerRates } from "@/components/hire-me-button"
+import {
+  OfferDialog,
+  getDefaultJobTitle,
+  getExperienceLabel,
+  offerRates,
+} from "@/components/hire-me-button"
 import NextImage from "@/components/next-image"
 import {
   Avatar,
@@ -21,7 +28,6 @@ import {
   Checkbox,
   ErrorMessage,
 } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 const formatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -39,7 +45,14 @@ const safeDecodeSlug = (value: string): string => {
 }
 
 const Visa = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg width={34} height={24} viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+  <svg
+    width={34}
+    height={24}
+    viewBox="0 0 34 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
     <rect x={0.5} y={0.5} width={33} height={23} rx={3.5} fill="#fff" />
     <rect x={0.5} y={0.5} width={33} height={23} rx={3.5} stroke="#D0D5DD" />
     <path
@@ -52,7 +65,14 @@ const Visa = (props: React.SVGProps<SVGSVGElement>) => (
 )
 
 const Amex = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg width={34} height={24} viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+  <svg
+    width={34}
+    height={24}
+    viewBox="0 0 34 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
     <rect width={34} height={24} rx={4} fill="#1F72CD" />
     <path
       fillRule="evenodd"
@@ -73,7 +93,9 @@ export default function ConfirmationPage() {
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
-  const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(null)
+  const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
+    null
+  )
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = React.useState(false)
   const [authorizationError, setAuthorizationError] = React.useState("")
@@ -134,24 +156,29 @@ export default function ConfirmationPage() {
   const talentAvatarUrl = talentProfile?.avatarUrl || ""
   const talentJobTitle = getDefaultJobTitle(talentProfile)
   const talentExperienceLabel = getExperienceLabel(talentProfile)
-  const scheduleTitle = selectedSchedule === "part-time" ? "Part time" : "Full time"
-  const scheduleDetail = selectedSchedule === "part-time" ? "Up to 30 hrs/week" : "Over 30 hrs/week"
-  const durationBadgeLabel = selectedDuration === "Ongoing" ? "On-Going" : selectedDuration
-  const recurringAmountLabel = selectedDuration === "Ongoing"
-    ? `Monthly Payment Amount: ${formattedDueToday}`
-    : `Payment Amount: ${formattedDueToday}`
+  const scheduleTitle =
+    selectedSchedule === "part-time" ? "Part time" : "Full time"
+  const scheduleDetail =
+    selectedSchedule === "part-time" ? "Up to 30 hrs/week" : "Over 30 hrs/week"
+  const durationBadgeLabel =
+    selectedDuration === "Ongoing" ? "On-Going" : selectedDuration
+  const recurringAmountLabel =
+    selectedDuration === "Ongoing"
+      ? `Monthly Payment Amount: ${formattedDueToday}`
+      : `Payment Amount: ${formattedDueToday}`
 
-  const updateOfferInUrl = React.useCallback((
-    nextRate: string,
-    nextSchedule: string,
-    nextDuration: string,
-  ) => {
-    const nextSearchParams = new URLSearchParams(searchParams.toString())
-    nextSearchParams.set("rate", nextRate)
-    nextSearchParams.set("schedule", nextSchedule)
-    nextSearchParams.set("duration", nextDuration)
-    router.replace(`${pathname}?${nextSearchParams.toString()}`, { scroll: false })
-  }, [pathname, router, searchParams])
+  const updateOfferInUrl = React.useCallback(
+    (nextRate: string, nextSchedule: string, nextDuration: string) => {
+      const nextSearchParams = new URLSearchParams(searchParams.toString())
+      nextSearchParams.set("rate", nextRate)
+      nextSearchParams.set("schedule", nextSchedule)
+      nextSearchParams.set("duration", nextDuration)
+      router.replace(`${pathname}?${nextSearchParams.toString()}`, {
+        scroll: false,
+      })
+    },
+    [pathname, router, searchParams]
+  )
 
   const handleEditPaymentMethods = React.useCallback(() => {
     const nextUrl = searchParams.toString()
@@ -162,7 +189,9 @@ export default function ConfirmationPage() {
 
   const handleSubmitPayment = () => {
     if (!hasAuthorizedPayment) {
-      setAuthorizationError("Please authorize the payment methods at the bottom of the page before proceeding.")
+      setAuthorizationError(
+        "Please authorize the payment methods at the bottom of the page before proceeding."
+      )
       requestAnimationFrame(() => {
         authorizationSectionRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -180,7 +209,9 @@ export default function ConfirmationPage() {
     <div className="bg-gray-50 pt-[64px]">
       <CheckoutNavigation
         currentStep={3}
-        firstStepLabel={isTalentCheckout ? "Contract Details" : "Project Details"}
+        firstStepLabel={
+          isTalentCheckout ? "Contract Details" : "Project Details"
+        }
       />
 
       <div className="px-[150px] py-[50px]">
@@ -188,8 +219,9 @@ export default function ConfirmationPage() {
           Review your order details
         </h1>
         <p className="mt-3 text-base font-light text-dark-blue-400">
-          Then click <span className="font-normal">&quot;Submit payment&quot;</span> below to
-          confirm your {isTalentCheckout ? "team" : "project"}
+          Then click{" "}
+          <span className="font-normal">&quot;Submit payment&quot;</span> below
+          to confirm your {isTalentCheckout ? "team" : "project"}
         </p>
 
         <div className="mt-6 flex gap-x-8">
@@ -241,7 +273,9 @@ export default function ConfirmationPage() {
                     </div>
 
                     <div className="inline-flex flex-col items-end justify-between self-stretch">
-                      <Badge size="sm" visual="primary">{durationBadgeLabel}</Badge>
+                      <Badge size="sm" visual="primary">
+                        {durationBadgeLabel}
+                      </Badge>
                       <div className="inline-flex flex-col items-end gap-y-0.5">
                         <span className="inline-block text-dark-blue-400 text-[20px] leading-none font-semibold">
                           {formattedHourlyRate}
@@ -286,7 +320,10 @@ export default function ConfirmationPage() {
                             Bank of America checking ending in *1234
                           </h2>
                           <p className="text-xs font-light text-dark-blue-400">
-                            Payment Amount: <span className="font-semibold">{formattedDueToday}</span>
+                            Payment Amount:{" "}
+                            <span className="font-semibold">
+                              {formattedDueToday}
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -356,7 +393,8 @@ export default function ConfirmationPage() {
                       ref={authorizationSectionRef}
                       className={cn(
                         "mt-6 rounded-md py-2 px-5 transition-colors",
-                        hasAuthorizationError && "border border-error-300 bg-error-50"
+                        hasAuthorizationError &&
+                          "border border-error-300 bg-error-50"
                       )}
                     >
                       <label
@@ -385,11 +423,21 @@ export default function ConfirmationPage() {
                             hasAuthorizationError && "text-error-500"
                           )}
                         >
-                          I hereby authorize <span className="font-semibold">Marketeq</span> to charge my
-                          above payment methods for the total initial one-time payment of{" "}
-                          <span className="font-semibold">{formattedDueToday}</span> and total monthly
-                          recurring amount of <span className="font-semibold">{formattedDueToday}</span>{" "}
-                          starting on <span className="font-semibold">January 1st, 2025</span>
+                          I hereby authorize{" "}
+                          <span className="font-semibold">Marketeq</span> to
+                          charge my above payment methods for the total initial
+                          one-time payment of{" "}
+                          <span className="font-semibold">
+                            {formattedDueToday}
+                          </span>{" "}
+                          and total monthly recurring amount of{" "}
+                          <span className="font-semibold">
+                            {formattedDueToday}
+                          </span>{" "}
+                          starting on{" "}
+                          <span className="font-semibold">
+                            January 1st, 2025
+                          </span>
                         </span>
                       </label>
                     </div>
@@ -415,11 +463,18 @@ export default function ConfirmationPage() {
                   </div>
                   <div className="p-5 flex gap-x-5">
                     <div className="relative flex-none w-[181px] bg-white border border-gray-200 rounded-md overflow-hidden">
-                      <NextImage className="object-cover" src="/dashboard.png" alt="Dashboard" sizes="50vw" fill />
+                      <NextImage
+                        className="object-cover"
+                        src="/dashboard.png"
+                        alt="Dashboard"
+                        sizes="50vw"
+                        fill
+                      />
                     </div>
                     <div className="flex-auto">
                       <h1 className="text-sm font-medium text-dark-blue-400">
-                        Marketeq Client Portal - Redesigning and Optimizing Website for Enhanced User Experience.
+                        Marketeq Client Portal - Redesigning and Optimizing
+                        Website for Enhanced User Experience.
                       </h1>
 
                       <div className="mt-1.5 inline-flex gap-x-2">
@@ -459,7 +514,8 @@ export default function ConfirmationPage() {
                             Expires: 09/2027
                           </p>
                           <p className="text-xs font-light text-dark-blue-400">
-                            Payment Amount: <span className="font-semibold">$4,000</span>
+                            Payment Amount:{" "}
+                            <span className="font-semibold">$4,000</span>
                           </p>
                         </div>
                       </div>
@@ -485,7 +541,8 @@ export default function ConfirmationPage() {
                             Expires: 09/2027
                           </p>
                           <p className="text-xs font-light text-dark-blue-400">
-                            Payment Amount: <span className="font-semibold">$4,000</span>
+                            Payment Amount:{" "}
+                            <span className="font-semibold">$4,000</span>
                           </p>
                         </div>
                       </div>
@@ -511,7 +568,8 @@ export default function ConfirmationPage() {
                           </h2>
 
                           <p className="text-xs font-light text-dark-blue-400">
-                            Payment Amount: <span className="font-semibold">$4,000</span>
+                            Payment Amount:{" "}
+                            <span className="font-semibold">$4,000</span>
                           </p>
                         </div>
                       </div>
@@ -521,7 +579,8 @@ export default function ConfirmationPage() {
                       ref={authorizationSectionRef}
                       className={cn(
                         "mt-6 rounded-md py-2 px-5 transition-colors",
-                        hasAuthorizationError && "border border-error-300 bg-error-50"
+                        hasAuthorizationError &&
+                          "border border-error-300 bg-error-50"
                       )}
                     >
                       <label
@@ -550,8 +609,10 @@ export default function ConfirmationPage() {
                             hasAuthorizationError && "text-error-500"
                           )}
                         >
-                          I hereby authorize <span className="font-semibold">Marketeq</span> to charge my
-                          above payment methods for the total one-time amount of{" "}
+                          I hereby authorize{" "}
+                          <span className="font-semibold">Marketeq</span> to
+                          charge my above payment methods for the total one-time
+                          amount of{" "}
                           <span className="font-semibold">$94,000</span>
                         </span>
                       </label>
@@ -620,7 +681,11 @@ export default function ConfirmationPage() {
                         <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
                           Project Manager
                         </span>
-                        <Button className="mt-1 h-auto justify-start px-0 text-[10px] leading-[14px] underline" variant="link" visual="gray">
+                        <Button
+                          className="mt-1 h-auto justify-start px-0 text-[10px] leading-[14px] underline"
+                          variant="link"
+                          visual="gray"
+                        >
                           Remove
                         </Button>
                       </span>
@@ -660,7 +725,9 @@ export default function ConfirmationPage() {
                         onClick={handleSubmitPayment}
                         visual={hasAuthorizationError ? "error" : "primary"}
                       >
-                        {isSubmittingPayment ? "Submitting..." : "Submit Payment"}
+                        {isSubmittingPayment
+                          ? "Submitting..."
+                          : "Submit Payment"}
                       </Button>
                     </div>
                     {hasAuthorizationError ? (
@@ -672,7 +739,10 @@ export default function ConfirmationPage() {
                     <div className="mt-5">
                       <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
                         Learn More about{" "}
-                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                        <Button
+                          className="text-[10px] leading-[14px] underline"
+                          variant="link"
+                        >
                           Estimated Taxes
                         </Button>
                       </span>
@@ -681,11 +751,17 @@ export default function ConfirmationPage() {
                     <div className="mt-5">
                       <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
                         By clicking the above, you agree to Marketeq&apos;s{" "}
-                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                        <Button
+                          className="text-[10px] leading-[14px] underline"
+                          variant="link"
+                        >
                           Terms of Use
                         </Button>{" "}
                         and{" "}
-                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                        <Button
+                          className="text-[10px] leading-[14px] underline"
+                          variant="link"
+                        >
                           Privacy Policy
                         </Button>
                       </span>
@@ -792,7 +868,9 @@ export default function ConfirmationPage() {
                         onClick={handleSubmitPayment}
                         visual={hasAuthorizationError ? "error" : "primary"}
                       >
-                        {isSubmittingPayment ? "Submitting..." : "Submit Payment"}
+                        {isSubmittingPayment
+                          ? "Submitting..."
+                          : "Submit Payment"}
                       </Button>
                     </div>
                     {hasAuthorizationError ? (
@@ -804,11 +882,17 @@ export default function ConfirmationPage() {
                     <div className="mt-5">
                       <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
                         By clicking the above, you agree to Marketeq&apos;s{" "}
-                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                        <Button
+                          className="text-[10px] leading-[14px] underline"
+                          variant="link"
+                        >
                           Terms of Use
                         </Button>{" "}
                         and{" "}
-                        <Button className="text-[10px] leading-[14px] underline" variant="link">
+                        <Button
+                          className="text-[10px] leading-[14px] underline"
+                          variant="link"
+                        >
                           Privacy Policy
                         </Button>
                       </span>
@@ -831,7 +915,11 @@ export default function ConfirmationPage() {
           open={isEditOfferOpen}
           onOpenChange={setIsEditOfferOpen}
           mode="edit"
-          onSaveOffer={({ selectedRate, schedule, selectedDuration: nextDuration }) => {
+          onSaveOffer={({
+            selectedRate,
+            schedule,
+            selectedDuration: nextDuration,
+          }) => {
             updateOfferInUrl(selectedRate, schedule, nextDuration)
           }}
           profile={{

@@ -13,6 +13,7 @@
     "seed:projects": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-projects-seed.ts",
     "seed:categories": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-categories-seed.ts",
     "seed:talent": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-talent-seed.ts",
+    "seed:category-pages": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-category-pages-seed.ts",
     "seed:all": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-all-seed.ts"
   },
   "dependencies": {

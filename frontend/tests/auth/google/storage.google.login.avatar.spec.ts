@@ -91,7 +91,9 @@ test("signup with username/password via API, complete onboarding, verify avatar"
     } catch {
       body = "<no-body>"
     }
-    apiLogs.push(`RES ${res.status()} ${method} ${url} :: ${body.slice(0, 300)}`)
+    apiLogs.push(
+      `RES ${res.status()} ${method} ${url} :: ${body.slice(0, 300)}`
+    )
   }
   const requestLogger = (req: any) => {
     const url = req.url()
@@ -134,7 +136,10 @@ test("signup with username/password via API, complete onboarding, verify avatar"
 
   await page.fill("#first-name", "Reka")
   await page.fill("#last-name", "N")
-  await page.getByRole("button", { name: /^continue$/i }).last().click()
+  await page
+    .getByRole("button", { name: /^continue$/i })
+    .last()
+    .click()
 
   await expect(page.getByText(/create your username/i)).toBeVisible()
   await page.fill("input#username", `reka_${ts}`)
@@ -160,12 +165,8 @@ test("signup with username/password via API, complete onboarding, verify avatar"
   await expect(page.getByText(/showcase your talent/i)).toBeVisible()
   await page.fill("#recent-job-title", "QA Engineer")
   await page.fill("#industries", "Software")
-  await page
-    .getByPlaceholder("e.g., react.js, css")
-    .fill("React")
-  await page
-    .getByPlaceholder("e.g., react.js, css")
-    .press("Enter")
+  await page.getByPlaceholder("e.g., react.js, css").fill("React")
+  await page.getByPlaceholder("e.g., react.js, css").press("Enter")
   await clickContinue()
 
   await expect(page.getByText(/set your preferences/i)).toBeVisible()
@@ -210,11 +211,19 @@ test("signup with username/password via API, complete onboarding, verify avatar"
     .last()
 
   let avatarButton = topNavFallback
-  if (await emailButton.first().isVisible().catch(() => false)) {
+  if (
+    await emailButton
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
     avatarButton = emailButton.first()
   }
 
-  await expect(avatarButton, "Top-right avatar button is not visible").toBeVisible({
+  await expect(
+    avatarButton,
+    "Top-right avatar button is not visible"
+  ).toBeVisible({
     timeout: 15000,
   })
 

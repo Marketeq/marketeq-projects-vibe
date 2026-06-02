@@ -1,6 +1,7 @@
 "use client"
 
 import { SearchMd } from "@blend-metrics/icons"
+import type { MessageAttachment } from "@/types/message"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   SearchFileRow,
@@ -8,7 +9,6 @@ import {
   SearchMessageRow,
   SearchPeopleRow,
 } from "./message-components"
-import type { MessageAttachment } from "@/types/message"
 
 export interface SearchPeopleResult {
   participantId: string

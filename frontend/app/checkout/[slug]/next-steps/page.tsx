@@ -2,13 +2,8 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import {
-  CheckCircle,
-  UserPlus,
-} from "@blend-metrics/icons"
-import {
-  Button,
-} from "@/components/ui"
+import { CheckCircle, UserPlus } from "@blend-metrics/icons"
+import { Button } from "@/components/ui"
 
 export default function NextStepsPage() {
   const router = useRouter()
@@ -27,8 +22,8 @@ export default function NextStepsPage() {
 
           <h2 className="text-4xl mt-4 text-center font-light text-dark-blue-400">
             That&apos;s pretty{" "}
-            <span className="font-bold text-success-400">Awesome</span>! You&apos;re
-            ready to start
+            <span className="font-bold text-success-400">Awesome</span>!
+            You&apos;re ready to start
           </h2>
 
           <p className="text-xl mt-4 text-center font-light text-dark-blue-400">

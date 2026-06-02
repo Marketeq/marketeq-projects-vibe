@@ -9,7 +9,6 @@
  * off a single fetch and every subsequent caller (in the same page load)
  * reuses the cached promise.
  */
-
 import { useEffect, useState } from "react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -23,7 +22,7 @@ export interface TalentUser {
   location?: string
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle?: string; isDefault?: boolean }>
+  jobTitles?: Array<{ jobTitle?: string; isDefault?: boolean; saveAsDefault?: boolean }>
   recentJobTitle?: string | null
   skills?: Array<{ name: string }>
 }
@@ -57,7 +56,10 @@ function fetchTalentUsers(): Promise<TalentUser[]> {
  * caller — homepage, /talent, /c/<category>, favorites, etc. — produces
  * an identical card from the same backend payload.
  */
-export function talentToCardProps(u: TalentUser, idx = 0): {
+export function talentToCardProps(
+  u: TalentUser,
+  idx = 0
+): {
   id: string
   username: string
   name: string
@@ -97,7 +99,7 @@ export function talentToCardProps(u: TalentUser, idx = 0): {
         ].slice(0, 12)
 
   const role =
-    u.jobTitles?.find((j: any) => j?.isDefault)?.jobTitle ||
+    u.jobTitles?.find((j: any) => j?.isDefault || j?.saveAsDefault)?.jobTitle ||
     u.jobTitles?.[0]?.jobTitle ||
     u.recentJobTitle ||
     "Marketing Technologist"

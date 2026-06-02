@@ -1,5 +1,5 @@
-import AxiosRequest from ".."
 import { getPublicApiUrl, getPublicUserUrl } from "@/lib/runtime-urls"
+import AxiosRequest from ".."
 
 const API_BASE = getPublicApiUrl()
 const USER_BASE = getPublicUserUrl()
@@ -107,32 +107,24 @@ export const NotificationsAPI = {
     return AxiosRequest.get(qs ? `${BASE}?${qs}` : BASE)
   },
 
-  getUnreadCount: () =>
-    AxiosRequest.get(`${BASE}/unread-count`),
+  getUnreadCount: () => AxiosRequest.get(`${BASE}/unread-count`),
 
-  markRead: (id: string) =>
-    AxiosRequest.post(`${BASE}/${id}/read`, {}),
+  markRead: (id: string) => AxiosRequest.post(`${BASE}/${id}/read`, {}),
 
-  markAllRead: () =>
-    AxiosRequest.post(`${BASE}/read-all`, {}),
+  markAllRead: () => AxiosRequest.post(`${BASE}/read-all`, {}),
 
-  archive: (id: string) =>
-    AxiosRequest.post(`${BASE}/${id}/archive`, {}),
+  archive: (id: string) => AxiosRequest.post(`${BASE}/${id}/archive`, {}),
 
-  remove: (id: string) =>
-    AxiosRequest.del(`${BASE}/${id}`),
+  remove: (id: string) => AxiosRequest.del(`${BASE}/${id}`),
 
-  getPreferences: () =>
-    AxiosRequest.get(`${BASE}/preferences`),
+  getPreferences: () => AxiosRequest.get(`${BASE}/preferences`),
 
-  getCatalog: () =>
-    AxiosRequest.get(`${BASE}/preferences/catalog`),
+  getCatalog: () => AxiosRequest.get(`${BASE}/preferences/catalog`),
 
   updatePreferences: (payload: UpdatePreferencesPayload) =>
     AxiosRequest.patch(`${BASE}/preferences`, payload),
 
-  resetPreferences: () =>
-    AxiosRequest.post(`${BASE}/preferences/reset`, {}),
+  resetPreferences: () => AxiosRequest.post(`${BASE}/preferences/reset`, {}),
 
   updatePhone: (phone: string | null) =>
     AxiosRequest.patch(`${USER_BASE}/user/phone`, { phone }),
@@ -181,7 +173,7 @@ export const isTransientNotificationsApiError = (error: unknown): boolean => {
   }
 
   if (typeof status === "number") {
-    // 401 happens frequently during auth bootstrap; UI retries after ensureDevAuth().
+    // 401 during auth bootstrap — not retryable.
     if (status === 401) return true
     // Retryable server errors.
     if (status === 408 || status === 429) return true

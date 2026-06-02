@@ -1,4 +1,7 @@
+"use client"
+
 import React from "react"
+import { useControllableState } from "@/utils/hooks"
 import {
   Button,
   Dialog,
@@ -9,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui"
-import { useControllableState } from "@/utils/hooks"
 
 export default function RmDialog({
   trigger,

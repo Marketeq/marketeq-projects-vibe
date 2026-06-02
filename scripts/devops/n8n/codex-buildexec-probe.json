@@ -1,0 +1,84 @@
+{
+  "updatedAt": "2026-05-12T19:59:24.757Z",
+  "createdAt": "2026-04-28T08:04:03.506Z",
+  "id": "Mcp74FrtcUp2Atcl",
+  "name": "Codex Build+Exec Probe",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "codex-build-exec-probe",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-probe-2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "codex-build-exec-probe"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { command: \"echo build-exec-ok\" } }];"
+      },
+      "id": "code-probe-2",
+      "name": "Build",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}"
+      },
+      "id": "exec-probe-2",
+      "name": "Exec",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build": {
+      "main": [
+        [
+          {
+            "node": "Exec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

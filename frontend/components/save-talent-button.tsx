@@ -1,21 +1,21 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ChevronDown, Plus, Star } from "@blend-metrics/icons"
-import { useToggle } from "react-use"
 import {
-  addFavorite,
-  createGroup,
   type Favorite,
   type FavoriteGroup,
+  addFavorite,
+  createGroup,
   getGroups,
   getTalentFavorites,
   moveFavorite,
   removeFavorite,
 } from "@/src/lib/api/favorites"
+import { ChevronDown, Plus, Star } from "@blend-metrics/icons"
+import { useToggle } from "react-use"
+import { toast } from "@/components/ui/toast/use-toast"
 import {
   Button,
-  buttonVariants,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -29,8 +29,8 @@ import {
   IconButton,
   Input,
   Toggle,
+  buttonVariants,
 } from "@/components/ui"
-import { toast } from "@/components/ui/toast/use-toast"
 
 interface SaveTalentButtonProps {
   userId: string | null | undefined

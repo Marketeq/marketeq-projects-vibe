@@ -19,8 +19,9 @@ const [DropdownPopoverProvider, useDropdownPopoverContext] = createContext<{
   errorMessage: `useDropdownPopoverContext returned is 'undefined'. Seems you forgot to wrap the components in "<DropdownPopover />"`,
 })
 
-interface DropdownPopoverProps
-  extends React.ComponentPropsWithoutRef<typeof PopoverPrimitives.Popover> {
+interface DropdownPopoverProps extends React.ComponentPropsWithoutRef<
+  typeof PopoverPrimitives.Popover
+> {
   selected?: string | number | Record<string, any> | any[]
   onSelectedChange?: (...args: any[]) => void
   multiple?: boolean

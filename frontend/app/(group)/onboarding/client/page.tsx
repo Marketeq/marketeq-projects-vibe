@@ -5,6 +5,7 @@ import { useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { useAutocomplete } from "@/libs/autocomplete"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
@@ -15,7 +16,6 @@ import {
 import { ClientAPI } from "@/service/http/client"
 import { InvitationsAPI } from "@/service/http/invitations"
 import { UserAPI } from "@/service/http/user"
-import { generateUsernameSuggestions } from "@/utils/username"
 import { HOT_KEYS } from "@/utils/constants"
 import {
   cn,
@@ -25,6 +25,7 @@ import {
   keys,
 } from "@/utils/functions"
 import { useControllableState, useStepper } from "@/utils/hooks"
+import { generateUsernameSuggestions } from "@/utils/username"
 import {
   AlertCircle,
   Briefcase02,
@@ -54,18 +55,17 @@ import {
 } from "react-hook-form"
 import { useDebounce, useIsomorphicLayoutEffect, useToggle } from "react-use"
 import { z } from "zod"
-import { useAutocomplete } from "@/libs/autocomplete"
 import { CreateClientType } from "@/types/client"
 import { ROLE, User } from "@/types/user"
 import { PictureEditor } from "@/components/ui/image-editor/image-editor"
 import { Spinner } from "@/components/ui/spinner/spinner"
-import { Logo } from "@/components/icons"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Logo } from "@/components/icons"
 import { Pointer } from "@/components/icons/pointer"
 import NextLink from "@/components/next-link"
 import { Triangles } from "@/components/triangles"
@@ -218,10 +218,12 @@ const getClientPayloadValidationErrors = (data: CreateClientType) => {
       )
     }
   }
-  if (!isNonEmptyString(data.teamName)) errors.push("Team/company name is required.")
+  if (!isNonEmptyString(data.teamName))
+    errors.push("Team/company name is required.")
   if (!isNonEmptyString(data.role)) errors.push("Role/job title is required.")
   if (!isNonEmptyString(data.industry)) errors.push("Industry is required.")
-  if (!isNonEmptyString(data.budget)) errors.push("Please select a budget range.")
+  if (!isNonEmptyString(data.budget))
+    errors.push("Please select a budget range.")
 
   if (!data.businessTypes?.length) {
     errors.push("Select at least one goal.")
@@ -267,7 +269,6 @@ const describeYourTeamFormSchema = z.object({
 })
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
-
 
 const InfoTooltip = ({ text }: { text: string }) => {
   const [pinned, setPinned] = React.useState(false)
@@ -349,11 +350,7 @@ const ChipInput = ({
             "focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50"
           )}
         >
-          <Badge
-            visual="primary"
-            size="md"
-            className="gap-x-1.5 max-w-full"
-          >
+          <Badge visual="primary" size="md" className="gap-x-1.5 max-w-full">
             <span className="truncate">{draft.trim()}</span>
             <button
               type="button"
@@ -632,31 +629,32 @@ const DescribeYourTeam = ({
                     isInvalid={hookFormHasError({ errors, name: "industry" })}
                     autoComplete="off"
                   />
-                  {showIndustrySuggestions && industrySuggestions.length > 0 && (
-                    <ul className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                      {industrySuggestions.map(
-                        (item: { label: string }, index: number) => (
-                          <li
-                            key={index}
-                            className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            onMouseDown={() => {
-                              const label = item.label
-                              setIndustryQuery(label)
-                              setValue("industry", label, {
-                                shouldDirty: true,
-                                shouldTouch: true,
-                                shouldValidate: true,
-                              })
-                              setShowIndustrySuggestions(false)
-                              setIndustryCommitted(true)
-                            }}
-                          >
-                            {item.label}
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  )}
+                  {showIndustrySuggestions &&
+                    industrySuggestions.length > 0 && (
+                      <ul className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                        {industrySuggestions.map(
+                          (item: { label: string }, index: number) => (
+                            <li
+                              key={index}
+                              className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              onMouseDown={() => {
+                                const label = item.label
+                                setIndustryQuery(label)
+                                setValue("industry", label, {
+                                  shouldDirty: true,
+                                  shouldTouch: true,
+                                  shouldValidate: true,
+                                })
+                                setShowIndustrySuggestions(false)
+                                setIndustryCommitted(true)
+                              }}
+                            >
+                              {item.label}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    )}
                 </div>
               )}
 
@@ -926,12 +924,11 @@ const ShareYourGoals = ({
 
 const inviteYourTeamFormSchema = z
   .object({
-    emails: z
-      .array(
-        z.object({
-          email: z.string().trim(),
-        })
-      )
+    emails: z.array(
+      z.object({
+        email: z.string().trim(),
+      })
+    ),
   })
   .superRefine(({ emails }, ctx) => {
     const populatedEmails = emails
@@ -1101,7 +1098,9 @@ const InviteYourTeam = ({
           : "")
 
       if (!inviteUrl) {
-        throw new Error("We couldn't generate the invite link. Please try again.")
+        throw new Error(
+          "We couldn't generate the invite link. Please try again."
+        )
       }
 
       setInviteLink(inviteUrl)
@@ -1333,10 +1332,15 @@ const InviteYourTeam = ({
   )
 }
 
-const usernameRules = z.string().trim()
+const usernameRules = z
+  .string()
+  .trim()
   .min(3, "Username must be at least 3 characters.")
   .max(24, "Username must be at most 24 characters.")
-  .regex(/^[a-z][a-z0-9_]*$/, "Username must start with a letter and contain only lowercase letters, numbers, and underscores.")
+  .regex(
+    /^[a-z][a-z0-9_]*$/,
+    "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
+  )
 
 const createYourUsernameFormSchema = z.object({
   username: z.preprocess(
@@ -1407,8 +1411,7 @@ const CreateYourUsername = ({
   const [checkedSuggestions, setCheckedSuggestions] = React.useState<
     Record<string, boolean>
   >({})
-  const [suggestionsChecking, setSuggestionsChecking] =
-    React.useState(false)
+  const [suggestionsChecking, setSuggestionsChecking] = React.useState(false)
 
   React.useEffect(() => {
     if (usernameSuggestions.length === 0) return
@@ -1429,8 +1432,7 @@ const CreateYourUsername = ({
           const name = usernameSuggestions[index]
           try {
             const res = await AuthAPI.CheckUsername({ username: name })
-            map[name] =
-              res?.status === 200 && res?.data?.available === true
+            map[name] = res?.status === 200 && res?.data?.available === true
           } catch {
             map[name] = false
           }
@@ -1553,8 +1555,7 @@ const CreateYourUsername = ({
 
   useDebounce(checkUsernameAvailability, 700, [username])
 
-  const usernameHasError =
-    hasValidationError || isAvailable === false
+  const usernameHasError = hasValidationError || isAvailable === false
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -1646,7 +1647,9 @@ const CreateYourUsername = ({
                     id="username"
                     ref={(el) => {
                       registerRef(el)
-                      ;(usernameInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el
+                      ;(
+                        usernameInputRef as React.MutableRefObject<HTMLInputElement | null>
+                      ).current = el
                     }}
                     {...registerRest}
                     isInvalid={usernameHasError}
@@ -1741,35 +1744,30 @@ const CreateYourUsername = ({
               ) : (
                 <div className="mt-6">
                   <span className="block text-sm leading-[16.94px] text-gray-500">
-                    {displaySuggestions
-                      .slice(0, 3)
-                      .map((s, index) => (
-                        <React.Fragment key={s}>
-                          <Button
-                            className="text-primary-500/50 hover:text-primary-500"
-                            size="lg"
-                            visual="gray"
-                            variant="link"
-                            type="button"
-                            onClick={() => setFormValue(s)}
-                          >
-                            @{s}
-                          </Button>
+                    {displaySuggestions.slice(0, 3).map((s, index) => (
+                      <React.Fragment key={s}>
+                        <Button
+                          className="text-primary-500/50 hover:text-primary-500"
+                          size="lg"
+                          visual="gray"
+                          variant="link"
+                          type="button"
+                          onClick={() => setFormValue(s)}
+                        >
+                          @{s}
+                        </Button>
 
-                          {index === 0 &&
-                            displaySuggestions.length > 1 && (
-                              <span>, </span>
-                            )}
-                          {index === 1 &&
-                            displaySuggestions.length > 2 && (
-                              <span> and </span>
-                            )}
-                          {index === 1 &&
-                            displaySuggestions.length === 2 && (
-                              <span> and </span>
-                            )}
-                        </React.Fragment>
-                      ))}{" "}
+                        {index === 0 && displaySuggestions.length > 1 && (
+                          <span>, </span>
+                        )}
+                        {index === 1 && displaySuggestions.length > 2 && (
+                          <span> and </span>
+                        )}
+                        {index === 1 && displaySuggestions.length === 2 && (
+                          <span> and </span>
+                        )}
+                      </React.Fragment>
+                    ))}{" "}
                     {isVerified ? "are available" : ""}
                   </span>
 
@@ -2183,7 +2181,6 @@ const LookingToWorkWith = ({
           ))}
         </div>
       )}
-
     </div>
   )
 }
@@ -2948,11 +2945,17 @@ const DoNext = ({
   const [isLoading, setIsLoading] = React.useState(false)
 
   const requiresPasswordSetup = (candidate?: User | null) => {
-    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    const safeUser = candidate as
+      | { provider?: string; hasPassword?: boolean }
+      | null
+      | undefined
     return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
   }
 
-  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+  const getPostOnboardingRoute = (
+    targetRoute: string,
+    candidate?: User | null
+  ) => {
     // Enforce password setup before allowing post-onboarding route jumps.
     return requiresPasswordSetup(candidate) ? "/client-dashboard" : targetRoute
   }
@@ -2964,12 +2967,15 @@ const DoNext = ({
     const finishedUser = {
       ...(clientUser ?? user),
       onboardingDismissed: true,
+      clientOnboardedAt: new Date().toISOString(),
       userType: "client",
     } as User
     setUser(finishedUser)
 
     // Persist to localStorage as a fallback in case the API call fails
-    try { window.localStorage.setItem("marketeq-onboarding-dismissed", "true") } catch {}
+    try {
+      window.localStorage.setItem("marketeq-onboarding-dismissed", "true")
+    } catch {}
 
     try {
       await UserAPI.handleSkip({ role: ROLE.CLIENT })
@@ -3045,7 +3051,12 @@ const DoNext = ({
                 if (clientUser) {
                   setUser(clientUser)
                 }
-                router.push(getPostOnboardingRoute("/client-dashboard", clientUser ?? user))
+                router.push(
+                  getPostOnboardingRoute(
+                    "/client-dashboard",
+                    clientUser ?? user
+                  )
+                )
               }}
             >
               <div className="flex items-center gap-x-3">

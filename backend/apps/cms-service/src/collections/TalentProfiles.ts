@@ -39,6 +39,132 @@ const talentProfileSourceIdField = crossServiceSourceIdField({
   description: talentProfileSourceIdDescription,
 });
 
+const createDayFields = (dayName: string): any => {
+  const toMinutes = (time?: string, dayPeriod?: string) => {
+    if (!time || !dayPeriod) return null;
+    const parts = time.includes("_") ? time.split("_") : time.split(":");
+    const hoursPart = parseInt(parts[0], 10);
+    const minutesPart = parseInt(parts[1] || "0", 10);
+    if (isNaN(hoursPart) || isNaN(minutesPart)) return null;
+
+    const normalizedHours =
+      dayPeriod === "AM"
+        ? hoursPart === 12
+          ? 0
+          : hoursPart
+        : hoursPart === 12
+          ? 12
+          : hoursPart + 12;
+
+    return normalizedHours * 60 + minutesPart;
+  };
+
+  const validateTimeRange = (value: any, { siblingData }: any) => {
+    // This is called for both start and end fields to provide immediate feedback
+    const startMin = toMinutes(siblingData.startTime, siblingData.startPeriod);
+    const endMin = toMinutes(siblingData.endTime, siblingData.endPeriod);
+
+    if (startMin !== null && endMin !== null && endMin < startMin) {
+      return "End time cannot be earlier than start time";
+    }
+    return true;
+  };
+
+  const isWeekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(dayName);
+
+  const timeOptions = [
+    "01:00", "01:30", "02:00", "02:30", "03:00", "03:30", "04:00", "04:30",
+    "05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30",
+    "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
+  ].map((t) => ({ label: t, value: t.replace(":", "_") }));
+
+  return {
+    name: dayName.toLowerCase(),
+    type: "group",
+    label: dayName,
+    fields: [
+      {
+        type: "row",
+        fields: [
+          {
+            name: "enabled",
+            type: "checkbox",
+            label: "Available on " + dayName,
+            defaultValue: isWeekday,
+            admin: { width: "20%" },
+          },
+          {
+            name: "times",
+            type: "array",
+            label: "Time Slots",
+            defaultValue: [
+              {
+                startTime: "09_00",
+                startPeriod: "AM",
+                endTime: "05_00",
+                endPeriod: "PM",
+              },
+            ],
+            admin: {
+              condition: (data: any, siblingData: any) => siblingData?.enabled,
+              width: "80%",
+            },
+            fields: [
+              {
+                type: "row",
+                fields: [
+                  {
+                    name: "startTime",
+                    type: "select",
+                    label: "Start",
+                    defaultValue: "09_00",
+                    options: timeOptions,
+                    validate: validateTimeRange,
+                    admin: { width: "25%" },
+                  },
+                  {
+                    name: "startPeriod",
+                    type: "select",
+                    label: "Period",
+                    defaultValue: "AM",
+                    options: [
+                      { label: "AM", value: "AM" },
+                      { label: "PM", value: "PM" },
+                    ],
+                    validate: validateTimeRange,
+                    admin: { width: "25%" },
+                  },
+                  {
+                    name: "endTime",
+                    type: "select",
+                    label: "End",
+                    defaultValue: "05_00",
+                    options: timeOptions,
+                    validate: validateTimeRange,
+                    admin: { width: "25%" },
+                  },
+                  {
+                    name: "endPeriod",
+                    type: "select",
+                    label: "Period",
+                    defaultValue: "PM",
+                    options: [
+                      { label: "AM", value: "AM" },
+                      { label: "PM", value: "PM" },
+                    ],
+                    validate: validateTimeRange,
+                    admin: { width: "25%" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+};
+
 function parseDateValue(value: unknown): Date | null {
   if (value == null || value === "") return null;
   const raw =
@@ -639,6 +765,31 @@ export const TalentProfiles: CollectionConfig = {
                       },
                     ],
                   },
+                },
+                {
+                  name: "skills",
+                  type: "array",
+                  label: "Skills",
+                  maxRows: 10,
+                  validate: (value: any) => {
+                    if (value == null) return true;
+                    if (!Array.isArray(value)) return "Skills must be a list.";
+                    if (value.length > 10) return "You can add up to 10 skills per work experience entry.";
+                    return true;
+                  },
+                  admin: {
+                    description: "Skills used in this role — max 10.",
+                    components: {
+                      Field: TalentSkillsChipField,
+                    },
+                  },
+                  fields: [
+                    {
+                      name: "name",
+                      type: "text",
+                      required: true,
+                    },
+                  ],
                 },
               ],
             },

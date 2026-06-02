@@ -1,0 +1,60 @@
+{
+  "updatedAt": "2026-04-28T20:40:33.691Z",
+  "createdAt": "2026-04-28T20:40:24.669Z",
+  "id": "6dJuCKfKJkeiMWAN",
+  "name": "Marketeq Code Only Probe",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketeq-codeonly-probe",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-codeonly",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "marketeq-codeonly-probe"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first()?.json ?? {};\nconst payload = input.body && Object.keys(input.body).length ? input.body : input;\nconst headers = input.headers ?? {};\nconst event = headers['x-github-event'] || headers['X-GitHub-Event'] || payload.event || '';\nconst branch = payload.ref ? payload.ref.replace('refs/heads/', '') : (payload.branch || '');\nconst shaInput = payload.after || payload.sha || '';\nconst parts = [\n  'GH_TOKEN=' + JSON.stringify('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'),\n  'VERCEL_TOKEN=' + JSON.stringify('vca_2fX5b9LjyDsOhsL6PkYNNFqg646Gz5BgZlC3NwxgQehqXnSMXR1bWedm'),\n  'RENDER_TOKEN=' + JSON.stringify('rnd_aUwmRjyg2E07MFnNhHeZPJn9jPbm'),\n  'EVENT=' + JSON.stringify(event),\n  'BRANCH=' + JSON.stringify(branch),\n  'SHA_INPUT=' + JSON.stringify(shaInput),\n  '/usr/bin/curl -fsSL https://gist.githubusercontent.com/CTorres9800/640b424e591178b4b2f8a570cd099798/raw/bcb563b6b1fe4fa1fa9ace73df4e59ac90f34faa/marketeq_orchestrator_public.sh | /bin/zsh',\n];\nreturn [{ json: { event, branch, shaInput, command: parts.join(' ') } }];"
+      },
+      "id": "code-codeonly",
+      "name": "Build Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

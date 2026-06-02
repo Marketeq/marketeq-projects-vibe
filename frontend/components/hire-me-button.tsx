@@ -2,10 +2,17 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import type { UserProfile } from "@/types/user"
 import { cn } from "@/utils/functions"
+import {
+  ArrowRight,
+  ChevronLeft,
+  MapPin,
+  Plus,
+  SearchMd,
+  X,
+} from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowRight, ChevronLeft, MapPin, Plus, SearchMd, X } from "@blend-metrics/icons"
+import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import {
   Avatar,
@@ -32,7 +39,7 @@ import {
 export const getDefaultJobTitle = (profile?: Partial<UserProfile> | null) => {
   const jobTitles = (profile as any)?.jobTitles
   return (
-    jobTitles?.find((job: any) => job.isDefault)?.jobTitle ||
+    jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
     profile?.role ||
     "Full Stack Developer"
@@ -90,7 +97,12 @@ const existingContracts = [
     id: "contract-1",
     title: "React Native Mobile App",
     subtitle: "Design Phase",
-    avatars: ["/man.jpg", "/woman.jpg", "/tutorial-thumbnails/image-2.png", "/tutorial-thumbnails/image-3.png"],
+    avatars: [
+      "/man.jpg",
+      "/woman.jpg",
+      "/tutorial-thumbnails/image-2.png",
+      "/tutorial-thumbnails/image-3.png",
+    ],
     extra: "+5",
   },
   {
@@ -103,7 +115,12 @@ const existingContracts = [
     id: "contract-3",
     title: "React Native Mobile App",
     subtitle: "Design Phase",
-    avatars: ["/man.jpg", "/tutorial-thumbnails/image-3.png", "/tutorial-thumbnails/image-2.png", "/woman.jpg"],
+    avatars: [
+      "/man.jpg",
+      "/tutorial-thumbnails/image-3.png",
+      "/tutorial-thumbnails/image-2.png",
+      "/woman.jpg",
+    ],
   },
   {
     id: "contract-4",
@@ -115,13 +132,22 @@ const existingContracts = [
     id: "contract-5",
     title: "React Native Mobile App",
     subtitle: "Design Phase",
-    avatars: ["/man.jpg", "/woman.jpg", "/tutorial-thumbnails/image-2.png", "/tutorial-thumbnails/image-3.png"],
+    avatars: [
+      "/man.jpg",
+      "/woman.jpg",
+      "/tutorial-thumbnails/image-2.png",
+      "/tutorial-thumbnails/image-3.png",
+    ],
   },
   {
     id: "contract-6",
     title: "React Native Mobile App",
     subtitle: "Design Phase",
-    avatars: ["/woman.jpg", "/tutorial-thumbnails/image-2.png", "/tutorial-thumbnails/image-3.png"],
+    avatars: [
+      "/woman.jpg",
+      "/tutorial-thumbnails/image-2.png",
+      "/tutorial-thumbnails/image-3.png",
+    ],
   },
 ]
 
@@ -144,7 +170,8 @@ const getInitialOfferState = (mode: "create" | "edit") => ({
   schedule: mode === "edit" ? "full-time" : "",
   search: "",
   showAllContracts: false,
-  selectedContractId: mode === "edit" ? existingContracts[0]?.id ?? null : null,
+  selectedContractId:
+    mode === "edit" ? (existingContracts[0]?.id ?? null) : null,
   creatingContract: false,
   selectedRate: mode === "edit" ? "web-development" : "",
   selectedDuration: mode === "edit" ? "Ongoing" : "",
@@ -166,13 +193,27 @@ export function OfferDialog({
   const initialState = React.useMemo(() => getInitialOfferState(mode), [mode])
   const [schedule, setSchedule] = React.useState(initialState.schedule)
   const [search, setSearch] = React.useState(initialState.search)
-  const [showAllContracts, setShowAllContracts] = React.useState(initialState.showAllContracts)
-  const [selectedContractId, setSelectedContractId] = React.useState<string | null>(initialState.selectedContractId)
-  const [creatingContract, setCreatingContract] = React.useState(initialState.creatingContract)
-  const [selectedRate, setSelectedRate] = React.useState(initialState.selectedRate)
-  const [selectedDuration, setSelectedDuration] = React.useState(initialState.selectedDuration)
-  const [selectedStartDateAction, setSelectedStartDateAction] = React.useState(initialState.selectedStartDateAction)
-  const [contractTitle, setContractTitle] = React.useState(initialState.contractTitle)
+  const [showAllContracts, setShowAllContracts] = React.useState(
+    initialState.showAllContracts
+  )
+  const [selectedContractId, setSelectedContractId] = React.useState<
+    string | null
+  >(initialState.selectedContractId)
+  const [creatingContract, setCreatingContract] = React.useState(
+    initialState.creatingContract
+  )
+  const [selectedRate, setSelectedRate] = React.useState(
+    initialState.selectedRate
+  )
+  const [selectedDuration, setSelectedDuration] = React.useState(
+    initialState.selectedDuration
+  )
+  const [selectedStartDateAction, setSelectedStartDateAction] = React.useState(
+    initialState.selectedStartDateAction
+  )
+  const [contractTitle, setContractTitle] = React.useState(
+    initialState.contractTitle
+  )
   const [message, setMessage] = React.useState(initialState.message)
   const [offerSent, setOfferSent] = React.useState(initialState.offerSent)
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
@@ -186,14 +227,15 @@ export function OfferDialog({
   const experienceLabel = getExperienceLabel(profile)
   const locationLabel = profile?.location || "Jersey City, NJ, United States"
   const filteredContracts = existingContracts.filter((contract) =>
-    contract.title.toLowerCase().includes(search.toLowerCase()),
+    contract.title.toLowerCase().includes(search.toLowerCase())
   )
   const visibleContracts =
     search || showAllContracts
       ? filteredContracts
       : filteredContracts.slice(0, MAX_VISIBLE_CONTRACTS)
   const selectedContract =
-    existingContracts.find((contract) => contract.id === selectedContractId) || null
+    existingContracts.find((contract) => contract.id === selectedContractId) ||
+    null
   const isStepTwo = Boolean(schedule) && !selectedContract && !creatingContract
   const isStepThree = Boolean(schedule) && Boolean(selectedContract)
   const isStepFour = Boolean(schedule) && creatingContract
@@ -220,9 +262,17 @@ export function OfferDialog({
     : "max-h-[calc(100vh-24px)]"
   const isOfferDetailsStep = isStepThree || isStepFour
   const isOfferReady = isStepThree
-    ? Boolean(schedule && selectedContractId && selectedRate && selectedDuration && selectedStartDateAction)
+    ? Boolean(
+        schedule &&
+        selectedContractId &&
+        selectedRate &&
+        selectedDuration &&
+        selectedStartDateAction
+      )
     : isStepFour
-      ? Boolean(schedule && contractTitle.trim() && selectedRate && selectedDuration)
+      ? Boolean(
+          schedule && contractTitle.trim() && selectedRate && selectedDuration
+        )
       : false
   const contractTitleError =
     showValidationErrors && isStepFour && !contractTitle.trim()
@@ -276,7 +326,9 @@ export function OfferDialog({
         accessibilityTitle="Hire Me"
         className={`flex ${dialogContentClass} max-w-[520px] flex-col overflow-hidden rounded-[12px] p-0 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.2)]`}
       >
-        <div className={`relative flex ${dialogBodyClass} flex-1 flex-col overflow-hidden`}>
+        <div
+          className={`relative flex ${dialogBodyClass} flex-1 flex-col overflow-hidden`}
+        >
           <div className="shrink-0 flex h-[52px] items-center justify-between border-b border-gray-200 px-3 py-2 pl-3">
             {isEditMode ? (
               <DialogTitle className="text-[16px] font-semibold leading-normal text-dark-blue-400">
@@ -320,450 +372,524 @@ export function OfferDialog({
                   transition={screenTransition}
                   className="will-change-transform"
                 >
-            {offerSent ? (
-              <div className="flex flex-col items-center pb-2 pt-2 text-center">
-                <div className="inline-flex items-center justify-center text-primary-500">
-                  <NextImage
-                    src="/hire-me-sent-02.svg"
-                    alt="Offer sent"
-                    width={67}
-                    height={67}
-                    className="size-[67px]"
-                  />
-                </div>
+                  {offerSent ? (
+                    <div className="flex flex-col items-center pb-2 pt-2 text-center">
+                      <div className="inline-flex items-center justify-center text-primary-500">
+                        <NextImage
+                          src="/hire-me-sent-02.svg"
+                          alt="Offer sent"
+                          width={67}
+                          height={67}
+                          className="size-[67px]"
+                        />
+                      </div>
 
-                <h2 className="mt-7 text-[16px] font-semibold leading-normal text-dark-blue-400">
-                  Offer Sent!
-                </h2>
+                      <h2 className="mt-7 text-[16px] font-semibold leading-normal text-dark-blue-400">
+                        Offer Sent!
+                      </h2>
 
-                <p className="mt-6 text-[14px] font-light leading-normal text-dark-blue-400">
-                  <span className="font-semibold">{displayName}</span> has been invited to a{" "}
-                  {scheduleLabel} contract
-                </p>
+                      <p className="mt-6 text-[14px] font-light leading-normal text-dark-blue-400">
+                        <span className="font-semibold">{displayName}</span> has
+                        been invited to a {scheduleLabel} contract
+                      </p>
 
-                <Avatar className={cn("mt-8 size-[64px]", staticAvatarClassName)}>
-                  <AvatarImage
-                    src={profile?.avatarUrl || "/woman.jpg"}
-                    alt={displayName}
-                  />
-                  <AvatarFallback className={staticAvatarFallbackClassName}>
-                    {displayName.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-
-                <span className="mt-3 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium leading-normal text-gray-500">
-                  Pending Invite
-                </span>
-
-                <h3 className="mt-8 text-[16px] font-semibold leading-normal text-dark-blue-400">
-                  What would you like to do next?
-                </h3>
-
-                <div className="mt-5 flex w-full items-center justify-center gap-3">
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    onClick={() => setOfferSent(false)}
-                  >
-                    Review Your Offer
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      onOpenChange(false)
-                      router.push("/find-jobs")
-                    }}
-                  >
-                    Continue Browsing
-                  </Button>
-                </div>
-              </div>
-            ) : (
-            <>
-            {!isEditMode && currentScreen === "select-schedule" ? (
-              <div className="flex items-center gap-4">
-                <Avatar className={cn("size-[90px] shrink-0", staticAvatarClassName)}>
-                  <AvatarImage
-                    src={profile?.avatarUrl || "/woman.jpg"}
-                    alt={displayName}
-                  />
-                  <AvatarFallback className={staticAvatarFallbackClassName}>
-                    {displayName.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="min-w-0">
-                  <p className="text-[14px] font-light leading-normal text-dark-blue-400">
-                    Hire <span className="font-semibold">{displayName}</span> for a new contract
-                  </p>
-                  <p className="text-[12px] font-medium leading-normal text-dark-blue-400">
-                    {jobTitle}
-                  </p>
-                  <p className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
-                    {experienceLabel}
-                  </p>
-                  <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-light leading-normal text-gray-500">
-                    <MapPin className="size-3.5 text-dark-blue-400" />
-                    <span>{locationLabel}</span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {isStepTwo ? (
-              <div>
-                <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                  Select From Existing Contracts
-                </h2>
-
-                <SearchField className="mt-4 w-full">
-                  <SearchFieldInput
-                    className="pr-[46px]"
-                    size="lg"
-                    placeholder="Search contracts"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-                  <SearchFieldButton size="lg">
-                    <SearchMd className="size-4 text-gray-400" />
-                  </SearchFieldButton>
-                </SearchField>
-
-                <div className="mt-3 space-y-2">
-                  {visibleContracts.map((contract) => (
-                    <button
-                      key={contract.id}
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3 text-left"
-                      onClick={() => setSelectedContractId(contract.id)}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
-                          {contract.title}
-                        </span>
-                        <span className="block text-[12px] font-light leading-normal text-gray-500">
-                          {contract.subtitle}
-                        </span>
-                      </span>
-
-                      <span className="ml-4 flex items-center gap-3">
-                        <AvatarGroup className="cursor-default" max={5} size="sm" excess>
-                          {contract.avatars.map((avatar, index) => (
-                            <Avatar
-                              key={`${contract.id}-${index}`}
-                              className={cn("size-8 border-2 border-white", staticAvatarClassName)}
-                            >
-                              <AvatarImage src={avatar} alt={`Member ${index + 1}`} />
-                              <AvatarFallback className={staticAvatarFallbackClassName}>
-                                {index + 1}
-                              </AvatarFallback>
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-                        {contract.extra ? (
-                          <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
-                            {contract.extra}
-                          </span>
-                        ) : null}
-                        <ArrowRight className="size-4 text-gray-400" />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                {!search && filteredContracts.length > MAX_VISIBLE_CONTRACTS ? (
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    className="mt-3 px-0 text-[12px] font-medium leading-normal text-primary-500"
-                    onClick={() => setShowAllContracts((current) => !current)}
-                  >
-                    {showAllContracts ? "Show fewer contracts" : "View all contracts"}
-                  </Button>
-                ) : null}
-
-                <Button
-                  variant="link"
-                  visual="gray"
-                  className="mx-auto mt-4 flex px-0 text-[14px] font-medium leading-normal text-dark-blue-400"
-                  onClick={() => setCreatingContract(true)}
-                >
-                  <Plus className="size-4" />
-                  Invite me to a new contract
-                </Button>
-
-                <div className="mt-5 flex items-center gap-4">
-                  <span className="h-px flex-1 bg-gray-200" />
-                  <span className="text-[14px] font-light leading-normal text-gray-500">
-                    Or
-                  </span>
-                  <span className="h-px flex-1 bg-gray-200" />
-                </div>
-              </div>
-            ) : null}
-
-            {isStepThree ? (
-              <div>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-[8px] border-2 border-primary-500 bg-white px-4 py-3 text-left"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
-                      {selectedContract?.title}
-                    </span>
-                    <span className="block text-[12px] font-light leading-normal text-gray-500">
-                      {selectedContract?.subtitle}
-                    </span>
-                  </span>
-
-                  <span className="ml-4 flex items-center gap-3">
-                    <AvatarGroup className="cursor-default" max={5} size="sm" excess>
-                      {selectedContract?.avatars.map((avatar, index) => (
-                        <Avatar
-                          key={`${selectedContract?.id}-${index}`}
-                          className={cn("size-8 border-2 border-white", staticAvatarClassName)}
+                      <Avatar
+                        className={cn(
+                          "mt-8 size-[64px]",
+                          staticAvatarClassName
+                        )}
+                      >
+                        <AvatarImage
+                          src={profile?.avatarUrl || "/woman.jpg"}
+                          alt={displayName}
+                        />
+                        <AvatarFallback
+                          className={staticAvatarFallbackClassName}
                         >
-                          <AvatarImage src={avatar} alt={`Member ${index + 1}`} />
-                          <AvatarFallback className={staticAvatarFallbackClassName}>
-                            {index + 1}
-                          </AvatarFallback>
-                        </Avatar>
-                      ))}
-                    </AvatarGroup>
-                    {selectedContract?.extra ? (
-                      <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
-                        {selectedContract.extra}
+                          {displayName.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      <span className="mt-3 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium leading-normal text-gray-500">
+                        Pending Invite
                       </span>
-                    ) : null}
-                  </span>
-                </button>
 
-                {!isEditMode ? (
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    className="ml-auto mt-3 flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
-                    onClick={() => setSelectedContractId(null)}
-                  >
-                    Change Contract
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
+                      <h3 className="mt-8 text-[16px] font-semibold leading-normal text-dark-blue-400">
+                        What would you like to do next?
+                      </h3>
 
-            {isStepFour ? (
-              <div>
-                <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                  Contract Title
-                </h2>
-                <Input
-                  className="mt-3"
-                  placeholder="Enter your contract title"
-                  value={contractTitle}
-                  onChange={(event) => setContractTitle(event.target.value)}
-                />
-                {contractTitleError ? (
-                  <ErrorMessage className="mt-2">{contractTitleError}</ErrorMessage>
-                ) : null}
-              </div>
-            ) : null}
+                      <div className="mt-5 flex w-full items-center justify-center gap-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          onClick={() => setOfferSent(false)}
+                        >
+                          Review Your Offer
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            onOpenChange(false)
+                            router.push("/find-jobs")
+                          }}
+                        >
+                          Continue Browsing
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {!isEditMode && currentScreen === "select-schedule" ? (
+                        <div className="flex items-center gap-4">
+                          <Avatar
+                            className={cn(
+                              "size-[90px] shrink-0",
+                              staticAvatarClassName
+                            )}
+                          >
+                            <AvatarImage
+                              src={profile?.avatarUrl || "/woman.jpg"}
+                              alt={displayName}
+                            />
+                            <AvatarFallback
+                              className={staticAvatarFallbackClassName}
+                            >
+                              {displayName.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
 
-            {(isStepThree || isStepFour) ? (
-              <>
-                <div className="mt-7">
-                  <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                    Select Rate
-                  </h2>
+                          <div className="min-w-0">
+                            <p className="text-[14px] font-light leading-normal text-dark-blue-400">
+                              Hire{" "}
+                              <span className="font-semibold">
+                                {displayName}
+                              </span>{" "}
+                              for a new contract
+                            </p>
+                            <p className="text-[12px] font-medium leading-normal text-dark-blue-400">
+                              {jobTitle}
+                            </p>
+                            <p className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
+                              {experienceLabel}
+                            </p>
+                            <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-light leading-normal text-gray-500">
+                              <MapPin className="size-3.5 text-dark-blue-400" />
+                              <span>{locationLabel}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
 
-                  <RadioGroup
-                    value={selectedRate}
-                    onValueChange={setSelectedRate}
-                    className="mt-4"
-                  >
-                    {offerRates.map((rate) => (
-                      <RadioGroupItemSelector
-                        key={rate.value}
-                        value={rate.value}
-                        size="lg"
-                        className="min-h-[52px] justify-between rounded-[8px] px-4 py-3 hover:ring-0 focus:ring-0 data-[state=checked]:border-[2px] data-[state=checked]:ring-0 data-[state=checked]:hover:ring-0 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1"
-                      >
-                        <span className="flex min-w-0 w-full items-center justify-between gap-3">
-                          <span className="min-w-0 text-[13px] font-semibold leading-normal text-dark-blue-400">
-                            {rate.label}
-                          </span>
-                          <span className="ml-auto shrink-0 text-[13px] font-semibold leading-normal text-dark-blue-400">
-                            {rate.price}
-                          </span>
-                        </span>
-                      </RadioGroupItemSelector>
-                    ))}
-                  </RadioGroup>
+                      {isStepTwo ? (
+                        <div>
+                          <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                            Select From Existing Contracts
+                          </h2>
 
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    className="mt-3 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
-                  >
-                    Custom Rate
-                  </Button>
-                  {selectedRateError ? (
-                    <ErrorMessage className="mt-2">{selectedRateError}</ErrorMessage>
-                  ) : null}
-                </div>
+                          <SearchField className="mt-4 w-full">
+                            <SearchFieldInput
+                              className="pr-[46px]"
+                              size="lg"
+                              placeholder="Search contracts"
+                              value={search}
+                              onChange={(event) =>
+                                setSearch(event.target.value)
+                              }
+                            />
+                            <SearchFieldButton size="lg">
+                              <SearchMd className="size-4 text-gray-400" />
+                            </SearchFieldButton>
+                          </SearchField>
 
-                <div className="mt-7">
-                  <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                    Select Contract Duration
-                  </h2>
+                          <div className="mt-3 space-y-2">
+                            {visibleContracts.map((contract) => (
+                              <button
+                                key={contract.id}
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3 text-left"
+                                onClick={() =>
+                                  setSelectedContractId(contract.id)
+                                }
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
+                                    {contract.title}
+                                  </span>
+                                  <span className="block text-[12px] font-light leading-normal text-gray-500">
+                                    {contract.subtitle}
+                                  </span>
+                                </span>
 
-                  <div className="mt-4 grid grid-cols-3 gap-3">
-                    {durations.map((duration) => (
-                      <Button
-                        key={duration}
-                        variant="outlined"
-                        visual="gray"
-                        className={
-                          duration === selectedDuration
-                            ? "border-2 border-primary-500 text-primary-500"
-                            : ""
-                        }
-                        onClick={() => setSelectedDuration(duration)}
-                      >
-                        {duration}
-                      </Button>
-                    ))}
-                  </div>
+                                <span className="ml-4 flex items-center gap-3">
+                                  <AvatarGroup
+                                    className="cursor-default"
+                                    max={5}
+                                    size="sm"
+                                    excess
+                                  >
+                                    {contract.avatars.map((avatar, index) => (
+                                      <Avatar
+                                        key={`${contract.id}-${index}`}
+                                        className={cn(
+                                          "size-8 border-2 border-white",
+                                          staticAvatarClassName
+                                        )}
+                                      >
+                                        <AvatarImage
+                                          src={avatar}
+                                          alt={`Member ${index + 1}`}
+                                        />
+                                        <AvatarFallback
+                                          className={
+                                            staticAvatarFallbackClassName
+                                          }
+                                        >
+                                          {index + 1}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    ))}
+                                  </AvatarGroup>
+                                  {contract.extra ? (
+                                    <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
+                                      {contract.extra}
+                                    </span>
+                                  ) : null}
+                                  <ArrowRight className="size-4 text-gray-400" />
+                                </span>
+                              </button>
+                            ))}
+                          </div>
 
-                  <Button
-                    variant="link"
-                    visual="gray"
-                    className="mt-3 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
-                  >
-                    Custom Duration
-                  </Button>
-                  {selectedDurationError ? (
-                    <ErrorMessage className="mt-2">{selectedDurationError}</ErrorMessage>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
+                          {!search &&
+                          filteredContracts.length > MAX_VISIBLE_CONTRACTS ? (
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="mt-3 px-0 text-[12px] font-medium leading-normal text-primary-500"
+                              onClick={() =>
+                                setShowAllContracts((current) => !current)
+                              }
+                            >
+                              {showAllContracts
+                                ? "Show fewer contracts"
+                                : "View all contracts"}
+                            </Button>
+                          ) : null}
 
-            {currentScreen !== "select-contract" ? (
-              <div className="mt-7">
-                <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                  Select Work Schedule
-                </h2>
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            className="mx-auto mt-4 flex px-0 text-[14px] font-medium leading-normal text-dark-blue-400"
+                            onClick={() => setCreatingContract(true)}
+                          >
+                            <Plus className="size-4" />
+                            Invite me to a new contract
+                          </Button>
 
-                <RadioGroup
-                  value={schedule}
-                  onValueChange={setSchedule}
-                  className="mt-4 grid grid-cols-2 gap-3"
-                >
-                  <RadioGroupItemSelector
-                    value="part-time"
-                    size="lg"
-                    className="min-h-[62px] rounded-[8px] px-5 py-[15px] data-[state=checked]:border-[2px]"
-                  >
-                    <span className="block">
-                      <span className="block text-[14px] font-semibold leading-normal text-dark-blue-400">
-                        Part Time
-                      </span>
-                      <span className="block text-[12px] font-medium leading-normal text-dark-blue-400">
-                        up to 30 hrs/week
-                      </span>
-                    </span>
-                  </RadioGroupItemSelector>
+                          <div className="mt-5 flex items-center gap-4">
+                            <span className="h-px flex-1 bg-gray-200" />
+                            <span className="text-[14px] font-light leading-normal text-gray-500">
+                              Or
+                            </span>
+                            <span className="h-px flex-1 bg-gray-200" />
+                          </div>
+                        </div>
+                      ) : null}
 
-                  <RadioGroupItemSelector
-                    value="full-time"
-                    size="lg"
-                    className="min-h-[62px] rounded-[8px] px-5 py-[15px] data-[state=checked]:border-[2px]"
-                  >
-                    <span className="block">
-                      <span className="block text-[14px] font-semibold leading-normal text-dark-blue-400">
-                        Full Time
-                      </span>
-                      <span className="block text-[12px] font-medium leading-normal text-dark-blue-400">
-                        over 30 hrs/week
-                      </span>
-                    </span>
-                  </RadioGroupItemSelector>
-                </RadioGroup>
+                      {isStepThree ? (
+                        <div>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-[8px] border-2 border-primary-500 bg-white px-4 py-3 text-left"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
+                                {selectedContract?.title}
+                              </span>
+                              <span className="block text-[12px] font-light leading-normal text-gray-500">
+                                {selectedContract?.subtitle}
+                              </span>
+                            </span>
 
-                <Button
-                  variant="link"
-                  visual="gray"
-                  className="mt-4 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
-                >
-                  Custom Work Schedule
-                </Button>
-              </div>
-            ) : null}
+                            <span className="ml-4 flex items-center gap-3">
+                              <AvatarGroup
+                                className="cursor-default"
+                                max={5}
+                                size="sm"
+                                excess
+                              >
+                                {selectedContract?.avatars.map(
+                                  (avatar, index) => (
+                                    <Avatar
+                                      key={`${selectedContract?.id}-${index}`}
+                                      className={cn(
+                                        "size-8 border-2 border-white",
+                                        staticAvatarClassName
+                                      )}
+                                    >
+                                      <AvatarImage
+                                        src={avatar}
+                                        alt={`Member ${index + 1}`}
+                                      />
+                                      <AvatarFallback
+                                        className={
+                                          staticAvatarFallbackClassName
+                                        }
+                                      >
+                                        {index + 1}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  )
+                                )}
+                              </AvatarGroup>
+                              {selectedContract?.extra ? (
+                                <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
+                                  {selectedContract.extra}
+                                </span>
+                              ) : null}
+                            </span>
+                          </button>
 
-            {isStepThree ? (
-              <div className="mt-7">
-                <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                  Confirm Start Date
-                </h2>
-                <p className="mt-3 text-[13px] font-light leading-normal text-gray-500">
-                  Based on the project scope, the anticipated start date is
-                  <br />
-                  <span className="font-semibold text-dark-blue-400">
-                    Monday, Jan 30, 2025
-                  </span>
-                </p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    className={
-                      selectedStartDateAction === "confirm"
-                        ? "border-2 border-primary-500 text-primary-500"
-                        : ""
-                    }
-                    onClick={() => setSelectedStartDateAction("confirm")}
-                  >
-                    Confirm Start Date
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    className={
-                      selectedStartDateAction === "change"
-                        ? "border-2 border-primary-500 text-primary-500"
-                        : ""
-                    }
-                    onClick={() => setSelectedStartDateAction("change")}
-                  >
-                    Change Date
-                  </Button>
-                </div>
-                {selectedStartDateActionError ? (
-                  <ErrorMessage className="mt-2">{selectedStartDateActionError}</ErrorMessage>
-                ) : null}
-              </div>
-            ) : null}
+                          {!isEditMode ? (
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="ml-auto mt-3 flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                              onClick={() => setSelectedContractId(null)}
+                            >
+                              Change Contract
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
 
-            {isOfferDetailsStep ? (
-              <div className="mt-7">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                    Add a Message
-                  </h2>
-                  <span className="text-[12px] font-light leading-normal text-gray-500">
-                    Optional
-                  </span>
-                </div>
-                <Textarea
-                  className="mt-3 min-h-[110px]"
-                  placeholder="Write your message"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                />
-              </div>
-            ) : null}
-            </>
-            )}
+                      {isStepFour ? (
+                        <div>
+                          <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                            Contract Title
+                          </h2>
+                          <Input
+                            className="mt-3"
+                            placeholder="Enter your contract title"
+                            value={contractTitle}
+                            onChange={(event) =>
+                              setContractTitle(event.target.value)
+                            }
+                          />
+                          {contractTitleError ? (
+                            <ErrorMessage className="mt-2">
+                              {contractTitleError}
+                            </ErrorMessage>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {isStepThree || isStepFour ? (
+                        <>
+                          <div className="mt-7">
+                            <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                              Select Rate
+                            </h2>
+
+                            <RadioGroup
+                              value={selectedRate}
+                              onValueChange={setSelectedRate}
+                              className="mt-4"
+                            >
+                              {offerRates.map((rate) => (
+                                <RadioGroupItemSelector
+                                  key={rate.value}
+                                  value={rate.value}
+                                  size="lg"
+                                  className="min-h-[52px] justify-between rounded-[8px] px-4 py-3 hover:ring-0 focus:ring-0 data-[state=checked]:border-[2px] data-[state=checked]:ring-0 data-[state=checked]:hover:ring-0 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1"
+                                >
+                                  <span className="flex min-w-0 w-full items-center justify-between gap-3">
+                                    <span className="min-w-0 text-[13px] font-semibold leading-normal text-dark-blue-400">
+                                      {rate.label}
+                                    </span>
+                                    <span className="ml-auto shrink-0 text-[13px] font-semibold leading-normal text-dark-blue-400">
+                                      {rate.price}
+                                    </span>
+                                  </span>
+                                </RadioGroupItemSelector>
+                              ))}
+                            </RadioGroup>
+
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="mt-3 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                            >
+                              Custom Rate
+                            </Button>
+                            {selectedRateError ? (
+                              <ErrorMessage className="mt-2">
+                                {selectedRateError}
+                              </ErrorMessage>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-7">
+                            <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                              Select Contract Duration
+                            </h2>
+
+                            <div className="mt-4 grid grid-cols-3 gap-3">
+                              {durations.map((duration) => (
+                                <Button
+                                  key={duration}
+                                  variant="outlined"
+                                  visual="gray"
+                                  className={
+                                    duration === selectedDuration
+                                      ? "border-2 border-primary-500 text-primary-500"
+                                      : ""
+                                  }
+                                  onClick={() => setSelectedDuration(duration)}
+                                >
+                                  {duration}
+                                </Button>
+                              ))}
+                            </div>
+
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="mt-3 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                            >
+                              Custom Duration
+                            </Button>
+                            {selectedDurationError ? (
+                              <ErrorMessage className="mt-2">
+                                {selectedDurationError}
+                              </ErrorMessage>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : null}
+
+                      {currentScreen !== "select-contract" ? (
+                        <div className="mt-7">
+                          <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                            Select Work Schedule
+                          </h2>
+
+                          <RadioGroup
+                            value={schedule}
+                            onValueChange={setSchedule}
+                            className="mt-4 grid grid-cols-2 gap-3"
+                          >
+                            <RadioGroupItemSelector
+                              value="part-time"
+                              size="lg"
+                              className="min-h-[62px] rounded-[8px] px-5 py-[15px] data-[state=checked]:border-[2px]"
+                            >
+                              <span className="block">
+                                <span className="block text-[14px] font-semibold leading-normal text-dark-blue-400">
+                                  Part Time
+                                </span>
+                                <span className="block text-[12px] font-medium leading-normal text-dark-blue-400">
+                                  up to 30 hrs/week
+                                </span>
+                              </span>
+                            </RadioGroupItemSelector>
+
+                            <RadioGroupItemSelector
+                              value="full-time"
+                              size="lg"
+                              className="min-h-[62px] rounded-[8px] px-5 py-[15px] data-[state=checked]:border-[2px]"
+                            >
+                              <span className="block">
+                                <span className="block text-[14px] font-semibold leading-normal text-dark-blue-400">
+                                  Full Time
+                                </span>
+                                <span className="block text-[12px] font-medium leading-normal text-dark-blue-400">
+                                  over 30 hrs/week
+                                </span>
+                              </span>
+                            </RadioGroupItemSelector>
+                          </RadioGroup>
+
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            className="mt-4 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                          >
+                            Custom Work Schedule
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {isStepThree ? (
+                        <div className="mt-7">
+                          <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                            Confirm Start Date
+                          </h2>
+                          <p className="mt-3 text-[13px] font-light leading-normal text-gray-500">
+                            Based on the project scope, the anticipated start
+                            date is
+                            <br />
+                            <span className="font-semibold text-dark-blue-400">
+                              Monday, Jan 30, 2025
+                            </span>
+                          </p>
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              className={
+                                selectedStartDateAction === "confirm"
+                                  ? "border-2 border-primary-500 text-primary-500"
+                                  : ""
+                              }
+                              onClick={() =>
+                                setSelectedStartDateAction("confirm")
+                              }
+                            >
+                              Confirm Start Date
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              className={
+                                selectedStartDateAction === "change"
+                                  ? "border-2 border-primary-500 text-primary-500"
+                                  : ""
+                              }
+                              onClick={() =>
+                                setSelectedStartDateAction("change")
+                              }
+                            >
+                              Change Date
+                            </Button>
+                          </div>
+                          {selectedStartDateActionError ? (
+                            <ErrorMessage className="mt-2">
+                              {selectedStartDateActionError}
+                            </ErrorMessage>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {isOfferDetailsStep ? (
+                        <div className="mt-7">
+                          <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                              Add a Message
+                            </h2>
+                            <span className="text-[12px] font-light leading-normal text-gray-500">
+                              Optional
+                            </span>
+                          </div>
+                          <Textarea
+                            className="mt-3 min-h-[110px]"
+                            placeholder="Write your message"
+                            value={message}
+                            onChange={(event) => setMessage(event.target.value)}
+                          />
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </motion.div>
               </AnimatePresence>
             </motion.div>
@@ -773,7 +899,7 @@ export function OfferDialog({
               <Button
                 className={cn(
                   "w-full",
-                  !isOfferReady && "cursor-not-allowed opacity-50",
+                  !isOfferReady && "cursor-not-allowed opacity-50"
                 )}
                 aria-disabled={!isOfferReady}
                 onClick={() => {
@@ -790,7 +916,9 @@ export function OfferDialog({
                     nextSearchParams.set("rate", selectedRate)
                     nextSearchParams.set("schedule", schedule)
                     nextSearchParams.set("duration", selectedDuration)
-                    router.push(`/talent-checkout/${checkoutSlug}?${nextSearchParams.toString()}`)
+                    router.push(
+                      `/talent-checkout/${checkoutSlug}?${nextSearchParams.toString()}`
+                    )
                   }
                 }}
               >

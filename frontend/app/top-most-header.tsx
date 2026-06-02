@@ -1,24 +1,31 @@
 "use client"
 
 import React, { useCallback, useEffect, useState } from "react"
-import { createPortal } from "react-dom"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import {
+  useAuth,
+  hasCompletedClientOnboarding,
+  hasCompletedTalentOnboarding,
+} from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
 import {
-  mapAblyNotificationToUi,
-  mapApiNotificationToUi,
   type NotificationMetadata,
   type UiNotificationItem,
+  formatNotificationTime,
+  mapAblyNotificationToUi,
+  mapApiNotificationToUi,
 } from "@/libs/notifications"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
-import { respondToContract } from "@/src/lib/api/contracts"
 import NotificationsAPI, {
   isTransientNotificationsApiError,
 } from "@/service/http/notifications"
 import { UserAPI } from "@/service/http/user"
-import { ROLE } from "@/types/user"
+import { respondToContract } from "@/src/lib/api/contracts"
 import { cn } from "@/utils/functions"
+import {
+  type InboxThreadSummary,
+  useInboxThreads,
+} from "@/utils/useInboxThreads"
+import { useNotificationChannel } from "@/utils/useNotificationChannel"
 import {
   BarChart2,
   Bell,
@@ -39,14 +46,16 @@ import {
   Users,
   X,
 } from "@blend-metrics/icons"
+import { createPortal } from "react-dom"
+import { ROLE } from "@/types/user"
+import { CounterOfferDialog } from "@/components/counter-offer-dialog"
 import { Campaigns, Logo3, Project, Talent } from "@/components/icons"
 import { InviteWindowTrigger } from "@/components/invite-window"
-import { CounterOfferDialog } from "@/components/counter-offer-dialog"
+import NextLink from "@/components/next-link"
 import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
 } from "@/components/offer-flow-dialog"
-import NextLink from "@/components/next-link"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
   Avatar,
@@ -81,14 +90,10 @@ import {
   TabsTrigger,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
-import { useNotificationChannel } from "@/utils/useNotificationChannel"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
 
-const readMetadataString = (
-  metadata: NotificationMetadata,
-  key: string
-) => {
+const readMetadataString = (metadata: NotificationMetadata, key: string) => {
   const value = metadata?.[key]
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
@@ -172,8 +177,7 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
       readMetadataString(metadata, "projectHref") ||
       item.href ||
       "/inbox",
-    messageHref:
-      readMetadataString(metadata, "messageHref") || "/inbox",
+    messageHref: readMetadataString(metadata, "messageHref") || "/inbox",
     offerRate: readMetadataString(metadata, "offerRate") || "$45/hr",
     role: readMetadataString(metadata, "role") || "UX Designer",
     duration: readMetadataString(metadata, "duration") || "4 Months",
@@ -211,16 +215,19 @@ const Notifications = () => {
   const [activeTab, setActiveTab] = useState<"Notifications" | "Messages">(
     "Notifications"
   )
-  const [allNotifications, setAllNotifications] = useState<UiNotificationItem[]>([])
+  const [allNotifications, setAllNotifications] = useState<
+    UiNotificationItem[]
+  >([])
   const [unreadBadgeCount, setUnreadBadgeCount] = useState(0)
+  const {
+    threads: inboxThreads,
+    totalUnread: inboxTotalUnread,
+    loading: inboxLoading,
+  } = useInboxThreads()
 
   const loadNotifications = useCallback(async (allowSeed = true) => {
     try {
       setLoading(true)
-
-      if (process.env.NODE_ENV !== "production") {
-        await ensureDevAuth()
-      }
 
       const response = await NotificationsAPI.list({ limit: 8 })
       const items: UiNotificationItem[] = Array.isArray(response?.data?.data)
@@ -275,9 +282,6 @@ const Notifications = () => {
     },
   })
 
-  const messageNotifications = allNotifications.filter(
-    (item) => item.kind === "message"
-  )
   const selectedOfferDetails = selectedOfferNotification
     ? getOfferNotificationDetails(selectedOfferNotification)
     : null
@@ -296,7 +300,8 @@ const Notifications = () => {
         ? offerAcceptanceNote.trim().length > 0 && offerTermsAccepted
           ? "accept-offer-ready"
           : "accept-offer-empty"
-        : offerDeclineNote.trim().length > 0 || offerDeclineReason.trim().length > 0
+        : offerDeclineNote.trim().length > 0 ||
+            offerDeclineReason.trim().length > 0
           ? "decline-offer-ready"
           : "decline-offer-empty"
 
@@ -361,6 +366,70 @@ const Notifications = () => {
     }
 
     router.push(item.href)
+  }
+
+  const handleInboxThreadClick = (thread: InboxThreadSummary) => {
+    setOpen(false)
+    router.push(`/inbox?thread=${thread.id}`)
+  }
+
+  const renderInboxThreadItem = (thread: InboxThreadSummary) => {
+    const timeLabel = thread.lastMessageAt
+      ? formatNotificationTime(thread.lastMessageAt)
+      : ""
+    return (
+      <button
+        key={thread.id}
+        type="button"
+        className="w-full text-left hover:bg-gray-100 rounded-lg flex py-2.5 px-3 items-start gap-x-3 transition-colors"
+        onClick={() => handleInboxThreadClick(thread)}
+      >
+        <Avatar size="md">
+          {thread.displayAvatarUrl ? (
+            <AvatarImage
+              src={thread.displayAvatarUrl}
+              alt={thread.displayName}
+            />
+          ) : null}
+          <AvatarFallback>{thread.displayInitial}</AvatarFallback>
+        </Avatar>
+
+        <div className="flex-auto min-w-0">
+          <div className="flex items-center justify-between gap-x-3">
+            <div
+              className={cn(
+                "text-sm leading-[16.94px] text-dark-blue-400 truncate",
+                thread.hasUnread ? "font-bold" : "font-semibold"
+              )}
+            >
+              {thread.displayName}
+            </div>
+            <div className="flex items-center gap-x-2 shrink-0">
+              {timeLabel ? (
+                <span className="text-xs leading-[14.06px] text-[#585C65] whitespace-nowrap">
+                  {timeLabel}
+                </span>
+              ) : null}
+              {thread.unreadCount > 0 ? (
+                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-semibold text-white">
+                  {thread.unreadCount > 99 ? "99+" : thread.unreadCount}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div
+            className={cn(
+              "mt-1 text-sm leading-[16.94px] truncate",
+              thread.hasUnread
+                ? "text-dark-blue-400 font-medium"
+                : "text-gray-700"
+            )}
+          >
+            {thread.lastMessagePreview}
+          </div>
+        </div>
+      </button>
+    )
   }
 
   const renderNotificationItem = (
@@ -468,7 +537,12 @@ const Notifications = () => {
           className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
           align="end"
         >
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "Notifications" | "Messages")}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) =>
+              setActiveTab(value as "Notifications" | "Messages")
+            }
+          >
             <TabsList className="w-full">
               <TabsTrigger value="Notifications">
                 Notifications
@@ -479,7 +553,7 @@ const Notifications = () => {
               <TabsTrigger value="Messages">
                 Messages
                 <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {messageNotifications.filter((item) => !item.read).length}
+                  {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
                 </span>
               </TabsTrigger>
             </TabsList>
@@ -496,7 +570,9 @@ const Notifications = () => {
                         Loading notifications...
                       </div>
                     ) : allNotifications.length > 0 ? (
-                      allNotifications.map((item) => renderNotificationItem(item, false))
+                      allNotifications.map((item) =>
+                        renderNotificationItem(item, false)
+                      )
                     ) : (
                       <div className="px-3 py-6 text-sm text-gray-500">
                         No notifications to show
@@ -507,7 +583,10 @@ const Notifications = () => {
               </div>
 
               <div className="py-3.5 grid">
-                <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
+                <button
+                  className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium"
+                  onClick={() => router.push("/notifications")}
+                >
                   View All
                 </button>
               </div>
@@ -519,22 +598,39 @@ const Notifications = () => {
                   scrollBar={<ScrollBar className="w-4 px-1" />}
                 >
                   <div className="px-2">
-                    {loading ? (
-                      <div className="px-3 py-6 text-sm text-gray-500">
-                        Loading messages...
-                      </div>
-                    ) : messageNotifications.length > 0 ? (
-                      messageNotifications.map((item) => renderNotificationItem(item, false))
-                    ) : (
-                      <div className="px-3 py-6 text-sm text-gray-500">
-                        No messages to show
-                      </div>
-                    )}
+                    {(() => {
+                      const unreadThreads = inboxThreads.filter(
+                        (t) => t.hasUnread
+                      )
+                      if (inboxLoading && inboxThreads.length === 0) {
+                        return (
+                          <div className="px-3 py-6 text-sm text-gray-500">
+                            Loading messages...
+                          </div>
+                        )
+                      }
+                      if (unreadThreads.length === 0) {
+                        return (
+                          <div className="px-3 py-6 text-sm text-gray-500">
+                            No unread messages
+                          </div>
+                        )
+                      }
+                      return unreadThreads
+                        .slice(0, 8)
+                        .map(renderInboxThreadItem)
+                    })()}
                   </div>
                 </ScrollArea>
               </div>
               <div className="py-3.5 grid">
-                <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/inbox")}>
+                <button
+                  className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium"
+                  onClick={() => {
+                    setOpen(false)
+                    router.push("/inbox")
+                  }}
+                >
                   View All
                 </button>
               </div>
@@ -731,11 +827,16 @@ const SearchBar = () => {
 
   const searchPlaceholder = (() => {
     switch (state) {
-      case "Projects": return "Search by skills or project type"
-      case "Services": return "Search by skills or service type"
-      case "Teams": return "Search by skills or team type"
-      case "Talent": return "Search by skills or expertise"
-      default: return "Search by skills or keyword"
+      case "Projects":
+        return "Search by skills or project type"
+      case "Services":
+        return "Search by skills or service type"
+      case "Teams":
+        return "Search by skills or team type"
+      case "Talent":
+        return "Search by skills or expertise"
+      default:
+        return "Search by skills or keyword"
     }
   })()
 
@@ -794,7 +895,12 @@ const SearchBar = () => {
       key={resetNonce}
       className="group/root w-auto flex-auto"
       value={selected}
-      onChange={(value: { id: number; value: string; icon?: React.JSXElementConstructor<any>; route?: string }) => {
+      onChange={(value: {
+        id: number
+        value: string
+        icon?: React.JSXElementConstructor<any>
+        route?: string
+      }) => {
         if (!value) return
         // Fixed "Browse ..." items have a route — navigate instead of searching.
         if (value.route) {
@@ -813,158 +919,160 @@ const SearchBar = () => {
       }}
     >
       {({ open }) => (
-      <>
-      {/* Amazon-style page overlay: when the search combobox is open, dim
+        <>
+          {/* Amazon-style page overlay: when the search combobox is open, dim
           the rest of the page so focus is entirely on the search. Rendered
           via portal to document.body so it escapes the header's stacking
           context, allowing z-40 to sit cleanly below the z-50 sticky nav. */}
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="fixed inset-0 bg-black/40 z-40 pointer-events-none animate-in fade-in duration-150"
-            aria-hidden="true"
-          />,
-          document.body
-        )}
-      <ComboboxTrigger className="relative z-50 flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 bg-white ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
-        <div className="flex items-center gap-x-2 flex-auto">
-          <SearchMd className="size-4 shrink-0 text-gray-400" />
-          <ComboboxInput
-            ref={inputRef}
-            placeholder={searchPlaceholder}
-            className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
-            size="lg"
-            displayValue={(value: {
-              id: number
-              value: string
-              icon?: React.JSXElementConstructor<any>
-            }) => value?.value ?? ""}
-            onChange={(event) => setQuery(event.target.value)}
-            onFocus={() => {
-              // Open the dropdown the moment the user focuses the input
-              // (industry-standard behavior — Amazon, Upwork, Fiverr all do this).
-              // Guard against double-firing: only click the hidden trigger if
-              // the options aren't already open, otherwise we'd toggle it shut.
-              // Also skip if we're in the middle of submitting a search, so
-              // the dropdown doesn't reopen right as it's closing.
-              if (submittingRef.current) return
-              const btn = openButtonRef.current
-              if (btn && btn.getAttribute("aria-expanded") !== "true") {
-                btn.click()
-              }
-            }}
-            onKeyDownCapture={(e: React.KeyboardEvent<HTMLInputElement>) => {
-              // Capture-phase so we intercept Enter before Headless UI's own
-              // keydown handler tries to "select the highlighted option"
-              // (which would otherwise swallow the event when nothing is
-              // highlighted, or submit the wrong term if something is).
-              if (e.key === "Enter") {
-                e.preventDefault()
-                e.stopPropagation()
-                submitSearch(query)
-              } else if (e.key === "Escape") {
-                // Standard: Escape clears the input without submitting
-                setQuery("")
-                setSelected(undefined)
-              }
-            }}
-          />
-          {/* Hidden trigger — gives clicking/focusing the input the ability
+          {open &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                className="fixed inset-0 bg-black/40 z-40 pointer-events-none animate-in fade-in duration-150"
+                aria-hidden="true"
+              />,
+              document.body
+            )}
+          <ComboboxTrigger className="relative z-50 flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 bg-white ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
+            <div className="flex items-center gap-x-2 flex-auto">
+              <SearchMd className="size-4 shrink-0 text-gray-400" />
+              <ComboboxInput
+                ref={inputRef}
+                placeholder={searchPlaceholder}
+                className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
+                size="lg"
+                displayValue={(value: {
+                  id: number
+                  value: string
+                  icon?: React.JSXElementConstructor<any>
+                }) => value?.value ?? ""}
+                onChange={(event) => setQuery(event.target.value)}
+                onFocus={() => {
+                  // Open the dropdown the moment the user focuses the input
+                  // (industry-standard behavior — Amazon, Upwork, Fiverr all do this).
+                  // Guard against double-firing: only click the hidden trigger if
+                  // the options aren't already open, otherwise we'd toggle it shut.
+                  // Also skip if we're in the middle of submitting a search, so
+                  // the dropdown doesn't reopen right as it's closing.
+                  if (submittingRef.current) return
+                  const btn = openButtonRef.current
+                  if (btn && btn.getAttribute("aria-expanded") !== "true") {
+                    btn.click()
+                  }
+                }}
+                onKeyDownCapture={(
+                  e: React.KeyboardEvent<HTMLInputElement>
+                ) => {
+                  // Capture-phase so we intercept Enter before Headless UI's own
+                  // keydown handler tries to "select the highlighted option"
+                  // (which would otherwise swallow the event when nothing is
+                  // highlighted, or submit the wrong term if something is).
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    submitSearch(query)
+                  } else if (e.key === "Escape") {
+                    // Standard: Escape clears the input without submitting
+                    setQuery("")
+                    setSelected(undefined)
+                  }
+                }}
+              />
+              {/* Hidden trigger — gives clicking/focusing the input the ability
               to open the Headless UI Combobox popover. */}
-          <ComboboxButton
-            ref={openButtonRef}
-            className="hidden"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        </div>
-        <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
-        <Listbox className="w-auto" value={state} onChange={setState}>
-          <ListboxButton
-            className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
-            placeholder="View All"
-            iconClassName="size-[12.5px]"
-          />
-          <ListboxOptions
-              className="w-[160px] -right-3 left-auto mt-3.5 rounded-lg border border-gray-100 shadow-lg overflow-hidden"
-              viewportClassName="max-h-none"
-              wrapperClassName="p-1 space-y-0"
-            >
-            {listingTypes.map((type) => (
-              <ListboxOption
-                key={type}
-                value={type}
-                className="rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 ui-active:bg-gray-50"
-              >
-                {type}
-              </ListboxOption>
-            ))}
-          </ListboxOptions>
-        </Listbox>
-      </ComboboxTrigger>
-      <ScaleOutIn afterLeave={reset}>
-        <ComboboxOptions className="px-0 mt-0 space-y-0 border border-gray-300 border-t-0 rounded-t-none bg-white">
-          {query === "" ? (
-            <>
-              {/* Empty state: fixed "Browse ..." suggestions + Recent Searches */}
-              <div className="p-3">
-                {fixedSuggestions.map((fixedSuggestion) => (
-                  <ComboboxOption
-                    key={fixedSuggestion.id}
-                    value={fixedSuggestion}
-                    className="text-xs flex items-center gap-x-3 leading-[13.3px] text-gray-400"
-                  >
-                    <fixedSuggestion.icon className="size-5" />
-                    {fixedSuggestion.value}
-                  </ComboboxOption>
-                ))}
-              </div>
-
-              <div className="space-y-1 p-3 border-t border-gray-100">
-                <div className="px-3 flex items-center justify-between">
-                  <h1 className="text-[13px] leading-6 font-semibold text-dark-blue-400">
-                    Recent Searches
-                  </h1>
-
-                  <Button
-                    className="opacity-50 hover:opacity-100"
-                    variant="link"
-                    visual="gray"
-                  >
-                    Clear Search History
-                  </Button>
-                </div>
-                <ScrollArea viewportClassName="max-h-[360px]">
-                  {suggestions.map((suggestion) => (
-                    <ComboboxOption key={suggestion.id} value={suggestion}>
-                      {suggestion.value}
-                    </ComboboxOption>
-                  ))}
-                </ScrollArea>
-              </div>
-            </>
-          ) : (
-            /* Typing state: live autocomplete matches only */
-            <div className="p-3">
-              <ScrollArea viewportClassName="max-h-[360px]">
-                {filteredSuggestions.length > 0 ? (
-                  filteredSuggestions.map((suggestion) => (
-                    <ComboboxOption key={suggestion.id} value={suggestion}>
-                      {suggestion.value}
-                    </ComboboxOption>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-xs text-gray-400">
-                    No matches
-                  </div>
-                )}
-              </ScrollArea>
+              <ComboboxButton
+                ref={openButtonRef}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
             </div>
-          )}
-        </ComboboxOptions>
-      </ScaleOutIn>
-      </>
+            <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
+            <Listbox className="w-auto" value={state} onChange={setState}>
+              <ListboxButton
+                className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
+                placeholder="View All"
+                iconClassName="size-[12.5px]"
+              />
+              <ListboxOptions
+                className="w-[160px] -right-3 left-auto mt-3.5 rounded-lg border border-gray-100 shadow-lg overflow-hidden"
+                viewportClassName="max-h-none"
+                wrapperClassName="p-1 space-y-0"
+              >
+                {listingTypes.map((type) => (
+                  <ListboxOption
+                    key={type}
+                    value={type}
+                    className="rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 ui-active:bg-gray-50"
+                  >
+                    {type}
+                  </ListboxOption>
+                ))}
+              </ListboxOptions>
+            </Listbox>
+          </ComboboxTrigger>
+          <ScaleOutIn afterLeave={reset}>
+            <ComboboxOptions className="px-0 mt-0 space-y-0 border border-gray-300 border-t-0 rounded-t-none bg-white">
+              {query === "" ? (
+                <>
+                  {/* Empty state: fixed "Browse ..." suggestions + Recent Searches */}
+                  <div className="p-3">
+                    {fixedSuggestions.map((fixedSuggestion) => (
+                      <ComboboxOption
+                        key={fixedSuggestion.id}
+                        value={fixedSuggestion}
+                        className="text-xs flex items-center gap-x-3 leading-[13.3px] text-gray-400"
+                      >
+                        <fixedSuggestion.icon className="size-5" />
+                        {fixedSuggestion.value}
+                      </ComboboxOption>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1 p-3 border-t border-gray-100">
+                    <div className="px-3 flex items-center justify-between">
+                      <h1 className="text-[13px] leading-6 font-semibold text-dark-blue-400">
+                        Recent Searches
+                      </h1>
+
+                      <Button
+                        className="opacity-50 hover:opacity-100"
+                        variant="link"
+                        visual="gray"
+                      >
+                        Clear Search History
+                      </Button>
+                    </div>
+                    <ScrollArea viewportClassName="max-h-[360px]">
+                      {suggestions.map((suggestion) => (
+                        <ComboboxOption key={suggestion.id} value={suggestion}>
+                          {suggestion.value}
+                        </ComboboxOption>
+                      ))}
+                    </ScrollArea>
+                  </div>
+                </>
+              ) : (
+                /* Typing state: live autocomplete matches only */
+                <div className="p-3">
+                  <ScrollArea viewportClassName="max-h-[360px]">
+                    {filteredSuggestions.length > 0 ? (
+                      filteredSuggestions.map((suggestion) => (
+                        <ComboboxOption key={suggestion.id} value={suggestion}>
+                          {suggestion.value}
+                        </ComboboxOption>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-xs text-gray-400">
+                        No matches
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+              )}
+            </ComboboxOptions>
+          </ScaleOutIn>
+        </>
       )}
     </Combobox>
   )
@@ -973,11 +1081,29 @@ const SearchBar = () => {
 const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
-const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search", "/projects", "/services", "/teams", "/talent", "/find-jobs"]
+const HAS_SECONDARY_NAV = [
+  "/",
+  "/talent-profile",
+  "/my-team",
+  "/favorite-projects",
+  "/favorite-talent",
+  "/browser-history",
+  "/search",
+  "/talent-search",
+  "/projects",
+  "/services",
+  "/teams",
+  "/talent",
+  "/find-jobs",
+]
 
 const ONBOARDING = "/onboarding"
 
-export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) => {
+export const TopMostHeader = ({
+  showShadow = true,
+}: {
+  showShadow?: boolean
+}) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
@@ -1000,7 +1126,10 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
       const val = document.documentElement.dataset.secondaryNav
       setSecondaryNavHidden(val === "hidden")
     })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-secondary-nav"] })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-secondary-nav"],
+    })
     return () => observer.disconnect()
   }, [hasSecondaryNav])
 
@@ -1012,8 +1141,8 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
 
   return (
-      <div
-        className={cn(
+    <div
+      className={cn(
         // Keep the primary nav pinned to the viewport so iOS/macOS overscroll
         // bounce only affects page content, not the header itself.
         "fixed inset-x-0 top-0 px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
@@ -1092,10 +1221,16 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col text-left">
-                  <span className="text-xs font-semibold leading-[15px] text-gray-700" suppressHydrationWarning>
+                  <span
+                    className="text-xs font-semibold leading-[15px] text-gray-700"
+                    suppressHydrationWarning
+                  >
                     {`${user?.firstName || ""} ${user?.lastName || ""}`.trim()}
                   </span>
-                  <span className="text-[9px] leading-[14px] text-gray-500" suppressHydrationWarning>
+                  <span
+                    className="text-[9px] leading-[14px] text-gray-500"
+                    suppressHydrationWarning
+                  >
                     {user?.email}
                   </span>
                 </div>
@@ -1110,64 +1245,156 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     <span className="text-xs leading-5 text-gray-700">
                       User ID: 2459749
                     </span>
-                    <span className="text-[13px] leading-5 text-primary-500" suppressHydrationWarning>
+                    <span
+                      className="text-[13px] leading-5 text-primary-500"
+                      suppressHydrationWarning
+                    >
                       {user?.email}
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/settings") }}>My Account</Button>
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      router.push("/settings")
+                    }}
+                  >
+                    My Account
+                  </Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/talent-profile") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/talent-profile")
+                }}
+              >
                 <User className="size-4" />
                 My Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push(
+                    user?.accountType === "TALENT"
+                      ? "/talent-dashboard"
+                      : "/client-dashboard"
+                  )
+                }}
+              >
                 <LayoutGrid02 className="size-4" />
                 My Dashboard
               </DropdownMenuItem>
               {user?.accountType === "TALENT" && (
-                <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-listings") }}>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setMenuOpen(false)
+                    router.push("/my-listings")
+                  }}
+                >
                   <List className="size-4" />
                   My Listings
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-contracts") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/my-contracts")
+                }}
+              >
                 <FileCheck02 className="size-4" />
                 My Contracts
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-team") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/my-team")
+                }}
+              >
                 <Users className="size-4" />
                 My Team
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/favorites") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/favorites")
+                }}
+              >
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/billing") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/billing")
+                }}
+              >
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/settings") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/settings")
+                }}
+              >
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={async () => {
-                setMenuOpen(false)
-                const newType = user?.accountType === "TALENT" ? "client" : "talent"
-                const newDashboard = newType === "client" ? "/client-dashboard" : "/talent-dashboard"
-                // Optimistically update local user so the dropdown label flips immediately,
-                // even if the backend doesn't accept the userType change.
-                setUser((prev) => prev ? { ...prev, userType: newType, accountType: newType === "talent" ? ROLE.TALENT : ROLE.CLIENT } : prev)
-                if (user?.id) {
-                  UserAPI.updateProfile(user.id, { userType: newType }).catch(() => {})
-                }
-                router.push(newDashboard)
-              }}>
+              <DropdownMenuItem
+                onClick={async () => {
+                  setMenuOpen(false)
+                  const newType =
+                    user?.accountType === "TALENT" ? "client" : "talent"
+                  const newRole =
+                    newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
+                  // Optimistically update local user so the dropdown label flips immediately,
+                  // even if the backend doesn't accept the userType change.
+                  const updatedUser = user
+                    ? {
+                        ...user,
+                        userType: newType,
+                        accountType: newRole,
+                        role: newRole,
+                      }
+                    : null
+                  setUser((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          userType: newType,
+                          accountType: newRole,
+                          role: newRole,
+                        }
+                      : prev
+                  )
+                  if (user?.id) {
+                    UserAPI.updateProfile(user.id, { userType: newType }).catch(
+                      () => {}
+                    )
+                  }
+                  // Check if the user needs onboarding for the target role
+                  const needsOnboarding =
+                    newType === "client"
+                      ? !hasCompletedClientOnboarding(updatedUser)
+                      : !hasCompletedTalentOnboarding(updatedUser)
+                  const destination = needsOnboarding
+                    ? `/onboarding/${newType}`
+                    : newType === "client"
+                      ? "/client-dashboard"
+                      : "/talent-dashboard"
+                  router.push(destination)
+                }}
+              >
                 <Repeat className="size-4" />
-                {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
+                {user?.accountType?.toUpperCase() === "TALENT" ||
+                user?.userType?.toLowerCase() === "talent" ||
+                user?.role?.toUpperCase() === "TALENT"
+                  ? "Switch to Client"
+                  : "Switch to Talent"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-x-[9px]">

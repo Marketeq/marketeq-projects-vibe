@@ -13,7 +13,6 @@ import {
   Put,
   Query,
   Req,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -114,17 +113,17 @@ export class ScreenshotsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   async deleteScreenshot(
     @Param('id') id: string,
     @Req() req: any,
     @Query('scopeId') scopeId?: string,
     @Body() dto: DeleteScreenshotDto = {},
   ) {
-    const userId = req?.user?.sub ?? req?.headers?.['x-user-id'];
-    if (!userId) throw new UnauthorizedException('Missing user identity');
-    const role = req?.user?.role ?? 'user';
-    const result = await this.svc.deleteScreenshot(id, String(userId), role, dto, scopeId);
-    this.events.screenshotDeleted(id, String(userId), dto.reason ?? null);
+    const userId: string = req.user.sub;
+    const role: string = req.user.role ?? 'user';
+    const result = await this.svc.deleteScreenshot(id, userId, role, dto, scopeId);
+    this.events.screenshotDeleted(id, userId, dto.reason ?? null);
     return result;
   }
 
@@ -154,8 +153,8 @@ export class ScreenshotsController {
 
   @Get('flagged')
   @UseGuards(JwtAuthGuard, RolesGuard('admin'))
-  async getFlagged() {
-    return this.svc.getFlaggedScreenshots();
+  async getFlagged(@Query() query: ScreenshotQueryDto) {
+    return this.svc.getFlaggedScreenshots(query.page ?? 1, query.pageSize ?? 50);
   }
 
   @Get('group/:groupKey')

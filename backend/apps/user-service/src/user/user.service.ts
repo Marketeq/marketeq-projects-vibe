@@ -52,7 +52,17 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: [
+        'languages',
+        'experiences',
+        'educations',
+        'certifications',
+        'industries',
+        'portfolioItems',
+      ],
+    });
     if (!user) throw new NotFoundException("User not found");
 
     try {
@@ -69,7 +79,12 @@ export class UserService {
       user.skills = [];
     }
 
-    return user;
+    return {
+      ...user,
+      experience: user.experiences,
+      education: user.educations,
+      portfolio: user.portfolioItems,
+    } as User;
   }
 
   async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
@@ -263,10 +278,19 @@ export class UserService {
           ? "client"
           : undefined;
 
+    const now = new Date().toISOString();
+    const roleTimestamp =
+      role === UserRole.TALENT
+        ? { talentOnboardedAt: now }
+        : role === UserRole.CLIENT
+          ? { clientOnboardedAt: now }
+          : {};
+
     return this.updateUser(id, {
       onboardingDismissed: true,
       ...(userType ? { userType } : {}),
-    });
+      ...roleTimestamp,
+    } as any);
   }
 
   async deactivateUser(id: string): Promise<void> {

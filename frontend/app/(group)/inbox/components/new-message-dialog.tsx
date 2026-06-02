@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { apiFetch } from "@/src/lib/api"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import { SearchMd, X } from "@blend-metrics/icons"
 import {
   Avatar,
@@ -11,8 +13,6 @@ import {
   DialogClose,
   DialogContent,
 } from "@/components/ui"
-import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 
 interface UserPickerItem {
   id: string
@@ -53,7 +53,10 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   return <>{parts}</>
 }
 
-export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) {
+export function NewMessageDialog({
+  open,
+  onOpenChange,
+}: NewMessageDialogProps) {
   const router = useRouter()
   const [users, setUsers] = useState<UserPickerItem[]>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -92,8 +95,8 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
         const list = Array.isArray(response)
           ? response
           : ((response as { data?: unknown[]; users?: unknown[] }).data ??
-              (response as { users?: unknown[] }).users ??
-              [])
+            (response as { users?: unknown[] }).users ??
+            [])
         const items: UserPickerItem[] = (list as Array<Record<string, unknown>>)
           .filter((u) => u?.id && u.id !== currentUser?.id)
           .map((u) => ({

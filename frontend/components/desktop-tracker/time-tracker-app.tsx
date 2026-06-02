@@ -1,20 +1,24 @@
 "use client"
 
 import * as React from "react"
+import { useAuth } from "@/contexts/auth"
+import {
+  type ContractDTO,
+  getContractsForClient,
+  getContractsForTalent,
+} from "@/service/http/contracts"
+import { createContractTask, getTasksForContract } from "@/service/http/tasks"
 import { cn } from "@/utils/functions"
-import { TrackerHeader } from "./tracker-header"
+import { AccountMenu } from "./account-menu"
+import { ActiveTrackingBar } from "./active-tracking-bar"
+import { ContractEntry, TaskEntry } from "./contract-entry"
 import { DateTimeBar } from "./date-time-bar"
-import { TaskSearch, SearchResult } from "./task-search"
+import { DaySummary } from "./day-summary"
+import { NewTaskForm } from "./new-task-form"
+import { SearchResult, TaskSearch } from "./task-search"
 import { TimerControls } from "./timer-controls"
 import { TimerDisplay } from "./timer-display"
-import { ActiveTrackingBar } from "./active-tracking-bar"
-import { DaySummary } from "./day-summary"
-import { ContractEntry, TaskEntry } from "./contract-entry"
-import { AccountMenu } from "./account-menu"
-import { NewTaskForm } from "./new-task-form"
-import { useAuth } from "@/contexts/auth"
-import { getContractsForTalent, getContractsForClient, type ContractDTO } from "@/service/http/contracts"
-import { getTasksForContract, createContractTask } from "@/service/http/tasks"
+import { TrackerHeader } from "./tracker-header"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +50,11 @@ type View = "main" | "menu" | "new-task" | "all-tasks"
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDate() {
-  return new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+  return new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 function formatUtcTime() {
@@ -66,14 +74,21 @@ function formatDuration(seconds: number): string {
 }
 
 function formatTimeOfDay(date: Date): string {
-  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()
+  return date
+    .toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toLowerCase()
 }
 
 function calcTotalHours(tasks: TaskEntry[]): string {
   let total = 0
   for (const t of tasks) {
     const parts = t.duration.split(":")
-    total += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2])
+    total +=
+      parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2])
   }
   const hrs = (total / 3600).toFixed(1)
   return `${hrs} hrs`
@@ -84,7 +99,8 @@ function calcDayTrackedHours(contracts: Contract[]): string {
   for (const c of contracts) {
     for (const t of c.tasks) {
       const parts = t.duration.split(":")
-      total += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2])
+      total +=
+        parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2])
     }
   }
   return (total / 3600).toFixed(1)
@@ -95,7 +111,8 @@ function calcDayEarnings(contracts: Contract[], rate: number): string {
   for (const c of contracts) {
     for (const t of c.tasks) {
       const parts = t.duration.split(":")
-      total += parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2])
+      total +=
+        parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2])
     }
   }
   return `$${((total / 3600) * rate).toFixed(0)}`
@@ -109,8 +126,19 @@ const SEED_CONTRACTS: Contract[] = [
     name: "Detecting Edges Usi...",
     clientHandle: "bitcoinmasters321",
     tasks: [
-      { id: "t1", name: "Card sorting features", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00", progress: 60 },
-      { id: "t2", name: "Low-fidelity wireframing", timeRange: "10:32 am - 4:39 pm", duration: "01:00:00" },
+      {
+        id: "t1",
+        name: "Card sorting features",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+        progress: 60,
+      },
+      {
+        id: "t2",
+        name: "Low-fidelity wireframing",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:00:00",
+      },
     ],
   },
   {
@@ -118,13 +146,23 @@ const SEED_CONTRACTS: Contract[] = [
     name: "Referrizer Web Application",
     clientHandle: "referrizerllc",
     tasks: [
-      { id: "t3", name: "Fine-tuning wireframes", timeRange: "10:32 am - 4:39 pm", duration: "01:30:00" },
+      {
+        id: "t3",
+        name: "Fine-tuning wireframes",
+        timeRange: "10:32 am - 4:39 pm",
+        duration: "01:30:00",
+      },
     ],
   },
 ]
 
 const SEED_DAYS: DayGroup[] = [
-  { label: "Today", totalHours: "8", hourlyRate: 30, contracts: SEED_CONTRACTS },
+  {
+    label: "Today",
+    totalHours: "8",
+    hourlyRate: 30,
+    contracts: SEED_CONTRACTS,
+  },
   {
     label: "Yesterday",
     totalHours: "8",
@@ -135,8 +173,20 @@ const SEED_DAYS: DayGroup[] = [
         name: "Crypto App Mobile",
         clientHandle: "bitcoinmasters321",
         tasks: [
-          { id: "t4", name: "Competitive analysis", timeRange: "9:00 am - 12:00 pm", duration: "03:00:00", progress: 80 },
-          { id: "t5", name: "Auditing screenshots", timeRange: "1:00 pm - 3:00 pm", duration: "02:00:00", progress: 40 },
+          {
+            id: "t4",
+            name: "Competitive analysis",
+            timeRange: "9:00 am - 12:00 pm",
+            duration: "03:00:00",
+            progress: 80,
+          },
+          {
+            id: "t5",
+            name: "Auditing screenshots",
+            timeRange: "1:00 pm - 3:00 pm",
+            duration: "02:00:00",
+            progress: 40,
+          },
         ],
       },
     ],
@@ -156,7 +206,8 @@ function AllTasksView({
 }) {
   const [filter, setFilter] = React.useState("")
 
-  const allTasks: (TaskEntry & { contractId: string; contractName: string })[] = []
+  const allTasks: (TaskEntry & { contractId: string; contractName: string })[] =
+    []
   for (const day of days) {
     for (const c of day.contracts) {
       for (const t of c.tasks) {
@@ -177,15 +228,41 @@ function AllTasksView({
     <>
       {/* Search bar with back arrow */}
       <div className="flex items-center gap-2.5 px-4 py-3 shrink-0">
-        <button onClick={onBack} className="text-gray-500 hover:text-gray-700 transition shrink-0">
+        <button
+          onClick={onBack}
+          className="text-gray-500 hover:text-gray-700 transition shrink-0"
+        >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M12.5 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M12.5 15l-5-5 5-5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
         <div className="flex-1 relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            fill="none"
+          >
+            <circle
+              cx="9"
+              cy="9"
+              r="6"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M13.5 13.5L17 17"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
           <input
             value={filter}
@@ -205,26 +282,46 @@ function AllTasksView({
       {/* Scrollable task list */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-gray-400">No tasks found</div>
+          <div className="px-4 py-8 text-center text-sm text-gray-400">
+            No tasks found
+          </div>
         ) : (
           filtered.map((task) => (
-            <div key={task.id} className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-50 hover:bg-gray-25 transition">
+            <div
+              key={task.id}
+              className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-50 hover:bg-gray-25 transition"
+            >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-dark-blue-500 leading-5">{task.name}</p>
-                <p className="text-xs text-gray-400 leading-4">{task.timeRange}</p>
+                <p className="text-sm font-medium text-dark-blue-500 leading-5">
+                  {task.name}
+                </p>
+                <p className="text-xs text-gray-400 leading-4">
+                  {task.timeRange}
+                </p>
               </div>
               {task.progress !== undefined && (
                 <div className="w-10 h-1 rounded-full bg-gray-100 overflow-hidden shrink-0">
-                  <div className="h-full rounded-full bg-primary-500" style={{ width: `${task.progress}%` }} />
+                  <div
+                    className="h-full rounded-full bg-primary-500"
+                    style={{ width: `${task.progress}%` }}
+                  />
                 </div>
               )}
-              <span className="text-sm font-medium text-dark-blue-500 tabular-nums shrink-0">{task.duration}</span>
+              <span className="text-sm font-medium text-dark-blue-500 tabular-nums shrink-0">
+                {task.duration}
+              </span>
               <button
                 onClick={() => onPlayTask(task.id, task.contractId)}
                 className="text-gray-400 hover:text-primary-500 transition shrink-0"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.2" />
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="7"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                  />
                   <path d="M6.5 5l4 3-4 3V5z" fill="currentColor" />
                 </svg>
               </button>
@@ -248,14 +345,20 @@ export function TimeTrackerApp({
   // ── State ───────────────────────────────────────────────────────────────
   const [view, setView] = React.useState<View>("main")
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || SEED_DAYS)
-  const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
+  const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(
+    new Set()
+  )
   const { user } = useAuth()
 
   // Fetch real contracts + their tasks from backend
   React.useEffect(() => {
     if (!user?.id) return
-    const role = (user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || ""
-    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
+    const role =
+      (user as any).role?.toUpperCase?.() ||
+      (user as any).accountType?.toUpperCase?.() ||
+      ""
+    const fetcher =
+      role === "CLIENT" ? getContractsForClient : getContractsForTalent
     fetcher(user.id)
       .then(async (contracts: ContractDTO[]) => {
         if (!contracts.length) return
@@ -300,14 +403,23 @@ export function TimeTrackerApp({
 
   // Search
   const [searchValue, setSearchValue] = React.useState("")
-  const [selectedTask, setSelectedTask] = React.useState<SearchResult | null>(null)
+  const [selectedTask, setSelectedTask] = React.useState<SearchResult | null>(
+    null
+  )
 
   // Timer
   const [isRunning, setIsRunning] = React.useState(false)
   const [isPaused, setIsPaused] = React.useState(false)
   const [elapsed, setElapsed] = React.useState(0)
-  const [activeTask, setActiveTask] = React.useState<{ taskName: string; contractName: string; contractId: string; taskId?: string } | null>(null)
-  const [trackingStartTime, setTrackingStartTime] = React.useState<Date | null>(null)
+  const [activeTask, setActiveTask] = React.useState<{
+    taskName: string
+    contractName: string
+    contractId: string
+    taskId?: string
+  } | null>(null)
+  const [trackingStartTime, setTrackingStartTime] = React.useState<Date | null>(
+    null
+  )
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Clock
@@ -315,7 +427,9 @@ export function TimeTrackerApp({
   const [dateStr] = React.useState(formatDate())
 
   // New task form context
-  const [newTaskContractId, setNewTaskContractId] = React.useState<string | undefined>()
+  const [newTaskContractId, setNewTaskContractId] = React.useState<
+    string | undefined
+  >()
 
   const hourlyRate = days[0]?.hourlyRate || 30
 
@@ -351,12 +465,22 @@ export function TimeTrackerApp({
       for (const c of day.contracts) {
         if (c.name.toLowerCase().includes(q)) {
           for (const t of c.tasks) {
-            results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+            results.push({
+              id: t.id,
+              taskName: t.name,
+              contractName: c.name,
+              clientHandle: c.clientHandle,
+            })
           }
         } else {
           for (const t of c.tasks) {
             if (t.name.toLowerCase().includes(q)) {
-              results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+              results.push({
+                id: t.id,
+                taskName: t.name,
+                contractName: c.name,
+                clientHandle: c.clientHandle,
+              })
             }
           }
         }
@@ -390,7 +514,12 @@ export function TimeTrackerApp({
     })
   }
 
-  const startTimer = (taskName: string, contractName: string, contractId: string, taskId?: string) => {
+  const startTimer = (
+    taskName: string,
+    contractName: string,
+    contractId: string,
+    taskId?: string
+  ) => {
     setActiveTask({ taskName, contractName, contractId, taskId })
     setTrackingStartTime(new Date())
     setElapsed(0)
@@ -413,7 +542,11 @@ export function TimeTrackerApp({
         }
       }
     }
-    startTimer("Unassigned work", allContracts[0]?.name || "General", allContracts[0]?.id || "general")
+    startTimer(
+      "Unassigned work",
+      allContracts[0]?.name || "General",
+      allContracts[0]?.id || "general"
+    )
   }
 
   const handlePause = () => {
@@ -450,7 +583,12 @@ export function TimeTrackerApp({
       if (!today.contracts.find((c) => c.id === activeTask.contractId)) {
         today.contracts = [
           ...today.contracts,
-          { id: activeTask.contractId, name: activeTask.contractName, clientHandle: "user", tasks: [newTask] },
+          {
+            id: activeTask.contractId,
+            name: activeTask.contractName,
+            clientHandle: "user",
+            tasks: [newTask],
+          },
         ]
       }
       next[0] = today
@@ -496,7 +634,11 @@ export function TimeTrackerApp({
     setView("new-task")
   }
 
-  const handleCreateTask = async (data: { contractId: string; taskName: string; notes: string }) => {
+  const handleCreateTask = async (data: {
+    contractId: string
+    taskName: string
+    notes: string
+  }) => {
     let newTask: TaskEntry = {
       id: `t-${Date.now()}`,
       name: data.taskName,
@@ -555,7 +697,9 @@ export function TimeTrackerApp({
       )}
     >
       {/* Header — always visible */}
-      <TrackerHeader onMenuClick={() => setView(view === "menu" ? "main" : "menu")} />
+      <TrackerHeader
+        onMenuClick={() => setView(view === "menu" ? "main" : "menu")}
+      />
 
       {/* ── Account Menu View ────────────────────────────────────────── */}
       {view === "menu" && (
@@ -584,7 +728,9 @@ export function TimeTrackerApp({
         <AllTasksView
           days={days}
           onBack={() => setView("main")}
-          onPlayTask={(taskId, contractId) => handlePlayTask(taskId, contractId)}
+          onPlayTask={(taskId, contractId) =>
+            handlePlayTask(taskId, contractId)
+          }
         />
       )}
 
@@ -610,9 +756,16 @@ export function TimeTrackerApp({
                   onManualTime={() => {}}
                 />
                 <div className="mt-2">
-                  <TimerDisplay hours={hours} minutes={minutes} seconds={seconds} size="lg" />
+                  <TimerDisplay
+                    hours={hours}
+                    minutes={minutes}
+                    seconds={seconds}
+                    size="lg"
+                  />
                 </div>
-                <span className="text-sm text-gray-500 mt-1">Amount Earned {amountEarned}</span>
+                <span className="text-sm text-gray-500 mt-1">
+                  Amount Earned {amountEarned}
+                </span>
               </div>
             </>
           ) : (
@@ -631,7 +784,12 @@ export function TimeTrackerApp({
               </div>
 
               <div className="py-2">
-                <TimerControls onStart={handleStart} onPause={handlePause} onStop={handleStop} onManualTime={() => {}} />
+                <TimerControls
+                  onStart={handleStart}
+                  onPause={handlePause}
+                  onStop={handleStop}
+                  onManualTime={() => {}}
+                />
               </div>
             </>
           )}

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { AuthAPI } from "@/service/http/auth"
-import Cookies from "js-cookie"
 import { Monitor01, Smartphone, Tablet01 } from "@blend-metrics/icons"
+import Cookies from "js-cookie"
 import {
   Badge,
   Button,
@@ -30,7 +30,11 @@ type SessionData = {
   isCurrent: boolean
 }
 
-function parseUserAgent(ua: string): { browser: string; os: string; isMobile: boolean } {
+function parseUserAgent(ua: string): {
+  browser: string
+  os: string
+  isMobile: boolean
+} {
   let browser = "Browser"
   let os = "Device"
   let isMobile = false
@@ -42,7 +46,8 @@ function parseUserAgent(ua: string): { browser: string; os: string; isMobile: bo
   if (/Edg(?:e)?\//.test(ua)) browser = "Edge"
   else if (/OPR\/|Opera\//.test(ua)) browser = "Opera"
   else if (/Chrome\//.test(ua) && !/Edg|Edge/i.test(ua)) browser = "Chrome"
-  else if (/Safari\//.test(ua) && !/Chrome|Edg|Edge|OPR|Opera/i.test(ua)) browser = "Safari"
+  else if (/Safari\//.test(ua) && !/Chrome|Edg|Edge|OPR|Opera/i.test(ua))
+    browser = "Safari"
   else if (/Firefox\//.test(ua)) browser = "Firefox"
   else if (/MSIE|Trident/.test(ua)) browser = "Internet Explorer"
 
@@ -58,18 +63,23 @@ function parseUserAgent(ua: string): { browser: string; os: string; isMobile: bo
 
 type IconComponent = React.ComponentType<React.SVGProps<SVGSVGElement>>
 
-function getSessionDisplay(session: SessionData): { label: string; Icon: IconComponent } {
+function getSessionDisplay(session: SessionData): {
+  label: string
+  Icon: IconComponent
+} {
   if (session.browserName || session.osName) {
     const browser = session.browserVersion
       ? `${session.browserName} ${session.browserVersion}`
-      : session.browserName ?? "Browser"
+      : (session.browserName ?? "Browser")
     const os = session.osVersion
       ? `${session.osName} ${session.osVersion}`
-      : session.osName ?? "Device"
+      : (session.osName ?? "Device")
     const Icon: IconComponent =
-      session.deviceType === "mobile" ? Smartphone
-        : session.deviceType === "tablet" ? Tablet01
-        : Monitor01
+      session.deviceType === "mobile"
+        ? Smartphone
+        : session.deviceType === "tablet"
+          ? Tablet01
+          : Monitor01
     return { label: `${browser} on ${os}`, Icon }
   }
 
@@ -82,7 +92,13 @@ function getSessionDisplay(session: SessionData): { label: string; Icon: IconCom
 
 function formatIpAddress(ip: string): string {
   // Hide localhost/private IPs
-  if (!ip || ip === "::1" || ip === "127.0.0.1" || ip.startsWith("192.168.") || ip.startsWith("10.")) {
+  if (
+    !ip ||
+    ip === "::1" ||
+    ip === "127.0.0.1" ||
+    ip.startsWith("192.168.") ||
+    ip.startsWith("10.")
+  ) {
     return "Local"
   }
   return ip
@@ -104,7 +120,9 @@ interface ActiveSessionsModalProps {
   onClose: () => void
 }
 
-export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProps) {
+export default function ActiveSessionsModal({
+  onClose,
+}: ActiveSessionsModalProps) {
   const { toast } = useToast()
   const [sessions, setSessions] = useState<SessionData[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -121,14 +139,19 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
           const sorted = [...res.data].sort((a, b) => {
             if (a.isCurrent) return -1
             if (b.isCurrent) return 1
-            return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+            return (
+              new Date(b.lastActiveAt).getTime() -
+              new Date(a.lastActiveAt).getTime()
+            )
           })
           setSessions(sorted)
         }
       })
       .catch((err) => {
         const msg =
-          err?.response?.data?.message || err?.message || "Failed to load sessions"
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load sessions"
         toast({ title: msg, variant: "destructive" })
       })
       .finally(() => setIsLoading(false))
@@ -144,7 +167,9 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
       }
     } catch (err: any) {
       const msg =
-        err?.response?.data?.message || err?.message || "Failed to revoke session"
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to revoke session"
       toast({ title: msg, variant: "destructive" })
     } finally {
       setRevokingId(null)
@@ -162,7 +187,9 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
       }
     } catch (err: any) {
       const msg =
-        err?.response?.data?.message || err?.message || "Failed to revoke sessions"
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to revoke sessions"
       toast({ title: msg, variant: "destructive" })
     } finally {
       setIsRevokingAll(false)
@@ -172,7 +199,12 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
   const otherSessionsExist = sessions.some((s) => !s.isCurrent)
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Active Sessions</DialogTitle>
@@ -197,7 +229,9 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
                 <div
                   key={session.id}
                   className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
-                    session.isCurrent ? "border-green-200 bg-green-50/50" : "border-gray-200"
+                    session.isCurrent
+                      ? "border-green-200 bg-green-50/50"
+                      : "border-gray-200"
                   }`}
                 >
                   <div className="flex items-center gap-x-3 min-w-0">
@@ -207,14 +241,17 @@ export default function ActiveSessionsModal({ onClose }: ActiveSessionsModalProp
                         {label}
                       </p>
                       <p className="text-xs text-gray-500 truncate">
-                        {formatIpAddress(session.ipAddress)} &middot; {relativeTime(session.lastActiveAt)}
+                        {formatIpAddress(session.ipAddress)} &middot;{" "}
+                        {relativeTime(session.lastActiveAt)}
                       </p>
                     </div>
                   </div>
 
                   <div className="ml-3 shrink-0">
                     {session.isCurrent ? (
-                      <Badge visual="success" size="sm">Current</Badge>
+                      <Badge visual="success" size="sm">
+                        Current
+                      </Badge>
                     ) : (
                       <Button
                         variant="outlined"

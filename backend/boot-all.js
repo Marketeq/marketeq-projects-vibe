@@ -30,27 +30,30 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 
 // Internal ports — only reachable inside the container
 // All backend services — ports must match proxy.service.ts defaults in the gateway.
+// Only services the API gateway actually proxies to.
+// Keep this list in sync with proxy.service.ts route map.
+// Active services to run at startup. All 27 are compiled in the Docker image,
+// but only these are started to stay within the 512 MB Render Starter plan.
+// 3 services + gateway = 4 processes. Each gets --max-old-space-size=128
+// to cap heap at ~128 MB each (4 × 128 = 512 MB — OS overhead keeps RSS lower).
+// 5 services and 9 services both OOM-killed at 512 MB (2026-05-14).
 const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
-  { name: 'messaging-service',          port: '3005', dir: 'apps/messaging-service' },
-  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service' },
-  { name: 'search-service',             port: '3007', dir: 'apps/search-service' },
-  { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service' },
-  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service' },
-  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service' },
-  { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service' },
-  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service' },
-  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service' },
-  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service' },
-  { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service' },
-  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service' },
-  { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service' },
-  { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service' },
-  { name: 'category-service',           port: '3023', dir: 'apps/category-service' },
-  { name: 'pricing-service',            port: '3024', dir: 'apps/pricing-service' },
-  { name: 'billing-service',            port: '3025', dir: 'apps/billing-service' },
+  // Reduced to 3 core services after repeated OOM kills at 512 MB.
+  // Re-enable after Render plan upgrade:
+  // notification-service (3006), category-service (3023),
+  // contracts-service (3010), invitations-service (3013),
+  // content-moderation-service (3014), time-tracking-service (3017),
+  // Dormant until Render plan upgrade (compiled but not started):
+  // messaging-service (3005), search-service (3007), algolia-service (3008),
+  // checkout-service (3009), favorites-service (3012), portfolio-service (3015),
+  // autocomplete-service (3016), transaction-service (3018),
+  // suggestions-service (3020), admin-service (3024),
+  // affiliate-referral-service (3025), billing-service (3026),
+  // earnings-service (3027), payout-service (3028), pricing-service (3029),
+  // wallet-service (3030), wire-review-service (3031), legal-service (3032)
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
@@ -75,10 +78,19 @@ const gatewayEnv = {
   MODERATION_SERVICE_URL:       'http://localhost:3014',
   PORTFOLIO_SERVICE_URL:        'http://localhost:3015',
   AUTOCOMPLETE_SERVICE_URL:     'http://localhost:3016',
+  LEGAL_SERVICE_URL:            'http://localhost:3032',
   TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
   TRANSACTION_SERVICE_URL:      'http://localhost:3018',
   SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
   CATEGORY_SERVICE_URL:         'http://localhost:3023',
+  ADMIN_SERVICE_URL:            'http://localhost:3024',
+  AFFILIATE_REFERRAL_SERVICE_URL: 'http://localhost:3025',
+  BILLING_SERVICE_URL:          'http://localhost:3026',
+  EARNINGS_SERVICE_URL:         'http://localhost:3027',
+  PAYOUT_SERVICE_URL:           'http://localhost:3028',
+  PRICING_SERVICE_URL:          'http://localhost:3029',
+  WALLET_SERVICE_URL:           'http://localhost:3030',
+  WIRE_REVIEW_SERVICE_URL:      'http://localhost:3031',
 };
 
 function buildInternalServiceEnv(port) {
@@ -117,7 +129,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', [distMain], {
+  const child = spawn('node', ['--max-old-space-size=128', distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
@@ -136,39 +148,6 @@ function launchService(svc, env, isGateway = false) {
   return child;
 }
 
-// Auto-discover compiled services in dist/apps/ that aren't in the explicit
-// SERVICES list. Assigns overflow ports starting at AUTO_PORT_START.
-// This ensures new services are always started even if someone forgets to
-// add them to SERVICES — the CI check will catch the missing entry later.
-const AUTO_PORT_START = 3100;
-
-function discoverUnregisteredServices() {
-  const registeredNames = new Set(SERVICES.map((s) => s.name));
-  registeredNames.add(GATEWAY.name);
-
-  const distApps = path.join(__dirname, 'dist', 'apps');
-  if (!fs.existsSync(distApps)) return [];
-
-  const discovered = [];
-  let nextPort = AUTO_PORT_START;
-
-  for (const entry of fs.readdirSync(distApps)) {
-    if (registeredNames.has(entry)) continue;
-
-    const mainCandidates = [
-      path.join(distApps, entry, 'main.js'),
-      path.join(distApps, entry, 'src', 'main.js'),
-      path.join(distApps, entry, entry, 'src', 'main.js'),
-    ];
-    if (mainCandidates.some((c) => fs.existsSync(c))) {
-      const port = String(nextPort++);
-      console.warn(`[boot] WARNING: ${entry} is compiled but not in SERVICES registry — auto-assigning port ${port}. Add it to boot-all.js SERVICES array with a stable port.`);
-      discovered.push({ name: entry, port, dir: `apps/${entry}` });
-    }
-  }
-
-  return discovered;
-}
 
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
@@ -176,14 +155,11 @@ async function bootstrapAll() {
 
   launchService(GATEWAY, gatewayEnv, true);
 
-  const autoDiscovered = discoverUnregisteredServices();
-
   // Start the gateway first so Render discovers the public-facing process
-  // before the internal services begin listening. Do not hard-fail if the
-  // gateway takes time to become healthy while RabbitMQ reconnects.
+  // before the internal services begin listening.
   setTimeout(() => {
     console.log('[boot] Launching internal services after gateway head start...');
-    for (const svc of [...SERVICES, ...autoDiscovered]) {
+    for (const svc of SERVICES) {
       launchService(svc, buildInternalServiceEnv(svc.port), false);
     }
   }, 4000);

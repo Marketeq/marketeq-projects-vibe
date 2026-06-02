@@ -38,6 +38,7 @@ export default function SignUp() {
   const { setUser } = useAuth()
 
   const [isLoading, setIsLoading] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const {
     register,
@@ -57,6 +58,7 @@ export default function SignUp() {
 
   const onSubmit: SubmitHandler<SignUpFormValues> = ({ email }) => {
     setIsLoading(true)
+    setFormError(null)
     clearErrors("email")
 
     AuthAPI.SignUpWithEmail({ email })
@@ -66,9 +68,13 @@ export default function SignUp() {
           response?.data?.access_token &&
           response?.data?.user
         ) {
-          Cookies.set("access_token", response?.data?.access_token, { path: "/" })
+          Cookies.set("access_token", response?.data?.access_token, {
+            path: "/",
+          })
           if (response?.data?.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
+            Cookies.set("refresh_token", response.data.refresh_token, {
+              path: "/",
+            })
           }
           if (response?.data?.sessionId) {
             Cookies.set("session_id", response.data.sessionId, { path: "/" })
@@ -76,6 +82,10 @@ export default function SignUp() {
           setUser(response?.data?.user)
           router.push("/onboarding")
           reset()
+        } else {
+          setFormError(
+            "Something went wrong while creating your account. Please try again."
+          )
         }
       })
       .catch((error) => {
@@ -86,11 +96,21 @@ export default function SignUp() {
             ? error?.response?.data?.message?.[0]
             : error?.response?.data?.message)
 
-        if (errorMessage) {
+        const isEmailError =
+          typeof errorMessage === "string" &&
+          /email|user already exists/i.test(errorMessage)
+
+        if (isEmailError) {
           setError("email", {
             type: "server",
             message: errorMessage,
           })
+        } else {
+          setFormError(
+            typeof errorMessage === "string"
+              ? errorMessage
+              : "Something went wrong while creating your account. Please try again."
+          )
         }
       })
       .finally(() => {
@@ -198,6 +218,15 @@ export default function SignUp() {
             </div>
 
             <form className="mt-5 md:mt-6" onSubmit={handleSubmit(onSubmit)}>
+              {formError ? (
+                <div
+                  role="alert"
+                  className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700"
+                >
+                  {formError}
+                </div>
+              ) : null}
+
               <div className="flex flex-col gap-y-1.5">
                 <Label className="text-dark-blue-500" size="sm" htmlFor="email">
                   Email

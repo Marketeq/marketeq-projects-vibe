@@ -3,7 +3,10 @@ module.exports = {
   // ── default shared config ──────────────────────────────────────────────
   default: {
     requireModule: ["ts-node/register"],
-    require: ["e2e-cucumber/common/common.steps.ts", "e2e-cucumber/hooks/hooks.ts"],
+    require: [
+      "e2e-cucumber/common/common.steps.ts",
+      "e2e-cucumber/hooks/hooks.ts",
+    ],
     formatOptions: { snippetInterface: "async-await" },
     publishQuiet: true,
     parallel: 1,
@@ -15,7 +18,7 @@ module.exports = {
     require: [
       "e2e-cucumber/common/common.steps.ts",
       "e2e-cucumber/stepDefinitions/02-signup-email-setpassword.steps.ts",
-      "e2e-cucumber/hooks/hooks.ts"
+      "e2e-cucumber/hooks/hooks.ts",
     ],
     paths: ["e2e-cucumber/features/02-signup-email-setpassword.feature"],
     format: [
@@ -33,7 +36,7 @@ module.exports = {
     require: [
       "e2e-cucumber/common/common.steps.ts",
       "e2e-cucumber/stepDefinitions/04-google-signup-signin.steps.ts",
-      "e2e-cucumber/hooks/hooks.ts"
+      "e2e-cucumber/hooks/hooks.ts",
     ],
     paths: ["e2e-cucumber/features/04-google-signup-signin.feature"],
     format: [
@@ -51,7 +54,7 @@ module.exports = {
     require: [
       "e2e-cucumber/common/common.steps.ts",
       "e2e-cucumber/stepDefinitions/05-signin-datadriven-test.steps.ts",
-      "e2e-cucumber/hooks/hooks.ts"
+      "e2e-cucumber/hooks/hooks.ts",
     ],
     paths: ["e2e-cucumber/features/05-signin-datadriven-test.feature"],
     format: [
@@ -69,7 +72,7 @@ module.exports = {
     require: [
       "e2e-cucumber/common/common.steps.ts",
       "e2e-cucumber/stepDefinitions/publish-project.steps.ts",
-      "e2e-cucumber/hooks/hooks.ts"
+      "e2e-cucumber/hooks/hooks.ts",
     ],
     paths: ["e2e-cucumber/features/07-publish-project.feature"],
     format: [
@@ -90,13 +93,13 @@ module.exports = {
       "e2e-cucumber/stepDefinitions/04-google-signup-signin.steps.ts",
       "e2e-cucumber/stepDefinitions/05-signin-datadriven-test.steps.ts",
       "e2e-cucumber/stepDefinitions/publish-project.steps.ts",
-      "e2e-cucumber/hooks/hooks.ts"
+      "e2e-cucumber/hooks/hooks.ts",
     ],
     paths: [
       "e2e-cucumber/features/02-signup-email-setpassword.feature",
       "e2e-cucumber/features/04-google-signup-signin.feature",
       "e2e-cucumber/features/05-signin-datadriven-test.feature",
-      "e2e-cucumber/features/07-publish-project.feature"
+      "e2e-cucumber/features/07-publish-project.feature",
     ],
     format: [
       "progress",
@@ -106,4 +109,4 @@ module.exports = {
     formatOptions: { snippetInterface: "async-await" },
     publishQuiet: true,
   },
-};
+}

@@ -7,14 +7,14 @@
 
 /** Extract the UUID prefix (shortId) appended after the last `-` in a slug-id combo */
 export function extractShortIdFromSlug(slugWithId: string): string {
-  const parts = slugWithId.split('-')
+  const parts = slugWithId.split("-")
   return parts[parts.length - 1]
 }
 
 /** Extract the slug portion (everything before the final shortId segment) */
 export function extractSlugFromParam(slugWithId: string): string {
-  const parts = slugWithId.split('-')
-  return parts.slice(0, -1).join('-')
+  const parts = slugWithId.split("-")
+  return parts.slice(0, -1).join("-")
 }
 
 /**
@@ -24,9 +24,9 @@ export function extractSlugFromParam(slugWithId: string): string {
 export function buildProjectUrl(
   category: string,
   slug: string,
-  id: string,
+  id: string
 ): string {
-  const shortId = id.split('-')[0] // first 8 hex chars of UUID
+  const shortId = id.split("-")[0] // first 8 hex chars of UUID
   return `/c/${category}/projects/${slug}-${shortId}`
 }
 
@@ -37,15 +37,16 @@ export function buildProjectUrl(
 export function buildServiceUrl(
   category: string,
   slug: string,
-  id: string,
+  id: string
 ): string {
-  const shortId = id.split('-')[0]
+  const shortId = id.split("-")[0]
   return `/c/${category}/services/${slug}-${shortId}`
 }
 
 export function parseCategoryParams(params: { category?: string[] }) {
   const parts = (params.category ?? []).map(String)
-  if (parts.length < 1 || parts.length > 3) throw new Error('Invalid category depth')
+  if (parts.length < 1 || parts.length > 3)
+    throw new Error("Invalid category depth")
   const [l1, l2, l3] = parts
   return { l1, l2, l3, slugPath: parts.filter(Boolean) as string[] }
 }

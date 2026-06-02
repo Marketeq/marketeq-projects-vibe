@@ -85,7 +85,9 @@ export const formatNotificationTime = (value: string) => {
   return "just now"
 }
 
-export const getNotificationKind = (item: ApiNotificationItem): NotificationKind => {
+export const getNotificationKind = (
+  item: ApiNotificationItem
+): NotificationKind => {
   const category = item.category?.toLowerCase?.() || ""
   const event = item.event?.toLowerCase?.() || ""
 
@@ -119,7 +121,10 @@ export const getNotificationKind = (item: ApiNotificationItem): NotificationKind
   return "system"
 }
 
-export const getNotificationHref = (item: ApiNotificationItem, kind: NotificationKind) => {
+export const getNotificationHref = (
+  item: ApiNotificationItem,
+  kind: NotificationKind
+) => {
   if (item.link) return item.link
 
   switch (kind) {
@@ -160,8 +165,8 @@ export const mapApiNotificationToUi = (
 ): UiNotificationItem => {
   const kind = getNotificationKind(item)
   const metadata =
-    (item as ApiNotificationItem & { metadata?: NotificationMetadata }).metadata ||
-    null
+    (item as ApiNotificationItem & { metadata?: NotificationMetadata })
+      .metadata || null
   const userNotification = isUserNotification({ ...item, metadata }, kind)
 
   return {

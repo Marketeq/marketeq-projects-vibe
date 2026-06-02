@@ -81,7 +81,12 @@ const scopeGroups = [
   },
   {
     label: "Deliverables",
-    items: ["User Flows", "Wireframes", "High-Fidelity Screens", "Clickable Prototype"],
+    items: [
+      "User Flows",
+      "Wireframes",
+      "High-Fidelity Screens",
+      "Clickable Prototype",
+    ],
   },
 ]
 
@@ -118,9 +123,7 @@ export default function JobDetailsPage({
   const { slug } = use(params)
   const slugTitle = titleizeSlug(slug)
   const subtitle =
-    slugTitle && slugTitle !== "Placeholder"
-      ? slugTitle
-      : job.subtitle
+    slugTitle && slugTitle !== "Placeholder" ? slugTitle : job.subtitle
 
   return (
     <div className="bg-gray-50">
@@ -135,7 +138,9 @@ export default function JobDetailsPage({
             <BreadcrumbLink href="/find-jobs">Jobs</BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbItem>
-            <BreadcrumbLink href="/find-jobs">Mobile Application</BreadcrumbLink>
+            <BreadcrumbLink href="/find-jobs">
+              Mobile Application
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbItem isCurrentPage>
             <BreadcrumbLink>iOS Development</BreadcrumbLink>
@@ -240,10 +245,11 @@ export default function JobDetailsPage({
 
                       <div className="mt-5 text-sm font-light leading-6 text-dark-blue-400">
                         <p>
-                          Ut enim ad minim veniam, quis nostrud exercitation ullamco
-                          laboris nisi ut aliquip ex ea commodo consequat. Duis aute
-                          irure dolor in reprehenderit in voluptate velit esse
-                          cillum dolore eu fugiat nulla pariatur.
+                          Ut enim ad minim veniam, quis nostrud exercitation
+                          ullamco laboris nisi ut aliquip ex ea commodo
+                          consequat. Duis aute irure dolor in reprehenderit in
+                          voluptate velit esse cillum dolore eu fugiat nulla
+                          pariatur.
                         </p>
 
                         <ul className="mt-5 space-y-3">
@@ -263,10 +269,11 @@ export default function JobDetailsPage({
 
                       <div className="mt-5 text-sm font-light leading-6 text-dark-blue-400">
                         <p>
-                          Lorem ipsum dolor sit amet, consectetur adipiscing elit,
-                          sed do eiusmod tempor incididunt ut labore et dolore magna
-                          aliqua. Duis aute irure dolor in reprehenderit in voluptate
-                          velit esse cillum dolore eu fugiat nulla pariatur.
+                          Lorem ipsum dolor sit amet, consectetur adipiscing
+                          elit, sed do eiusmod tempor incididunt ut labore et
+                          dolore magna aliqua. Duis aute irure dolor in
+                          reprehenderit in voluptate velit esse cillum dolore eu
+                          fugiat nulla pariatur.
                         </p>
 
                         <ul className="mt-5 space-y-3">
@@ -290,7 +297,11 @@ export default function JobDetailsPage({
                         </h2>
                         <div className="mt-4 flex flex-wrap gap-2">
                           {group.items.map((item) => (
-                            <Badge key={item} visual="gray" className="bg-gray-100">
+                            <Badge
+                              key={item}
+                              visual="gray"
+                              className="bg-gray-100"
+                            >
                               {item}
                             </Badge>
                           ))}
@@ -309,8 +320,13 @@ export default function JobDetailsPage({
                       >
                         <div className="flex items-center gap-3">
                           <Avatar>
-                            <AvatarImage src={member.avatar} alt={member.name} />
-                            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                            <AvatarImage
+                              src={member.avatar}
+                              alt={member.name}
+                            />
+                            <AvatarFallback>
+                              {member.name.charAt(0)}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
                             <div className="text-sm font-semibold text-dark-blue-400">
@@ -345,7 +361,8 @@ export default function JobDetailsPage({
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Estimated earnings based on current offer rate and schedule.
+                      Estimated earnings based on current offer rate and
+                      schedule.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -372,7 +389,9 @@ export default function JobDetailsPage({
 
               <div className="mt-6 space-y-4 border-t border-gray-200 pt-6">
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-light text-gray-500">Work Schedule</span>
+                  <span className="font-light text-gray-500">
+                    Work Schedule
+                  </span>
                   <span className="font-semibold text-dark-blue-400">
                     {job.workSchedule}
                   </span>
@@ -416,8 +435,8 @@ export default function JobDetailsPage({
                     Marketing
                   </div>
                   <div className="mt-2 text-xs font-light leading-5 text-gray-500">
-                    Building an ambitious mobile product with a small but focused
-                    internal team.
+                    Building an ambitious mobile product with a small but
+                    focused internal team.
                   </div>
                 </div>
               </div>

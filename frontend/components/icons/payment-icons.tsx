@@ -52,7 +52,7 @@ const Mastercard = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
- const Discover = (props: React.SVGProps<SVGSVGElement>) => (
+const Discover = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     width={34}
     height={24}
@@ -82,7 +82,7 @@ const Mastercard = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
- const Amex = (props: React.SVGProps<SVGSVGElement>) => (
+const Amex = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     width={34}
     height={24}
@@ -348,4 +348,18 @@ const WireTransfer = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-export { Visa,Mastercard,Swift, Discover, Amex, ACH, Wire, GPay, GPay1, ApplePay, ApplePay1, Klarna, WireTransfer }
+export {
+  Visa,
+  Mastercard,
+  Swift,
+  Discover,
+  Amex,
+  ACH,
+  Wire,
+  GPay,
+  GPay1,
+  ApplePay,
+  ApplePay1,
+  Klarna,
+  WireTransfer,
+}

@@ -165,6 +165,7 @@ export class ProjectSyncService {
     project.slug = row.slug ?? undefined;
     project.description = row.description;
     project.shortDescription = row.shortDescription ?? undefined;
+    project.projectType = row.projectType ?? undefined;
     project.category = row.category ?? null;
     project.categories = row.categories ?? [];
     project.subcategories = row.subcategories ?? [];
@@ -341,6 +342,7 @@ export class ProjectSyncService {
       slug: dto.slug,
       description,
       shortDescription: dto.shortDescription ?? "",
+      projectType: typeof dto.projectType === 'string' ? dto.projectType.trim() || null : null,
       category: categories[0] ?? null,
       categories,
       subcategories,

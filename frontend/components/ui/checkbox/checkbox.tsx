@@ -60,7 +60,8 @@ const minusIconVariants = cva(
 )
 
 interface CheckboxProps
-  extends React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>,
+  extends
+    React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>,
     VariantProps<typeof checkboxVariants> {}
 
 const Checkbox = React.forwardRef<

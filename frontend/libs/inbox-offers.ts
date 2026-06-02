@@ -42,7 +42,9 @@ const DEFAULT_MESSAGE_BODY =
   "I am developing an application focused on delivering an industry-leading user experience and would like to invite you to join the project as our lead UX Designer."
 
 const trimString = (value?: string | null) =>
-  typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined
 
 const ensureUsernameHandle = (value?: string) => {
   if (!value) return "@lauradesign21"
@@ -133,9 +135,12 @@ const normalizeOfferMessage = (
         trimString(candidate.offerRate) ||
         trimString(data.offerRate) ||
         "$45/hr",
-      role: trimString(candidate.role) || trimString(data.role) || "UX Designer",
+      role:
+        trimString(candidate.role) || trimString(data.role) || "UX Designer",
       duration:
-        trimString(candidate.duration) || trimString(data.duration) || "4 Months",
+        trimString(candidate.duration) ||
+        trimString(data.duration) ||
+        "4 Months",
       schedule:
         trimString(candidate.scheduleLabel) ||
         trimString(candidate.schedule) ||

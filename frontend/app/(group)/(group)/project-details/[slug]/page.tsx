@@ -3,20 +3,12 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
-import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
-import {
-  buildProjectStaticContentFromGateway,
-  type ProjectStaticContent,
-  type ProjectStaticIcon,
-} from "@/lib/project-details/project-static-content-from-api"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -61,11 +53,20 @@ import * as RadixTabs from "@radix-ui/react-tabs"
 import { TbStar, TbStarHalfFilled } from "react-icons/tb"
 import { useToggle } from "react-use"
 import useMeasure from "react-use-measure"
+import {
+  type ProjectStaticContent,
+  type ProjectStaticIcon,
+  buildProjectStaticContentFromGateway,
+} from "@/lib/project-details/project-static-content-from-api"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { ProjectAPI } from "@/service/http/project"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
+import { Money } from "@/components/money"
 import NextLink from "@/components/next-link"
+import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import {
   ShowMoreLess,
@@ -478,7 +479,9 @@ const renderProjectStaticIcon = (
 }
 
 const Shimmer = ({ className }: { className?: string }) => (
-  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+  <div
+    className={cn("relative bg-gray-100 rounded overflow-hidden", className)}
+  >
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
@@ -491,15 +494,64 @@ export default function ProjectDetails() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
+  const [selectedPeriod, setSelectedPeriod] = React.useState("week")
+  const [activeAnchor, setActiveAnchor] = React.useState("Description")
+  const [relatedSearches, setRelatedSearches] = React.useState<string[]>([])
+  const [recommendedProjects, setRecommendedProjects] = React.useState<any[]>([])
+  const [recentlyViewed, setRecentlyViewed] = React.useState<any[]>([])
 
-  // Check if this item is already favorited (ensure dev auth first)
+  // --- Sidebar pricing (docs §01, §14) ---
+  const sidebarPricing = React.useMemo(() => {
+    if (!project) return null
+    const totalCost = Number(project.priceMin ?? project.budget ?? 0)
+    const durationStr = (project.duration ?? "") as string
+    const durationWeeks = parseInt(durationStr, 10) || 0
+    const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
+
+    // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
+    const costPerWeek = durationWeeks > 0 ? Math.round(totalCost / durationWeeks) : 0
+    const costPerBiweek = durationWeeks > 0 ? Math.round(totalCost / (durationWeeks / 2)) : 0
+    const costPerMonth = durationMonths > 0 ? Math.round(totalCost / durationMonths) : 0
+    const costPerQuarter = durationMonths >= 3 ? Math.round(totalCost / (durationMonths / 3)) : 0
+    const costPerYear = durationMonths >= 12 ? Math.round(totalCost / (durationMonths / 12)) : 0
+
+    const periodOptions = [
+      { label: "week", value: "week", cost: costPerWeek },
+      { label: "2 weeks", value: "2 weeks", cost: costPerBiweek },
+      { label: "month", value: "month", cost: costPerMonth },
+      ...(costPerQuarter > 0 ? [{ label: "quarter", value: "quarter", cost: costPerQuarter }] : []),
+      ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
+    ]
+
+    // Minimum team members = unique roles from scope (docs §01 L88-91)
+    const scopeArr = Array.isArray(project.scope) ? project.scope : []
+    const uniqueRoles = new Set(
+      scopeArr.flatMap((phase: any) =>
+        (phase.tasks ?? []).map((t: any) => t.roleName).filter(Boolean)
+      )
+    )
+
+    // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
+    const durationDays = durationWeeks * 7
+    let formattedDuration = ""
+    if (durationDays > 0 && durationDays < 7) {
+      formattedDuration = `${durationDays} day`
+    } else if (durationWeeks > 0 && durationWeeks < 4) {
+      formattedDuration = `${durationWeeks} week`
+    } else if (durationWeeks >= 4) {
+      const months = Math.ceil(durationWeeks / 4.33)
+      formattedDuration = `${months} month`
+    }
+
+    return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
+  }, [project])
+
+
   React.useEffect(() => {
     if (!project?.id) return
-    ensureDevAuth().then(() =>
-      findFavoriteByItemId(String(project.id)).then((fav) => {
-        setIsFavorited(!!fav)
-      })
-    )
+    findFavoriteByItemId(String(project.id)).then((fav) => {
+      setIsFavorited(!!fav)
+    })
   }, [project?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
@@ -528,8 +580,7 @@ export default function ProjectDetails() {
         const candidates = Array.from(new Set([rawSlug, stripped]))
 
         // Try fetching from listings-service via gateway
-        const apiBase =
-          getPublicApiUrl() || "http://localhost:4000"
+        const apiBase = getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
@@ -549,6 +600,49 @@ export default function ProjectDetails() {
           // Try as a service
           const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           if (!svcRes.ok) {
+            // If rawSlug looks like a UUID, try the publish/draft endpoint
+            // so "View as Client" works for unpublished drafts
+            const isUuid =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                rawSlug
+              )
+            if (isUuid) {
+              try {
+                const draftRes = await ProjectAPI.GetProjectDraft(rawSlug)
+                if (draftRes?.data) {
+                  const d = draftRes.data
+                  let featuredImage: string | null = null
+                  if (d.media) {
+                    const mediaObj = Array.isArray(d.media)
+                      ? d.media[0]
+                      : d.media
+                    if (mediaObj?.featuredImage)
+                      featuredImage = mediaObj.featuredImage
+                  }
+                  setProject({
+                    ...d,
+                    role:
+                      d.category || d.categories?.[0] || "Software Development",
+                    summary: d.shortDescription || d.fullDescription || "",
+                    description: d.fullDescription || "",
+                    featuredImage: featuredImage || d.featuredImage || null,
+                    programmingLanguages:
+                      Array.isArray(d.skills) && d.skills.length > 0
+                        ? d.skills
+                        : d.programmingLanguages,
+                    developmentTech:
+                      Array.isArray(d.industries) && d.industries.length > 0
+                        ? d.industries
+                        : d.developmentTech,
+                    listingType: d.listingType || "project",
+                  })
+                  setLoading(false)
+                  return
+                }
+              } catch {
+                // draft fetch failed — fall through
+              }
+            }
             setLoading(false)
             return
           }
@@ -593,6 +687,36 @@ export default function ProjectDetails() {
 
     fetchProject()
   }, [params.slug, router])
+
+  // Fetch related data + track view when project loads
+  React.useEffect(() => {
+    if (!project?.id) return
+    const apiBase = getPublicApiUrl() || "http://localhost:4000"
+
+    // Related searches from project metadata
+    fetch(`${apiBase}/v1/projects/${project.id}/related-searches`)
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRelatedSearches)
+      .catch(() => {})
+
+    // Recommended projects (JWT required — best effort)
+    fetch(`${apiBase}/v1/recently-viewed/recommended`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRecommendedProjects)
+      .catch(() => {})
+
+    // Recently viewed (JWT required — best effort)
+    fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRecentlyViewed)
+      .catch(() => {})
+
+    // Track this view (fire and forget)
+    fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {})
+  }, [project?.id])
 
   // Scroll to top when page loads
   React.useEffect(() => {
@@ -791,12 +915,15 @@ export default function ProjectDetails() {
 
                 <div className="flex flex-col items-start gap-y-3">
                   <Badge className="rounded-[5px]" visual="gray">
-                    {project.listingType === "service" ? "Service" : "Project"}
+                    {project.projectType
+                      ?? (project.categories?.[0])
+                      ?? (project.listingType === "service" ? "Service" : "Project")}
                   </Badge>
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                     {project.title}
                   </h1>
 
+                  {/* MVP: ratings, reviews, and sales hidden until review system is implemented
                   <div className="flex items-center gap-x-2">
                     <div className="inline-flex items-center gap-x-1.5">
                       <div className="inline-flex items-center gap-x-0.5">
@@ -823,7 +950,6 @@ export default function ProjectDetails() {
                       </span>
                     </div>
 
-                    {/* §13 L59: "Show only if isTopRated is true" */}
                     {project.isTopRated && (
                       <>
                         <span className="size-1 shrink-0 rounded-full bg-dark-blue-400" />
@@ -836,6 +962,7 @@ export default function ProjectDetails() {
                       </>
                     )}
                   </div>
+                  */}
 
                   <div className="flex items-center gap-x-3">
                     {(project.categories || []).map(
@@ -892,10 +1019,12 @@ export default function ProjectDetails() {
                 selected === "Live Chat" && "sticky top-[65px] z-10"
               )}
             >
-              <Button className="group" variant="link" visual="gray">
-                <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
-                Back To Search
-              </Button>
+              <div className="flex-1 flex justify-start">
+                <Button className="group" variant="link" visual="gray">
+                  <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
+                  Back To Search
+                </Button>
+              </div>
 
               <DisclosureTrigger
                 value={
@@ -911,15 +1040,20 @@ export default function ProjectDetails() {
                 </Button>
               </DisclosureTrigger>
 
-              <DisclosureTrigger
-                value={
-                  selected === "View Project Scope"
-                    ? "Details"
-                    : "View Project Scope"
-                }
-                asChild
-              >
-                <Button className="group" variant="link" visual="gray">
+              <div className="flex-1 flex justify-end">
+                <Button
+                  className="group"
+                  variant="link"
+                  visual="gray"
+                  data-state={selected === "View Project Scope" ? "active" : "inactive"}
+                  onClick={() =>
+                    setSelected(
+                      selected === "View Project Scope"
+                        ? "Details"
+                        : "View Project Scope"
+                    )
+                  }
+                >
                   {selected === "View Project Scope"
                     ? "Close Scope"
                     : project?.listingType === "service"
@@ -927,7 +1061,7 @@ export default function ProjectDetails() {
                       : "View Project Scope"}
                   <ChevronDown className="group-data-[state=active]:-rotate-180 transition duration-300 size-[15px]" />
                 </Button>
-              </DisclosureTrigger>
+              </div>
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
               <Inbox>
@@ -1004,7 +1138,7 @@ export default function ProjectDetails() {
               <div className="mt-6">
                 <Tabs
                   className="group/tabs"
-                  defaultValue="Description"
+                  value={activeAnchor}
                   ref={tabsRef}
                   data-position={isSticky ? "sticky" : "default"}
                 >
@@ -1029,19 +1163,25 @@ export default function ProjectDetails() {
                           </div>
                         </div>
                         <TabsList className="w-full justify-start flex-auto group-data-[position=sticky]/tabs:px-0">
-                          <TabsTrigger value="Description">
-                            Description
-                          </TabsTrigger>
-                          <TabsTrigger value="Deliverables">
-                            Deliverables
-                          </TabsTrigger>
-                          <TabsTrigger value="Project Details">
-                            Project Details
-                          </TabsTrigger>
-                          <TabsTrigger value="How it Works">
-                            How it Works
-                          </TabsTrigger>
-                          <TabsTrigger value="Questions">Questions</TabsTrigger>
+                          {([
+                            ["Description", "section-description"],
+                            ["Deliverables", "section-deliverables"],
+                            ["Project Details", "section-project-details"],
+                            ["How it Works", "section-how-it-works"],
+                            ["Questions", "section-questions"],
+                          ] as const).map(([label, id]) => (
+                            <TabsTrigger
+                              key={label}
+                              value={label}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                setActiveAnchor(label)
+                                document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+                              }}
+                            >
+                              {label}
+                            </TabsTrigger>
+                          ))}
                         </TabsList>
                       </div>
                       <div className="flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
@@ -1059,14 +1199,14 @@ export default function ProjectDetails() {
                     </div>
                   </div>
 
-                  <TabsContent value="Description">
-                    <div className="pt-6">
+                  <div>
+                    <div id="section-description" className="pt-6">
                       <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing }) => (
+                        {({ isShowing, setIsShowing, scrollHeight }) => (
                           <div
                             className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] h-[506px] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              isShowing && "h-auto"
+                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+                              scrollHeight > 506 && !isShowing ? "h-[506px]" : "h-auto"
                             )}
                           >
                             <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
@@ -1094,40 +1234,42 @@ export default function ProjectDetails() {
                               />
                             </div>
 
-                            {isShowing ? (
-                              <div className="flex mt-6 items-center justify-center">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(false)}
-                                >
-                                  View Less
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(true)}
-                                >
-                                  View More
-                                </Button>
-                              </div>
+                            {scrollHeight > 506 && (
+                              isShowing ? (
+                                <div className="flex mt-6 items-center justify-center">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(false)}
+                                  >
+                                    View Less
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(true)}
+                                  >
+                                    View More
+                                  </Button>
+                                </div>
+                              )
                             )}
                           </div>
                         )}
                       </ShowMoreLessRoot>
 
                       <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing }) => (
+                        {({ isShowing, setIsShowing, scrollHeight }) => (
                           <div
                             className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 h-[456px] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              isShowing && "h-auto"
+                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+                              scrollHeight > 456 && !isShowing ? "h-[456px]" : "h-auto"
                             )}
                           >
-                            <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
+                            <h2 id="section-deliverables" className="text-xl leading-none text-dark-blue-400 font-semibold scroll-mt-[120px]">
                               Deliverables
                             </h2>
 
@@ -1142,45 +1284,65 @@ export default function ProjectDetails() {
                             {Array.isArray(project.deliverables) &&
                             project.deliverables.length > 0 ? (
                               <div className="mt-6 flex flex-col">
-                                {(
-                                  project.deliverables as Array<{
-                                    phaseLabel: string
-                                    phaseName: string
-                                    items: string[]
-                                  }>
-                                ).map((phase, pi) => (
-                                  <div
-                                    key={`${phase.phaseLabel}-${pi}`}
-                                    className={cn(
-                                      pi > 0 &&
-                                        "mt-6 pt-6 border-t border-gray-200"
-                                    )}
-                                  >
-                                    <p className="text-sm text-dark-blue-400">
-                                      <span className="font-extralight">
-                                        {phase.phaseLabel}
-                                      </span>{" "}
-                                      <span className="font-semibold">
-                                        {phase.phaseName}
-                                      </span>
-                                    </p>
-                                    <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                      {phase.items.map((item, i) => (
-                                        <div
-                                          key={`${item}-${i}`}
-                                          className="flex items-center gap-x-3"
-                                        >
-                                          <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                            <Check className="size-2" />
-                                          </span>
-                                          <p className="text-sm font-extralight leading-tight text-dark-blue-400">
-                                            {item}
-                                          </p>
-                                        </div>
-                                      ))}
-                                    </div>
+                                {typeof project.deliverables[0] === "string" ? (
+                                  /* Legacy flat string[] from seed data */
+                                  <div className="grid grid-cols-3 gap-y-3 gap-x-6">
+                                    {(project.deliverables as string[]).map((item, i) => (
+                                      <div
+                                        key={`${item}-${i}`}
+                                        className="flex items-center gap-x-3"
+                                      >
+                                        <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                          <Check className="size-2" />
+                                        </span>
+                                        <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                          {item}
+                                        </p>
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
+                                ) : (
+                                  /* Grouped DeliverableGroup[] from sync pipeline (3-6 per phase) */
+                                  (
+                                    project.deliverables as Array<{
+                                      phaseLabel: string
+                                      phaseName: string
+                                      items: string[]
+                                    }>
+                                  ).map((phase, pi) => (
+                                    <div
+                                      key={`${phase.phaseLabel}-${pi}`}
+                                      className={cn(
+                                        pi > 0 &&
+                                          "mt-6 pt-6 border-t border-gray-200"
+                                      )}
+                                    >
+                                      <p className="text-sm text-dark-blue-400">
+                                        <span className="font-extralight">
+                                          {phase.phaseLabel}
+                                        </span>{" "}
+                                        <span className="font-semibold">
+                                          {phase.phaseName}
+                                        </span>
+                                      </p>
+                                      <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
+                                        {(phase.items ?? []).map((item, i) => (
+                                          <div
+                                            key={`${item}-${i}`}
+                                            className="flex items-center gap-x-3"
+                                          >
+                                            <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                              <Check className="size-2" />
+                                            </span>
+                                            <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                              {item}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
                               </div>
                             ) : (
                               <p className="mt-6 text-sm font-extralight text-gray-500">
@@ -1202,32 +1364,34 @@ export default function ProjectDetails() {
                               </AlertContent>
                             </Alert>
 
-                            {isShowing ? (
-                              <div className="flex mt-6 items-center justify-center">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(false)}
-                                >
-                                  View Less
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(174.9deg,theme(colors.white/0)_7.46%,theme(colors.white)_62.15%)] pb-[26px] flex justify-center items-end">
-                                <Button
-                                  visual="gray"
-                                  variant="link"
-                                  onClick={() => setIsShowing(true)}
-                                >
-                                  View More
-                                </Button>
-                              </div>
+                            {scrollHeight > 456 && (
+                              isShowing ? (
+                                <div className="flex mt-6 items-center justify-center">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(false)}
+                                  >
+                                    View Less
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
+                                  <Button
+                                    visual="gray"
+                                    variant="link"
+                                    onClick={() => setIsShowing(true)}
+                                  >
+                                    View More
+                                  </Button>
+                                </div>
+                              )
                             )}
                           </div>
                         )}
                       </ShowMoreLessRoot>
 
-                      <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div id="section-project-details" className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[120px]">
                         <div className="p-6 border-b border-gray-200">
                           <h2 className="text-xl leading-none font-bold text-dark-blue-400">
                             Project Details
@@ -1669,11 +1833,12 @@ export default function ProjectDetails() {
                         )}
                       </div>
 
+                      <div id="section-how-it-works" className="scroll-mt-[120px]" />
                       <ProjectDetailsStepsSection
                         steps={projectStaticContent.howItWorks.steps}
                       />
 
-                      <div className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div id="section-questions" className="relative p-6 mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[120px]">
                         <h1 className="text-xl font-bold leading-none text-dark-blue-400">
                           Questions
                         </h1>
@@ -1834,9 +1999,12 @@ export default function ProjectDetails() {
                                   <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
                                     <HelpCircle className="size-5 text-gray-400" />
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">No FAQ&apos;s yet</h3>
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">
+                                    No FAQ&apos;s yet
+                                  </h3>
                                   <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    Frequently asked questions will appear here once the project owner adds them.
+                                    Frequently asked questions will appear here
+                                    once the project owner adds them.
                                   </p>
                                 </div>
                               ) : (
@@ -1940,9 +2108,12 @@ export default function ProjectDetails() {
                                   <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
                                     <HelpCircle className="size-5 text-gray-400" />
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">No questions yet</h3>
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">
+                                    No questions yet
+                                  </h3>
                                   <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    When people ask questions on this listing, they&apos;ll show up here.
+                                    When people ask questions on this listing,
+                                    they&apos;ll show up here.
                                   </p>
                                 </div>
                               ) : (
@@ -1986,7 +2157,8 @@ export default function ProjectDetails() {
                         </div>
                       </div>
 
-                      <div className="p-6 mt-6 border gap-x-[50px] flex items-start rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      {/* MVP: Project History and reviews hidden until review system is implemented */}
+                      {false && <><div className="p-6 mt-6 border gap-x-[50px] flex items-start rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                         <div className="flex flex-col flex-1 gap-y-1.5 basis-[147px]">
                           <h1 className="text-xl leading-none text-nowrap font-bold text-dark-blue-400">
                             Project History
@@ -3438,8 +3610,9 @@ export default function ProjectDetails() {
                           </div>
                         </TabsContent>
                       </Tabs>
+                      </>}
                     </div>
-                  </TabsContent>
+                  </div>
                 </Tabs>
               </div>
             </TabsContent>
@@ -4216,48 +4389,34 @@ export default function ProjectDetails() {
                   <Badge className="rounded-[5px]" visual="gray">
                     Starting At
                   </Badge>
-                  <div className="inline-flex items-center gap-x-1.5 ml-2">
+                  <div className="inline-flex items-center gap-x-1.5 ml-2 whitespace-nowrap">
                     <span className="text-2xl leading-none font-bold text-dark-blue-400">
-                      {project.priceMin != null
-                        ? `$${Number(project.priceMin).toLocaleString()}`
-                        : project.budget != null
-                          ? `$${Number(project.budget).toLocaleString()}`
-                          : "—"}
+                      {(() => {
+                        const active = sidebarPricing?.periodOptions.find(
+                          (p) => p.value === selectedPeriod
+                        ) ?? sidebarPricing?.periodOptions[0]
+                        const price = active?.cost ?? sidebarPricing?.totalCost ?? 0
+                        return price > 0 ? `$${price.toLocaleString()}` : "—"
+                      })()}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      per
+                      {selectedPeriod === "2 weeks" ? "every" : "per"}
                     </span>
                   </div>
 
                   <div className="ml-1.5">
-                    <Listbox
-                      defaultValue={(() => {
-                        const m = (project.priceViewMode ||
-                          project.pricingModel ||
-                          "biweekly") as string
-                        const map: Record<string, string> = {
-                          weekly: "Week",
-                          biweekly: "2-week",
-                          monthly: "Month",
-                          quarterly: "Quarter",
-                          yearly: "Year",
-                        }
-                        return map[m] || "2-week"
-                      })()}
-                    >
+                    <Listbox value={selectedPeriod} onChange={setSelectedPeriod}>
                       <ListboxButton
-                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
+                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto whitespace-nowrap"
                         iconClassName="ml-1"
                         placeholder="Select"
                       />
                       <ListboxOptions className="w-[153px]">
-                        {["Week", "2-week", "Month", "Quarter", "Year"].map(
-                          (timeline) => (
-                            <ListboxOption key={timeline} value={timeline}>
-                              {timeline}
-                            </ListboxOption>
-                          )
-                        )}
+                        {(sidebarPricing?.periodOptions ?? []).map((opt) => (
+                          <ListboxOption key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </ListboxOption>
+                        ))}
                       </ListboxOptions>
                     </Listbox>
                   </div>
@@ -4291,19 +4450,22 @@ export default function ProjectDetails() {
                 </FavoriteRoot>
               </div>
 
-              <div className="mt-3">
-                <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
-                  {project.priceMax != null
-                    ? `Up to $${Number(project.priceMax).toLocaleString()} total · ${project.pricingModel || "biweekly"} billing`
-                    : `Billing: ${project.pricingModel || "biweekly"}`}
-                </span>
-              </div>
+              {(() => {
+                const activePeriod = sidebarPricing?.periodOptions.find(
+                  (p) => p.value === selectedPeriod
+                ) ?? sidebarPricing?.periodOptions[0]
+                return activePeriod?.cost ? (
+                  <div className="mt-3">
+                    <span className="text-sm leading-none font-light text-dark-blue-400">
+                      with an initial payment of ${activePeriod.cost.toLocaleString()} to kickoff
+                    </span>
+                  </div>
+                ) : null
+              })()}
 
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  {Array.isArray(project.team) && project.team.length > 1
-                    ? "Current Team"
-                    : "Created By"}
+                  Current Team
                 </span>
 
                 <TooltipProvider>
@@ -4412,16 +4574,16 @@ export default function ProjectDetails() {
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    {project.duration
-                      ? `${project.duration} duration`
+                    {sidebarPricing?.formattedDuration
+                      ? `Starting from a ${sidebarPricing.formattedDuration} duration`
                       : "Duration: TBD"}
                   </span>
                 </div>
-                {project.estimatedHours != null && (
+                {(sidebarPricing?.minTeamMembers ?? 0) > 0 && (
                   <div className="flex items-center gap-x-[6.4px]">
                     <Users03 className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {project.estimatedHours} estimated hours
+                      Minimum {sidebarPricing!.minTeamMembers} team member{sidebarPricing!.minTeamMembers !== 1 ? "s" : ""}
                     </span>
                   </div>
                 )}
@@ -4450,7 +4612,9 @@ export default function ProjectDetails() {
                         Edit Scope
                       </Button>
                     </DialogClose>
-                    <Button onClick={() => router.push(`/checkout/${params.slug}`)}>
+                    <Button
+                      onClick={() => router.push(`/checkout/${params.slug}`)}
+                    >
                       Continue to Checkout
                     </Button>
                   </DialogFooter>
@@ -4581,6 +4745,635 @@ export default function ProjectDetails() {
           </div>
         </div>
       </div>
+
+      <div className="pb-[100px]" />
+
+      {/* Similar Projects — full-width section */}
+      <div className="-mx-[100px] px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
+        <div>
+          <div className="space-y-6">
+            <div className="flex items-end justify-between">
+              <div className="space-y-2">
+                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                  Similar Projects
+                </h1>
+
+                <p className="text-lg font-light text-dark-blue-400 leading-none">
+                  Users who have viewed this project have also expressed
+                  interest in these as well
+                </p>
+              </div>
+
+              <Button
+                variant="link"
+                visual="gray"
+                size="lg"
+                className="underline"
+              >
+                View More
+              </Button>
+            </div>
+
+            <div className="gap-5 grid grid-cols-4">
+              {(project?.similarProjects ?? []).slice(0, 4).map((sp: any) => (
+                <article
+                  key={sp.id}
+                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                >
+                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
+                    <NextLink href={`/project-details/${sp.slug}`}>
+                      <NextImage
+                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                        src={sp.thumbnail || "/dashboard.png"}
+                        alt={sp.title}
+                        fill
+                        sizes="33vw"
+                      />
+                    </NextLink>
+                  </div>
+
+                  <div className="mt-3 flex items-start gap-x-3">
+                    <NextLink
+                      href={`/project-details/${sp.slug}`}
+                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                    >
+                      {sp.title}
+                    </NextLink>
+
+                    <div className="inline-flex items-center gap-x-1">
+                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                        4.9 <span className="font-extralight">(5)</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                    Brief Description of the project. Lorem ipsum dolor sit
+                    amet, consectetur adipiscing elit, sed do eiusmod tempor
+                    incididunt.
+                  </p>
+
+                  <div className="mt-[14.5px] flex flex-col gap-y-3">
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        Starting from 12 weeks
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        $50,000 budget
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-end justify-between">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AvatarGroup
+                            max={5}
+                            size="sm"
+                            excess
+                            excessClassName="border-gray-300 text-gray-500"
+                          >
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <Avatar
+                                key={i}
+                                size="sm"
+                                className="border-2 border-white hover:ring-0 active:ring-0"
+                              >
+                                <AvatarImage src="/woman.jpg" alt="Woman" />
+                                <AvatarFallback>W</AvatarFallback>
+                              </Avatar>
+                            ))}
+                          </AvatarGroup>
+                        </TooltipTrigger>
+
+                        <TooltipContent
+                          className="p-0 max-w-[262px]"
+                          size="md"
+                        >
+                          <ScrollArea
+                            className="h-[192px] p-3"
+                            scrollBar={
+                              <ScrollBar
+                                className="w-4 p-1"
+                                thumbClassName="bg-white/20"
+                              />
+                            }
+                          >
+                            <div className="space-y-3 pr-5">
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="flex items-center gap-x-[18px]">
+                                  <div className="flex items-center gap-x-2 flex-auto">
+                                    <Avatar>
+                                      <AvatarImage
+                                        src="/woman.jpg"
+                                        alt="Woman"
+                                      />
+                                      <AvatarFallback>W</AvatarFallback>
+                                    </Avatar>
+
+                                    <div className="flex flex-col flex-auto">
+                                      <div className="flex items-center gap-x-0.5">
+                                        <span className="text-xs leading-5 font-semibold text-white">
+                                          Sevil
+                                        </span>
+                                        <span className="text-[10px] leading-none font-light text-white">
+                                          @designsuperstar23
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] font-light text-white">
+                                        Full-stack Developer
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <span className="text-sm font-semibold text-white leading-5">
+                                    $75{" "}
+                                    <span className="text-[10px] font-light leading-5">
+                                      /hr
+                                    </span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <FavoriteRoot>
+                      {({ pressed }) => (
+                        <TooltipProvider delayDuration={75}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-block">
+                                <Favorite />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {pressed ? (
+                                <span className="inline-flex items-center gap-x-1">
+                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                  Saved
+                                </span>
+                              ) : (
+                                "Save to favorites"
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </FavoriteRoot>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          {/* Recommended Projects */}
+          <div className="space-y-6 mt-[50px]">
+            <div className="flex items-end justify-between">
+              <div className="space-y-2">
+                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                  Recommended Projects
+                </h1>
+
+                <p className="text-lg font-light text-dark-blue-400 leading-none">
+                  These projects are recommended based on your recent searches
+                  and browsing history
+                </p>
+              </div>
+
+              <Button
+                variant="link"
+                visual="gray"
+                size="lg"
+                className="underline"
+              >
+                View More
+              </Button>
+            </div>
+
+            <div className="gap-5 grid grid-cols-4">
+              {recommendedProjects.slice(0, 4).map((rp: any) => (
+                <article
+                  key={rp.id}
+                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                >
+                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
+                    <NextLink href={`/project-details/${rp.slug}`}>
+                      <NextImage
+                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                        src={rp.thumbnail || "/dashboard.png"}
+                        alt={rp.title}
+                        fill
+                        sizes="33vw"
+                      />
+                    </NextLink>
+                  </div>
+
+                  <div className="mt-3 flex items-start gap-x-3">
+                    <NextLink
+                      href={`/project-details/${rp.slug}`}
+                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
+                    >
+                      {rp.title}
+                    </NextLink>
+
+                    <div className="inline-flex items-center gap-x-1">
+                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
+                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+                        4.9 <span className="font-extralight">(5)</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
+                    Brief Description of the project. Lorem ipsum dolor sit
+                    amet, consectetur adipiscing elit, sed do eiusmod tempor
+                    incididunt.
+                  </p>
+
+                  <div className="mt-[14.5px] flex flex-col gap-y-3">
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Clock className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        Starting from 12 weeks
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-x-[6.4px]">
+                      <Money className="size-[18px] shrink-0 text-primary-500" />
+
+                      <span className="font-medium text-sm leading-none text-dark-blue-400">
+                        $50,000 budget
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-end justify-between">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AvatarGroup
+                            max={5}
+                            size="sm"
+                            excess
+                            excessClassName="border-gray-300 text-gray-500"
+                          >
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <Avatar
+                                key={i}
+                                size="sm"
+                                className="border-2 border-white hover:ring-0 active:ring-0"
+                              >
+                                <AvatarImage src="/woman.jpg" alt="Woman" />
+                                <AvatarFallback>W</AvatarFallback>
+                              </Avatar>
+                            ))}
+                          </AvatarGroup>
+                        </TooltipTrigger>
+
+                        <TooltipContent
+                          className="p-0 max-w-[262px]"
+                          size="md"
+                        >
+                          <ScrollArea
+                            className="h-[192px] p-3"
+                            scrollBar={
+                              <ScrollBar
+                                className="w-4 p-1"
+                                thumbClassName="bg-white/20"
+                              />
+                            }
+                          >
+                            <div className="space-y-3 pr-5">
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="flex items-center gap-x-[18px]">
+                                  <div className="flex items-center gap-x-2 flex-auto">
+                                    <Avatar>
+                                      <AvatarImage
+                                        src="/woman.jpg"
+                                        alt="Woman"
+                                      />
+                                      <AvatarFallback>W</AvatarFallback>
+                                    </Avatar>
+
+                                    <div className="flex flex-col flex-auto">
+                                      <div className="flex items-center gap-x-0.5">
+                                        <span className="text-xs leading-5 font-semibold text-white">
+                                          Sevil
+                                        </span>
+                                        <span className="text-[10px] leading-none font-light text-white">
+                                          @designsuperstar23
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] font-light text-white">
+                                        Full-stack Developer
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <span className="text-sm font-semibold text-white leading-5">
+                                    $75{" "}
+                                    <span className="text-[10px] font-light leading-5">
+                                      /hr
+                                    </span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <FavoriteRoot>
+                      {({ pressed }) => (
+                        <TooltipProvider delayDuration={75}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-block">
+                                <Favorite />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {pressed ? (
+                                <span className="inline-flex items-center gap-x-1">
+                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                  Saved
+                                </span>
+                              ) : (
+                                "Save to favorites"
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </FavoriteRoot>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          {/* More Ways to Explore */}
+          <div className="mt-[50px]">
+            <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
+              More Ways to Explore
+            </h1>
+
+            <Tabs className="mt-5" defaultValue="Related Categories">
+              <RadixTabs.List className="flex items-center gap-x-3">
+                <TabsTrigger
+                  variant="unstyled"
+                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                  value="Related Categories"
+                  showUnderline={false}
+                >
+                  Related Categories
+                </TabsTrigger>
+                <TabsTrigger
+                  variant="unstyled"
+                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                  value="Related Skills"
+                  showUnderline={false}
+                >
+                  Related Skills
+                </TabsTrigger>
+              </RadixTabs.List>
+
+              <TabsContent value="Related Categories">
+                <div className="mt-5 py-5 flex items-start justify-between">
+                  {(() => {
+                    const cats = project?.relatedCategories ?? []
+                    const allCats = [...(project?.categories ?? []), ...cats]
+                    const unique = Array.from(new Set(allCats)).filter(Boolean)
+                    // Split into 4 columns
+                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
+                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
+                    const headers = [
+                      project?.category ?? "Categories",
+                      ...(project?.subcategories?.slice(0, 3) ?? ["Subcategories", "Related", "More"])
+                    ]
+                    return columns.map((col, ci) => (
+                      <div key={ci} className="flex flex-col gap-y-3 items-start">
+                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                          {headers[ci] ?? "Categories"}
+                        </h2>
+                        {col.map((cat: string, i: number) => (
+                          <Button key={i} variant="link" className="text-dark-blue-400">
+                            {cat}
+                          </Button>
+                        ))}
+                      </div>
+                    ))
+                  })()}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="Related Skills">
+                <div className="mt-5 py-5 flex items-start justify-between">
+                  {(() => {
+                    const skills = project?.relatedSkills ?? []
+                    const allSkills = [
+                      ...(project?.skills ?? []),
+                      ...(project?.programmingLanguages ?? []),
+                      ...(project?.developmentTech ?? []),
+                      ...skills,
+                    ]
+                    const unique = Array.from(new Set(allSkills)).filter(Boolean)
+                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
+                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
+                    const headers = ["Skills", "Technologies", "Tools", "More"]
+                    return columns.map((col, ci) => (
+                      <div key={ci} className="flex flex-col gap-y-3 items-start">
+                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                          {headers[ci]}
+                        </h2>
+                        {col.map((skill: string, i: number) => (
+                          <Button key={i} variant="link" className="text-dark-blue-400">
+                            {skill}
+                          </Button>
+                        ))}
+                      </div>
+                    ))
+                  })()}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          {/* Related Searches */}
+          <div className="mt-[50px]">
+            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+              Related Searches
+            </h1>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              {relatedSearches.map((label, i) => (
+                <Badge
+                  key={i}
+                  className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300"
+                  visual="gray"
+                  size="lg"
+                >
+                  {label}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Recently Viewed — show only when grid is full (9 items) */}
+        {recentlyViewed.length >= 9 && (
+        <div className="max-w-[1240px] mx-auto py-[35px]">
+          <div className="flex items-center justify-between">
+            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
+              Recently Viewed
+            </h1>
+
+            <Button variant="link" visual="gray">
+              View All
+            </Button>
+          </div>
+
+          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
+            {recentlyViewed.map((rv: any) => (
+              <NextLink key={rv.id} href={`/project-details/${rv.slug}`}>
+                <article className="flex items-start gap-x-6">
+                  <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
+                    <NextImage
+                      className="object-cover"
+                      src={rv.thumbnail || "/dashboard.png"}
+                      alt={rv.title}
+                      sizes="25vw"
+                      fill
+                    />
+                  </div>
+
+                  <div className="pr-[45.54px]">
+                    <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
+                      {rv.title}
+                    </h1>
+
+                    {rv.shortDescription && (
+                    <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
+                      {rv.shortDescription}
+                    </p>
+                    )}
+
+                    <div className="mt-3 flex items-center gap-x-3">
+                      {rv.budget != null && (
+                      <span className="text-sm font-medium leading-none text-dark-blue-400">
+                        Starting at ${Number(rv.budget).toLocaleString()}
+                      </span>
+                      )}
+
+                      {rv.budget != null && rv.duration && (
+                      <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
+                      )}
+
+                      {rv.duration && (
+                      <span className="text-sm font-medium leading-none text-dark-blue-400">
+                        {rv.duration}
+                      </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              </NextLink>
+            ))}
+          </div>
+        </div>
+        )}
+
+      </div>
+
+      {/* Ready to Work CTA */}
+      <div className="-mx-[100px] px-[100px] py-[70px] bg-gray-50">
+        <div className="relative">
+          <h1 className="text-[30px] font-bold text-center leading-none text-dark-blue-400">
+            Ready to Work With Premium Quality Talent?
+          </h1>
+
+          <p className="text-lg font-extralight leading-none mt-6 text-center text-dark-blue-400">
+            Click below to create your free account
+          </p>
+
+          <div className="flex items-center justify-center mt-[50px]">
+            <Button size="2xl">Create My Account</Button>
+          </div>
+
+          <svg
+            className="absolute left-0 top-1/2 -translate-y-1/2 -scale-x-100"
+            width={272}
+            height={229}
+            viewBox="0 0 272 229"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m160.177 12.936-10.808 10.83-10.83-10.807 10.807-10.831z"
+            />
+            <path
+              transform="rotate(134.94 89.48 164.252)skewX(-.12)"
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="M-1.413 0h15.302v15.302H-1.413z"
+            />
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m1.882 146.37 6.954-6.968 6.969 6.954-6.954 6.969z"
+            />
+          </svg>
+
+          <svg
+            className="absolute right-0 top-1/2 -translate-y-1/2"
+            width={272}
+            height={229}
+            viewBox="0 0 272 229"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m160.177 12.936-10.808 10.83-10.83-10.807 10.807-10.831z"
+            />
+            <path
+              transform="rotate(134.94 89.48 164.252)skewX(-.12)"
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="M-1.413 0h15.302v15.302H-1.413z"
+            />
+            <path
+              stroke="#1661F6"
+              strokeOpacity={0.2}
+              strokeWidth={2}
+              d="m1.882 146.37 6.954-6.968 6.969 6.954-6.954 6.969z"
+            />
+          </svg>
+        </div>
+      </div>
+
     </div>
   )
 }

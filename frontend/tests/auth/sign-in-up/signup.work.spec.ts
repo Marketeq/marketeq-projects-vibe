@@ -102,12 +102,8 @@ test("talent onboarding completes through step 5", async ({
   await expect(page.getByText(/showcase your talent/i)).toBeVisible()
   await page.fill("#recent-job-title", "QA Engineer")
   await page.fill("#industries", "Software")
-  await page
-    .getByPlaceholder("e.g., react.js, css")
-    .fill("React")
-  await page
-    .getByPlaceholder("e.g., react.js, css")
-    .press("Enter")
+  await page.getByPlaceholder("e.g., react.js, css").fill("React")
+  await page.getByPlaceholder("e.g., react.js, css").press("Enter")
   await clickContinue()
 
   await expect(page.getByText(/set your preferences/i)).toBeVisible()

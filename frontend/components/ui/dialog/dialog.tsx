@@ -64,7 +64,9 @@ const hasDialogTitle = (children: React.ReactNode): boolean => {
       return true
     }
 
-    return hasDialogTitle((child.props as { children?: React.ReactNode }).children)
+    return hasDialogTitle(
+      (child.props as { children?: React.ReactNode }).children
+    )
   })
 }
 

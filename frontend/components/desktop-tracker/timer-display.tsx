@@ -30,11 +30,15 @@ export function TimerDisplay({
         <span className="text-xl font-semibold tabular-nums text-dark-blue-500 leading-7">
           {pad(hours)}
         </span>
-        <span className="text-xl font-semibold text-dark-blue-500 leading-7">:</span>
+        <span className="text-xl font-semibold text-dark-blue-500 leading-7">
+          :
+        </span>
         <span className="text-xl font-semibold tabular-nums text-dark-blue-500 leading-7">
           {pad(minutes)}
         </span>
-        <span className="text-xl font-semibold text-dark-blue-500 leading-7">:</span>
+        <span className="text-xl font-semibold text-dark-blue-500 leading-7">
+          :
+        </span>
         <span className="text-xl font-semibold tabular-nums text-dark-blue-500 leading-7">
           {pad(seconds)}
         </span>
@@ -55,7 +59,9 @@ export function TimerDisplay({
         <span className="text-[11px] text-gray-400 mt-0.5">hrs</span>
       </div>
 
-      <span className="text-[40px] leading-[48px] font-semibold text-dark-blue-500 mx-0.5">:</span>
+      <span className="text-[40px] leading-[48px] font-semibold text-dark-blue-500 mx-0.5">
+        :
+      </span>
 
       {/* Minutes */}
       <div className="flex flex-col items-center">
@@ -65,7 +71,9 @@ export function TimerDisplay({
         <span className="text-[11px] text-gray-400 mt-0.5">mins</span>
       </div>
 
-      <span className="text-[40px] leading-[48px] font-semibold text-dark-blue-500 mx-0.5">:</span>
+      <span className="text-[40px] leading-[48px] font-semibold text-dark-blue-500 mx-0.5">
+        :
+      </span>
 
       {/* Seconds */}
       <div className="flex flex-col items-center">

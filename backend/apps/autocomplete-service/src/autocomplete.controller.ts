@@ -48,10 +48,15 @@ export class AutocompleteController {
 
   // Wildcard :type route MUST come after all specific routes to avoid shadowing them
   @Get(':type')
-  getByType(@Param('type') type: string, @Query('q') q?: string) {
+  async getByType(@Param('type') type: string, @Query('q') q?: string) {
     // If a JSON data file exists for this type, serve from it with Fuse.js fuzzy search
     if (this.svc.hasJsonData(type)) {
-      return this.svc.queryFromJson(type, q);
+      try {
+        return await this.svc.queryFromJson(type, q);
+      } catch (err) {
+        console.error(`[Autocomplete] queryFromJson error for type="${type}":`, err);
+        throw err;
+      }
     }
     // Otherwise fall back to the DB-based query
     return this.svc.getByType(type as EntryType);

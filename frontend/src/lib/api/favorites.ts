@@ -1,5 +1,4 @@
 // frontend/src/lib/api/favorites.ts
-
 import Cookies from "js-cookie"
 
 const FAVORITES_API_URL =
@@ -58,7 +57,9 @@ export interface RenameGroupDto {
 // ── Group Endpoints ────────────────────────────────────
 
 /** Create a new favorites group */
-export async function createGroup(dto: CreateGroupDto): Promise<FavoriteGroup | null> {
+export async function createGroup(
+  dto: CreateGroupDto
+): Promise<FavoriteGroup | null> {
   try {
     const res = await fetch(`${FAVORITES_API_URL}/groups`, {
       method: "POST",
@@ -89,7 +90,10 @@ export async function getGroups(): Promise<FavoriteGroup[]> {
 }
 
 /** Rename a favorites group */
-export async function renameGroup(groupId: string, dto: RenameGroupDto): Promise<FavoriteGroup | null> {
+export async function renameGroup(
+  groupId: string,
+  dto: RenameGroupDto
+): Promise<FavoriteGroup | null> {
   try {
     const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "PATCH",
@@ -124,11 +128,11 @@ export async function deleteGroup(groupId: string): Promise<boolean> {
  * GET /favorites — returns groups with nested favorites (per docs).
  * Optional type filter narrows which favorites appear.
  */
-export async function getAllFavoritesGrouped(type?: FavoriteType): Promise<FavoriteGroup[]> {
+export async function getAllFavoritesGrouped(
+  type?: FavoriteType
+): Promise<FavoriteGroup[]> {
   try {
-    const url = type
-      ? `${FAVORITES_API_URL}?type=${type}`
-      : FAVORITES_API_URL
+    const url = type ? `${FAVORITES_API_URL}?type=${type}` : FAVORITES_API_URL
     const res = await fetch(url, {
       headers: authHeaders(),
       cache: "no-store",
@@ -145,13 +149,17 @@ export async function getAllFavoritesGrouped(type?: FavoriteType): Promise<Favor
  * Flatten groups into a flat array of favorites.
  * Used by helpers that need to search across all favorites.
  */
-export async function getAllFavorites(type?: FavoriteType): Promise<Favorite[]> {
+export async function getAllFavorites(
+  type?: FavoriteType
+): Promise<Favorite[]> {
   const groups = await getAllFavoritesGrouped(type)
   return groups.flatMap((g) => g.favorites)
 }
 
 /** Add a favorite */
-export async function addFavorite(dto: CreateFavoriteDto): Promise<Favorite | null> {
+export async function addFavorite(
+  dto: CreateFavoriteDto
+): Promise<Favorite | null> {
   try {
     const res = await fetch(FAVORITES_API_URL, {
       method: "POST",
@@ -202,7 +210,9 @@ export async function removeFavorite(favoriteId: string): Promise<boolean> {
 // ── Convenience Helpers ────────────────────────────────
 
 /** Find favorite by itemId (searches all user favorites) */
-export async function findFavoriteByItemId(itemId: string): Promise<Favorite | null> {
+export async function findFavoriteByItemId(
+  itemId: string
+): Promise<Favorite | null> {
   try {
     const favorites = await getAllFavorites()
     return favorites.find((fav) => fav.itemId === itemId) || null
@@ -219,7 +229,9 @@ export async function isFavorited(itemId: string): Promise<boolean> {
 }
 
 /** Get favorites by group ID (from groups endpoint for efficiency) */
-export async function getFavoritesByGroup(groupId: string): Promise<Favorite[]> {
+export async function getFavoritesByGroup(
+  groupId: string
+): Promise<Favorite[]> {
   try {
     const groups = await getGroups()
     const group = groups.find((g) => g.id === groupId)

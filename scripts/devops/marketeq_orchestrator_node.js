@@ -12,6 +12,19 @@ const RENDER_ENV_INTERNAL_SERVICE_TOKEN = process.env.RENDER_ENV_INTERNAL_SERVIC
 const RENDER_ENV_AUTH_REFRESH_SECRET = process.env.RENDER_ENV_AUTH_REFRESH_SECRET || "";
 const RENDER_ENV_AUTH_JWT_PRIVATE_KEY = process.env.RENDER_ENV_AUTH_JWT_PRIVATE_KEY || "";
 const RENDER_ENV_AUTH_JWT_PUBLIC_KEY = process.env.RENDER_ENV_AUTH_JWT_PUBLIC_KEY || "";
+const RENDER_ENV_AUTH_JWT_TOKEN_EXPIRES_IN = process.env.RENDER_ENV_AUTH_JWT_TOKEN_EXPIRES_IN || "";
+const RENDER_ENV_AUTH_REFRESH_TOKEN_EXPIRES_IN = process.env.RENDER_ENV_AUTH_REFRESH_TOKEN_EXPIRES_IN || "";
+const RENDER_ENV_E2EE_SERVER_SECRET = process.env.RENDER_ENV_E2EE_SERVER_SECRET || "";
+const RENDER_ENV_GOOGLE_CLIENT_ID = process.env.RENDER_ENV_GOOGLE_CLIENT_ID || "";
+const RENDER_ENV_GOOGLE_CLIENT_SECRET = process.env.RENDER_ENV_GOOGLE_CLIENT_SECRET || "";
+const RENDER_ENV_LINKEDIN_CLIENT_ID = process.env.RENDER_ENV_LINKEDIN_CLIENT_ID || "";
+const RENDER_ENV_LINKEDIN_CLIENT_SECRET = process.env.RENDER_ENV_LINKEDIN_CLIENT_SECRET || "";
+const RENDER_ENV_CLOUDFLARE_ACCOUNT_ID = process.env.RENDER_ENV_CLOUDFLARE_ACCOUNT_ID || "";
+const RENDER_ENV_CLOUDFLARE_R2_ACCESS_KEY = process.env.RENDER_ENV_CLOUDFLARE_R2_ACCESS_KEY || "";
+const RENDER_ENV_CLOUDFLARE_R2_SECRET_KEY = process.env.RENDER_ENV_CLOUDFLARE_R2_SECRET_KEY || "";
+const RENDER_ENV_CLOUDFLARE_R2_BUCKET = process.env.RENDER_ENV_CLOUDFLARE_R2_BUCKET || "";
+const RENDER_ENV_CLOUDFLARE_R2_ENDPOINT = process.env.RENDER_ENV_CLOUDFLARE_R2_ENDPOINT || "";
+const RENDER_ENV_CLOUDFLARE_PUBLIC_URL = process.env.RENDER_ENV_CLOUDFLARE_PUBLIC_URL || "";
 const RENDER_ENV_BREVO_API_KEY = process.env.RENDER_ENV_BREVO_API_KEY || "";
 const RENDER_ENV_BREVO_FROM_EMAIL = process.env.RENDER_ENV_BREVO_FROM_EMAIL || "";
 const RENDER_ENV_BREVO_FROM_NAME = process.env.RENDER_ENV_BREVO_FROM_NAME || "";
@@ -29,6 +42,8 @@ const RENDER_API = "https://api.render.com";
 const VERCEL_TEAM_ID = "team_t2RzlUaGU3p6OALpArhrWXh0";
 const RENDER_SERVICE_ID = "srv-d76r48nafjfc73e1djf0";
 const RENDER_URL = "https://marketeq-backend.onrender.com";
+const RENDER_OWNER_ID = "tea-d0r57undiees73bn5npg";
+const RENDER_ALLOWED_SERVICE_IDS = new Set([RENDER_SERVICE_ID]);
 
 const PROJECTS = {
   "dev-main": {
@@ -99,6 +114,9 @@ const RENDER_SHARED_BACKEND_BASELINE = {
     "https://marketeq.com",
   ],
   DATABASE_SSL: "false",
+  DATABASE_SSL_ENABLED: "false",
+  NODE_ENV: "production",
+  RABBITMQ_REQUIRED: "false",
 };
 const RENDER_REQUIRED_SECRET_BACKUPS = {
   DATABASE_URL: { env: "RENDER_ENV_DATABASE_URL", value: RENDER_ENV_DATABASE_URL },
@@ -117,6 +135,52 @@ const RENDER_REQUIRED_SECRET_BACKUPS = {
   AUTH_JWT_PUBLIC_KEY: {
     env: "RENDER_ENV_AUTH_JWT_PUBLIC_KEY",
     value: RENDER_ENV_AUTH_JWT_PUBLIC_KEY,
+  },
+  AUTH_JWT_TOKEN_EXPIRES_IN: {
+    env: "RENDER_ENV_AUTH_JWT_TOKEN_EXPIRES_IN",
+    value: RENDER_ENV_AUTH_JWT_TOKEN_EXPIRES_IN,
+  },
+  AUTH_REFRESH_TOKEN_EXPIRES_IN: {
+    env: "RENDER_ENV_AUTH_REFRESH_TOKEN_EXPIRES_IN",
+    value: RENDER_ENV_AUTH_REFRESH_TOKEN_EXPIRES_IN,
+  },
+  E2EE_SERVER_SECRET: {
+    env: "RENDER_ENV_E2EE_SERVER_SECRET",
+    value: RENDER_ENV_E2EE_SERVER_SECRET,
+  },
+  GOOGLE_CLIENT_ID: { env: "RENDER_ENV_GOOGLE_CLIENT_ID", value: RENDER_ENV_GOOGLE_CLIENT_ID },
+  GOOGLE_CLIENT_SECRET: {
+    env: "RENDER_ENV_GOOGLE_CLIENT_SECRET",
+    value: RENDER_ENV_GOOGLE_CLIENT_SECRET,
+  },
+  LINKEDIN_CLIENT_ID: { env: "RENDER_ENV_LINKEDIN_CLIENT_ID", value: RENDER_ENV_LINKEDIN_CLIENT_ID },
+  LINKEDIN_CLIENT_SECRET: {
+    env: "RENDER_ENV_LINKEDIN_CLIENT_SECRET",
+    value: RENDER_ENV_LINKEDIN_CLIENT_SECRET,
+  },
+  CLOUDFLARE_ACCOUNT_ID: {
+    env: "RENDER_ENV_CLOUDFLARE_ACCOUNT_ID",
+    value: RENDER_ENV_CLOUDFLARE_ACCOUNT_ID,
+  },
+  CLOUDFLARE_R2_ACCESS_KEY: {
+    env: "RENDER_ENV_CLOUDFLARE_R2_ACCESS_KEY",
+    value: RENDER_ENV_CLOUDFLARE_R2_ACCESS_KEY,
+  },
+  CLOUDFLARE_R2_SECRET_KEY: {
+    env: "RENDER_ENV_CLOUDFLARE_R2_SECRET_KEY",
+    value: RENDER_ENV_CLOUDFLARE_R2_SECRET_KEY,
+  },
+  CLOUDFLARE_R2_BUCKET: {
+    env: "RENDER_ENV_CLOUDFLARE_R2_BUCKET",
+    value: RENDER_ENV_CLOUDFLARE_R2_BUCKET,
+  },
+  CLOUDFLARE_R2_ENDPOINT: {
+    env: "RENDER_ENV_CLOUDFLARE_R2_ENDPOINT",
+    value: RENDER_ENV_CLOUDFLARE_R2_ENDPOINT,
+  },
+  CLOUDFLARE_PUBLIC_URL: {
+    env: "RENDER_ENV_CLOUDFLARE_PUBLIC_URL",
+    value: RENDER_ENV_CLOUDFLARE_PUBLIC_URL,
   },
   BREVO_API_KEY: { env: "RENDER_ENV_BREVO_API_KEY", value: RENDER_ENV_BREVO_API_KEY },
   BREVO_FROM_EMAIL: {
@@ -1162,6 +1226,17 @@ async function waitForRenderDeploy(sha, deployId) {
   };
 }
 
+async function assertNoRogueRenderServices() {
+  const services = await renderApi("GET", `/v1/services?ownerId=${RENDER_OWNER_ID}&limit=50`);
+  const active = (Array.isArray(services) ? services : [])
+    .map((s) => s.service || s)
+    .filter((s) => s.suspended !== "suspended" && !RENDER_ALLOWED_SERVICE_IDS.has(s.id));
+  if (active.length > 0) {
+    const names = active.map((s) => `${s.name} (${s.id})`).join(", ");
+    throw new Error(`BLOCKED: rogue Render services detected — delete before deploying: ${names}`);
+  }
+}
+
 async function ensureRenderLive(sha) {
   const existing = await listRenderDeploysForSha(sha);
   const live = existing.find((item) => item?.deploy?.status === "live");
@@ -1196,6 +1271,7 @@ async function triggerVercelDeploy(project, sha) {
 
 async function main() {
   assertRequiredSecrets();
+  await assertNoRogueRenderServices();
   const isRollback = EVENT === "rollback";
   const summary = {
     startedAt: nowIso(),

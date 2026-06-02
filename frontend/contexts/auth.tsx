@@ -22,10 +22,13 @@ type DashboardResolvableUser = {
   onboardingDismissed?: boolean | null
   onboardedAt?: string | Date | null
   hasCompletedOnboarding?: boolean | null
+  createdAt?: string | Date | null
+  clientOnboardedAt?: string | Date | null
+  talentOnboardedAt?: string | Date | null
 }
 
 export const resolveDashboardRole = (
-  user?: DashboardResolvableUser | null,
+  user?: DashboardResolvableUser | null
 ): ROLE | undefined => {
   const normalizedUserType = user?.userType?.toLowerCase?.()
   const normalizedAccountType = user?.accountType?.toUpperCase?.()
@@ -52,30 +55,56 @@ export const resolveDashboardRole = (
   return undefined
 }
 
+// Users created before this date predate the onboarding flow and should
+// never be bounced to /onboarding. New signups after this date will see it.
+const ONBOARDING_CUTOFF = new Date("2026-05-27T00:00:00Z")
+
+const isPreOnboardingUser = (user?: DashboardResolvableUser | null): boolean =>
+  user?.createdAt != null && new Date(user.createdAt) < ONBOARDING_CUTOFF
+
 export const hasCompletedOnboarding = (
-  user?: DashboardResolvableUser | null,
+  user?: DashboardResolvableUser | null
 ): boolean =>
   user?.hasCompletedOnboarding === true ||
   user?.onboardingDismissed === true ||
-  user?.onboardedAt != null
+  user?.onboardedAt != null ||
+  isPreOnboardingUser(user)
+
+export const hasCompletedClientOnboarding = (
+  user?: DashboardResolvableUser | null,
+): boolean =>
+  user?.clientOnboardedAt != null ||
+  isPreOnboardingUser(user)
+
+export const hasCompletedTalentOnboarding = (
+  user?: DashboardResolvableUser | null,
+): boolean =>
+  user?.talentOnboardedAt != null ||
+  isPreOnboardingUser(user)
 
 export const resolveDashboardRoute = (
-  user?: DashboardResolvableUser | null,
+  user?: DashboardResolvableUser | null
 ): string => {
   const dashboardRole = resolveDashboardRole(user)
 
   if (dashboardRole === ROLE.TALENT) {
+    // Talent role is set but hasn't completed talent onboarding yet
+    if (!hasCompletedTalentOnboarding(user)) {
+      return "/onboarding/talent"
+    }
     return "/talent-dashboard"
   }
 
   if (dashboardRole === ROLE.CLIENT) {
+    // Client role is set but hasn't completed client onboarding yet
+    if (!hasCompletedClientOnboarding(user)) {
+      return "/onboarding/client"
+    }
     return "/client-dashboard"
   }
 
-  // Returning users who have already completed/dismissed onboarding must
-  // never be bounced back to /onboarding just because the /me payload is
-  // missing role/accountType/userType. Default them to client-dashboard
-  // — the account switcher can flip them to talent if needed.
+  // No role set yet — if they've completed any onboarding, default to
+  // client-dashboard. Otherwise send to role selection.
   if (hasCompletedOnboarding(user)) {
     return "/client-dashboard"
   }
@@ -87,7 +116,7 @@ export const mergeDashboardUserFields = <
   T extends Record<string, unknown> | null | undefined,
 >(
   authUser: T,
-  profileUser: unknown,
+  profileUser: unknown
 ): T => {
   if (!authUser || !profileUser || typeof profileUser !== "object") {
     return authUser
@@ -131,7 +160,10 @@ const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
   logoutHandler: () => {},
 })
 
-const mergeUserAuthFields = (prev: User | null, next: User | null): User | null => {
+const mergeUserAuthFields = (
+  prev: User | null,
+  next: User | null
+): User | null => {
   if (!next) return next
 
   return {
@@ -178,7 +210,8 @@ function useProvideAuth() {
             if (
               !nextUser.onboardingDismissed &&
               typeof window !== "undefined" &&
-              window.localStorage.getItem("marketeq-onboarding-dismissed") === "true"
+              window.localStorage.getItem("marketeq-onboarding-dismissed") ===
+                "true"
             ) {
               nextUser.onboardingDismissed = true
             }
@@ -198,7 +231,11 @@ function useProvideAuth() {
           // Backend unavailable/offline during local dev; avoid noisy error-level logs.
           console.warn("[auth] /user/me unavailable:", error?.message)
         } else {
-          console.warn("[auth] /user/me request failed:", status, error?.message)
+          console.warn(
+            "[auth] /user/me request failed:",
+            status,
+            error?.message
+          )
         }
         setIsAuthChecked(true)
         setIsLoading(false)
@@ -220,7 +257,9 @@ function useProvideAuth() {
       Cookies.remove("accessToken", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
       Cookies.remove("session_id", { path: "/" })
-      try { window.localStorage.removeItem("marketeq-onboarding-dismissed") } catch {}
+      try {
+        window.localStorage.removeItem("marketeq-onboarding-dismissed")
+      } catch {}
     } catch (err: any) {
       toast({
         title:

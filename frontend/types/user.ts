@@ -26,7 +26,7 @@ export type User = {
   provider: AUTH_PROVIDERS
   hasPassword?: boolean
   twoFactorEnabled?: boolean
-  twoFactorMethod?: 'totp' | 'sms' | null
+  twoFactorMethod?: "totp" | "sms" | null
   socialId?: string | null
   emailVerified: boolean
   onboardingDismissed: boolean
@@ -34,6 +34,10 @@ export type User = {
   customAvailability?: CustomAvailabilityDay[] | null
   recentJobTitle?: string | null
   jobTitles?: string[] | null
+  clientOnboardedAt?: string | Date | null
+  talentOnboardedAt?: string | Date | null
+  onboardedAt?: string | Date | null
+  hasCompletedOnboarding?: boolean | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
@@ -48,41 +52,50 @@ export type UserSkill = {
 export type UserLanguage = {
   id: string
   name: string
-  proficiency?: string | null
+  fluency?: string | null
 }
 
 export type UserEducation = {
   id: string
-  institution: string
+  school: string
   degree: string
-  field: string
-  startDate: string
-  endDate?: string | null
+  fieldOfStudy?: string | null
+  startYear: number
+  startMonth?: number | null
+  endYear?: number | null
+  endMonth?: number | null
+  currentlyStudying?: boolean | null
   institutionLogoUrl?: string | null
 }
 
 export type UserExperience = {
   id: string
   company: string
-  role: string
+  title: string
+  location?: string | null
   startDate: string
   endDate?: string | null
+  isCurrentRole?: boolean | null
   description?: string | null
+  skills?: string[] | null
   companyLogoUrl?: string | null
 }
 
 export type UserCertification = {
   id: string
   name: string
-  issuingOrganization?: string | null
-  issueDate?: string | null
-  expiryDate?: string | null
+  issuer: string
+  issueDate: string
+  expirationDate?: string | null
+  credentialId?: string | null
   credentialUrl?: string | null
 }
 
 export type UserIndustry = {
   id: string
-  name: string
+  industry: string
+  yearsOfExperience?: number | null
+  description?: string | null
 }
 
 export type UserProfile = User & {

@@ -39,9 +39,9 @@ export class TimelineService {
       where: {
         userId: params.userId,
         isDeleted: false,
-        createdAt: Between(new Date(startISO), new Date(endISO)),
+        capturedAt: Between(new Date(startISO), new Date(endISO)),
       },
-      order: { createdAt: 'ASC' },
+      order: { capturedAt: 'ASC' },
     });
 
     const raw = await listBuckets().catch((err: any) => {
@@ -85,23 +85,23 @@ export class TimelineService {
       while (
         i + 1 < shots.length &&
         Math.abs(
-          new Date(shots[i + 1].createdAt).getTime() - new Date(ev.start).getTime(),
+          new Date(shots[i + 1].capturedAt!).getTime() - new Date(ev.start).getTime(),
         ) <
           Math.abs(
-            new Date(shots[i].createdAt).getTime() - new Date(ev.start).getTime(),
+            new Date(shots[i].capturedAt!).getTime() - new Date(ev.start).getTime(),
           )
       ) {
         i++;
       }
       const s = shots[i];
       const sMs = s
-        ? Math.abs(new Date(s.createdAt).getTime() - new Date(ev.start).getTime())
+        ? Math.abs(new Date(s.capturedAt!).getTime() - new Date(ev.start).getTime())
         : Infinity;
       out.push({
         ...ev,
         screenshot:
           s && sMs <= threshMs
-            ? { key: s.key, bytes: s.bytes, mimeType: s.mimeType, createdAt: s.createdAt }
+            ? { key: s.key, bytes: s.bytes, mimeType: s.mimeType, capturedAt: s.capturedAt }
             : null,
       });
     }

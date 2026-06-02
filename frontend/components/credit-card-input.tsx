@@ -127,8 +127,7 @@ export const format = (value: string) => {
   return digits.replace(/(\d{4})/g, "$1 ").trim()
 }
 
-interface CreditCardInputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+interface CreditCardInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value?: string
   onValueChange?: (value: string) => void
   isInvalid?: boolean

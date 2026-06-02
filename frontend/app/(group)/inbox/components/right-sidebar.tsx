@@ -3,10 +3,8 @@
 import React, { useState } from "react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { getCurrentUser } from "@/utils/auth"
 import { apiFetch } from "@/src/lib/api"
-import { Conversation } from "@/types/conversation"
-import { UserProfile } from "@/types/user"
+import { getCurrentUser } from "@/utils/auth"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertTriangle,
@@ -28,8 +26,6 @@ import {
   UploadCloud,
   X,
 } from "@blend-metrics/icons"
-import { HireMeButton } from "@/components/hire-me-button"
-import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   DropboxBrand,
   GoogleDrive1Brand,
@@ -37,17 +33,20 @@ import {
 } from "@blend-metrics/icons/brands"
 import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
 import { useMeasure, useToggle } from "react-use"
+import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
+import { UserProfile } from "@/types/user"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
+import { HireMeButton } from "@/components/hire-me-button"
+import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
   Badge,
   Button,
-  buttonVariants,
   CircularProgressDropzone,
   CircularProgressDropzoneState,
   Dialog,
@@ -75,6 +74,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  buttonVariants,
 } from "@/components/ui"
 
 interface RightSidebarProps {
@@ -148,7 +148,10 @@ const SaveButton = () => {
   )
 }
 
-const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => {
+const RightSidebar = ({
+  selectedConversation,
+  jwtToken,
+}: RightSidebarProps) => {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [retryToken, setRetryToken] = useState(0)
@@ -156,11 +159,16 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   const router = useRouter()
   const { isOnline } = useOnlineUsers()
 
+  const otherId =
+    selectedConversation && currentUser
+      ? (selectedConversation.participantIds?.find(
+          (id) => id !== currentUser.id
+        ) ?? null)
+      : null
+
   useEffect(() => {
     setUser(null)
     setProfileError(null)
-    if (!selectedConversation || !currentUser) return
-    const otherId = selectedConversation.participantIds?.find((id) => id !== currentUser.id)
     if (!otherId) return
 
     apiFetch<UserProfile>(`/users/${otherId}`, {
@@ -175,7 +183,7 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         console.error("Profile fetch failed", err)
         setProfileError("Couldn't load profile.")
       })
-  }, [selectedConversation, jwtToken, retryToken])
+  }, [otherId, jwtToken, retryToken])
 
   if (!selectedConversation) {
     return (
@@ -212,9 +220,15 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   const username = user.username || ""
   const avatarUrl = user.avatarUrl
   const initials = fullName.charAt(0).toUpperCase()
-  const rate = user.rateMin && user.rateMax ? `$${user.rateMin} - $${user.rateMax}` : null
+  const rate =
+    user.rateMin && user.rateMax ? `$${user.rateMin} - $${user.rateMax}` : null
   const availability = user.availability
-  const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null
+  const memberSince = user.createdAt
+    ? new Date(user.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      })
+    : null
 
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">
@@ -244,7 +258,9 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
       <div className="mt-5 pb-5 flex flex-col gap-y-3 border-b border-gray-200">
         {rate && (
           <div className="flex items-center gap-x-2">
-            <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">Rate</span>
+            <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
+              Rate
+            </span>
             <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
               <span className="font-bold">{rate}</span> /hr
             </span>
@@ -252,14 +268,19 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
         )}
         {availability && (
           <div className="flex items-center gap-x-2">
-            <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">Availability</span>
-            <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-bold">{availability}</span>
+            <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
+              Availability
+            </span>
+            <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-bold">
+              {availability}
+            </span>
           </div>
         )}
         {user?.clientSuccessRating && (
           <div className="flex items-center gap-x-2">
             <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
-              <Star className="size-3 fill-dark-blue-400" /> {user.clientSuccessRating}
+              <Star className="size-3 fill-dark-blue-400" />{" "}
+              {user.clientSuccessRating}
             </span>
             {user.totalProjectsCompleted != null && (
               <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
@@ -275,7 +296,9 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
           <h3 className="font-bold text-sm text-dark-blue-400">Skills</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             {user.skills.map((s) => (
-              <Badge key={s.id} visual="gray">{s.name}</Badge>
+              <Badge key={s.id} visual="gray">
+                {s.name}
+              </Badge>
             ))}
           </div>
         </div>
@@ -288,7 +311,9 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
           disabled={!user?.username}
           onClick={() => {
             if (!user?.username) return
-            router.push(`/talent-profile?username=${encodeURIComponent(user.username)}`)
+            router.push(
+              `/talent-profile?username=${encodeURIComponent(user.username)}`
+            )
           }}
         >
           View Full Profile
@@ -304,4 +329,4 @@ const RightSidebar = ({ selectedConversation, jwtToken }: RightSidebarProps) => 
   )
 }
 
-export default RightSidebar
+export default React.memo(RightSidebar)

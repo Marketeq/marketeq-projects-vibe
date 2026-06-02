@@ -73,8 +73,14 @@ const nextConfig = {
     const rewrites = []
     for (const kind of kinds) {
       rewrites.push({ source: `/${kind}/:l1`, destination: `/c/:l1/${kind}` })
-      rewrites.push({ source: `/${kind}/:l1/:l2`, destination: `/c/:l1/:l2/${kind}` })
-      rewrites.push({ source: `/${kind}/:l1/:l2/:l3`, destination: `/c/:l1/:l2/:l3/${kind}` })
+      rewrites.push({
+        source: `/${kind}/:l1/:l2`,
+        destination: `/c/:l1/:l2/${kind}`,
+      })
+      rewrites.push({
+        source: `/${kind}/:l1/:l2/:l3`,
+        destination: `/c/:l1/:l2/:l3/${kind}`,
+      })
     }
     // CMS media proxy. In dev the Payload cloud-storage plugin uploads to a
     // MinIO container on localhost:9000; we expose them on a same-origin

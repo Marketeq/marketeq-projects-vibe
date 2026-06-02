@@ -11,17 +11,25 @@ interface DateTimeBarProps {
 
 function ChevronUpIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M3 9l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+    >
+      <path
+        d="M3 9l4-4 4 4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-export function DateTimeBar({
-  date,
-  utcTime,
-  className,
-}: DateTimeBarProps) {
+export function DateTimeBar({ date, utcTime, className }: DateTimeBarProps) {
   return (
     <div
       className={cn(

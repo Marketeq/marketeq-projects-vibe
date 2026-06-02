@@ -52,6 +52,7 @@ export function mapProfileToEvent(doc: any) {
       startDate: w.startDate,
       endDate: w.endDate,
       description: w.description,
+      skills: (w.skills || []).map((s: any) => s.name),
     })),
     portfolio: (doc.portfolio || []).map((p: any) => ({
       title: p.title,
@@ -65,6 +66,7 @@ export function mapProfileToEvent(doc: any) {
     location: doc.location || null,
     country: doc.country || null,
     status: doc.status || "active",
+    timezone: null,
   };
 
   return result;
