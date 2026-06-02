@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
+import { getIssuerNameFromUrl } from "@/src/lib/certification-brand"
 import { cn, hookFormHasError } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -583,9 +584,9 @@ const certificationsFormSchema = z
           message: "Please provide a valid url",
         }
       ),
-    skills: z
-      .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
-      .min(1, "Please provide at least 1 skill(s)"),
+    skills: z.array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    ),
     issuedDate: z.instanceof(Date, { message: "Please provide a valid date" }),
     expirationDate: z
       .instanceof(Date, {
@@ -3836,6 +3837,7 @@ export const CertificationsDialog = ({
   value: valueProp,
   profile,
   onSaved,
+  editIndex,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -3848,6 +3850,7 @@ export const CertificationsDialog = ({
   onValueChange?: (value: CertificationsFormValues[] | undefined) => void
   profile?: any
   onSaved?: () => void
+  editIndex?: string
 }) => {
   const { user } = useAuth()
   const userId = profile?.id ?? user?.id ?? ""
@@ -3884,11 +3887,48 @@ export const CertificationsDialog = ({
     },
   })
   const [isShowing, setIsShowing] = useState(false)
+  const [editingId, setEditingId] = useState<string | undefined>()
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
   const [filteredSkills, setFilteredSkills] = useState<
     { id: number | string; name: string }[]
   >([])
+
+  const edit = useCallback(
+    (id: string) => {
+      setEditingId(id)
+      const cert = profile?.certifications?.find(
+        (c: any) => String(c.id) === id
+      )
+      if (!cert) return
+      reset({
+        name: cert.name ?? "",
+        credentialId: cert.credentialId ?? "",
+        credentialsUrl: cert.credentialUrl ?? "",
+        issuedDate: cert.issueDate ? new Date(cert.issueDate) : undefined,
+        expirationDate: cert.expirationDate
+          ? new Date(cert.expirationDate)
+          : undefined,
+        canNotExpire: !cert.expirationDate,
+        skills: Array.isArray(cert.skills)
+          ? cert.skills.map((name: string, i: number) => ({
+              id: `${cert.id}-${i}`,
+              name,
+            }))
+          : [],
+      })
+    },
+    [profile?.certifications, reset]
+  )
+
+  useEffect(() => {
+    if (open && editIndex) {
+      edit(editIndex)
+    } else if (open && !editIndex) {
+      setEditingId(undefined)
+      reset()
+    }
+  }, [open, editIndex, edit, reset])
 
   const fetchSkills = useCallback(async (q: string) => {
     try {
@@ -3911,20 +3951,33 @@ export const CertificationsDialog = ({
     return () => clearTimeout(timer)
   }, [query, fetchSkills])
   const onSubmit: SubmitHandler<CertificationsFormValues> = async (values) => {
-    setOpen(false)
-    setValueFn((prev) => (prev ? [...prev, values] : [values]))
-    reset()
-    if (userId) {
-      UserAPI.addCertification({
-        name: values.name,
-        issueDate: values.issuedDate.toISOString(),
-        expirationDate: values.expirationDate?.toISOString(),
-        credentialId: values.credentialId || undefined,
-        credentialUrl: values.credentialsUrl || undefined,
-      })
-        .then(() => onSaved?.())
-        .catch(() => {})
+    const credentialUrl = values.credentialsUrl?.trim() || undefined
+    const payload = {
+      name: values.name,
+      issuer: getIssuerNameFromUrl(credentialUrl) ?? undefined,
+      issueDate: values.issuedDate.toISOString(),
+      expirationDate: values.canNotExpire
+        ? undefined
+        : values.expirationDate?.toISOString(),
+      credentialId: values.credentialId || undefined,
+      credentialUrl,
+      skills: values.skills?.map((s) => s.name) ?? [],
     }
+    try {
+      if (editingId) {
+        await UserAPI.updateCertification(editingId, payload)
+      } else if (userId) {
+        await UserAPI.addCertification(payload)
+        setValueFn((prev) => (prev ? [...prev, values] : [values]))
+      }
+    } catch (err) {
+      console.error("[certifications] save failed", err)
+      return
+    }
+    onSaved?.()
+    setEditingId(undefined)
+    reset()
+    setOpen(false)
   }
 
   const onRemove = (index: number) => {
@@ -3936,6 +3989,13 @@ export const CertificationsDialog = ({
   }
 
   const canNotExpire = useWatch({ control, name: "canNotExpire" })
+
+  useEffect(() => {
+    if (canNotExpire) {
+      setValue("expirationDate", undefined, { shouldDirty: true })
+      trigger("expirationDate")
+    }
+  }, [canNotExpire, setValue, trigger])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

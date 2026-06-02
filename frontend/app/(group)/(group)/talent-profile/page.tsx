@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
+import { getCertificationBrandFromUrl } from "@/src/lib/certification-brand"
 import { getCurrentUser } from "@/utils/auth"
 import { getComputedStyle } from "@/utils/dom-utils"
 import { cn, toPxIfNumber } from "@/utils/functions"
@@ -576,6 +577,7 @@ function Default() {
   const [educationOpen, setEducationOpen] = useState(false)
   const [workExpEditIdx, setWorkExpEditIdx] = useState<string | undefined>()
   const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
+  const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
 
@@ -1787,24 +1789,17 @@ function Default() {
                           featuredTab === "Certifications" &&
                           profile?.certifications &&
                           profile.certifications.length > 0 && (
-                            <div className="ml-auto flex items-center gap-x-1">
-                              <IconButton
-                                className="rounded-full text-gray-500 hover:text-gray-800"
-                                variant="ghost"
-                                visual="gray"
-                                onClick={() => setCertificationsOpen(true)}
-                              >
-                                <Plus className="size-4" />
-                              </IconButton>
-                              <IconButton
-                                className="rounded-full text-gray-500 hover:text-gray-800"
-                                variant="ghost"
-                                visual="gray"
-                                onClick={() => setCertificationsOpen(true)}
-                              >
-                                <Edit03 className="size-4" />
-                              </IconButton>
-                            </div>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              className="ml-auto shrink-0 bg-white"
+                              onClick={() => {
+                                setCertEditIdx(undefined)
+                                setCertificationsOpen(true)
+                              }}
+                            >
+                              <Plus className="size-[15px]" /> Add Certification
+                            </Button>
                           )}
                       </RadixTabs.List>
 
@@ -1840,20 +1835,58 @@ function Default() {
                       <TabsContent value="Certifications">
                         {profile?.certifications &&
                         profile.certifications.length > 0 ? (
-                          <div className="pt-6 flex items-center flex-wrap gap-6">
-                            {profile.certifications.map((cert) => (
-                              <div
-                                key={cert.id}
-                                className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5"
-                              >
-                                {cert.name}
-                                {cert.issuer ? (
-                                  <span className="text-gray-500 font-light">
-                                    · {cert.issuer}
+                          <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
+                            {profile.certifications.map((cert) => {
+                              const brand = getCertificationBrandFromUrl(
+                                cert.credentialUrl
+                              )
+                              return (
+                                <div
+                                  key={cert.id}
+                                  className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-2"
+                                >
+                                  {brand?.type === "component" && (
+                                    <brand.Icon className="size-6 shrink-0" />
+                                  )}
+                                  {brand?.type === "remote-svg" && (
+                                    <img
+                                      src={brand.url}
+                                      alt={brand.name}
+                                      width={24}
+                                      height={24}
+                                      className="size-6 shrink-0"
+                                      loading="lazy"
+                                      data-fallback="0"
+                                      onError={(e) => {
+                                        const el = e.currentTarget
+                                        if (el.dataset.fallback === "0") {
+                                          el.dataset.fallback = "1"
+                                          el.src = brand.faviconUrl
+                                        } else {
+                                          el.style.display = "none"
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                  <span className="capitalize">
+                                    {cert.name}
                                   </span>
-                                ) : null}
-                              </div>
-                            ))}
+                                  {isEditMode && isOwnProfile && (
+                                    <IconButton
+                                      className="text-gray-400 hover:text-gray-600"
+                                      variant="ghost"
+                                      visual="gray"
+                                      onClick={() => {
+                                        setCertEditIdx(String(cert.id))
+                                        setCertificationsOpen(true)
+                                      }}
+                                    >
+                                      <Edit03 className="size-4" />
+                                    </IconButton>
+                                  )}
+                                </div>
+                              )
+                            })}
                           </div>
                         ) : (
                           <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
@@ -1873,7 +1906,10 @@ function Default() {
                                   variant="outlined"
                                   visual="gray"
                                   className="shrink-0 bg-white"
-                                  onClick={() => setCertificationsOpen(true)}
+                                  onClick={() => {
+                                    setCertEditIdx(undefined)
+                                    setCertificationsOpen(true)
+                                  }}
                                 >
                                   <Plus className="size-[15px]" /> Add
                                   Certification
@@ -4298,9 +4334,13 @@ function Default() {
           />
           <CertificationsDialog
             opened={certificationsOpen}
-            onOpenedChange={setCertificationsOpen}
+            onOpenedChange={(open) => {
+              setCertificationsOpen(open)
+              if (!open) setCertEditIdx(undefined)
+            }}
             profile={profile}
             onSaved={refreshProfile}
+            editIndex={certEditIdx}
           />
           <WorkExperienceDialog
             opened={workExperienceOpen}

@@ -32,6 +32,9 @@ export class Certification {
   @Column({ nullable: true })
   credentialUrl?: string;
 
+  @Column({ type: 'text', array: true, nullable: true })
+  skills?: string[];
+
   @ManyToOne(() => User, (user) => user.certifications, {
     onDelete: 'CASCADE',
     eager: false,
