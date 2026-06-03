@@ -9,6 +9,15 @@ async function bootstrap() {
 
   app.enableCors({
     origin: process.env.FE_ORIGIN || 'http://localhost:3000',
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-user-id',
+      'x-user-email',
+      'x-user-role',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: true,
   });
 
   app.useGlobalPipes(

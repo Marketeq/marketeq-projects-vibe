@@ -19,7 +19,15 @@ import { OutboxEvent } from '../outbox/entities/outbox-event.entity';
 @Module({
   imports: [
     ConfigModule,
-    HttpModule,
+    HttpModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        timeout: 10_000,
+        maxRedirects: 3,
+        baseURL: config.get<string>('USER_SERVICE_URL'),
+      }),
+    }),
     TypeOrmModule.forFeature([
       NdaDocument,
       NdaSigningEvent,
