@@ -22,12 +22,44 @@ test.describe("auth browser back-button behavior", () => {
     const { email, password } = await createEmailPasswordUser(request)
     await context.clearCookies()
 
-    const { accessToken } = await loginWithEmailPasswordUi(page, email, password)
+    const { accessToken } = await loginWithEmailPasswordUi(
+      page,
+      email,
+      password
+    )
     await ensureAccessCookie(context, accessToken)
 
     await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" })
 
-    await expect(page).toHaveURL(/\/talent-dashboard|\/client-dashboard|\/onboarding/, {
+    await expect(page).toHaveURL(
+      /\/talent-dashboard|\/client-dashboard|\/onboarding/,
+      {
+        timeout: 20000,
+      }
+    )
+  })
+
+  test("authenticated client with incomplete onboarding is sent to client onboarding from sign-in", async ({
+    page,
+    request,
+    context,
+  }) => {
+    test.setTimeout(120000)
+    await assertServiceReachable(request, AUTH_URL, "Auth service")
+
+    const { email, password } = await createEmailPasswordUser(request)
+    await context.clearCookies()
+
+    const { accessToken } = await loginWithEmailPasswordUi(
+      page,
+      email,
+      password
+    )
+    await ensureAccessCookie(context, accessToken)
+
+    await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" })
+
+    await expect(page).toHaveURL(/\/onboarding\/client/, {
       timeout: 20000,
     })
   })
@@ -43,7 +75,11 @@ test.describe("auth browser back-button behavior", () => {
     const { email, password } = await createEmailPasswordUser(request)
     await context.clearCookies()
 
-    const { accessToken } = await loginWithEmailPasswordUi(page, email, password)
+    const { accessToken } = await loginWithEmailPasswordUi(
+      page,
+      email,
+      password
+    )
     await ensureAccessCookie(context, accessToken)
 
     await clearBrowserAuthState(page, context)
