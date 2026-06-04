@@ -480,7 +480,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         ? `${this.configService.get<string>('FRONTEND_URL')!.replace(/\/$/, '')}/reset-password`
         : undefined);
 
-    const base = dto.redirectUrl ?? fallbackBase;
+    const base = this.resolveTrustedPasswordResetBase(dto.redirectUrl, fallbackBase);
     const resetUrl =
       base && resetToken
         ? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
@@ -534,6 +534,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     user.password = await bcrypt.hash(dto.password, 10);
     user.hasPassword = true;
     await this.userRepository.save(user);
+    await this.sessionRepository.delete({ userId: user.id });
 
     await this.syncUserProfile(user);
 
@@ -1539,6 +1540,43 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       { sub: user.id, email: user.email, type: 'reset' },
       { expiresIn: resetExpires },
     );
+  }
+
+  private resolveTrustedPasswordResetBase(
+    requestedBase?: string,
+    fallbackBase?: string,
+  ): string | undefined {
+    if (!requestedBase) {
+      return fallbackBase;
+    }
+
+    const trustedOrigins = [
+      ...(this.configService.get<string>('FRONTEND_URL') ?? '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+      fallbackBase,
+    ]
+      .filter((value): value is string => !!value)
+      .map((value) => {
+        try {
+          return new URL(value).origin;
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((value): value is string => !!value);
+
+    try {
+      const requestedUrl = new URL(requestedBase);
+      if (trustedOrigins.includes(requestedUrl.origin)) {
+        return requestedBase;
+      }
+    } catch {
+      // Fall back to configured URL below.
+    }
+
+    return fallbackBase;
   }
 
   private getRefreshSecret(): string {
