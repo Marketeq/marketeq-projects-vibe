@@ -16,8 +16,8 @@
     "dev:logs": "npx pm2 logs",
     "dev:restart": "npx pm2 restart all",
     "build:all": "npm run build --workspaces --if-present",
-    "lint": "eslint \"{apps,shared}/**/*.ts\" --fix",
-    "format": "prettier --write \"{apps,shared}/**/*.ts\""
+    "lint": "eslint apps shared --ext .ts --fix",
+    "format": "prettier --write \"apps/**/*.ts\" \"shared/**/*.ts\""
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

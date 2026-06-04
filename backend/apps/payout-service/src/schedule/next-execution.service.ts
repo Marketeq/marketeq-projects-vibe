@@ -99,7 +99,7 @@ export class NextExecutionService {
 
   // PS-17 §2: Weekend/holiday adjustment
   private adjustForHolidayAndWeekend(date: Date): Date {
-    let result = new Date(date);
+    const result = new Date(date);
     let attempts = 0;
     while (attempts < 10) {
       const day = result.getUTCDay();
