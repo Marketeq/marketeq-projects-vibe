@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import { cn, hookFormHasError } from "@/utils/functions"
@@ -4290,7 +4291,7 @@ export const AffiliatedTeamsDialog = ({
     value: opened,
     onChange: onOpenedChange,
   })
-  const [isOpen, setIsOpen] = useState(false)
+  const router = useRouter()
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger?.({ toggle: () => setOpen((prev) => !prev) })}
@@ -4323,12 +4324,13 @@ export const AffiliatedTeamsDialog = ({
             <Button
               visual="gray"
               variant="outlined"
-              onClick={() => setIsOpen(true)}
+              onClick={() => {
+                setOpen(false)
+                router.push("/teams")
+              }}
             >
               Browse Teams
             </Button>
-
-            <AffiliatedTeams1 open={isOpen} onOpenChange={setIsOpen} />
           </div>
         </div>
       </DialogContent>

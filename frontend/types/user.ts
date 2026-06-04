@@ -98,6 +98,15 @@ export type UserIndustry = {
   description?: string | null
 }
 
+export type UserPortfolioItem = {
+  id: string
+  name: string
+  description?: string | null
+  url?: string | null
+  imageUrl?: string | null
+  tags?: string[] | null
+}
+
 export type UserProfile = User & {
   bio?: string | null
   overview?: string | null
@@ -119,4 +128,5 @@ export type UserProfile = User & {
   experience?: UserExperience[]
   certifications?: UserCertification[]
   industries?: UserIndustry[]
+  portfolio?: UserPortfolioItem[]
 }
