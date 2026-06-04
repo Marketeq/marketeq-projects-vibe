@@ -51,6 +51,96 @@ export class EarningsService {
     const limit = q.limit || 10;
     const view = q.view || 'daily';
 
+    // For weekly/monthly views, aggregate rows grouped by period + contract
+    if (view === 'weekly' || view === 'monthly') {
+      const truncFn = view === 'weekly'
+        ? `DATE_TRUNC('week', ec.work_start_at)`
+        : `DATE_TRUNC('month', ec.work_start_at)`;
+      const rawQb = this.earningsRepo.createQueryBuilder('ec')
+        .select(truncFn, 'period')
+        .addSelect('ec.contract_id', 'contractId')
+        .addSelect('SUM(ec.duration_minutes)', 'totalMinutes')
+        .addSelect('SUM(ec.net_amount_usd)', 'totalNet')
+        .addSelect('SUM(ec.gross_amount)', 'totalGross')
+        .addSelect('MIN(ec.work_start_at)', 'periodStart')
+        .addSelect('MAX(ec.work_end_at)', 'periodEnd')
+        .addSelect('ec.status', 'status')
+        .addSelect('ec.entry_type', 'entryType')
+        .where('ec.contractor_id = :cid', { cid: contractorId });
+      if (q.status !== 'failed') rawQb.andWhere('ec.status != :rev', { rev: 'reversed' });
+      if (startDate) rawQb.andWhere('ec.work_start_at >= :s', { s: startDate });
+      if (endDate) rawQb.andWhere('ec.work_start_at <= :e', { e: endDate + 'T23:59:59Z' });
+      if (q.projectId) rawQb.andWhere('ec.project_id = :pid', { pid: q.projectId });
+      if (q.entryType) {
+        const dbType = q.entryType === 'automated' ? 'screenshot' : 'manual';
+        rawQb.andWhere('ec.entry_type = :et', { et: dbType });
+      }
+      if (q.status === 'failed') rawQb.andWhere('ec.status = :rev', { rev: 'reversed' });
+      rawQb.groupBy(truncFn).addGroupBy('ec.contract_id').addGroupBy('ec.status').addGroupBy('ec.entry_type')
+        .orderBy('period', 'DESC')
+        .offset((page-1)*limit).limit(limit);
+
+      const rawRows = await rawQb.getRawMany();
+      const totalRaw = await rawQb.clone().select('COUNT(*)', 'cnt').groupBy('').addGroupBy('').getRawOne().catch(() => null);
+
+      // Count distinct groups
+      const countQb = this.earningsRepo.createQueryBuilder('ec')
+        .select(`COUNT(DISTINCT (${truncFn}, ec.contract_id))`, 'cnt')
+        .where('ec.contractor_id = :cid', { cid: contractorId });
+      if (startDate) countQb.andWhere('ec.work_start_at >= :s', { s: startDate });
+      if (endDate) countQb.andWhere('ec.work_start_at <= :e', { e: endDate + 'T23:59:59Z' });
+      if (q.status !== 'failed') countQb.andWhere('ec.status != :rev', { rev: 'reversed' });
+      const countResult = await countQb.getRawOne();
+      const total = parseInt(countResult?.cnt ?? '0', 10);
+
+      const ids2 = [...new Set(rawRows.map((r:any)=>r.contractId).filter(Boolean))] as string[];
+      const labels2 = ids2.length ? await this.labelRepo.findBy(ids2.map(id=>({contractId:id}))) : [];
+      const lmap2 = new Map(labels2.map(l=>[l.contractId,l]));
+
+      const data = rawRows.map((r: any) => {
+        const lbl = r.contractId ? lmap2.get(r.contractId) : null;
+        const mins = parseInt(r.totalMinutes ?? '0', 10);
+        const net = parseFloat(r.totalNet ?? '0');
+        const periodStart = new Date(r.periodStart);
+        return {
+          id: `${r.period}-${r.contractId}`,
+          date: null,
+          weekRange: view === 'weekly' ? this.fmtWeek(periodStart) : null,
+          month: view === 'monthly' ? this.fmtMonth(periodStart) : null,
+          project: lbl ? { id: lbl.projectId, name: lbl.projectName, clientHandle: '@' + lbl.clientDisplayName } : null,
+          task: null,
+          startTime: null, endTime: null,
+          durationMinutes: mins,
+          durationLabel: this.fmtMins(mins),
+          grossAmount: r.totalGross,
+          feeAmount: null,
+          netAmount: net.toFixed(8),
+          entryType: r.entryType === 'screenshot' ? 'automated' : 'manual',
+          status: r.status === 'reversed' ? 'failed' : r.status,
+          avgKeyboardPct: null, avgMousePct: null,
+          weeklyHours: view === 'weekly' ? this.fmtMins(mins) : null,
+          weeklyEarnings: view === 'weekly' ? net.toFixed(2) : null,
+          budget: null,
+          totalHours: view === 'monthly' ? this.fmtMins(mins) : null,
+          totalEarnings: view === 'monthly' ? net.toFixed(2) : null,
+          netAmountDisplay: net.toFixed(2),
+          displayCurrency,
+        };
+      });
+
+      return {
+        view, page, limit, total,
+        totalPages: Math.ceil(total / limit),
+        columns: this.cols(view),
+        manualTimeMinutes: 0,
+        manualTimeLabel: 'This timesheet contains no manual time entries.',
+        data,
+        appliedFilters: { view: q.view, dateRange: q.dateRange, startDate: startDate||null,
+          endDate: endDate||null, projectId: q.projectId||null, clientId: q.clientId||null,
+          entryType: q.entryType||null, status: q.status||null, search: q.search||null },
+      };
+    }
+
     const col = {workStartAt:'ec.workStartAt',netAmount:'ec.netAmount',durationMinutes:'ec.durationMinutes'}[sortBy] || 'ec.workStartAt';
     qb.orderBy(col, sortOrder.toUpperCase() as 'ASC'|'DESC')
       .skip((page-1)*limit).take(limit);

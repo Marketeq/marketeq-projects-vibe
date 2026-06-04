@@ -1,4 +1,5 @@
 "use client"
+import { Logo3 } from "@/components/icons"
 
 import * as React from "react"
 import { SVGProps, useState, useEffect } from "react"
@@ -112,14 +113,64 @@ const DollarSignIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-const PaypalIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
-  <svg className={cn("size-6", className)} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-    <path d="M7.076 21.337H2.47a.641.641 0 01-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.283c-.521 0-.963.38-1.045.9l-.848 5.36-.303 1.916a.553.553 0 01-.546.471l.535-.64z" fill="#253B80" />
-    <path d="M23.048 7.667C22.07 13.158 18.37 15.33 13.437 15.33h-1.19c-.56 0-1.036.41-1.123.967l-1.212 7.682a.467.467 0 00.462.54h3.24c.49 0 .908-.355.985-.838l.04-.212.782-4.955.05-.272a.998.998 0 01.985-.838h.622c4.018 0 7.163-1.632 8.082-6.354.384-1.973.185-3.617-.83-4.774a3.961 3.961 0 00-1.134-.86z" fill="#179BD7" />
-    <path d="M21.754 7.151a8.267 8.267 0 00-1.022-.231 12.94 12.94 0 00-2.058-.151h-6.23a.998.998 0 00-.985.838l-1.327 8.408-.038.247a1.13 1.13 0 011.123-.967h2.34c4.594 0 8.192-1.866 9.245-7.263.031-.16.058-.316.082-.467a5.357 5.357 0 00-1.13-.414z" fill="#222D65" />
-  </svg>
+const PaypalIcon = ({ className }: { className?: string }) => (
+  <div className={cn("size-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden", className)}>
+    <img src="/bank-logos/paypal.png" className="w-9 h-9 object-contain" alt="PayPal" />
+  </div>
 )
 
+const WiseIcon = ({ className }: { className?: string }) => (
+  <div className={cn("size-10 rounded-full bg-[#9FE870] flex items-center justify-center overflow-hidden", className)}>
+    <img src="https://cdn.simpleicons.org/wise/163300" className="w-3 h-3 object-contain" alt="Wise" />
+  </div>
+)
+
+const PayoneerIcon = ({ className }: { className?: string }) => (
+  <div className={cn("size-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden", className)}>
+    <img src="/bank-logos/payoneer.png" className="w-9 h-9 object-contain" alt="Payoneer" />
+  </div>
+)
+
+const BANK_LOGOS: Record<string, string> = {
+  'chase':           '/bank-logos/chase.png',
+  'bank of america': '/bank-logos/bofa.png',
+  'bofa':            '/bank-logos/bofa.png',
+  'wells fargo':     '/bank-logos/wellsfargo.png',
+  'citibank':        '/bank-logos/citibank.png',
+  'citi':            '/bank-logos/citibank.png',
+  'usaa':            '/bank-logos/usaa.png',
+  'td bank':         '/bank-logos/tdbank.png',
+  'regions':         '/bank-logos/regions.png',
+  'capital one':     '/bank-logos/capitalone.png',
+}
+
+function BankLogo({ bankName, size = 48 }: { bankName: string; size?: number }) {
+  const name = (bankName || '').toLowerCase()
+  const match = Object.entries(BANK_LOGOS).find(([key]) => name.includes(key))
+
+  if (match) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: 8, background: 'white',
+        border: '1px solid #E5E7EB', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
+      }}>
+        <img src={match[1]} alt={bankName} style={{ width: size * (name.includes('bank of america') || name.includes('bofa') ? 3 : 2), height: size * (name.includes('bank of america') || name.includes('bofa') ? 3 : 2), objectFit: 'contain' }} />
+      </div>
+    )
+  }
+
+  const initials = (bankName || 'BK').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 8, background: '#117ACA',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: 'white', fontWeight: 700, fontSize: size * 0.35, flexShrink: 0,
+    }}>
+      {initials}
+    </div>
+  )
+}
 // ─── Left Sidebar (reused from talent-dashboard, with Transactions active) ──
 
 export const TransactionsLeftSidebar = () => {
@@ -282,10 +333,163 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
   const comingSoon = (feature: string) => toast({ title: feature, description: "This feature is coming soon." })
 
+  // ── Deposit Methods state ──────────────────────────────────────
+  const [methods, setMethods] = React.useState<any[]>([])
+  const [methodsLoading, setMethodsLoading] = React.useState(true)
+  const [showAddMethod, setShowAddMethod] = React.useState(false)
+  const [editingMethod, setEditingMethod] = React.useState<any | null>(null)
+  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', nickname: '', bankConsent: false })
+  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'} | null>(null)
+  const [microAmounts, setMicroAmounts] = React.useState({amount1:'', amount2:''})
+
+  const fetchMethods = React.useCallback(async () => {
+    try {
+      setMethodsLoading(true)
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      const res = await fetch('http://localhost:3022/v1/deposit-methods', {
+        headers: { Authorization: 'Bearer ' + token }
+      })
+      if (res.ok) { const d = await res.json(); setMethods((d.methods ?? []).filter((m: any) => m.verificationStatus === 'verified')) }
+    } catch (e) { console.error('Failed to fetch deposit methods', e) }
+    finally { setMethodsLoading(false) }
+  }, [])
+
+  const handleAddMethod = async () => {
+    try {
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      const payload: any = { methodType: addForm.methodType }
+      if (addForm.methodType === 'BANK_MANUAL') {
+        payload.bankAccountName = addForm.bankAccountName
+        payload.bankAccountNumber = addForm.bankAccountNumber
+        payload.bankRoutingNumber = addForm.bankRoutingNumber
+        payload.bankCountry = addForm.bankCountry
+        payload.bankCurrency = 'USD'
+      } else if (addForm.methodType === 'PAYPAL') {
+        payload.paypalEmail = addForm.paypalEmail
+      }
+      if (addForm.methodType === 'BANK_MANUAL' && addForm.bankAccountName) payload.nickname = addForm.bankAccountName
+      else if (addForm.nickname) payload.nickname = addForm.nickname
+      const res = await fetch('http://localhost:3022/v1/deposit-methods', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(payload)
+      })
+      const data = await res.json()
+      if (res.ok) {
+        if (data.duplicate) {
+          toast({ title: 'Account already linked', description: 'This account is already connected.' })
+        } else {
+          const last4 = addForm.bankAccountNumber.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions' })
+          setShowAddMethod(false)
+        }
+      } else {
+        toast({ title: 'Error adding account', description: data.message ?? 'Please check your details and try again.', variant: 'destructive' })
+      }
+    } catch (e) { toast({ title: 'Error', description: 'Failed to add account', variant: 'destructive' }) }
+  }
+
+  const handleDeleteMethod = async (id: string) => {
+    try {
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      const res = await fetch('http://localhost:3022/v1/deposit-methods/' + id, {
+        method: 'DELETE', headers: { Authorization: 'Bearer ' + token }
+      })
+      if (res.ok) { toast({ title: 'Account removed successfully' }); fetchMethods() }
+      else { const e = await res.json(); toast({ title: 'Cannot remove account', description: e.message ?? 'Please try again', variant: 'destructive' }) }
+    } catch (e) { toast({ title: 'Error', description: 'Failed to remove account', variant: 'destructive' }) }
+  }
+
+  const handleSetDefault = async (id: string) => {
+    try {
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      const res = await fetch('http://localhost:3022/v1/deposit-methods/' + id + '/set-default', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token }
+      })
+      if (res.ok) { toast({ title: 'Default updated' }); fetchMethods() }
+      else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
+    } catch (e) { toast({ title: 'Error', description: 'Failed to update default', variant: 'destructive' }) }
+  }
+
+  const handleUpdateMethod = async () => {
+    if (!editingMethod) return
+    try {
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      const res = await fetch('http://localhost:3022/v1/deposit-methods/' + editingMethod.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ nickname: editingMethod.nickname ?? '' })
+      })
+      if (res.ok) { toast({ title: 'Account updated' }); setEditingMethod(null); fetchMethods() }
+      else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
+    } catch (e) { toast({ title: 'Error', description: 'Failed to update account', variant: 'destructive' }) }
+  }
+
+  const handleVerifyMicroDeposits = async () => {
+    if (!verifyState) return
+    setVerifyState(s => s ? {...s, step: 'verifying'} : null)
+    setMicroAmounts({ amount1: '', amount2: '' })
+    try {
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      const [res] = await Promise.all([
+        fetch('http://localhost:3022/v1/deposit-methods/' + verifyState.methodId + '/verify-micro-deposits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ amount1Cents: parseInt(microAmounts.amount1), amount2Cents: parseInt(microAmounts.amount2) })
+        }),
+        new Promise(r => setTimeout(r, 2000))
+      ])
+      if (res.ok) {
+        setVerifyState(s => s ? {...s, step: 'success'} : null)
+        fetchMethods()
+      } else {
+        await deleteMethod(verifyState.methodId)
+        setVerifyState(s => s ? {...s, step: 'failed'} : null)
+      }
+    } catch {
+      if (verifyState?.methodId) await deleteMethod(verifyState.methodId)
+      setVerifyState(s => s ? {...s, step: 'failed'} : null)
+    }
+  }
+
+  const deleteMethod = React.useCallback(async (methodId: string) => {
+    try {
+      const Cookies = (await import('js-cookie')).default
+      const token = Cookies.get('access_token') || Cookies.get('accessToken')
+      await fetch('http://localhost:3022/v1/deposit-methods/' + methodId, {
+        method: 'DELETE', headers: { Authorization: 'Bearer ' + token }
+      })
+    } catch {}
+  }, [])
+
+  const getMethodIcon = (m: any) => {
+    const type = typeof m === 'string' ? m : m?.methodType
+    if (type === 'PAYPAL') return <PaypalIcon className="size-5" />
+    if (type === 'CRYPTO') return <span className="size-5 text-gray-500 font-bold text-xs flex items-center">BTC</span>
+    const bankName = typeof m === 'object' ? (m?.nickname || '') : ''
+    if (bankName) return <BankLogo bankName={bankName} size={28} />
+    return <BankIcon className="size-5 text-gray-500" />
+  }
+
+  const getMethodLabel = (m: any) => {
+    if (m.methodType === 'PAYPAL') return { name: m.nickname || 'PayPal', sub: m.paypalEmail ?? '' }
+    if (m.methodType === 'CRYPTO') return { name: m.nickname || m.cryptoProvider || 'Crypto Wallet', sub: m.cryptoAddress ? m.cryptoAddress.slice(0,6)+'...'+m.cryptoAddress.slice(-4) : '' }
+    if (m.methodType === 'WISE') return { name: m.nickname || 'Wise', sub: m.wiseAccountId ?? '' }
+    if (m.methodType === 'PAYONEER') return { name: m.nickname || 'Payoneer', sub: m.payoneerPayeeId ?? '' }
+    // BANK_MANUAL / BANK_STRIPE — show nickname if set, else displayLabel
+    return { name: m.nickname ? `${m.nickname} ${m.displayLabel?.replace('Bank ', '') || ''}`.trim() : m.displayLabel || 'Bank Account', sub: '' }
+  }
+
+  const defaultMethod = methods.find(m => m.isDefault)
+
   useEffect(() => {
     getEarningsSummary().then(setSummary).catch(e => console.error("Earnings summary fetch failed:", e))
     getBalance().then(setBalance).catch(e => console.error("Balance fetch failed:", e))
-  }, [])
+    fetchMethods()
+  }, [fetchMethods])
 
   return (
     <div className="flex gap-6">
@@ -481,14 +685,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Button variant="link" visual="gray" size="sm" onClick={() => comingSoon("Edit Deposit Method")}>Edit</Button>
+                <Button variant="link" visual="gray" size="sm" onClick={() => defaultMethod && setEditingMethod({...defaultMethod})}>Edit</Button>
               </div>
-              <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
-                <BankIcon className="size-5 text-gray-500" />
-                <span className="text-sm font-medium text-dark-blue-400">Chase Bank</span>
-                <span className="text-sm text-gray-400">...4553</span>
-                <Badge visual="primary" size="sm" className="ml-auto">Default</Badge>
-              </div>
+              {methodsLoading ? (
+                <div className="h-10 bg-gray-100 rounded animate-pulse" />
+              ) : defaultMethod ? (
+                <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
+                  {getMethodIcon(defaultMethod)}
+                  <span className="text-sm font-medium text-dark-blue-400">{getMethodLabel(defaultMethod).name}</span>
+                  <span className="text-sm text-gray-400">{getMethodLabel(defaultMethod).sub}</span>
+                  <Badge visual="primary" size="sm" className="ml-auto">Default</Badge>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 text-center py-2">No deposit method set</div>
+              )}
             </div>
           </div>
 
@@ -522,42 +732,431 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </Tooltip>
               </TooltipProvider>
             </div>
-            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => comingSoon("Add Deposit Method")}>
+            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => setShowAddMethod(true)}>
               Add Deposit Method
             </Button>
           </div>
 
           <div className="space-y-3">
-            {/* Chase Bank */}
-            <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
-              <BankIcon className="size-5 text-gray-500" />
-              <span className="text-sm font-medium text-dark-blue-400">Chase Bank</span>
-              <span className="text-sm text-gray-400">...4553</span>
-              <Badge visual="primary" size="sm" className="ml-auto mr-2">Default</Badge>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Edit Account")}>
-                <Edit03 className="size-4" />
-              </IconButton>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Remove Account")}>
-                <Trash01 className="size-4" />
-              </IconButton>
-            </div>
-
-            {/* PayPal */}
-            <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
-              <PaypalIcon className="size-5" />
-              <span className="text-sm font-medium text-dark-blue-400">Paypal</span>
-              <span className="text-sm text-gray-400">C...123@e..m</span>
-              <Button variant="link" visual="gray" size="sm" className="ml-auto mr-2" onClick={() => comingSoon("Make Default")}>
-                Make Default
-              </Button>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Edit Account")}>
-                <Edit03 className="size-4" />
-              </IconButton>
-              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => comingSoon("Remove Account")}>
-                <Trash01 className="size-4" />
-              </IconButton>
-            </div>
+            {methodsLoading ? (
+              [...Array(2)].map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />)
+            ) : methods.length === 0 ? (
+              <div className="text-sm text-gray-400 text-center py-6">No connected accounts yet. Add one to receive payouts.</div>
+            ) : methods.map((m) => {
+              const { name, sub } = getMethodLabel(m)
+              return (
+                <div key={m.id} className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
+                  {getMethodIcon(m)}
+                  <span className="text-sm font-medium text-dark-blue-400">{name}</span>
+                  {sub && <span className="text-sm text-gray-400">{sub}</span>}
+                  {m.isDefault ? (
+                    <Badge visual="primary" size="sm" className="ml-auto mr-2">Default</Badge>
+                  ) : (
+                    <Button variant="link" visual="gray" size="sm" className="ml-auto mr-2" onClick={() => handleSetDefault(m.id)}>
+                      Make Default
+                    </Button>
+                  )}
+                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setEditingMethod({...m})}>
+                    <Edit03 className="size-4" />
+                  </IconButton>
+                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => handleDeleteMethod(m.id)}>
+                    <Trash01 className="size-4" />
+                  </IconButton>
+                </div>
+              )
+            })}
           </div>
+
+          {/* Verification Dialog */}
+          {verifyState && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                {verifyState.step === 'instructions' && (
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <button onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'BANK_MANUAL'})) }} className="text-gray-400 hover:text-gray-600"><ChevronLeft className="size-4" /></button>
+                      <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(false); fetchMethods() }}><X className="size-4" /></IconButton>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 p-6 text-center space-y-3">
+                      <h4 className="text-base font-semibold text-dark-blue-400">Please verify your bank account</h4>
+                      <p className="text-sm text-gray-500">We sent two deposits (between $0.01 and $0.99) to your account ending in <strong>{verifyState.displayLabel}</strong>. It can take up to two (2) business days for these deposits to arrive. Please log into your account to check the amounts sent from "Marketeq" and then click the "Verify Account" button below to enter the amounts received.</p>
+                      <p className="text-xs text-gray-400">If you have any questions or concerns, please reach us at <strong>support@marketeqdigital.com</strong> or call <strong>800-529-7465</strong></p>
+                    </div>
+                    <div className="flex items-center justify-between mt-4">
+                      <button className="text-sm text-primary-600 flex items-center gap-1" onClick={() => toast({ title: 'Use Instant Verification', description: 'Instant verification coming soon.' })}>⚡ Use Instant Verification</button>
+                      <div className="flex gap-2">
+                        <Button variant="outlined" visual="gray" size="sm" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'BANK_MANUAL'})) }}>← Back</Button>
+                        <Button variant="filled" visual="primary" size="sm" onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>Verify Account</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {verifyState.step === 'amounts' && (
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <button onClick={() => setVerifyState(s => s ? {...s, step: 'instructions'} : null)} className="text-gray-400 hover:text-gray-600"><ChevronLeft className="size-4" /></button>
+                      <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(null)}><X className="size-4" /></IconButton>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 p-6 space-y-4">
+                      <h4 className="text-base font-semibold text-dark-blue-400 text-center">Please verify your bank account</h4>
+                      <p className="text-sm text-gray-500 text-center">Enter the two micro deposit amounts we sent to your account ending in <strong>{verifyState.displayLabel}</strong>. The deposits are sent from "Marketeq".</p>
+                      {process.env.NODE_ENV === 'development' && <p className="text-xs text-primary-500 bg-primary-50 rounded px-2 py-1 text-center">Dev mode: check DB for amounts — <code>SELECT amount_1_cents, amount_2_cents FROM deposit_method_verification ORDER BY created_at DESC LIMIT 1;</code></p>}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">1st Deposit</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 7 (cents)" value={microAmounts.amount1} onChange={e => setMicroAmounts(a => ({...a, amount1: e.target.value}))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">2nd Deposit</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 39 (cents)" value={microAmounts.amount2} onChange={e => setMicroAmounts(a => ({...a, amount2: e.target.value}))} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setVerifyState(null)}>Cancel</Button>
+                      <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={handleVerifyMicroDeposits} disabled={!microAmounts.amount1.trim() || !microAmounts.amount2.trim()}>Submit</Button>
+                    </div>
+                  </div>
+                )}
+                {verifyState.step === 'verifying' && (
+                  <div className="p-8 text-center space-y-4">
+                    <div className="flex flex-col items-center gap-1">
+                      <BankLogo bankName={verifyState.bankName} size={80} />
+                      <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName || 'Your Bank'}</span>
+                    </div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">Verifying Your Account...</h4>
+                    <div className="flex justify-center"><div className="size-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>
+                    <p className="text-sm text-gray-400">We're verifying your bank account. This may take up to 30 seconds.</p>
+                  </div>
+                )}
+                {verifyState.step === 'success' && (
+                  <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(null)}><X className="size-4" /></IconButton>
+                    </div>
+                    <div className="text-center py-4 space-y-3">
+                      <div className="flex flex-col items-center gap-1">
+                        <BankLogo bankName={verifyState.bankName} size={80} />
+                        <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName || 'Your Bank'}</span>
+                      </div>
+                      <h4 className="text-base font-semibold text-dark-blue-400">Your bank account has been verified.</h4>
+                      <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3">
+                        <BankIcon className="size-5 text-gray-500" />
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName ? `${verifyState.bankName} ${verifyState.displayLabel}` : verifyState.displayLabel}</span>
+                          <span className="text-xs text-gray-400">{addForm?.bankAccountType ? (addForm.bankAccountType.charAt(0).toUpperCase() + addForm.bankAccountType.slice(1)) + ' Account' : 'Checking Account'}</span>
+                        </div>
+                        <Badge visual="success" size="sm" className="ml-auto">Verified</Badge>
+                      </div>
+                    </div>
+                    <Button variant="filled" visual="primary" size="sm" className="w-full" onClick={async () => { await handleSetDefault(verifyState.methodId); setVerifyState(null) }}>Set As Default Deposit Method</Button>
+                    <Button variant="outlined" visual="gray" size="sm" className="w-full" onClick={() => { setVerifyState(null); fetchMethods() }}>← Back to Deposit Methods</Button>
+                  </div>
+                )}
+                {verifyState.step === 'failed' && (
+                  <div className="p-6 text-center space-y-4">
+                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><span className="text-warning-600 text-2xl">⚠</span></div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">Verification Failed</h4>
+                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. Please check your deposit amounts and try again.</p>
+                    <div className="flex gap-2">
+                      <button className="flex-1 text-sm text-gray-500 hover:text-gray-700" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>↺ Retry</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Add Method Dialog — multi-step */}
+          {showAddMethod && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', nickname: '', bankConsent: false }); }}>
+              <div className="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                {/* Step 1: Pick method */}
+                {!addForm.methodType || addForm.methodType === 'PICK' ? (
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-base font-semibold text-dark-blue-400">Add Deposit Method</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-4">Securely connect your payout account to receive earnings.</p>
+                    <div className="space-y-2">
+                      {[
+                        { type: 'BANK_CONNECT', label: 'Direct Deposit to U.S. Bank', sub: 'Transfer reflects in 1–2 business days · Charges $0–$1 per transaction', icon: <BankIcon className="size-6 text-gray-500" /> },
+                        { type: 'PAYPAL', label: 'PayPal', sub: 'Transfer reflects in 1–2 business days · Charges $0–$1 per transaction', icon: <PaypalIcon className="size-6" /> },
+                        { type: 'WISE', label: 'Wise', sub: 'Transfer in 1–3 business days · Charges flat $1–$2 per withdrawal', icon: <WiseIcon className="size-6" /> },
+                        { type: 'PAYONEER', label: 'Payoneer', sub: 'Transfer in 1–3 business days · Often free or $1–$2', icon: <PayoneerIcon className="size-6" /> },
+                        { type: 'CRYPTO', label: 'Crypto Wallet', sub: 'Transfer time varies (blockchain dependent) · Network gas fees may apply', icon: <div className="size-6 rounded-lg bg-gray-100 flex items-center justify-center"><svg viewBox="0 0 24 24" style={{width:'16px',height:'16px'}} fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="#6B7280" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="12" r="2" fill="#6B7280"/></svg></div> },
+                        { type: 'MARKETEQ_DEBIT_CARD', label: 'Marketeq Debit Card', sub: 'Instant transfer · No processing fee', icon: <div className="size-6 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 22" style={{width:'20px',height:'12px'}}><path fill="#306CFE" d="M33.073 21.724c-1.368 0-2.578-.714-3.905-1.587a5.045 5.045 0 0 0-5.479-.048c-1.344.794-2.672 1.667-4.229 1.667h-.49a4.826 4.826 0 0 1-3.138-1.199 4.864 4.864 0 0 1-1.605-2.96l-.024-.683a5.057 5.057 0 0 1 .633-2.382l1.897-3.334 1.186 2.088-1.344 2.286a2.747 2.747 0 0 0 1.017 3.715c.412.239.879.364 1.354.366h.561c2.032-.04 3.336-2.382 6.886-2.382 3.415 0 4.743 2.421 6.64 2.421a2.364 2.364 0 0 0 2.109-1.158 2.388 2.388 0 0 0 .017-2.414L28.117 3.697a2.749 2.749 0 0 0-2.372-1.37 2.734 2.734 0 0 0-2.371 1.37l-2.846 4.93-1.186-2.08 2.198-3.874a4.818 4.818 0 0 1 1.76-1.776 4.79 4.79 0 0 1 6.58 1.776l7.043 12.391a4.467 4.467 0 0 1-1.638 6.066 4.42 4.42 0 0 1-2.211.594Z"/><path fill="#306CFE" d="M22.939 15.469c-.134-.318-7.186-12.702-7.233-12.773A4.816 4.816 0 0 0 13.946.92a4.791 4.791 0 0 0-6.58 1.776L.607 14.532A4.819 4.819 0 0 0 .655 19.3 4.792 4.792 0 0 0 2.4 21.038c.722.417 1.54.637 2.373.638h.498c1.581 0 2.885-.865 4.23-1.667a5.15 5.15 0 0 1 3.952-.58 6.173 6.173 0 0 1-.553-2.206 7.263 7.263 0 0 0-4.396.96c-6.031 3.51-7.114-.857-6.134-2.659L9.12 3.617a2.749 2.749 0 0 1 2.372-1.37 2.734 2.734 0 0 1 2.372 1.37l4.743 8.311.727 1.286c1.415 2.524 1.898 3.112 1.898 3.85.027.169.027.34 0 .508a12.14 12.14 0 0 1 2.039-1.08 4.435 4.435 0 0 0-.332-1.023Z" opacity="0.5"/></svg></div> },
+                      ].map(opt => (
+                        <div key={opt.type} className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 hover:border-primary-300 cursor-pointer" onClick={() => setAddForm(f => ({...f, methodType: opt.type}))}>
+                          {opt.icon}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-dark-blue-400">{opt.label}</p>
+                            <p className="text-xs text-gray-400">{opt.sub}</p>
+                          </div>
+                          <Button variant="outlined" visual="gray" size="sm" onClick={e => { e.stopPropagation(); setAddForm(f => ({...f, methodType: opt.type})) }}>Setup</Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : addForm.methodType === 'BANK_CONNECT' ? (
+                  /* Step 2: Connect your bank account — bank picker grid */
+                  <div className="p-6">
+                    <div className="flex items-center gap-2 mb-2">
+                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></button>
+                      <h3 className="text-base font-semibold text-dark-blue-400">Connect your bank account</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''})); }}><X className="size-4" /></IconButton>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-4">Securely link your bank with Stripe connect. For all account types, it may take up to 3 days to activate</p>
+
+                    {!(addForm as any)._selectedBank ? (
+                      <>
+                        {/* Search */}
+                        <div className="relative mb-4">
+                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                          <input
+                            className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm"
+                            placeholder="Find your bank"
+                            value={(addForm as any)._bankSearch || ''}
+                            onChange={e => setAddForm(f => ({...f, _bankSearch: e.target.value} as any))}
+                          />
+                        </div>
+
+                        {/* Bank grid */}
+                        <div className="grid grid-cols-4 gap-2 mb-4">
+                          {[
+                            { name: 'Chase', logo: '/bank-logos/chase.png' },
+                            { name: 'Bank of America', logo: '/bank-logos/bofa.png' },
+                            { name: 'Wells Fargo', logo: '/bank-logos/wellsfargo.png' },
+                            { name: 'Citibank', logo: '/bank-logos/citibank.png' },
+                            { name: 'USAA', logo: '/bank-logos/usaa.png' },
+                            { name: 'TD Bank', logo: '/bank-logos/tdbank.png' },
+                            { name: 'Regions', logo: '/bank-logos/regions.png' },
+                            { name: 'Capital One', logo: '/bank-logos/capitalone.png' },
+                          ]
+                            .filter(b => !(addForm as any)._bankSearch || b.name.toLowerCase().includes(((addForm as any)._bankSearch || '').toLowerCase()))
+                            .map(bank => (
+                              <div
+                                key={bank.name}
+                                className="flex items-center justify-center border border-gray-200 rounded-lg p-4 h-24 cursor-pointer hover:border-primary-400 hover:shadow-sm transition-all"
+                                onClick={() => setAddForm(f => ({...f, _selectedBank: bank.name, bankAccountName: bank.name} as any))}
+                              >
+                                <img src={bank.logo} alt={bank.name} className="max-w-full max-h-full object-contain" style={{ width: '90%', height: '90%' }} />
+                              </div>
+                            ))}
+                        </div>
+
+                        {/* Bottom actions */}
+                        <div className="flex items-center justify-between mt-4">
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_MANUAL'}))}>
+                            <BankIcon className="size-4" /> Add my bank account manually
+                          </button>
+                          <div className="flex gap-2">
+                            <Button variant="outlined" visual="gray" size="sm" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Cancel</Button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* Simulated Stripe Connect login iframe */}
+                        <div className="border border-gray-200 rounded-lg p-6 bg-gray-50 space-y-4">
+                          <div className="flex justify-center mb-2">
+                            <BankLogo bankName={(addForm as any)._selectedBank} size={48} />
+                          </div>
+                          <p className="text-center text-sm font-medium text-dark-blue-400">{(addForm as any)._selectedBank}</p>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Username</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder="Username" value={(addForm as any)._stripeUser || ''} onChange={e => setAddForm(f => ({...f, _stripeUser: e.target.value} as any))} />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Password</label>
+                            <input type="password" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder="Password" value={(addForm as any)._stripePass || ''} onChange={e => setAddForm(f => ({...f, _stripePass: e.target.value} as any))} />
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" className="accent-primary-600" /> Remember me</label>
+                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" className="accent-primary-600" /> Use token</label>
+                          </div>
+                          <Button variant="filled" visual="primary" size="sm" className="w-full" disabled={!(addForm as any)._stripeUser?.trim() || !(addForm as any)._stripePass?.trim()} onClick={async () => {
+                            // Simulate Stripe verification — create the account via payout-service and auto-verify
+                            const bankName = (addForm as any)._selectedBank
+                            setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
+                            setShowAddMethod(false)
+                            // Generate a random account number for the simulated Stripe-connected account
+                            const fakeAcct = Math.floor(1000000000 + Math.random() * 9000000000).toString()
+                            const last4 = fakeAcct.slice(-4)
+                            setVerifyState({ methodId: '', displayLabel: `••••${last4}`, bankName, step: 'verifying' })
+                            try {
+                              const Cookies = (await import('js-cookie')).default
+                              const token = Cookies.get('access_token') || Cookies.get('accessToken')
+                              // Create and auto-verify in one step
+                              const res = await fetch('http://localhost:3022/v1/deposit-methods', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                                body: JSON.stringify({
+                                  methodType: 'BANK_MANUAL',
+                                  bankAccountName: bankName,
+                                  bankAccountNumber: fakeAcct,
+                                  bankRoutingNumber: '021000021',
+                                  bankCountry: 'US',
+                                  bankCurrency: 'USD',
+                                  nickname: bankName,
+                                })
+                              })
+                              const data = await res.json()
+                              if (res.ok && data.depositMethodId) {
+                                // Auto-verify: read the micro-deposit amounts from DB and submit them
+                                await new Promise(r => setTimeout(r, 1500))
+                                const vRes = await fetch('http://localhost:3022/v1/deposit-methods/' + data.depositMethodId + '/verification-amounts', {
+                                  headers: { Authorization: 'Bearer ' + token },
+                                })
+                                if (vRes.ok) {
+                                  const vData = await vRes.json()
+                                  await fetch('http://localhost:3022/v1/deposit-methods/' + data.depositMethodId + '/verify-micro-deposits', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                                    body: JSON.stringify({ amount1Cents: vData.amount1Cents, amount2Cents: vData.amount2Cents })
+                                  })
+                                }
+                                await new Promise(r => setTimeout(r, 500))
+                                setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? `••••${last4}`, bankName, step: 'success' })
+                                fetchMethods()
+                              } else {
+                                setVerifyState(s => s ? {...s, step: 'failed'} : null)
+                              }
+                            } catch {
+                              setVerifyState(s => s ? {...s, step: 'failed'} : null)
+                            }
+                          }}>Sign in</Button>
+                          <div className="text-center space-y-1">
+                            <button className="text-xs text-primary-600 hover:text-primary-700">Forgot username/password? ›</button>
+                            <br />
+                            <button className="text-xs text-primary-600 hover:text-primary-700">Not Enrolled? Sign Up Now. ›</button>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, _selectedBank: ''} as any))}>← Back</Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : addForm.methodType === 'BANK_MANUAL' ? (
+                  /* Step 2a: Bank manual form — keep existing */
+                  <div className="p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></button>
+                      <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Country</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={addForm.bankCountry} onChange={e => setAddForm(f => ({...f, bankCountry: e.target.value}))}>
+                          <option value="US">🇺🇸 United States</option>
+                          <option value="GB">🇬🇧 United Kingdom</option>
+                          <option value="IN">🇮🇳 India</option>
+                          <option value="CA">🇨🇦 Canada</option>
+                          <option value="AU">🇦🇺 Australia</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank of America" value={addForm.bankAccountName} onChange={e => setAddForm(f => ({...f, bankAccountName: e.target.value}))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={addForm.nickname} onChange={e => setAddForm(f => ({...f, nickname: e.target.value}))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Account Type</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={addForm.accountType} onChange={e => setAddForm(f => ({...f, accountType: e.target.value}))}>
+                          <option value="">Select</option>
+                          <option value="CHECKING">Checking</option>
+                          <option value="SAVINGS">Savings</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={addForm.bankAccountNumber} onChange={e => setAddForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Bank Routing Number</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="xxxx-xxxx-x" value={addForm.bankRoutingNumber} onChange={e => setAddForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
+                      </div>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
+                        <span className="text-xs text-gray-400">By linking your bank account, you authorize Marketeq to initiate direct deposit (ACH) payments to your account. You acknowledge that all transfers will comply with applicable U.S. laws and banking regulations.</span>
+                      </label>
+                    </div>
+                    <div className="flex gap-2 mt-5">
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}>Cancel</Button>
+                      <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={handleAddMethod} disabled={!addForm.bankAccountName.trim() || !addForm.bankAccountNumber.trim() || !addForm.bankRoutingNumber.trim() || !addForm.bankConsent}>Save</Button>
+                    </div>
+                  </div>
+                ) : addForm.methodType === 'PAYPAL' ? (
+                  /* Step 2b: PayPal */
+                  <div className="p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
+                      <h3 className="text-base font-semibold text-dark-blue-400">Connect PayPal</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    </div>
+                    <div className="flex flex-col items-center py-4 gap-3">
+                      <PaypalIcon className="size-12" />
+                      <p className="text-sm text-gray-500 text-center">You'll be redirected to PayPal to securely connect your account.</p>
+                      <p className="text-xs text-gray-400 text-center">By connecting your account, you authorize Marketeq to send deposits to your linked PayPal account.</p>
+                    </div>
+                    <div className="space-y-3 mb-4">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">PayPal Email (dev mode)</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="your@paypal.com" value={addForm.paypalEmail} onChange={e => setAddForm(f => ({...f, paypalEmail: e.target.value}))} />
+                      </div>
+                    </div>
+                    <Button variant="filled" visual="primary" size="sm" className="w-full" onClick={handleAddMethod}>Continue To PayPal</Button>
+                    <button className="w-full text-center text-xs text-gray-400 mt-2 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</button>
+                  </div>
+                ) : (
+                  /* Step 2c: Other (Wise/Payoneer/Crypto) */
+                  <div className="p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
+                      <h3 className="text-base font-semibold text-dark-blue-400">Connect {addForm.methodType.charAt(0) + addForm.methodType.slice(1).toLowerCase()}</h3>
+                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    </div>
+                    <p className="text-sm text-gray-500 text-center py-6">You'll be redirected to {addForm.methodType.charAt(0) + addForm.methodType.slice(1).toLowerCase()} to securely connect your account.</p>
+                    <Button variant="filled" visual="primary" size="sm" className="w-full" onClick={handleAddMethod}>Continue To {addForm.methodType.charAt(0) + addForm.methodType.slice(1).toLowerCase()}</Button>
+                    <button className="w-full text-center text-xs text-gray-400 mt-2 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Edit Method Dialog */}
+          {editingMethod && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingMethod(null)}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Edit Account</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Account</label>
+                    <p className="text-sm font-medium text-dark-blue-400">{editingMethod.displayLabel}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Nickname (optional)</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. My Chase Savings" value={editingMethod.nickname ?? ''} onChange={e => setEditingMethod((m: any) => ({...m, nickname: e.target.value}))} />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-5">
+                  <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setEditingMethod(null)}>Cancel</Button>
+                  <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={handleUpdateMethod}>Save Changes</Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1288,14 +1887,18 @@ export const EarningsTab = () => {
           <TableHeader>
             <TableRow>
               <TableHead className="cursor-pointer">
-                Date <ArrowDown className="size-3 inline ml-1" />
+                {viewMode === "weekly" ? "Week Range" : viewMode === "monthly" ? "Month" : "Date"}{" "}
+                <ArrowDown className="size-3 inline ml-1" />
               </TableHead>
               <TableHead>Project</TableHead>
-              <TableHead>Task</TableHead>
-              <TableHead>Start Time</TableHead>
-              <TableHead>End Time</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead>Earnings</TableHead>
+              {viewMode === "daily" && <TableHead>Task</TableHead>}
+              {viewMode === "daily" && <TableHead>Start Time</TableHead>}
+              {viewMode === "daily" && <TableHead>End Time</TableHead>}
+              {viewMode === "daily" && <TableHead>Duration</TableHead>}
+              {viewMode === "weekly" && <TableHead>Weekly Hours</TableHead>}
+              {viewMode === "monthly" && <TableHead>Total Hours</TableHead>}
+              <TableHead>{viewMode === "weekly" ? "Weekly Earnings" : viewMode === "monthly" ? "Total Earnings" : "Earnings"}</TableHead>
+              {viewMode === "weekly" && <TableHead>Budget</TableHead>}
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -1326,18 +1929,21 @@ export const EarningsTab = () => {
                     </div>
                   ) : <span className="text-sm text-gray-400">—</span>}
                 </TableCell>
-                <TableCell className="text-sm text-gray-500">{row.task?.name ?? "—"}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.startTime ?? "—"}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.endTime ?? "—"}</TableCell>
-                <TableCell className="text-sm text-gray-500">{row.durationLabel}</TableCell>
+                {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.task?.name ?? "—"}</TableCell>}
+                {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.startTime ?? "—"}</TableCell>}
+                {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.endTime ?? "—"}</TableCell>}
+                {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.durationLabel}</TableCell>}
+                {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.weeklyHours ?? "—"}</TableCell>}
+                {viewMode === "monthly" && <TableCell className="text-sm text-gray-500">{row.totalHours ?? "—"}</TableCell>}
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">${row.netAmountDisplay ?? row.netAmount}</span>
+                    <span className="text-sm text-gray-500">${viewMode === "weekly" ? (row.weeklyEarnings ? parseFloat(String(row.weeklyEarnings)).toFixed(2) : "—") : viewMode === "monthly" ? (row.totalEarnings ? parseFloat(String(row.totalEarnings)).toFixed(2) : "—") : (row.netAmountDisplay ?? row.netAmount)}</span>
                     {row.status === "paid" && <Badge visual="success" size="sm">Paid</Badge>}
-                      {row.status === "confirmed" && <Badge visual="primary" size="sm">Confirmed</Badge>}
+                    {row.status === "confirmed" && <Badge visual="primary" size="sm">Confirmed</Badge>}
                     {row.status === "failed" && <Badge visual="error" size="sm">Reversed</Badge>}
                   </div>
                 </TableCell>
+                {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.budget ?? "—"}</TableCell>}
                 <TableCell>
                   <div className="flex items-center gap-1">
                     {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}

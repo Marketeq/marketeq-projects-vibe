@@ -5,16 +5,19 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
+import * as fs from 'fs';
+import * as path from 'path';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(
-    private readonly config: ConfigService,
-    private readonly reflector: Reflector,
-  ) {}
+  private readonly publicKey: string;
+
+  constructor(private readonly reflector: Reflector) {
+    const keyPath = path.resolve(process.cwd(), '..', 'public.pem');
+    this.publicKey = fs.readFileSync(keyPath, 'utf8');
+  }
 
   canActivate(context: ExecutionContext): boolean {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -25,16 +28,12 @@ export class JwtAuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
-
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing or invalid authorization header');
     }
-
     const token = authHeader.split(' ')[1];
-
     try {
-      const secret = this.config.getOrThrow('JWT_SECRET');
-      const decoded = jwt.verify(token, secret) as any;
+      const decoded = jwt.verify(token, this.publicKey, { algorithms: ['RS256'] }) as any;
       request.user = {
         userId: decoded.sub || decoded.id,
         email: decoded.email,

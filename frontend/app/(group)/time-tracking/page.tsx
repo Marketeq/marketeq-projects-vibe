@@ -1035,7 +1035,7 @@ function TransferTimeDialog({
     }
     setLoadingTasks(true)
     setTargetTask("")
-    fetch(`http://localhost:3017/api/api/tasks/contract/${encodeURIComponent(targetContract)}`)
+    fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/tasks/contract/${encodeURIComponent(targetContract)}`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -1213,7 +1213,7 @@ function TimeTrackingSettingsDialog({
   useEffect(() => {
     if (!open) return
     if (!isClient) {
-      fetch("http://localhost:3017/api/settings/preferences", {
+      fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/preferences`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       })
         .then((r) => r.ok ? r.json() : null)
@@ -1232,7 +1232,7 @@ function TimeTrackingSettingsDialog({
   // Fetch admin settings when contract changes
   useEffect(() => {
     if (!open || !isClient || !selectedContract) return
-    fetch(`http://localhost:3017/api/settings/admin/${selectedContract}`, {
+    fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/admin/${selectedContract}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
       .then((r) => r.ok ? r.json() : null)
@@ -1253,7 +1253,7 @@ function TimeTrackingSettingsDialog({
     setSaving(true)
     try {
       const token = getToken()
-      const res = await fetch("http://localhost:3017/api/settings/preferences", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/preferences`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ timezone, dateFormat, startOfWeek, timeFormat }),
@@ -1272,7 +1272,7 @@ function TimeTrackingSettingsDialog({
     setSaving(true)
     try {
       const token = getToken()
-      const res = await fetch(`http://localhost:3017/api/settings/admin/${selectedContract}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/admin/${selectedContract}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ allowDelete, allowBlur, autoApproveBlur, allowReassign, deletedNonBillable, blurredBillable }),
@@ -3058,7 +3058,7 @@ export default function TimeTrackingPage() {
     const loadPrefs = async () => {
       try {
         const token = (() => { try { const C = require("js-cookie"); return C.get("access_token") || C.get("accessToken") || localStorage.getItem("access_token") || "" } catch { return localStorage.getItem("access_token") || "" } })()
-        const res = await fetch("http://localhost:3017/api/settings/preferences", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/preferences`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (res.ok) {
@@ -3146,7 +3146,7 @@ export default function TimeTrackingPage() {
       const Cookies = require("js-cookie")
       token = Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("access_token") || localStorage.getItem("token") || ""
     } catch { token = localStorage.getItem("access_token") || localStorage.getItem("token") || "" }
-    fetch(`http://localhost:3017/api/settings/admin/${contractFilter}`, {
+    fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/admin/${contractFilter}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.ok ? r.json() : null)

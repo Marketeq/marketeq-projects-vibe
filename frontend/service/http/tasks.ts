@@ -1,6 +1,6 @@
 import axios from "axios"
 
-const TTS_BASE = "http://localhost:3017/api"
+const TTS_BASE = process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"
 const ttsClient = {
   get: (url: string) => axios.get(`${TTS_BASE}${url}`),
   post: (url: string, data: any) => axios.post(`${TTS_BASE}${url}`, data),

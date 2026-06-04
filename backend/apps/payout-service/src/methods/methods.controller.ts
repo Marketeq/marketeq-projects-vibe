@@ -72,6 +72,12 @@ export class MethodsController {
     return this.stripeProvider.restartStripeFC(req.user.userId, body.oldMethodId);
   }
 
+  @Get(':id/verification-amounts')
+  @HttpCode(200)
+  async verificationAmounts(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.microDepositSvc.getVerificationAmounts(req.user.userId, id);
+  }
+
   @Post(':id/verify-micro-deposits')
   @HttpCode(200)
   async verifyMicroDeposits(

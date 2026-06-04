@@ -101,7 +101,7 @@ export const bulkTransferScreenshots = async (
   const Cookies = (await import("js-cookie")).default
   const token = Cookies.get("access_token") || Cookies.get("accessToken")
   const res = await axios.patch(
-    "http://localhost:3017/api/screenshots/batch/meta",
+    `${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/screenshots/batch/meta`,
     {
       ids,
       contractId,

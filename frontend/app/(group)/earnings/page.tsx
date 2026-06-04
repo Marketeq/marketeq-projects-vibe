@@ -37,13 +37,11 @@ export default function TransactionsPage() {
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
 
   const handleExport = useCallback(
-    (format: "csv" | "pdf") => {
+    async (format: "csv" | "pdf") => {
       toast({ title: `${format.toUpperCase()} export started`, description: 'Your file will download shortly.' })
-      const token =
-        document.cookie.split('; ').find(r => r.startsWith('access_token='))?.split('=')[1] ||
-        localStorage.getItem('access_token') ||
-        localStorage.getItem('token') || ''
-      const url = `http://localhost:3026/v1/earnings/export?format=${format}&currency=USD`
+      const { getAccessToken } = await import('@/utils/auth')
+      const token = getAccessToken() ?? ''
+      const url = `${process.env.NEXT_PUBLIC_EARNINGS_SERVICE_URL ?? "http://localhost:3026/v1"}/earnings/export?format=${format}&currency=USD`
       fetch(url, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.blob())
         .then(blob => {
