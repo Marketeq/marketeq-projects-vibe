@@ -89,7 +89,7 @@ async function checkBackendHealth() {
   console.log(`  ${INFO} Pinging ${backendBase}/health`)
 
   try {
-    const { response, body } = await request(`${backendBase}/health`)
+    const { response } = await request(`${backendBase}/health`)
     if (response.ok) {
       record("API Gateway health", true, `status=${response.status}`)
     } else {
