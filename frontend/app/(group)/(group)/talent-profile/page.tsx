@@ -10,13 +10,15 @@ import React, {
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
+import { ClientAPI } from "@/service/http/client"
+import { getCertificationBrandFromUrl } from "@/src/lib/certification-brand"
 import { getCurrentUser } from "@/utils/auth"
 import { getComputedStyle } from "@/utils/dom-utils"
 import { cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
-  AlertCircle,
   ArrowRight,
+  Briefcase,
   Check,
   CheckCircle,
   ChevronDown,
@@ -31,6 +33,8 @@ import {
   MarkerPin02,
   MessageSquare01,
   MessageTextSquare01,
+  Monitor,
+  PackagePlus,
   Plus,
   Plus2,
   RefreshCw,
@@ -41,6 +45,7 @@ import {
   Share07,
   Star,
   Trash03,
+  Upload,
   User,
   X,
   XCircle,
@@ -60,7 +65,6 @@ import {
   IndustryExpertiseDialog,
   LanguagesDialog,
   MoreInfoDialog,
-  MyOffersDialog,
   SkillsDialog,
   WorkExperienceDialog,
 } from "@/components/edit-profile-modals"
@@ -97,8 +101,6 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
@@ -110,6 +112,7 @@ import {
   Favorite,
   FavoriteRoot,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftElement,
@@ -480,6 +483,24 @@ function Default() {
       .catch(() => {})
   }, [profile?.id])
 
+  const handleAvatarUpload = useCallback(
+    async (file: File) => {
+      await ClientAPI.UploadAvatar(file)
+      refreshProfile()
+    },
+    [refreshProfile]
+  )
+
+  const handleRemoveAvatar = useCallback(async () => {
+    if (!profile?.id) return
+    try {
+      await UserAPI.updateProfile(profile.id, { avatarUrl: "" })
+      refreshProfile()
+    } catch {
+      /* noop */
+    }
+  }, [profile?.id, refreshProfile])
+
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: "experience" | "education"
     id: string
@@ -495,7 +516,7 @@ function Default() {
       setDeleteConfirm({
         type: "experience",
         id: expId,
-        label: exp?.title || "this work experience",
+        label: exp?.title || "",
       })
     },
     [profile?.experience]
@@ -509,7 +530,7 @@ function Default() {
       setDeleteConfirm({
         type: "education",
         id: eduId,
-        label: edu?.school || "this education",
+        label: edu?.school || "",
       })
     },
     [profile?.education]
@@ -538,7 +559,16 @@ function Default() {
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [overviewOpen, setOverviewOpen] = useState(false)
-  const [offersOpen, setOffersOpen] = useState(false)
+  const [listingsModalStep, setListingsModalStep] = useState<
+    "closed" | "empty" | "chooser"
+  >("closed")
+  const goToPublishProject = useCallback(
+    (type: "project" | "service") => {
+      setListingsModalStep("closed")
+      router.push(`/publish-project?type=${type}`)
+    },
+    [router]
+  )
   const [jobTitleOpen, setJobTitleOpen] = useState(false)
   const [languagesOpen, setLanguagesOpen] = useState(false)
   const [industriesOpen, setIndustriesOpen] = useState(false)
@@ -547,7 +577,9 @@ function Default() {
   const [educationOpen, setEducationOpen] = useState(false)
   const [workExpEditIdx, setWorkExpEditIdx] = useState<string | undefined>()
   const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
+  const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
+  const [featuredTab, setFeaturedTab] = useState("Featured Clients")
 
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
@@ -800,19 +832,86 @@ function Default() {
             ) : (
               <>
                 <div className="p-10 flex items-start gap-x-10">
-                  <Avatar className="size-[318px]">
-                    <AvatarImage
-                      src={profile?.avatarUrl ?? ""}
-                      alt={profile?.firstName ?? "User"}
-                    />
-                    <AvatarFallback>
-                      <span className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-7xl font-semibold text-gray-300">
-                        {`${profile?.firstName?.charAt(0) ?? ""}${
-                          profile?.lastName?.charAt(0) ?? ""
-                        }`.toUpperCase() || "?"}
-                      </span>
-                    </AvatarFallback>
-                  </Avatar>
+                  {(() => {
+                    const initials =
+                      `${profile?.firstName?.charAt(0) ?? ""}${
+                        profile?.lastName?.charAt(0) ?? ""
+                      }`.toUpperCase() || "?"
+                    const renderAvatar = (
+                      src: string | null,
+                      style?: Record<string, string | number>
+                    ) => (
+                      <Avatar className="size-[318px]">
+                        <AvatarImage
+                          src={src ?? ""}
+                          alt={profile?.firstName ?? "User"}
+                          style={style}
+                        />
+                        <AvatarFallback>
+                          <span className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-7xl font-semibold text-gray-300">
+                            {initials}
+                          </span>
+                        </AvatarFallback>
+                      </Avatar>
+                    )
+
+                    if (!(isOwnProfile && isEditMode)) {
+                      return renderAvatar(profile?.avatarUrl ?? null)
+                    }
+
+                    return (
+                      <ImageEditor
+                        variant="avatar"
+                        editDialogTitle="Edit Profile Image"
+                        defaultDataUrl={profile?.avatarUrl ?? null}
+                        fallbackInitials={initials}
+                        onSaveImage={handleAvatarUpload}
+                        startingPoint={({ open }) => {
+                          const hasImage = Boolean(profile?.avatarUrl)
+                          return (
+                            <div className="group relative size-[318px] shrink-0">
+                              {renderAvatar(profile?.avatarUrl ?? null)}
+                              <div className="absolute inset-0 rounded-full flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+                                {hasImage ? (
+                                  <>
+                                    <IconButton
+                                      type="button"
+                                      variant="filled"
+                                      visual="gray"
+                                      className="rounded-full bg-white text-error-500 hover:bg-error-50"
+                                      onClick={() => handleRemoveAvatar()}
+                                    >
+                                      <Trash03 className="size-5" />
+                                    </IconButton>
+                                    <IconButton
+                                      type="button"
+                                      variant="filled"
+                                      visual="gray"
+                                      className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
+                                      onClick={open}
+                                    >
+                                      <Edit03 className="size-5" />
+                                    </IconButton>
+                                  </>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="filled"
+                                    visual="gray"
+                                    className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
+                                    onClick={open}
+                                  >
+                                    <Upload className="size-[15px]" /> Upload
+                                    Image
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        }}
+                      />
+                    )
+                  })()}
 
                   <div className="flex-auto">
                     <div className="flex items-start">
@@ -1040,79 +1139,91 @@ function Default() {
                   </div>
                 </div>
 
-                <div className="py-3 px-8 border-t border-gray-200 grid grid-cols-5 divide-x divide-gray-200 bg-[#122A4B]/[.02]">
-                  <div className="flex gap-x-2 justify-center items-center">
-                    <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                      Rate
-                    </span>
-                    <span className="text-xl font-bold leading-none text-dark-blue-400">
-                      {profile?.rateMin || profile?.rateMax ? (
-                        <>
-                          {profile.rateMin &&
-                          profile.rateMax &&
-                          Math.round(profile.rateMin) !==
-                            Math.round(profile.rateMax)
-                            ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
-                            : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
-                          <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                            /hr
-                          </span>
-                        </>
-                      ) : (
-                        "Unknown"
+                <div className="py-3 px-8 border-t border-gray-200 flex items-center justify-between gap-x-8 bg-[#122A4B]/[.02]">
+                  <div className="flex items-center gap-x-10">
+                    <div className="flex gap-x-2 items-center">
+                      <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                        Rate
+                      </span>
+                      <span className="text-xl font-bold leading-none text-dark-blue-400">
+                        {profile?.rateMin || profile?.rateMax ? (
+                          <>
+                            {profile.rateMin &&
+                            profile.rateMax &&
+                            Math.round(profile.rateMin) !==
+                              Math.round(profile.rateMax)
+                              ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
+                              : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
+                            <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                              /hr
+                            </span>
+                          </>
+                        ) : (
+                          "Unknown"
+                        )}
+                      </span>
+                      {isEditMode && isOwnProfile && (
+                        <IconButton
+                          className="rounded-full text-gray-500 hover:text-gray-800"
+                          variant="ghost"
+                          visual="gray"
+                          onClick={() => setJobTitleOpen(true)}
+                        >
+                          <Edit03 className="size-4" />
+                        </IconButton>
                       )}
-                    </span>
-                    {isEditMode && isOwnProfile && (
-                      <IconButton
-                        className="rounded-full text-gray-500 hover:text-gray-800"
-                        variant="ghost"
-                        visual="gray"
-                        onClick={() => setJobTitleOpen(true)}
-                      >
-                        <Edit03 className="size-4" />
-                      </IconButton>
+                    </div>
+                    {(profile?.totalProjectsCompleted ?? 0) >= 2 &&
+                      profile?.clientSuccessRating != null && (
+                        <div className="flex gap-x-2 items-center">
+                          <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                            Client success rating
+                          </span>
+                          <span className="text-sm font-bold leading-none text-dark-blue-400">
+                            {`${Math.round(profile.clientSuccessRating * 100)}%`}
+                          </span>
+                        </div>
+                      )}
+                    {(profile?.totalProjectsCompleted ?? 0) >= 1 && (
+                      <div className="flex gap-x-2 items-center">
+                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                          Total projects completed
+                        </span>
+                        <span className="text-sm font-bold leading-none text-dark-blue-400">
+                          {(profile?.totalProjectsCompleted ?? 0).toLocaleString()}
+                        </span>
+                      </div>
                     )}
                   </div>
-                  <div className="flex gap-x-2 justify-center items-center">
-                    <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                      Client success rating
-                    </span>
-                    <span className="text-sm font-bold leading-none text-dark-blue-400">
-                      {profile?.clientSuccessRating != null
-                        ? `${Math.round(profile.clientSuccessRating * 100)}%`
-                        : "\u2014"}
-                    </span>
-                  </div>
-                  <div className="flex gap-x-2 justify-center items-center">
-                    <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                      Total projects completed
-                    </span>
-                    <span className="text-sm font-bold leading-none text-dark-blue-400">
-                      {(profile?.totalProjectsCompleted ?? 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex gap-x-2 justify-center items-center">
-                    <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                      Member since
-                    </span>
-                    <span className="text-sm font-bold leading-none text-dark-blue-400">
-                      {profile?.createdAt
-                        ? new Date(profile.createdAt).toLocaleDateString(
-                            "en-US",
-                            { month: "long", day: "numeric", year: "numeric" }
-                          )
-                        : "\u2014"}
-                    </span>
-                  </div>
-                  <div className="flex gap-x-2 justify-center items-center">
-                    <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                      Repeat hire rate
-                    </span>
-                    <span className="text-sm font-bold leading-none text-dark-blue-400">
-                      {profile?.repeatHireRate != null
-                        ? `${profile.repeatHireRate}%`
-                        : "\u2014"}
-                    </span>
+
+                  <div className="flex items-center gap-x-10">
+                    <div className="flex gap-x-2 items-center">
+                      <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                        Member since
+                      </span>
+                      <span className="text-sm font-bold leading-none text-dark-blue-400">
+                        {profile?.createdAt
+                          ? new Date(profile.createdAt).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )
+                          : "\u2014"}
+                      </span>
+                    </div>
+                    {profile?.repeatHireRate != null && (
+                      <div className="flex gap-x-2 items-center">
+                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                          Repeat hire rate
+                        </span>
+                        <span className="text-sm font-bold leading-none text-dark-blue-400">
+                          {`${profile.repeatHireRate}%`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -1349,11 +1460,11 @@ function Default() {
                             {completionPercent}%
                           </div>
                           <div className="flex flex-auto items-center gap-x-1">
-                            {steps.map((step, i) => (
+                            {steps.map((_, i) => (
                               <Progress
                                 key={i}
                                 className="flex-auto first:rounded-l-full last:rounded-r-full [&:not(:first-child)]:rounded-l-none [&:not(:last-child)]:rounded-r-none"
-                                value={step.done ? 100 : 0}
+                                value={i < completedCount ? 100 : 0}
                                 bubble={false}
                               />
                             ))}
@@ -1537,15 +1648,17 @@ function Default() {
                               </ShowMoreLess>
                             </div>
 
-                            <div className="mt-6 flex items-center justify-center">
-                              <Button
-                                variant="link"
-                                visual="gray"
-                                onClick={() => setIsShowing((prev) => !prev)}
-                              >
-                                {isShowing ? "View Less" : "View More"}
-                              </Button>
-                            </div>
+                            {profile.skills.length > 22 && (
+                              <div className="mt-6 flex items-center justify-center">
+                                <Button
+                                  variant="link"
+                                  visual="gray"
+                                  onClick={() => setIsShowing((prev) => !prev)}
+                                >
+                                  {isShowing ? "View Less" : "View More"}
+                                </Button>
+                              </div>
+                            )}
                           </>
                         )}
                       </ShowMoreLessRoot>
@@ -1618,7 +1731,8 @@ function Default() {
                     </div>
 
                     <Tabs
-                      defaultValue="Featured Clients"
+                      value={featuredTab}
+                      onValueChange={setFeaturedTab}
                       className="p-6 min-h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
                     >
                       <RadixTabs.List className="flex items-center gap-x-3">
@@ -1646,6 +1760,47 @@ function Default() {
                         >
                           Industry Expertise
                         </TabsTrigger>
+                        {isEditMode &&
+                          isOwnProfile &&
+                          featuredTab === "Industry Expertise" &&
+                          profile?.industries &&
+                          profile.industries.length > 0 && (
+                            <div className="ml-auto flex items-center gap-x-1">
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => setIndustriesOpen(true)}
+                              >
+                                <Plus className="size-4" />
+                              </IconButton>
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => setIndustriesOpen(true)}
+                              >
+                                <Edit03 className="size-4" />
+                              </IconButton>
+                            </div>
+                          )}
+                        {isEditMode &&
+                          isOwnProfile &&
+                          featuredTab === "Certifications" &&
+                          profile?.certifications &&
+                          profile.certifications.length > 0 && (
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              className="ml-auto shrink-0 bg-white"
+                              onClick={() => {
+                                setCertEditIdx(undefined)
+                                setCertificationsOpen(true)
+                              }}
+                            >
+                              <Plus className="size-[15px]" /> Add Certification
+                            </Button>
+                          )}
                       </RadixTabs.List>
 
                       <TabsContent value="Featured Clients">
@@ -1680,20 +1835,58 @@ function Default() {
                       <TabsContent value="Certifications">
                         {profile?.certifications &&
                         profile.certifications.length > 0 ? (
-                          <div className="pt-6 flex items-center flex-wrap gap-6">
-                            {profile.certifications.map((cert) => (
-                              <div
-                                key={cert.id}
-                                className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5"
-                              >
-                                {cert.name}
-                                {cert.issuer ? (
-                                  <span className="text-gray-500 font-light">
-                                    · {cert.issuer}
+                          <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
+                            {profile.certifications.map((cert) => {
+                              const brand = getCertificationBrandFromUrl(
+                                cert.credentialUrl
+                              )
+                              return (
+                                <div
+                                  key={cert.id}
+                                  className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-2"
+                                >
+                                  {brand?.type === "component" && (
+                                    <brand.Icon className="size-6 shrink-0" />
+                                  )}
+                                  {brand?.type === "remote-svg" && (
+                                    <img
+                                      src={brand.url}
+                                      alt={brand.name}
+                                      width={24}
+                                      height={24}
+                                      className="size-6 shrink-0"
+                                      loading="lazy"
+                                      data-fallback="0"
+                                      onError={(e) => {
+                                        const el = e.currentTarget
+                                        if (el.dataset.fallback === "0") {
+                                          el.dataset.fallback = "1"
+                                          el.src = brand.faviconUrl
+                                        } else {
+                                          el.style.display = "none"
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                  <span className="capitalize">
+                                    {cert.name}
                                   </span>
-                                ) : null}
-                              </div>
-                            ))}
+                                  {isEditMode && isOwnProfile && (
+                                    <IconButton
+                                      className="text-gray-400 hover:text-gray-600"
+                                      variant="ghost"
+                                      visual="gray"
+                                      onClick={() => {
+                                        setCertEditIdx(String(cert.id))
+                                        setCertificationsOpen(true)
+                                      }}
+                                    >
+                                      <Edit03 className="size-4" />
+                                    </IconButton>
+                                  )}
+                                </div>
+                              )
+                            })}
                           </div>
                         ) : (
                           <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
@@ -1713,7 +1906,10 @@ function Default() {
                                   variant="outlined"
                                   visual="gray"
                                   className="shrink-0 bg-white"
-                                  onClick={() => setCertificationsOpen(true)}
+                                  onClick={() => {
+                                    setCertEditIdx(undefined)
+                                    setCertificationsOpen(true)
+                                  }}
                                 >
                                   <Plus className="size-[15px]" /> Add
                                   Certification
@@ -1797,9 +1993,9 @@ function Default() {
                           <Button
                             variant="link"
                             visual="gray"
-                            onClick={() => setOffersOpen(true)}
+                            onClick={() => setListingsModalStep("empty")}
                           >
-                            <Edit03 className="size-[15px]" /> Edit Offers
+                            <Edit03 className="size-[15px]" /> Edit Listings
                           </Button>
                         )}
                       </div>
@@ -1820,7 +2016,7 @@ function Default() {
                                 variant="outlined"
                                 visual="gray"
                                 className="shrink-0 bg-white"
-                                onClick={() => setOffersOpen(true)}
+                                onClick={() => goToPublishProject("project")}
                               >
                                 <Plus className="size-[15px]" /> Add Project
                               </Button>
@@ -1845,7 +2041,7 @@ function Default() {
                                 variant="outlined"
                                 visual="gray"
                                 className="shrink-0 bg-white"
-                                onClick={() => setOffersOpen(true)}
+                                onClick={() => goToPublishProject("service")}
                               >
                                 <Plus className="size-[15px]" /> Add Service
                               </Button>
@@ -4011,7 +4207,113 @@ function Default() {
             profile={profile}
             onSaved={refreshProfile}
           />
-          <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} />
+          <Dialog
+            open={listingsModalStep === "empty"}
+            onOpenChange={(open) =>
+              !open && setListingsModalStep("closed")
+            }
+          >
+            <DialogContent className="max-w-[420px] rounded-[12px] p-0">
+              <div className="flex items-start gap-x-2 px-6 pt-5 pb-4">
+                <h1 className="flex-auto text-lg leading-7 font-semibold text-dark-blue-400">
+                  My Listings
+                </h1>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="mx-5 mb-5 rounded-lg bg-gray-50 border border-gray-200 px-6 py-8 flex flex-col items-center text-center">
+                <PackagePlus className="size-10 text-gray-400" strokeWidth={1.5} />
+                <h2 className="mt-3 text-base leading-6 font-semibold text-dark-blue-400">
+                  Show clients what you have to offer
+                </h2>
+                <p className="mt-2 text-xs font-light text-gray-500 leading-relaxed max-w-[300px]">
+                  Create projects or service offers to get discovered,
+                  attract clients, and start generating money. Profiles with
+                  active offers can get 2-3x more visibility and
+                  opportunities than profiles with no offers at all.
+                </p>
+                <Button
+                  className="mt-5 bg-white"
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => setListingsModalStep("chooser")}
+                >
+                  Create Your First Listing
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={listingsModalStep === "chooser"}
+            onOpenChange={(open) =>
+              !open && setListingsModalStep("closed")
+            }
+          >
+            <DialogContent className="max-w-[560px] rounded-[12px] p-0">
+              <div className="p-6">
+                <div className="flex items-start gap-x-2">
+                  <div className="flex-auto">
+                    <h1 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                      Create a New Listing
+                    </h1>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      Choose the type of listing you&apos;d like to create
+                    </p>
+                  </div>
+                  <DialogClose asChild>
+                    <IconButton variant="ghost" visual="gray">
+                      <X className="size-5" />
+                    </IconButton>
+                  </DialogClose>
+                </div>
+
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className="text-left p-4 rounded-lg border border-gray-200 bg-white transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    onClick={() => goToPublishProject("project")}
+                  >
+                    <div className="flex items-center gap-x-2">
+                      <Briefcase className="size-5 text-dark-blue-400" />
+                      <span className="text-sm font-semibold text-dark-blue-400">
+                        Add A Project
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-light leading-relaxed text-gray-500">
+                      A fixed-scope offer with defined deliverables,
+                      timeline, and one-time work.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-left p-4 rounded-lg border border-gray-200 bg-white transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    onClick={() => goToPublishProject("service")}
+                  >
+                    <div className="flex items-center gap-x-2">
+                      <Monitor className="size-5 text-dark-blue-400" />
+                      <span className="text-sm font-semibold text-dark-blue-400">
+                        Add A Service
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-light leading-relaxed text-gray-500">
+                      An ongoing offer with recurring work and long-term
+                      client engagement.
+                    </p>
+                  </button>
+                </div>
+
+                <p className="mt-4 text-xs font-light text-gray-500">
+                  Don&apos;t worry, you can always switch between a project
+                  and a service at any time.
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
           <MoreInfoDialog
             opened={jobTitleOpen}
             onOpenedChange={setJobTitleOpen}
@@ -4032,9 +4334,13 @@ function Default() {
           />
           <CertificationsDialog
             opened={certificationsOpen}
-            onOpenedChange={setCertificationsOpen}
+            onOpenedChange={(open) => {
+              setCertificationsOpen(open)
+              if (!open) setCertEditIdx(undefined)
+            }}
             profile={profile}
             onSaved={refreshProfile}
+            editIndex={certEditIdx}
           />
           <WorkExperienceDialog
             opened={workExperienceOpen}
@@ -4067,46 +4373,58 @@ function Default() {
               if (!open) setDeleteConfirm(null)
             }}
           >
-            <DialogContent>
-              <DialogHeader>
-                <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-8 border-error-50 bg-error-100">
-                  <AlertCircle className="h-4 w-4 text-error-600" />
-                </div>
+            <DialogContent className="max-w-[409px] p-0">
+              <div className="p-6">
+                <DialogTitle className="text-dark-blue-400 text-base font-semibold">
+                  Delete{" "}
+                  {deleteConfirm?.type === "experience"
+                    ? "Work Experience"
+                    : "Education"}
+                  ?
+                </DialogTitle>
+                <DialogDescription className="text-dark-blue-400 mt-2 text-sm font-light">
+                  {deleteConfirm?.label ? (
+                    <>
+                      Your &ldquo;{deleteConfirm.label}&rdquo;{" "}
+                      {deleteConfirm.type === "experience"
+                        ? "job"
+                        : "education"}{" "}
+                      will be removed.
+                    </>
+                  ) : (
+                    <>
+                      Your{" "}
+                      {deleteConfirm?.type === "experience"
+                        ? "job"
+                        : "education"}{" "}
+                      will be removed.
+                    </>
+                  )}{" "}
+                  This cannot be undone.
+                </DialogDescription>
+              </div>
 
-                <div className="flex flex-col gap-y-2">
-                  <DialogTitle>
-                    Delete{" "}
-                    {deleteConfirm?.type === "experience"
-                      ? "Work Experience"
-                      : "Education"}
-                    ?
-                  </DialogTitle>
-                  <DialogDescription>
-                    Are you sure you want to delete{" "}
-                    <strong>{deleteConfirm?.label}</strong>? This action cannot
-                    be undone.
-                  </DialogDescription>
-                </div>
-              </DialogHeader>
-
-              <DialogFooter className="mt-8">
+              <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
                 <DialogClose asChild>
                   <Button
-                    variant="outlined"
+                    variant="link"
                     visual="gray"
+                    type="button"
                     disabled={isDeleting}
                   >
+                    <X className="size-[15px]" />
                     Cancel
                   </Button>
                 </DialogClose>
                 <Button
-                  visual="error"
+                  variant="outlined"
+                  visual="gray"
                   onClick={confirmDelete}
                   disabled={isDeleting}
                 >
-                  {isDeleting ? "Deleting..." : "Yes, delete"}
+                  {isDeleting ? "Deleting..." : "Yes, Delete"}
                 </Button>
-              </DialogFooter>
+              </div>
             </DialogContent>
           </Dialog>
         </>

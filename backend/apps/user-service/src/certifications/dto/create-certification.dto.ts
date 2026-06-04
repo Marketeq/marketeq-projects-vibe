@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsDateString,
   IsNotEmpty,
   IsOptional,
@@ -12,10 +13,10 @@ export class CreateCertificationDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'AWS Training and Certification' })
+  @ApiPropertyOptional({ example: 'AWS Training and Certification' })
   @IsString()
-  @IsNotEmpty()
-  issuer: string;
+  @IsOptional()
+  issuer?: string;
 
   @ApiProperty({ example: '2021' })
   @IsDateString()
@@ -35,4 +36,10 @@ export class CreateCertificationDto {
   @IsString()
   @IsOptional()
   credentialUrl?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['AWS', 'Cloud'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  skills?: string[];
 }
