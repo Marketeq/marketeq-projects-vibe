@@ -30,7 +30,17 @@
 const backendBase = (process.env.BACKEND_BASE_URL ?? "https://marketeq-backend.onrender.com").replace(/\/$/, "")
 const frontendOrigin = (process.env.FRONTEND_ORIGIN ?? "https://dev-marketeq-projects.vercel.app").replace(/\/$/, "")
 const smokeEmail = process.env.SMOKE_USER_EMAIL ?? "deploy-smoke@marketeq.local"
-const smokePassword = process.env.SMOKE_USER_PASSWORD ?? "MarketeqSmoke1!"
+if (!process.env.SMOKE_USER_PASSWORD) {
+  console.error(
+    "\n❌  SMOKE_USER_PASSWORD is not set.\n" +
+    "    Set it in your environment before running this script:\n\n" +
+    "      $env:SMOKE_USER_PASSWORD = '<password>'   # PowerShell\n" +
+    "      export SMOKE_USER_PASSWORD='<password>'   # bash/zsh\n\n" +
+    "    Never hard-code credentials in source files (SOP §3.1).\n"
+  )
+  process.exit(1)
+}
+const smokePassword = process.env.SMOKE_USER_PASSWORD
 
 const PASS = "\x1b[32mPASS\x1b[0m"
 const FAIL = "\x1b[31mFAIL\x1b[0m"
