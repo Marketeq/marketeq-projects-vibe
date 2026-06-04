@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
-import { getIssuerNameFromUrl } from "@/src/lib/certification-brand"
 import { cn, hookFormHasError } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -107,7 +106,7 @@ import {
 // ============================================================
 
 const aboutMeFormSchema = z.object({
-  aboutMe: z.string(),
+  aboutMe: z.string().min(1, "Please enter at least 1 character(s)"),
 })
 
 type AboutMeFormValues = z.infer<typeof aboutMeFormSchema>
@@ -549,9 +548,11 @@ const languagesFormDefaultValue = {
 } satisfies LanguagesFormValues
 
 const skillsFormSchema = z.object({
-  skills: z.array(
-    z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
-  ),
+  skills: z
+    .array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    )
+    .min(1, "Please add at least 1 skill"),
 })
 
 type SkillsFormValues = z.infer<typeof skillsFormSchema>
@@ -584,9 +585,9 @@ const certificationsFormSchema = z
           message: "Please provide a valid url",
         }
       ),
-    skills: z.array(
-      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
-    ),
+    skills: z
+      .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+      .min(1, "Please provide at least 1 skill(s)"),
     issuedDate: z.instanceof(Date, { message: "Please provide a valid date" }),
     expirationDate: z
       .instanceof(Date, {
@@ -2106,9 +2107,9 @@ export const WorkExperienceDialog = ({
         formValues: value,
         edit,
       })}
-      <DialogContent className="max-w-[700px] max-h-[calc(100vh-2rem)] rounded-[12px] p-0 flex flex-col overflow-hidden">
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
-          <div className="pt-6 px-6 flex-1 overflow-y-auto min-h-0">
+      <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="border-b border-gray-200 pt-6 px-6">
             <div className="flex items-start gap-x-2">
               <div className="flex-auto">
                 <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
@@ -2523,7 +2524,7 @@ export const WorkExperienceDialog = ({
             </div>
           </div>
 
-          <div className="py-4 px-6 flex items-center justify-between shrink-0 border-t border-gray-200 bg-white">
+          <div className="py-4 px-6 flex items-center justify-between">
             <DialogClose onClick={() => reset()} asChild>
               <Button variant="link" visual="gray" type="button">
                 <X className="size-[15px]" />
@@ -3365,7 +3366,6 @@ export const SkillsDialog = ({
     trigger,
   } = useForm<SkillsFormValues>({
     resolver: zodResolver(skillsFormSchema),
-    defaultValues: skillsFormDefaultValue,
   })
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
@@ -3650,32 +3650,31 @@ export const IndustryExpertiseDialog = ({
   } = useForm<IndustriesFormValues>({
     resolver: zodResolver(industriesFormSchema),
   })
+  const [expertise] = useState([
+    { id: 1, name: "Expertise 0" },
+    { id: 2, name: "Expertise 1" },
+    { id: 3, name: "Expertise 2" },
+    { id: 4, name: "Expertise 3" },
+    { id: 5, name: "Expertise 4" },
+    { id: 6, name: "Expertise 5" },
+    { id: 7, name: "Expertise 6" },
+    { id: 8, name: "Expertise 7" },
+    { id: 9, name: "Expertise 8" },
+    { id: 10, name: "Expertise 9" },
+    { id: 11, name: "Expertise 10" },
+  ])
   const selected = useWatch({ control, name: "industries" })
   const [query, setQuery] = useState("")
-  const [filteredExpertise, setFilteredExpertise] = useState<
-    { id: number | string; name: string }[]
-  >([])
 
-  const fetchIndustries = useCallback(async (q: string) => {
-    try {
-      const res = await fetch(
-        `${getPublicApiUrl()}/autocomplete/industries?q=${encodeURIComponent(q)}`
-      )
-      if (!res.ok) return
-      const data = await res.json()
-      const entries: { id?: string; label: string }[] = Array.isArray(data)
-        ? data
-        : (data.entries ?? data.results ?? [])
-      setFilteredExpertise(
-        entries.map((e) => ({ id: e.id ?? e.label, name: e.label }))
-      )
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    const timer = setTimeout(() => fetchIndustries(query), 300)
-    return () => clearTimeout(timer)
-  }, [query, fetchIndustries])
+  const filteredExpertise =
+    query === ""
+      ? expertise
+      : expertise.filter((item) =>
+          item.name
+            .toLowerCase()
+            .replace(/\s+/g, "")
+            .includes(query.toLowerCase().replace(/\s+/g, ""))
+        )
   const onRemove = (index: number) => {
     setValue(
       "industries",
@@ -3837,7 +3836,6 @@ export const CertificationsDialog = ({
   value: valueProp,
   profile,
   onSaved,
-  editIndex,
 }: {
   opened?: boolean
   onOpenedChange?: (open: boolean) => void
@@ -3850,7 +3848,6 @@ export const CertificationsDialog = ({
   onValueChange?: (value: CertificationsFormValues[] | undefined) => void
   profile?: any
   onSaved?: () => void
-  editIndex?: string
 }) => {
   const { user } = useAuth()
   const userId = profile?.id ?? user?.id ?? ""
@@ -3887,97 +3884,46 @@ export const CertificationsDialog = ({
     },
   })
   const [isShowing, setIsShowing] = useState(false)
-  const [editingId, setEditingId] = useState<string | undefined>()
+  const [skills] = useState([
+    { id: 1, name: "Expertise 0" },
+    { id: 2, name: "Expertise 1" },
+    { id: 3, name: "Expertise 2" },
+    { id: 4, name: "Expertise 3" },
+    { id: 5, name: "Expertise 4" },
+    { id: 6, name: "Expertise 5" },
+    { id: 7, name: "Expertise 6" },
+    { id: 8, name: "Expertise 7" },
+    { id: 9, name: "Expertise 8" },
+    { id: 10, name: "Expertise 9" },
+    { id: 11, name: "Expertise 10" },
+  ])
   const selected = useWatch({ control, name: "skills" })
   const [query, setQuery] = useState("")
-  const [filteredSkills, setFilteredSkills] = useState<
-    { id: number | string; name: string }[]
-  >([])
 
-  const edit = useCallback(
-    (id: string) => {
-      setEditingId(id)
-      const cert = profile?.certifications?.find(
-        (c: any) => String(c.id) === id
-      )
-      if (!cert) return
-      reset({
-        name: cert.name ?? "",
-        credentialId: cert.credentialId ?? "",
-        credentialsUrl: cert.credentialUrl ?? "",
-        issuedDate: cert.issueDate ? new Date(cert.issueDate) : undefined,
-        expirationDate: cert.expirationDate
-          ? new Date(cert.expirationDate)
-          : undefined,
-        canNotExpire: !cert.expirationDate,
-        skills: Array.isArray(cert.skills)
-          ? cert.skills.map((name: string, i: number) => ({
-              id: `${cert.id}-${i}`,
-              name,
-            }))
-          : [],
-      })
-    },
-    [profile?.certifications, reset]
-  )
-
-  useEffect(() => {
-    if (open && editIndex) {
-      edit(editIndex)
-    } else if (open && !editIndex) {
-      setEditingId(undefined)
-      reset()
-    }
-  }, [open, editIndex, edit, reset])
-
-  const fetchSkills = useCallback(async (q: string) => {
-    try {
-      const res = await fetch(
-        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
-      )
-      if (!res.ok) return
-      const data = await res.json()
-      const entries: { id?: string; label: string }[] = Array.isArray(data)
-        ? data
-        : (data.entries ?? data.results ?? [])
-      setFilteredSkills(
-        entries.map((e) => ({ id: e.id ?? e.label, name: e.label }))
-      )
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    const timer = setTimeout(() => fetchSkills(query), 300)
-    return () => clearTimeout(timer)
-  }, [query, fetchSkills])
+  const filteredSkills =
+    query === ""
+      ? skills
+      : skills.filter((skill) =>
+          skill.name
+            .toLowerCase()
+            .replace(/\s+/g, "")
+            .includes(query.toLowerCase().replace(/\s+/g, ""))
+        )
   const onSubmit: SubmitHandler<CertificationsFormValues> = async (values) => {
-    const credentialUrl = values.credentialsUrl?.trim() || undefined
-    const payload = {
-      name: values.name,
-      issuer: getIssuerNameFromUrl(credentialUrl) ?? undefined,
-      issueDate: values.issuedDate.toISOString(),
-      expirationDate: values.canNotExpire
-        ? undefined
-        : values.expirationDate?.toISOString(),
-      credentialId: values.credentialId || undefined,
-      credentialUrl,
-      skills: values.skills?.map((s) => s.name) ?? [],
-    }
-    try {
-      if (editingId) {
-        await UserAPI.updateCertification(editingId, payload)
-      } else if (userId) {
-        await UserAPI.addCertification(payload)
-        setValueFn((prev) => (prev ? [...prev, values] : [values]))
-      }
-    } catch (err) {
-      console.error("[certifications] save failed", err)
-      return
-    }
-    onSaved?.()
-    setEditingId(undefined)
-    reset()
     setOpen(false)
+    setValueFn((prev) => (prev ? [...prev, values] : [values]))
+    reset()
+    if (userId) {
+      UserAPI.addCertification({
+        name: values.name,
+        issuer: "",
+        issueDate: values.issuedDate?.toISOString() ?? "",
+        expirationDate: values.expirationDate?.toISOString(),
+        credentialUrl: values.credentialsUrl || undefined,
+      })
+        .then(() => onSaved?.())
+        .catch(() => {})
+    }
   }
 
   const onRemove = (index: number) => {
@@ -3989,13 +3935,6 @@ export const CertificationsDialog = ({
   }
 
   const canNotExpire = useWatch({ control, name: "canNotExpire" })
-
-  useEffect(() => {
-    if (canNotExpire) {
-      setValue("expirationDate", undefined, { shouldDirty: true })
-      trigger("expirationDate")
-    }
-  }, [canNotExpire, setValue, trigger])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

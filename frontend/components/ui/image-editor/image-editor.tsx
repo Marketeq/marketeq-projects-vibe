@@ -606,7 +606,6 @@ export const ImageEditor = ({
   defaultFileName,
   onSaveImage,
   onEditDialogOpenChange,
-  fallbackInitials,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -622,7 +621,6 @@ export const ImageEditor = ({
   defaultFileName?: string
   onSaveImage?: (file: File) => void | Promise<void>
   onEditDialogOpenChange?: (open: boolean) => void
-  fallbackInitials?: string
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -888,7 +886,7 @@ export const ImageEditor = ({
   }, [isImageVariant, restoreSnapshot, send])
 
   const handleSaveEdit = useCallback(async () => {
-    if (!dataUrl || !onSaveImage) {
+    if (!isImageVariant || !dataUrl || !onSaveImage) {
       send("TOGGLE")
       return
     }
@@ -969,7 +967,7 @@ export const ImageEditor = ({
               {...getRootProps()}
             >
               <span className="text-[60px] leading-none text-gray-300 font-medium">
-                {fallbackInitials ?? "CH"}
+                CH
               </span>
             </div>
           </div>

@@ -89,7 +89,6 @@ export type UserCertification = {
   expirationDate?: string | null
   credentialId?: string | null
   credentialUrl?: string | null
-  skills?: string[] | null
 }
 
 export type UserIndustry = {

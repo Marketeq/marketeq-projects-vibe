@@ -6,7 +6,6 @@ import { ShowMoreLessRoot, useShowMoreLessRootContext } from "./show-more-less"
 
 const rmWordsFromEndWithFullStop = (words: string[]) => {
   const lastWord = words[words.length - 1]
-  if (!lastWord) return words
   if (lastWord.endsWith(".") || lastWord.endsWith("?")) {
     return rmWordsFromEndWithFullStop(words.slice(0, -1))
   }
