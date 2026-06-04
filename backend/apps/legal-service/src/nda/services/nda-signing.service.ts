@@ -141,12 +141,19 @@ export class NdaSigningService {
     const signingEventId = uuidv4();
     const signedAtUtc = new Date();
 
+    // Title-case the typed name for display in the PDF signature block.
+    // The raw typed name is preserved in signerTypedName for the legal audit record.
+    // e.g. "priya bharathi" → "Priya Bharathi"
+    const displayName = dto.typedName
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
     // 9. Generate signed PDF + upload to R2 (outside transaction — can be retried)
     const signedPdfR2Key = await this.generationService.generateSignedNda(
       doc,
       settings ?? ({ requireNdaToViewScope: false } as any),
       signingEventId,
-      dto.typedName,
+      displayName,
       signerUserId,
       ipAddress,
       deviceType,

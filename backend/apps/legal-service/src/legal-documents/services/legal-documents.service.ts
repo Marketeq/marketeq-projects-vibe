@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { LegalDocumentRecord } from '../entities/legal-document-record.entity';
 import { NdaGenerationService } from '../../nda/services/nda-generation.service';
 import { ListLegalDocumentsQueryDto } from '../dto/list-legal-documents-query.dto';
+import { DocumentType } from '../../nda/enums/document-type.enum';
 
 interface PaginatedResult {
   data: Record<string, unknown>[];

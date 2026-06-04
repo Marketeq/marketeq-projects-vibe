@@ -22,5 +22,5 @@ FROM node:20-alpine
 WORKDIR /app
 COPY --from=deps /svc/node_modules ./node_modules
 COPY --from=builder /app/dist/apps/legal-service ./dist
-EXPOSE 3032
+EXPOSE 3015
 CMD ["node", "dist/main"]
