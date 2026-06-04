@@ -79,6 +79,8 @@ const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
+const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
+
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
@@ -363,18 +365,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod'],
     });
 
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
     if (!user.hasPassword || !user.password) {
-      throw new UnauthorizedException('Incorrect email or password');
+      throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
-    if (!isMatch) throw new UnauthorizedException('Invalid credentials');
+    if (!isMatch) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
     if (user.twoFactorEnabled) {
       const method = user.twoFactorMethod ?? 'totp';
-      const partialToken = await this.issuePartialToken(user);
+      const partialToken = await this.issuePartialToken(user, dto.rememberMe ?? false);
 
       if (method === 'sms') {
         try {
@@ -396,9 +398,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    const rememberMe = dto.rememberMe ?? false;
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return {
       ...tokens,
@@ -881,7 +884,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async refresh(dto: RefreshDto): Promise<JwtPair & { sessionId?: string }> {
     const refreshSecret = this.getRefreshSecret();
-    let payload: { sub: string; email?: string; type?: string; sid?: string };
+    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.refresh_token, {
@@ -902,16 +905,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         throw new UnauthorizedException('Session has been revoked');
       }
 
-      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid });
+      const submittedRefreshTokenHash = createHash('sha256').update(dto.refresh_token).digest('hex');
+      if (session.refreshTokenHash !== submittedRefreshTokenHash) {
+        await this.sessionRepository.delete({ id: session.id });
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      const rememberMe = payload.rememberMe ?? false;
+      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe });
 
       session.refreshTokenHash = createHash('sha256').update(newTokens.refresh_token).digest('hex');
       session.lastActiveAt = new Date();
+      session.expiresAt = new Date(Date.now() + this.refreshTtlMs(rememberMe));
       await this.sessionRepository.save(session);
 
       return { ...newTokens, sessionId: payload.sid };
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '' });
+    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false });
   }
 
   async logout(user: { id?: string; sub?: string }, refreshToken?: string) {
@@ -1125,7 +1136,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async verifyTwoFactorLogin(partialToken: string, code: string, userAgent = '', ipAddress = '') {
-    let payload: { sub?: string; email?: string; type?: string };
+    let payload: { sub?: string; email?: string; type?: string; rememberMe?: boolean };
 
     try {
       payload = await this.jwtService.verifyAsync(partialToken, {
@@ -1164,9 +1175,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.syncUserProfile(user);
 
     const sessionId = randomUUID();
-    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    const rememberMe = payload.rememberMe ?? false;
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return { ...tokens, sessionId, user: this.serializeUser(user) };
   }
@@ -1372,9 +1384,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return payload.sub;
   }
 
-  private async issuePartialToken(user: { id: string; email: string }): Promise<string> {
+  private async issuePartialToken(user: { id: string; email: string }, rememberMe: boolean): Promise<string> {
     return this.jwtService.signAsync(
-      { sub: user.id, email: user.email, type: '2fa-pending' },
+      { sub: user.id, email: user.email, type: '2fa-pending', rememberMe },
       { expiresIn: '5m' },
     );
   }
@@ -1421,11 +1433,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     refreshToken: string;
     userAgent: string;
     ipAddress: string;
+    rememberMe?: boolean;
   }): Promise<void> {
     const hash = createHash('sha256').update(params.refreshToken).digest('hex');
-    const expiresInStr = this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '7d';
-    const expiresMs = this.parseExpiresInMs(expiresInStr);
-    const expiresAt = new Date(Date.now() + expiresMs);
+    const expiresAt = new Date(Date.now() + this.refreshTtlMs(params.rememberMe ?? false));
 
     const parser = new UAParser(params.userAgent);
     const browser = parser.getBrowser();
@@ -1458,6 +1469,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return num * (multipliers[unit] ?? 1000);
   }
 
+  private refreshTtlValue(rememberMe: boolean): string {
+    if (rememberMe) {
+      return this.configService.get<string>('AUTH_REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN') ?? '30d';
+    }
+
+    return this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '7d';
+  }
+
+  private refreshTtlMs(rememberMe: boolean): number {
+    return this.parseExpiresInMs(this.refreshTtlValue(rememberMe));
+  }
+
   private async cleanupExpiredSessions(): Promise<void> {
     const result = await this.sessionRepository.delete({ expiresAt: LessThan(new Date()) });
     if (result.affected && result.affected > 0) {
@@ -1469,6 +1492,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     sub: string;
     email: string;
     sessionId?: string;
+    rememberMe?: boolean;
   }): Promise<JwtPair> {
     const accessPayload: Record<string, any> = { sub: payload.sub, email: payload.email };
     if (payload.sessionId) {
@@ -1477,14 +1501,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const access_token = this.jwtService.sign(accessPayload);
 
     const refreshSecret = this.getRefreshSecret();
-    const refreshExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '7d',
-    );
+    const rememberMe = payload.rememberMe ?? false;
+    const refreshExpires = parseExpiresIn(this.refreshTtlValue(rememberMe));
 
     const refreshPayload: Record<string, any> = {
       sub: payload.sub,
       email: payload.email,
       type: 'refresh',
+      rememberMe,
     };
     if (payload.sessionId) {
       refreshPayload.sid = payload.sessionId;

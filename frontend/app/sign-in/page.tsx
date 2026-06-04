@@ -46,6 +46,38 @@ const signInSchema = z.object({
 
 type SignInFormValues = z.infer<typeof signInSchema>
 
+const getLoginErrorMessage = (error: any) => {
+  const status = error?.response?.status
+  const serverMessage =
+    error?.response?.data?.message ??
+    error?.response?.data?.errors?.message
+
+  if (status === 401 || status === 403) {
+    return "Invalid email or password"
+  }
+
+  if (status === 423) {
+    return "Your account is temporarily locked. Please try again later or reset your password."
+  }
+
+  if (status === 408 || error?.code === "ECONNABORTED") {
+    return "The login request timed out. Please try again."
+  }
+
+  if (!error?.response) {
+    return "Authentication service is unavailable. Please try again shortly."
+  }
+
+  if (
+    typeof serverMessage === "string" &&
+    serverMessage.toLowerCase().includes("session")
+  ) {
+    return "Your session has expired. Please log in again."
+  }
+
+  return serverMessage || "Login failed. Please try again."
+}
+
 export default function SignIn() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -160,11 +192,11 @@ export default function SignIn() {
     }
   }
 
-  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
+  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
     setIsLoading(true)
 
     setLoginError(null)
-    AuthAPI.LoginWithEmail({ email, password })
+    AuthAPI.LoginWithEmail({ email, password, rememberMe })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           setPartialToken(response.data.partialToken)
@@ -217,12 +249,7 @@ export default function SignIn() {
         }
       })
       .catch((error) => {
-        const msg =
-          error?.response?.data?.message ??
-          error?.response?.data?.errors?.message ??
-          error?.message ??
-          "Login failed"
-        setLoginError(msg)
+        setLoginError(getLoginErrorMessage(error))
       })
       .finally(() => {
         setIsLoading(false)
