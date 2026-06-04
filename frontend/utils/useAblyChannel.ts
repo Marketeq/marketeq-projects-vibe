@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
+import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 export function useAblyChannel(
@@ -12,6 +12,7 @@ export function useAblyChannel(
   onEdit?: (data: any) => void,
   onReaction?: (data: { messageId: string; reactions: any[] }) => void
 ) {
+  const { user } = useAuth()
   // Stable refs so the effect doesn't tear down on every render
   const onMessageRef = useRef(onMessage)
   const onPinToggledRef = useRef(onPinToggled)
@@ -42,8 +43,7 @@ export function useAblyChannel(
   useEffect(() => {
     if (!threadId) return
 
-    const currentUser = getCurrentUser()
-    if (!currentUser) {
+    if (!user?.id) {
       console.error("No logged-in user; cannot subscribe to Ably")
       return
     }
@@ -51,10 +51,9 @@ export function useAblyChannel(
     const client = new Ably.Realtime({
       authCallback: async (_tokenParams, callback) => {
         try {
-          const token = getAccessToken()
           const tokenDetails = await apiFetch<any>(
             `/v1/threads/ably-token?threadId=${threadId}`,
-            { method: "GET", headers: { Authorization: `Bearer ${token}` } }
+            { method: "GET" }
           )
           if (!tokenDetails) {
             callback("Realtime token unavailable", null)
@@ -66,7 +65,7 @@ export function useAblyChannel(
           callback(msg, null)
         }
       },
-      clientId: currentUser.id,
+      clientId: user.id,
     })
 
     const channel = client.channels.get(`chat:thread-${threadId}`)
@@ -96,5 +95,5 @@ export function useAblyChannel(
       channel.unsubscribe()
       client.close()
     }
-  }, [threadId])
+  }, [threadId, user?.id])
 }

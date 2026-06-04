@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test"
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"
-const USER_URL = process.env.NEXT_PUBLIC_USER_URL ?? "http://localhost:3003"
+const USER_URL = process.env.NEXT_PUBLIC_USER_URL ?? "http://localhost:4000"
 
 async function assertServiceReachable(
   request: APIRequestContext,
@@ -46,7 +46,7 @@ test("client onboarding reaches final step from signup", async ({
   }
 
   const expectStep = async (step: number) => {
-    await expect(page.getByText(`STEP ${step} / 5`)).toBeVisible({
+    await expect(page.getByText(new RegExp(`STEP ${step} / [67]`, "i"))).toBeVisible({
       timeout: 15000,
     })
   }
@@ -82,24 +82,31 @@ test("client onboarding reaches final step from signup", async ({
   await page.waitForURL(/\/onboarding\/client/)
 
   await expectStep(1)
-  await page.fill("#your-team-name", "Marketeq QA Team")
-  await page.fill("#your-role", "QA Engineer")
-  await page.getByText(/select a industry/i).click()
-  await page.getByRole("option", { name: "Technology" }).click()
+  await expect(page.getByText(/introduce yourself/i)).toBeVisible()
   await clickSkip()
 
   await expectStep(2)
-  await page.getByText("Growth & Expansion").click()
-  await clickSkip()
+  await page.fill("#your-team-name", "Marketeq QA Team")
+  await page.fill("#your-role", "QA Engineer")
+  const industryInput = page.getByPlaceholder(/enter your industry/i)
+  if (await industryInput.isVisible().catch(() => false)) {
+    await industryInput.fill("Technology")
+    await industryInput.press("Enter").catch(() => {})
+  }
+  await clickContinue()
 
   await expectStep(3)
-  await clickSkip()
+  await page.getByText("Growth & Expansion").click()
+  await clickContinue()
 
   await expectStep(4)
-  await page.fill("input#username", username)
   await clickSkip()
 
   await expectStep(5)
+  await page.fill("input#username", username)
+  await clickContinue()
+
+  await expectStep(6)
   await clickSkip()
 
   await expect(page.getByText(/what would you like to do next/i)).toBeVisible()

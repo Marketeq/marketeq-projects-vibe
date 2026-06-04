@@ -6,39 +6,24 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from "axios"
-import Cookies from "js-cookie"
 import { getPublicApiUrl, getPublicAuthUrl } from "@/lib/runtime-urls"
 
 interface Config extends AxiosRequestConfig {}
 
 const BASE = getPublicApiUrl()
 
-const getAccessToken = () => {
-  const cookieToken = Cookies.get("access_token") || Cookies.get("accessToken")
-  if (cookieToken) return cookieToken
-
-  if (typeof window === "undefined") return undefined
-
-  return (
-    window.localStorage.getItem("access_token") ||
-    window.localStorage.getItem("token") ||
-    undefined
-  )
-}
-
 axios.defaults.baseURL = BASE
+axios.defaults.withCredentials = true
 
 const axiosInstance = axios.create({
   baseURL: BASE,
   timeout: 30000,
+  withCredentials: true,
 })
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const access_token = getAccessToken()
-    if (access_token) {
-      config.headers.Authorization = `Bearer ${access_token}`
-    } else if (config.headers?.Authorization) {
+    if (config.headers?.Authorization) {
       delete config.headers.Authorization
     }
 
@@ -52,13 +37,13 @@ axiosInstance.interceptors.request.use(
 // Auto-refresh: if a request gets 401, try refreshing the token and retry once
 let isRefreshing = false
 let failedQueue: Array<{
-  resolve: (token: string) => void
+  resolve: () => void
   reject: (err: unknown) => void
 }> = []
 
-const processQueue = (error: unknown, token: string | null = null) => {
+const processQueue = (error: unknown = null) => {
   failedQueue.forEach((prom) => {
-    if (token) prom.resolve(token)
+    if (!error) prom.resolve()
     else prom.reject(error)
   })
   failedQueue = []
@@ -78,17 +63,11 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const refreshToken = Cookies.get("refresh_token")
-    if (!refreshToken) {
-      return Promise.reject(error)
-    }
-
     if (isRefreshing) {
       // Queue this request until the refresh completes
       return new Promise((resolve, reject) => {
         failedQueue.push({
-          resolve: (token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`
+          resolve: () => {
             originalRequest._retry = true
             resolve(axiosInstance(originalRequest))
           },
@@ -102,34 +81,12 @@ axiosInstance.interceptors.response.use(
 
     try {
       const AUTH_BASE = getPublicAuthUrl()
-      const res = await axiosInstance.post(`${AUTH_BASE}/auth/refresh`, {
-        refresh_token: refreshToken,
-      })
-
-      const newAccessToken = res?.data?.access_token
-      const newRefreshToken = res?.data?.refresh_token
-
-      if (newAccessToken) {
-        Cookies.set("access_token", newAccessToken, { path: "/" })
-        if (newRefreshToken) {
-          Cookies.set("refresh_token", newRefreshToken, { path: "/" })
-        }
-        if (res?.data?.sessionId) {
-          Cookies.set("session_id", res.data.sessionId, { path: "/" })
-        }
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
-        processQueue(null, newAccessToken)
-        return axiosInstance(originalRequest)
-      }
-
-      processQueue(error, null)
-      return Promise.reject(error)
+      await axiosInstance.post(`${AUTH_BASE}/auth/refresh`, null)
+      processQueue()
+      return axiosInstance(originalRequest)
     } catch (refreshError) {
-      processQueue(refreshError, null)
+      processQueue(refreshError)
       // Refresh failed — clear tokens, user will need to re-login
-      Cookies.remove("access_token", { path: "/" })
-      Cookies.remove("refresh_token", { path: "/" })
-      Cookies.remove("session_id", { path: "/" })
       return Promise.reject(refreshError)
     } finally {
       isRefreshing = false

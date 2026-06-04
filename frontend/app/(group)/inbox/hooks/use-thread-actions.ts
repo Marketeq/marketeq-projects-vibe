@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { apiFetch } from "@/src/lib/api"
 
-type JsonOpts = { method: "POST" | "DELETE" | "PATCH"; token: string }
+type JsonOpts = { method: "POST" | "DELETE" | "PATCH"; token?: string }
 export type ThreadBulkAction =
   | "star"
   | "unstar"
@@ -19,13 +19,13 @@ export type ThreadBulkAction =
   | "mark-read"
 
 async function call(path: string, { method, token }: JsonOpts) {
+  void token
   return apiFetch(path, {
     method,
-    headers: { Authorization: `Bearer ${token}` },
   })
 }
 
-export function useThreadActions(token: string) {
+export function useThreadActions(token?: string) {
   // Thread-level pin (distinct from message-level pin)
   const pin = useCallback(
     (threadId: string) =>
@@ -97,7 +97,6 @@ export function useThreadActions(token: string) {
     (ids: string[], action: ThreadBulkAction) =>
       apiFetch(`/v1/threads/bulk`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
         body: { ids, action },
       }),
     [token]
