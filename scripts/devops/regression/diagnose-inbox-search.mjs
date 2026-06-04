@@ -110,7 +110,7 @@ async function checkUserServiceHealth() {
   console.log(`  ${INFO} Pinging ${backendBase}/api/v1/users/health`)
 
   try {
-    const { response, body } = await request(`${backendBase}/api/v1/users/health`)
+    const { response } = await request(`${backendBase}/api/v1/users/health`)
     if (response.ok) {
       record("User-service health", true, `status=${response.status}`)
     } else {
