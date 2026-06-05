@@ -41,7 +41,7 @@ export class ScreenshotsService {
 
     // Save image locally if base64 data is provided
     let url: string | null = null;
-    if ((dto as any).imageBase64) {
+    if ((dto as any).imageBase64 && process.env.NODE_ENV !== 'production') {
       try {
         const fs = await import('fs');
         const path = await import('path');
@@ -55,7 +55,7 @@ export class ScreenshotsService {
         const port = process.env.PORT ?? 3017;
         url = `http://localhost:${port}/api/screenshot-files/${filename}`;
       } catch (err) {
-        // Non-fatal — screenshot metadata still saves
+        // Non-fatal — screenshot metadata still saves (dev-only local storage fallback)
       }
     }
 

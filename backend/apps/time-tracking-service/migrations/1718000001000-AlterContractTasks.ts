@@ -33,33 +33,15 @@ export class AlterContractTasks1718000001000 implements MigrationInterface {
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    // Restore removed columns
-    await queryRunner.query(`
-      ALTER TABLE time_tracking.contract_tasks
-        ADD COLUMN IF NOT EXISTS created_by text,
-        ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now(),
-        ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now()
-    `);
-
-    // Revert archived back to boolean
-    await queryRunner.query(`
-      ALTER TABLE time_tracking.contract_tasks
-        ALTER COLUMN archived TYPE boolean USING (archived != 0),
-        ALTER COLUMN archived SET DEFAULT false
-    `);
-
-    // Drop mirrored_at
-    await queryRunner.query(`
-      ALTER TABLE time_tracking.contract_tasks
-        DROP COLUMN IF EXISTS mirrored_at
-    `);
-
-    // Revert PK back to uuid with default
-    await queryRunner.query(`
-      ALTER TABLE time_tracking.contract_tasks
-        ALTER COLUMN id TYPE uuid USING id::uuid,
-        ALTER COLUMN id SET DEFAULT gen_random_uuid()
-    `);
+  /**
+   * Intentionally irreversible — task IDs are now app-generated text strings
+   * (e.g. "task-con_marketing-1718000000000") which cannot be cast back to uuid.
+   * Restore from backup if rollback is needed.
+   */
+  public async down(): Promise<void> {
+    throw new Error(
+      'Migration 1718000001000-AlterContractTasks is intentionally irreversible. ' +
+      'Task IDs are now text-based and cannot be safely cast back to uuid. Restore from backup.',
+    );
   }
 }

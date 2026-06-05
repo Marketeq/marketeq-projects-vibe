@@ -71,7 +71,7 @@ export interface EarningsRow {
   netAmountDisplay: string
   displayCurrency: string
   entryType: "automated" | "manual"
-  status: "paid" | "failed"
+  status: "paid" | "failed" | "confirmed"
   avgKeyboardPct: number | null
   avgMousePct: number | null
   feeBreakdown?: FeeBreakdown

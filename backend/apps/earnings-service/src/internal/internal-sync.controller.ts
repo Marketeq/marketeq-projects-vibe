@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, Headers, ForbiddenException } from '@nestjs/common';
 import { InternalSyncService } from './internal-sync.service';
+import { SyncScreenshotDto } from './dto/sync-screenshot.dto';
 
 
 @Controller('internal')
@@ -10,20 +11,10 @@ export class InternalSyncController {
   @HttpCode(200)
   async syncScreenshot(
     @Headers('x-internal-token') token: string,
-    @Body() body: {
-      userId: string;
-      contractId: string;
-      taskId: string | null;
-      taskName: string | null;
-      day: string;
-      screenshotCount: number;
-      firstAt: string;
-      lastAt: string;
-      avgKbd: number;
-      avgMouse: number;
-    },
+    @Body() body: SyncScreenshotDto,
   ) {
-    const expected = process.env.INTERNAL_SERVICE_TOKEN ?? 'marketeq-internal-dev';
+    const expected = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!expected) throw new ForbiddenException('INTERNAL_SERVICE_TOKEN not configured');
     if (token !== expected) throw new ForbiddenException('Invalid internal token');
     return this.syncService.syncFromTTS(body);
   }

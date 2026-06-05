@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query,
-         UseGuards, Request, HttpCode, ParseUUIDPipe } from '@nestjs/common';
+         UseGuards, Request, HttpCode, ParseUUIDPipe, 
+         ForbiddenException} from '@nestjs/common';
 import { MethodsService }   from './methods.service';
 import { JwtAuthGuard }     from '../guards/jwt-auth.guard';
 import { AddMethodDto }     from './dto/add-method.dto';
@@ -75,6 +76,9 @@ export class MethodsController {
   @Get(':id/verification-amounts')
   @HttpCode(200)
   async verificationAmounts(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('This endpoint is disabled in production');
+    }
     return this.microDepositSvc.getVerificationAmounts(req.user.userId, id);
   }
 

@@ -39,11 +39,14 @@ async function bootstrap() {
   const express = await import('express');
 
 
-  app.use('/api/screenshot-files', (req: any, res: any, next: any) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    next();
-  }, express.static(path.join(process.cwd(), 'screenshot-uploads')));
+  if (process.env.NODE_ENV !== 'production') {
+    app.use('/api/screenshot-files', (req: any, res: any, next: any) => {
+      const allowed = process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000,http://localhost:5173';
+      res.setHeader('Access-Control-Allow-Origin', allowed);
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    }, express.static(path.join(process.cwd(), 'screenshot-uploads')));
+  }
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
