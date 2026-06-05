@@ -81,7 +81,6 @@ export class EarningsService {
         .offset((page-1)*limit).limit(limit);
 
       const rawRows = await rawQb.getRawMany();
-      const totalRaw = await rawQb.clone().select('COUNT(*)', 'cnt').groupBy('').addGroupBy('').getRawOne().catch(() => null);
 
       // Count distinct groups
       const countQb = this.earningsRepo.createQueryBuilder('ec')

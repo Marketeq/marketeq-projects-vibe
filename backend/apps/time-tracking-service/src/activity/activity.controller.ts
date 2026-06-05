@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { BearerGuard } from '../common/guards/bearer.guard';
 import { ActivityService } from './activity.service';
 import { UpsertActivityDto } from './dto/upsert-activity.dto';

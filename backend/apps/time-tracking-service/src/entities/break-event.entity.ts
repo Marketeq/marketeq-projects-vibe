@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 @Entity({ name: 'break_events', schema: 'time_tracking' })
 export class BreakEvent {
   @PrimaryColumn({ type: 'text' }) id!: string;

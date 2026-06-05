@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { BearerGuard } from '../common/guards/bearer.guard';
 import { BreaksService } from './breaks.service';
 import { CreateBreakDto } from './dto/create-break.dto';
