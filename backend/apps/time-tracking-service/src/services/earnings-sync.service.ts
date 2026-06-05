@@ -69,7 +69,7 @@ export class EarningsSyncService {
       this.logger.log(
         `EarningsSync: published earnings.screenshot_confirmed for ${contractId} ${day}`,
       );
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`EarningsSync failed: ${err.message}`, err.stack);
     }
   }

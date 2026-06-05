@@ -28,7 +28,7 @@ export class ScreenshotConfirmedConsumer {
       });
       ch.ack(msg);
       this.logger.log(`Processed earnings.screenshot_confirmed for ${data.contractId} ${data.day}`);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Failed: ${err.message}`, err.stack);
       ch.nack(msg, false, false);
     }

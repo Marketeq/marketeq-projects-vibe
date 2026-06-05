@@ -39,6 +39,8 @@ export class InternalSyncService {
 
       // Find matching label by contractId or first available
       let labelContractId: string | null = null;
+      let title: string;
+      let clientName: string;
 
 
 
@@ -123,7 +125,7 @@ export class InternalSyncService {
 
       this.logger.log(`InternalSync: upserted ${idempotencyKey} — ${durationMinutes}min $${net}`);
       return { ok: true };
-    } catch (err) {
+    } catch (err:any) {
       this.logger.error(`InternalSync failed: ${err.message}`, err.stack);
       return { ok: false };
     }
