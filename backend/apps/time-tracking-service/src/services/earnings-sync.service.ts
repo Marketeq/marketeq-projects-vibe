@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { EventsService } from './events.service';
 
 @Injectable()
 export class EarningsSyncService {
@@ -10,7 +9,7 @@ export class EarningsSyncService {
 
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
-    private readonly http: HttpService,
+    private readonly events: EventsService,
   ) {}
 
   async syncScreenshot(params: {
@@ -23,7 +22,7 @@ export class EarningsSyncService {
     try {
       const day = capturedAt.toLocaleDateString('en-CA');
 
-      // Query TTS-owned tables only
+      // Query TTS-owned tables only (time_tracking schema)
       const aggRows = await this.ds.query(
         `SELECT
            count(*)::int                     AS screenshot_count,
@@ -47,33 +46,29 @@ export class EarningsSyncService {
       let taskName: string | null = null;
       if (taskId) {
         const taskRows = await this.ds.query(
-          `SELECT name FROM time_tracking.contract_tasks WHERE id = $1`, [taskId],
+          `SELECT name FROM time_tracking.contract_tasks WHERE id = $1`,
+          [taskId],
         );
         taskName = taskRows[0]?.name ?? null;
       }
 
-      // Delegate earnings upsert to earnings-service via internal HTTP endpoint
-      const earningsUrl = process.env.EARNINGS_SERVICE_URL ?? 'http://localhost:3026';
-      const internalToken = process.env.INTERNAL_SERVICE_TOKEN ?? 'marketeq-internal-dev';
+      // Publish via RabbitMQ — earnings-service consumes asynchronously
+      this.events.screenshotConfirmed({
+        userId,
+        contractId,
+        taskId,
+        taskName,
+        day,
+        screenshotCount: agg.screenshot_count,
+        firstAt: String(agg.first_at),
+        lastAt: String(agg.last_at),
+        avgKbd: parseInt(agg.avg_kbd) || 0,
+        avgMouse: parseInt(agg.avg_mouse) || 0,
+      });
 
-      await firstValueFrom(
-        this.http.post(`${earningsUrl}/v1/internal/sync-screenshot`, {
-          userId,
-          contractId,
-          taskId,
-          taskName,
-          day,
-          screenshotCount: agg.screenshot_count,
-          firstAt: agg.first_at,
-          lastAt: agg.last_at,
-          avgKbd: parseInt(agg.avg_kbd) || 0,
-          avgMouse: parseInt(agg.avg_mouse) || 0,
-        }, {
-          headers: { 'x-internal-token': internalToken },
-        }),
+      this.logger.log(
+        `EarningsSync: published earnings.screenshot_confirmed for ${contractId} ${day}`,
       );
-
-      this.logger.log(`EarningsSync: delegated to earnings-service for ${contractId} ${day}`);
     } catch (err) {
       this.logger.error(`EarningsSync failed: ${err.message}`, err.stack);
     }

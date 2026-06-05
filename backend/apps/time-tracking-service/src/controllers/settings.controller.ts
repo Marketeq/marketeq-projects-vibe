@@ -10,6 +10,7 @@ import {
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { SettingsService } from '../services/settings.service';
 import { UpdateAdminSettingsDto, UpdateUserPreferencesDto } from '../dtos/update-settings.dto';
+import { RolesGuard } from '../guards/roles.guard';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard)
@@ -17,12 +18,14 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   /** Get screenshot permission settings for a contract scope */
+  @UseGuards(RolesGuard('admin'))
   @Get('admin/:scopeId')
   async getAdminSettings(@Param('scopeId') scopeId: string) {
     return this.settingsService.getAdminSettings(scopeId);
   }
 
   /** Update screenshot permission settings for a contract scope */
+  @UseGuards(RolesGuard('admin'))
   @Put('admin/:scopeId')
   async updateAdminSettings(
     @Param('scopeId') scopeId: string,

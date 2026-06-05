@@ -45,4 +45,19 @@ export class EventsService {
   manualTimeRejected(manualTimeId: string, userId: string, reviewedBy: string, reason: string | null): void {
     this.emit('timetracking.manual_time.rejected', { manualTimeId, userId, reviewedBy, reason });
   }
+
+  screenshotConfirmed(data: {
+    userId: string;
+    contractId: string;
+    taskId: string | null;
+    taskName: string | null;
+    day: string;
+    screenshotCount: number;
+    firstAt: string;
+    lastAt: string;
+    avgKbd: number;
+    avgMouse: number;
+  }): void {
+    this.emit('earnings.screenshot_confirmed', data);
+  }
 }

@@ -68,6 +68,7 @@ function keyFor(userId: string, ext = 'jpg', tsIso?: string) {
 }
 
 @Controller('screenshots')
+@UseGuards(BearerGuard)
 export class ScreenshotsController {
   constructor(
     private readonly r2: R2Service,

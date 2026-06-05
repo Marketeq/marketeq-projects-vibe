@@ -61,7 +61,7 @@ import { PauseModule } from './pause/pause.module';
         PayoutAuditLog,
         FirstPayoutHold,
       ],
-      synchronize: true,
+      synchronize: false,
       logging: false,
     }),
 

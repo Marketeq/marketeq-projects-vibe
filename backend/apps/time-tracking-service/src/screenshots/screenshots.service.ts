@@ -193,22 +193,9 @@ export class ScreenshotsService {
 
     const [rows, total] = await qb.getManyAndCount();
 
-    // Resolve contract names from public.contracts table
-    const contractIds = [...new Set(rows.map(s => s.contractId).filter(Boolean))];
+    
+    // Contract names resolved by frontend via contract picker — no cross-schema query
     const contractNameMap = new Map<string, string>();
-    if (contractIds.length > 0) {
-      try {
-        const contractRows: Array<{ id: string; title: string }> = await this.repo.query(
-          `SELECT id, title FROM public.contracts WHERE id = ANY($1)`,
-          [contractIds],
-        );
-        for (const c of contractRows) {
-          contractNameMap.set(c.id, c.title);
-        }
-      } catch {
-        // Non-fatal — contract names just won't resolve
-      }
-    }
 
     // Resolve task names from time_tracking.contract_tasks table
     const taskIds = [...new Set(rows.map(s => s.taskId).filter(Boolean))];

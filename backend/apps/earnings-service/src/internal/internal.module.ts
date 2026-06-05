@@ -11,6 +11,7 @@ import { EarningsModule }        from '../earnings/earnings.module';
   imports:     [ConfigModule, HttpModule, BalanceModule, EarningsModule],
   controllers: [InternalController, InternalSyncController],
   providers:   [InternalSyncService],
+  exports:     [InternalSyncService],
 })
 export class InternalModule {
   configure(consumer: MiddlewareConsumer) {
