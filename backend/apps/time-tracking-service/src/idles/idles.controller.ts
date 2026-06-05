@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { BearerGuard } from '../common/guards/bearer.guard';
 import { IdlesService } from './idles.service';
 import { CreateIdleDto } from './dto/create-idle.dto';

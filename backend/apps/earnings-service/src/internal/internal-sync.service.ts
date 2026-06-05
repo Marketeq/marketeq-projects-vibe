@@ -39,8 +39,8 @@ export class InternalSyncService {
 
       // Find matching label by contractId or first available
       let labelContractId: string | null = null;
-      let title = contractId;
-      let clientName = 'Unknown Client';
+
+
 
       const exactMatch = labelRows.find((r: any) => r.contract_id === contractId);
       if (exactMatch) {
