@@ -3,7 +3,15 @@
 const frontendBase = (process.env.FRONTEND_BASE_URL ?? "https://staging-marketeq-projects.vercel.app").replace(/\/$/, "")
 const backendBase = (process.env.BACKEND_BASE_URL ?? "https://marketeq-backend.onrender.com").replace(/\/$/, "")
 const smokeEmail = process.env.SMOKE_USER_EMAIL ?? "deploy-smoke@marketeq.local"
-const smokePassword = process.env.SMOKE_USER_PASSWORD ?? "MarketeqSmoke1!"
+if (!process.env.SMOKE_USER_PASSWORD) {
+  console.error(
+    "\n❌  SMOKE_USER_PASSWORD is not set.\n" +
+    "    Set it in your environment before running this script.\n" +
+    "    Never hard-code credentials in source files (SOP §3.1).\n"
+  )
+  process.exit(1)
+}
+const smokePassword = process.env.SMOKE_USER_PASSWORD
 const smokeLabel = process.env.SMOKE_LABEL ?? "deploy-smoke"
 
 function sleep(ms) {
@@ -212,3 +220,4 @@ main().catch((error) => {
   console.error(`FAIL ${smokeLabel}: ${error.message}`)
   process.exit(1)
 })
+
