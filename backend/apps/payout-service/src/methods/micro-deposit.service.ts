@@ -82,7 +82,7 @@ export class MicroDepositService {
   async confirmMicroDeposits(
     contractorId: string, methodId: string,
     dto: { amount1Cents: number; amount2Cents: number },
-  ): Promise<{ verified: boolean; depositMethodId: string }> {
+  ): Promise<{ verified: boolean; depositMethodId: string | null }> {
 
     // 1. Load verification
     const verification = await this.verificationRepo.findOne({
@@ -155,7 +155,7 @@ export class MicroDepositService {
   private async confirmStripe(
     verification: DepositMethodVerification,
     dto: { amount1Cents: number; amount2Cents: number },
-  ): Promise<{ verified: boolean; depositMethodId: string }> {
+  ): Promise<{ verified: boolean; depositMethodId: string | null }> {
     // In dev mode without Stripe: treat as manual with null amounts — auto-verify
     if (!verification.amount1Cents && !verification.amount2Cents) {
       await this.applySuccess(verification);

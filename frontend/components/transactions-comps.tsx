@@ -846,7 +846,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3">
                         <BankIcon className="size-5 text-gray-500" />
                         <div className="flex flex-col items-start">
-                          <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName ? `${verifyState.bankName} ${verifyState.displayLabel}` : verifyState.displayLabel}</span>
+                          <span className="text-sm font-medium text-dark-blue-400">{verifyState.displayLabel}</span>
                           <span className="text-xs text-gray-400">{addForm?.bankAccountType ? (addForm.bankAccountType.charAt(0).toUpperCase() + addForm.bankAccountType.slice(1)) + ' Account' : 'Checking Account'}</span>
                         </div>
                         <Badge visual="success" size="sm" className="ml-auto">Verified</Badge>
@@ -942,17 +942,18 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                             .map(bank => (
                               <div
                                 key={bank.name}
-                                className="flex items-center justify-center border border-gray-200 rounded-lg p-4 h-24 cursor-pointer hover:border-primary-400 hover:shadow-sm transition-all"
+                                className="flex items-center justify-center border border-gray-200 rounded-lg cursor-pointer hover:border-primary-400 hover:shadow-sm transition-all"
+                                style={{ height: '80px', padding: '12px' }}
                                 onClick={() => setAddForm(f => ({...f, _selectedBank: bank.name, bankAccountName: bank.name} as any))}
                               >
-                                <img src={bank.logo} alt={bank.name} className="max-w-full max-h-full object-contain" style={{ width: '90%', height: '90%' }} />
+                                <img src={bank.logo} alt={bank.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                               </div>
                             ))}
                         </div>
 
                         {/* Bottom actions */}
                         <div className="flex items-center justify-between mt-4">
-                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_MANUAL'}))}>
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_MANUAL', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', nickname: '', accountType: 'CHECKING', bankConsent: false, _selectedBank: '', _stripeConnecting: false} as any))}>
                             <BankIcon className="size-4" /> Add my bank account manually
                           </button>
                           <div className="flex gap-2">
@@ -962,83 +963,76 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       </>
                     ) : (
                       <>
-                        {/* Simulated Stripe Connect login iframe */}
-                        <div className="border border-gray-200 rounded-lg p-6 bg-gray-50 space-y-4">
-                          <div className="flex justify-center mb-2">
-                            <BankLogo bankName={(addForm as any)._selectedBank} size={48} />
-                          </div>
-                          <p className="text-center text-sm font-medium text-dark-blue-400">{(addForm as any)._selectedBank}</p>
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Username</label>
-                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder="Username" value={(addForm as any)._stripeUser || ''} onChange={e => setAddForm(f => ({...f, _stripeUser: e.target.value} as any))} />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Password</label>
-                            <input type="password" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder="Password" value={(addForm as any)._stripePass || ''} onChange={e => setAddForm(f => ({...f, _stripePass: e.target.value} as any))} />
-                          </div>
-                          <div className="flex items-center gap-4 text-xs text-gray-400">
-                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" className="accent-primary-600" /> Remember me</label>
-                            <label className="flex items-center gap-1 cursor-pointer"><input type="checkbox" className="accent-primary-600" /> Use token</label>
-                          </div>
-                          <Button variant="filled" visual="primary" size="sm" className="w-full" disabled={!(addForm as any)._stripeUser?.trim() || !(addForm as any)._stripePass?.trim()} onClick={async () => {
-                            // Simulate Stripe verification — create the account via payout-service and auto-verify
-                            const bankName = (addForm as any)._selectedBank
-                            setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
-                            setShowAddMethod(false)
-                            // Generate a random account number for the simulated Stripe-connected account
-                            const fakeAcct = Math.floor(1000000000 + Math.random() * 9000000000).toString()
-                            const last4 = fakeAcct.slice(-4)
-                            setVerifyState({ methodId: '', displayLabel: `••••${last4}`, bankName, step: 'verifying' })
-                            try {
-                              const Cookies = (await import('js-cookie')).default
-                              const token = Cookies.get('access_token') || Cookies.get('accessToken')
-                              // Create and auto-verify in one step
-                              const res = await fetch('http://localhost:3022/v1/deposit-methods', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                body: JSON.stringify({
-                                  methodType: 'BANK_MANUAL',
-                                  bankAccountName: bankName,
-                                  bankAccountNumber: fakeAcct,
-                                  bankRoutingNumber: '021000021',
-                                  bankCountry: 'US',
-                                  bankCurrency: 'USD',
-                                  nickname: bankName,
+                        {/* Stripe Financial Connections — connecting screen */}
+                        <div className="border border-gray-200 rounded-lg p-6 bg-gray-50 flex flex-col items-center gap-4">
+                          <BankLogo bankName={(addForm as any)._selectedBank} size={56} />
+                          <p className="text-sm font-medium text-dark-blue-400 text-center">{(addForm as any)._selectedBank}</p>
+                          <p className="text-xs text-gray-400 text-center">
+                            Securely connecting via Stripe Financial Connections.<br />
+                            You'll be redirected to authenticate with your bank.
+                          </p>
+                          <Button
+                            variant="filled" visual="primary" size="sm" className="w-full"
+                            disabled={!!(addForm as any)._stripeConnecting}
+                            onClick={async () => {
+                              const bankName = (addForm as any)._selectedBank
+                              setAddForm(f => ({...f, _stripeConnecting: true} as any))
+                              try {
+                                const Cookies = (await import('js-cookie')).default
+                                const token = Cookies.get('access_token') || Cookies.get('accessToken')
+                                // Step 1: create FC session
+                                const initRes = await fetch('http://localhost:3022/v1/deposit-methods/stripe/restart', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                                  body: JSON.stringify({}),
                                 })
-                              })
-                              const data = await res.json()
-                              if (res.ok && data.depositMethodId) {
-                                // Auto-verify: read the micro-deposit amounts from DB and submit them
-                                await new Promise(r => setTimeout(r, 1500))
-                                const vRes = await fetch('http://localhost:3022/v1/deposit-methods/' + data.depositMethodId + '/verification-amounts', {
-                                  headers: { Authorization: 'Bearer ' + token },
-                                })
-                                if (vRes.ok) {
-                                  const vData = await vRes.json()
-                                  await fetch('http://localhost:3022/v1/deposit-methods/' + data.depositMethodId + '/verify-micro-deposits', {
+                                const initData = await initRes.json()
+                                if (!initRes.ok) throw new Error('Failed to start Stripe session')
+                                const { sessionId, mode } = initData
+                                // Step 2: In dev/mock mode skip real Stripe modal — go straight to finalise
+                                // In production with real key, load @stripe/stripe-js here and call
+                                // stripe.collectBankAccountForSetup({ clientSecret }) instead
+                                if (mode === 'mock' || !initData.clientSecret?.includes('_secret_')) {
+                                  // Dev mode — show brief connecting delay, then finalise
+                                  setAddForm(f => ({...f, _stripeConnecting: true, _stripeSessionId: sessionId} as any))
+                                  await new Promise(r => setTimeout(r, 1800))
+                                  // Step 3: finalise
+                                  const finalRes = await fetch('http://localhost:3022/v1/deposit-methods/stripe/finalise', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                    body: JSON.stringify({ amount1Cents: vData.amount1Cents, amount2Cents: vData.amount2Cents })
+                                    body: JSON.stringify({ sessionId, linkedAccountId: '' }),
                                   })
+                                  const method = await finalRes.json()
+                                  if (!finalRes.ok) throw new Error('Finalise failed')
+                                  setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _bankSearch: ''} as any))
+                                  setShowAddMethod(false)
+                                  setVerifyState({
+                                    methodId: method.id,
+                                    displayLabel: `${bankName} ••••4242`,
+                                    bankName,
+                                    step: 'verifying',
+                                  })
+                                  await new Promise(r => setTimeout(r, 2500))
+                                  setVerifyState({
+                                    methodId: method.id,
+                                    displayLabel: `${bankName} ••••4242`,
+                                    bankName,
+                                    step: 'success',
+                                  })
+                                  fetchMethods()
                                 }
-                                await new Promise(r => setTimeout(r, 500))
-                                setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? `••••${last4}`, bankName, step: 'success' })
-                                fetchMethods()
-                              } else {
-                                setVerifyState(s => s ? {...s, step: 'failed'} : null)
+                              } catch {
+                                setAddForm(f => ({...f, _stripeConnecting: false} as any))
+                                setVerifyState({ methodId: '', displayLabel: '', bankName: (addForm as any)._selectedBank, step: 'failed' })
+                                setShowAddMethod(false)
                               }
-                            } catch {
-                              setVerifyState(s => s ? {...s, step: 'failed'} : null)
-                            }
-                          }}>Sign in</Button>
-                          <div className="text-center space-y-1">
-                            <button className="text-xs text-primary-600 hover:text-primary-700">Forgot username/password? ›</button>
-                            <br />
-                            <button className="text-xs text-primary-600 hover:text-primary-700">Not Enrolled? Sign Up Now. ›</button>
-                          </div>
+                            }}
+                          >
+                            {(addForm as any)._stripeConnecting ? 'Connecting…' : 'Connect with Stripe'}
+                          </Button>
                         </div>
                         <div className="flex gap-2 mt-4">
-                          <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, _selectedBank: ''} as any))}>← Back</Button>
+                          <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, _selectedBank: '', _stripeConnecting: false, bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', nickname: '', accountType: 'CHECKING', bankConsent: false} as any))}>← Back</Button>
                         </div>
                       </>
                     )}

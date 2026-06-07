@@ -23,8 +23,8 @@ export class DepositMethodVerification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'deposit_method_id' })
-  depositMethodId: string;
+  @Column({ name: 'deposit_method_id', nullable: true })
+  depositMethodId: string | null;
 
   @ManyToOne(() => DepositMethod, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'deposit_method_id' })
