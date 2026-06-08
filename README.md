@@ -106,29 +106,58 @@ If you do not agree with these terms, do not use this repository.
 
 Vibe Coding Marketeq Projects talent network platform.
 
-## Install:
-``` npm install --legacy-peer-deps ```
+## Local Dev Setup (Quick Start)
 
-### frontend:
-```npm run dev ```
+```bash
+# 1. Clone and switch to the dev branch
+git clone https://github.com/Marketeq/marketeq-projects-vibe.git
+cd marketeq-projects-vibe
+git checkout dev-main
 
-### Backend:
-### Ports:
-- Frontend: 3000
-- Gateway: 4000
-- Auth: 3001
-- User: 3002
-- Listings: 3003
-- Messaging: 3005
-- Notification: 3006
-- Checkout: 3009
-- Contracts: 3010
-- Favorites: 3012
-- Invitations: 3013
-- Content moderation: 3014
-- Transaction: 3018
-- Autocomplete: 3019
-- Python moderation API: 8000
+# 2. Copy the env templates (they already have all localhost values filled in)
+cp backend/.env.local.example backend/.env
+cp frontend/.env.local.example frontend/.env.local
+
+# 3. Install dependencies
+cd backend && npm install --legacy-peer-deps
+cd ../frontend && npm install --legacy-peer-deps
+
+# 4. Start the backend (all services via PM2)
+cd ../backend && npm run dev
+
+# 5. Start the frontend (in a separate terminal)
+cd frontend && npm run dev
+```
+
+The app will be running at **http://localhost:3000**.
+
+### Service Ports
+| Service | Port |
+|---------|------|
+| Frontend | 3000 |
+| API Gateway | 4000 |
+| Auth | 3001 |
+| User | 3002 |
+| Listings | 3004 |
+| Messaging | 3005 |
+| Notification | 3006 |
+| Checkout | 3009 |
+| Contracts | 3010 |
+| Favorites | 3012 |
+| Invitations | 3013 |
+| Autocomplete | 3016 |
+| Time Tracking | 3017 |
+| Category | 3023 |
+| Scheduling | 3024 |
+
+### Useful Backend Commands
+```bash
+npx pm2 status          # check service health
+npx pm2 logs            # tail all logs
+npx pm2 logs api-gateway # tail a specific service
+npx pm2 stop all        # stop all services
+npx pm2 restart all     # restart all services
+```
 
 ### Dependencies:
 - npm install @grpc/grpc-js @grpc/proto-loader --legacy-peer-deps
