@@ -347,7 +347,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       setMethodsLoading(true)
       const Cookies = (await import('js-cookie')).default
       const token = Cookies.get('access_token') || Cookies.get('accessToken')
-      const res = await fetch('http://localhost:3022/v1/deposit-methods', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods`, {
         headers: { Authorization: 'Bearer ' + token }
       })
       if (res.ok) { const d = await res.json(); setMethods((d.methods ?? []).filter((m: any) => m.verificationStatus === 'verified')) }
@@ -371,7 +371,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       }
       if (addForm.methodType === 'BANK_MANUAL' && addForm.bankAccountName) payload.nickname = addForm.bankAccountName
       else if (addForm.nickname) payload.nickname = addForm.nickname
-      const res = await fetch('http://localhost:3022/v1/deposit-methods', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify(payload)
       })
@@ -393,7 +393,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     try {
       const Cookies = (await import('js-cookie')).default
       const token = Cookies.get('access_token') || Cookies.get('accessToken')
-      const res = await fetch('http://localhost:3022/v1/deposit-methods/' + id, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/${id}`, {
         method: 'DELETE', headers: { Authorization: 'Bearer ' + token }
       })
       if (res.ok) { toast({ title: 'Account removed successfully' }); fetchMethods() }
@@ -405,7 +405,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     try {
       const Cookies = (await import('js-cookie')).default
       const token = Cookies.get('access_token') || Cookies.get('accessToken')
-      const res = await fetch('http://localhost:3022/v1/deposit-methods/' + id + '/set-default', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/${id}/set-default`, {
         method: 'POST', headers: { Authorization: 'Bearer ' + token }
       })
       if (res.ok) { toast({ title: 'Default updated' }); fetchMethods() }
@@ -418,7 +418,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     try {
       const Cookies = (await import('js-cookie')).default
       const token = Cookies.get('access_token') || Cookies.get('accessToken')
-      const res = await fetch('http://localhost:3022/v1/deposit-methods/' + editingMethod.id, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/${editingMethod.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({ nickname: editingMethod.nickname ?? '' })
       })
@@ -435,7 +435,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       const Cookies = (await import('js-cookie')).default
       const token = Cookies.get('access_token') || Cookies.get('accessToken')
       const [res] = await Promise.all([
-        fetch('http://localhost:3022/v1/deposit-methods/' + verifyState.methodId + '/verify-micro-deposits', {
+        fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/${verifyState.methodId}/verify-micro-deposits`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
           body: JSON.stringify({ amount1Cents: parseInt(microAmounts.amount1), amount2Cents: parseInt(microAmounts.amount2) })
@@ -459,7 +459,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     try {
       const Cookies = (await import('js-cookie')).default
       const token = Cookies.get('access_token') || Cookies.get('accessToken')
-      await fetch('http://localhost:3022/v1/deposit-methods/' + methodId, {
+      await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/${methodId}`, {
         method: 'DELETE', headers: { Authorization: 'Bearer ' + token }
       })
     } catch {}
@@ -981,7 +981,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                                 const Cookies = (await import('js-cookie')).default
                                 const token = Cookies.get('access_token') || Cookies.get('accessToken')
                                 // Step 1: create FC session
-                                const initRes = await fetch('http://localhost:3022/v1/deposit-methods/stripe/restart', {
+                                const initRes = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/stripe/restart`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
                                   body: JSON.stringify({}),
@@ -997,7 +997,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                                   setAddForm(f => ({...f, _stripeConnecting: true, _stripeSessionId: sessionId} as any))
                                   await new Promise(r => setTimeout(r, 1800))
                                   // Step 3: finalise
-                                  const finalRes = await fetch('http://localhost:3022/v1/deposit-methods/stripe/finalise', {
+                                  const finalRes = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/stripe/finalise`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
                                     body: JSON.stringify({ sessionId, linkedAccountId: '' }),

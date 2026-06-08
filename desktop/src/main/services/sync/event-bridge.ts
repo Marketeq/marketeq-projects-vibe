@@ -124,14 +124,14 @@ export function createEventBridge(deps: EventBridgeDeps) {
           const { powerMonitor } = require('electron');
           const idleSec = powerMonitor.getSystemIdleTime();
           if (idleSec < 300) {
+            // Activity level derived from system idle time.
+            // keyboard/mouse breakdown requires native input hooks (rejected per DTT-D-009
+            // privacy guarantee — no keystroke data leaves the device). Values remain 0
+            // until an explicit repo-owner decision on a privacy-compliant measurement approach.
             const basePct = Math.round((1 - idleSec / 300) * 100);
-            // Vary keyboard vs mouse based on a time-based seed
-            // so consecutive captures show different ratios
-            const seed = Date.now() % 100;
-            const keyboardRatio = 0.4 + (seed / 100) * 0.4; // 0.4 to 0.8
-            const mouseRatio = 1 - keyboardRatio;            // 0.2 to 0.6
-            keyboard = Math.round(basePct * keyboardRatio);
-            mouse = Math.round(basePct * mouseRatio);
+            keyboard = 0; // Placeholder — see DTT-D-009
+            mouse = 0;    // Placeholder — see DTT-D-009
+            void basePct; // Available for overall activity signal if needed
           }
         } catch {
           // Non-fatal

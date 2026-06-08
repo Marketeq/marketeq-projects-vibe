@@ -88,7 +88,7 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
           });
           // Also fetch and mirror real tasks from TTS
           try {
-            const ttsRes = await fetch(`http://localhost:3017/api/api/tasks/contract/${encodeURIComponent(c.id)}`);
+            const ttsRes = await fetch(`${process.env.DTT_API_BASE_URL ?? 'http://localhost:4000'}/api/tasks/contract/${encodeURIComponent(c.id)}`);
             if (ttsRes.ok) {
               const tasks = await ttsRes.json();
               if (Array.isArray(tasks)) {

@@ -655,7 +655,7 @@ export function TimeTrackerApp({
           .map(async (c) => {
             let tasks: { id: string; name: string; timeRange: string; duration: string }[] = []
             try {
-              const res = await fetch(`http://localhost:3017/api/api/tasks/contract/${encodeURIComponent(c.id)}`)
+              const res = await fetch(`${process.env.DTT_API_BASE_URL ?? 'http://localhost:4000'}/api/tasks/contract/${encodeURIComponent(c.id)}`)
               if (res.ok) {
                 const data = await res.json()
                 if (Array.isArray(data) && data.length > 0) {
