@@ -72,16 +72,12 @@ export const hasCompletedOnboarding = (
   isPreOnboardingUser(user)
 
 export const hasCompletedClientOnboarding = (
-  user?: DashboardResolvableUser | null,
-): boolean =>
-  user?.clientOnboardedAt != null ||
-  isPreOnboardingUser(user)
+  user?: DashboardResolvableUser | null
+): boolean => user?.clientOnboardedAt != null || isPreOnboardingUser(user)
 
 export const hasCompletedTalentOnboarding = (
-  user?: DashboardResolvableUser | null,
-): boolean =>
-  user?.talentOnboardedAt != null ||
-  isPreOnboardingUser(user)
+  user?: DashboardResolvableUser | null
+): boolean => user?.talentOnboardedAt != null || isPreOnboardingUser(user)
 
 export const resolveDashboardRoute = (
   user?: DashboardResolvableUser | null
@@ -135,6 +131,9 @@ export const mergeDashboardUserFields = <
     "onboardingDismissed",
     "hasCompletedOnboarding",
     "onboardedAt",
+    "clientOnboardedAt",
+    "talentOnboardedAt",
+    "createdAt",
   ] as const) {
     const authValue = (authUser as Record<string, unknown>)[key]
     if (merged[key] == null && authValue != null) {

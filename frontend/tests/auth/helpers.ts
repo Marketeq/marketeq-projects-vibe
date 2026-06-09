@@ -1,8 +1,12 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test"
 import { expect } from "@playwright/test"
 
-export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
-export const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"
+export const BASE_URL =
+  process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
+export const AUTH_URL =
+  process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"
+export const USER_URL =
+  process.env.NEXT_PUBLIC_USER_URL ?? "http://localhost:3002"
 
 export async function assertServiceReachable(
   request: APIRequestContext,
@@ -37,6 +41,50 @@ export async function createEmailPasswordUser(request: APIRequestContext) {
   }
 
   return { email, username, password }
+}
+
+export async function loginWithEmailPasswordApi(
+  request: APIRequestContext,
+  email: string,
+  password: string
+) {
+  const loginResponse = await request.post(`${AUTH_URL}/auth/login`, {
+    data: { email, password },
+    timeout: 20000,
+  })
+
+  if (!loginResponse.ok()) {
+    const body = await loginResponse.text().catch(() => "")
+    throw new Error(
+      `Login API failed: ${loginResponse.status()} ${loginResponse.statusText()} ${body}`.trim()
+    )
+  }
+
+  return loginResponse.json()
+}
+
+export async function completeRoleOnboarding(
+  request: APIRequestContext,
+  accessToken: string,
+  role: "CLIENT" | "TALENT"
+) {
+  const response = await request.patch(
+    `${USER_URL}/user/onboarding-dismissed`,
+    {
+      data: { role },
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 20000,
+    }
+  )
+
+  if (!response.ok()) {
+    const body = await response.text().catch(() => "")
+    throw new Error(
+      `Onboarding completion failed: ${response.status()} ${response.statusText()} ${body}`.trim()
+    )
+  }
+
+  return response.json()
 }
 
 export async function loginWithEmailPasswordUi(
@@ -92,7 +140,9 @@ export async function ensureAccessCookie(
   accessToken?: string
 ) {
   const cookies = await context.cookies()
-  const hasAccessCookie = cookies.some((cookie) => cookie.name === "access_token")
+  const hasAccessCookie = cookies.some(
+    (cookie) => cookie.name === "access_token"
+  )
 
   if (!hasAccessCookie && accessToken) {
     await context.addCookies([
@@ -106,7 +156,10 @@ export async function ensureAccessCookie(
   }
 }
 
-export async function clearBrowserAuthState(page: Page, context: BrowserContext) {
+export async function clearBrowserAuthState(
+  page: Page,
+  context: BrowserContext
+) {
   await page.evaluate(() => {
     window.localStorage.removeItem("access_token")
     window.localStorage.removeItem("token")

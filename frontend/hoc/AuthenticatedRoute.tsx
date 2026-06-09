@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import {
-  hasCompletedOnboarding,
-  resolveDashboardRole,
-  useAuth,
-} from "@/contexts/auth"
-import { ROLE } from "@/types/user"
+import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
 const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -17,7 +12,6 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const routeCheck = async () => {
     if (isLoading) return
 
-    //Not logged in
     if (!user) {
       if (pathname !== "/sign-in") {
         router.push("/sign-in")
@@ -25,40 +19,24 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
       return
     }
 
-    const dashboardRole = resolveDashboardRole(user)
-    const hasRole = !!dashboardRole
-    const onboardingComplete = hasCompletedOnboarding(user)
+    const targetRoute = resolveDashboardRoute(user)
+    const isOnboardingRoute = pathname?.includes("onboarding")
 
-    //New user, no role yet
-    if (!hasRole) {
-      if (!pathname?.includes("onboarding")) {
-        router.push("/onboarding")
-      } else {
-        setIsPageLoading(false)
-      }
-      return
-    }
-
-    //Has role, but onboarding not dismissed
-    if (hasRole && !onboardingComplete) {
-      if (!pathname?.includes("onboarding")) {
-        router.push("/onboarding")
-      } else {
-        setIsPageLoading(false)
-      }
-      return
-    }
-
-    //Has role and onboarding is dismissed — user can access the requested page
-    if (hasRole && onboardingComplete) {
-      // If they somehow landed on an onboarding route, send them home
-      if (pathname?.includes("onboarding")) {
-        router.push("/")
+    if (targetRoute.includes("onboarding")) {
+      if (pathname !== targetRoute) {
+        router.push(targetRoute)
         return
       }
       setIsPageLoading(false)
       return
     }
+
+    if (isOnboardingRoute) {
+      router.push(targetRoute)
+      return
+    }
+
+    setIsPageLoading(false)
   }
 
   useEffect(() => {
