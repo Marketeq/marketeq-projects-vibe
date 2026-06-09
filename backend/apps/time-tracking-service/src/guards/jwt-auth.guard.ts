@@ -33,6 +33,12 @@ export class JwtAuthGuard implements CanActivate {
           return true;
         } catch { /* fall through */ }
       }
+      // Accept gateway-forwarded identity (JWT already validated by gateway)
+      const gatewayUserId = req.headers['x-user-id'];
+      if (gatewayUserId) {
+        req.user = { sub: gatewayUserId, email: req.headers['x-user-email'] };
+        return true;
+      }
       throw new UnauthorizedException('Invalid or expired token');
     }
   }
