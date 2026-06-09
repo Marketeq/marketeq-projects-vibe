@@ -43,10 +43,10 @@ export class PayoutSchedule {
   reserveUsd: string;
 
   // ─── Split config (PS-18) ─────────────────────────────────────
-  @Column({ name: 'primary_method_id', nullable: true })
+  @Column({ name: 'primary_method_id', nullable: true, type: 'varchar' })
   primaryMethodId: string | null;
 
-  @Column({ name: 'secondary_method_id', nullable: true })
+  @Column({ name: 'secondary_method_id', nullable: true, type: 'varchar' })
   secondaryMethodId: string | null;
 
   // PS-18 §2: primarySplitPercent is the single source of truth.

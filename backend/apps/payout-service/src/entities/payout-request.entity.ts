@@ -54,23 +54,23 @@ export class PayoutRequest {
   currency: string;
 
   // --- Provider response ---
-  @Column({ name: 'provider_reference', nullable: true })
+  @Column({ name: 'provider_reference', nullable: true, type: 'varchar' })
   providerReference: string | null;
 
-  @Column({ name: 'provider_status', nullable: true })
+  @Column({ name: 'provider_status', nullable: true, type: 'varchar' })
   providerStatus: string | null;
 
   @Column({ name: 'provider_response', type: 'jsonb', nullable: true })
   providerResponse: object | null;
 
-  @Column({ name: 'failure_reason', nullable: true })
+  @Column({ name: 'failure_reason', nullable: true, type: 'varchar' })
   failureReason: string | null;
 
   @Column({ name: 'retry_count', type: 'smallint', default: 0 })
   retryCount: number;
 
   // --- PS-12: Crypto settlement fields ---
-  @Column({ name: 'external_transaction_id', nullable: true })
+  @Column({ name: 'external_transaction_id', nullable: true, type: 'varchar' })
   externalTransactionId: string | null;
 
   @Column({ name: 'bridge_provider', type: 'varchar', length: 32, nullable: true })
@@ -91,7 +91,7 @@ export class PayoutRequest {
   @Column({ name: 'gas_fee_usd', type: 'numeric', precision: 18, scale: 8, nullable: true })
   gasFeeUsd: string | null;
 
-  @Column({ name: 'gas_fee_wei', nullable: true })
+  @Column({ name: 'gas_fee_wei', nullable: true, type: 'varchar' })
   gasFeeWei: string | null;
 
   @Column({ name: 'settlement_estimated_at', type: 'timestamptz', nullable: true })
@@ -123,7 +123,7 @@ export class PayoutRequest {
   scheduledFor: Date | null;
 
   // --- Split payout reference ---
-  @Column({ name: 'split_group_id', nullable: true })
+  @Column({ name: 'split_group_id', nullable: true, type: 'varchar' })
   splitGroupId: string | null;
 
   @Column({ name: 'split_sequence', type: 'smallint', nullable: true })
@@ -140,7 +140,7 @@ export class PayoutRequest {
   @JoinColumn({ name: 'deposit_method_id' })
   depositMethod: DepositMethod;
 
-  @Column({ name: 'magic_link_token_id', nullable: true })
+  @Column({ name: 'magic_link_token_id', nullable: true, type: 'varchar' })
   magicLinkTokenId: string | null;
 
   @ManyToOne(() => MagicLinkToken)

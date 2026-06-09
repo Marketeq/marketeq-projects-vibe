@@ -195,6 +195,9 @@ export class ProxyController {
     if (serviceName === 'categories') {
       downstreamPath = `/api${downstreamPath}`
     }
+    if (serviceName === 'earnings') {
+      downstreamPath = `/v1${downstreamPath}`
+    }
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')
     }

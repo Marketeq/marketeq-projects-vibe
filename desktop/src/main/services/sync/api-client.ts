@@ -39,11 +39,14 @@ import { z, ZodSchema } from 'zod';
 // Response schemas (doc 13)
 // -----------------------------------------------------------------------------
 
+// export const HealthResponse = z.object({
+//   status: z.literal('ok'),
+//   version: z.string(),
+//   uptime: z.number(),
+// });
 export const HealthResponse = z.object({
   status: z.literal('ok'),
-  version: z.string(),
-  uptime: z.number(),
-});
+}).passthrough();
 export type HealthResponse = z.infer<typeof HealthResponse>;
 
 export const ErrorEnvelope = z.object({

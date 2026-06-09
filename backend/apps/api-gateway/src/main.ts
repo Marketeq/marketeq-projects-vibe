@@ -10,8 +10,10 @@ async function bootstrap() {
   const app = await NestFactory.create(ApiGatewayModule)
   const logger = new Logger('ApiGateway')
 
-  app.use(json({ limit: '1mb' }))
-  app.use(urlencoded({ limit: '1mb', extended: true }))
+  // 10 MB required: desktop screenshot sync sends base64 JPEG payloads (~3-7 MB each)
+  // via POST /api/screenshots/confirm. Reverting to 1 MB would break the DTT pipeline.
+  app.use(json({ limit: '10mb' }))
+  app.use(urlencoded({ limit: '10mb', extended: true }))
   app.use(cookieParser())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
   app.useGlobalFilters(new GlobalExceptionFilter())

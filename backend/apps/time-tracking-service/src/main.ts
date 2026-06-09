@@ -8,13 +8,17 @@ import { PgExceptionFilter } from './infra/pg-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const { json, urlencoded } = await import('express');
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ limit: '10mb', extended: true }));
+
   app.use(helmet());
   app.useGlobalFilters(new PgExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
 
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000,http://localhost:5173')
     .split(',')
     .map((o) => o.trim());
 
@@ -30,6 +34,19 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api');
+  // Serve uploaded screenshots locally (dev only)
+  const path = await import('path');
+  const express = await import('express');
+
+
+  if (process.env.NODE_ENV !== 'production') {
+    app.use('/api/screenshot-files', (req: any, res: any, next: any) => {
+      const allowed = process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000,http://localhost:5173';
+      res.setHeader('Access-Control-Allow-Origin', allowed);
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    }, express.static(path.join(process.cwd(), 'screenshot-uploads')));
+  }
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,

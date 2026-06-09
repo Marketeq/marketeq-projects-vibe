@@ -49,6 +49,13 @@ export class AddMethodDto {
   @IsOptional() @IsString() bankAgencia?: string;
   @IsOptional() @IsString() bankConta?: string;
 
+  // PayPal / OAuth fields
+  @IsOptional() @IsString() paypalEmail?: string;
+  @IsOptional() @IsString() wiseEmail?: string;
+
+  // Display
+  @IsOptional() @IsString() nickname?: string;
+
   // CRYPTO fields
   @IsOptional() @IsString() cryptoProvider?: string;
   @IsOptional() @IsString() cryptoNetwork?: string;
