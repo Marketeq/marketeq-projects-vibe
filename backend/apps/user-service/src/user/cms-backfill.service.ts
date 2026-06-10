@@ -21,6 +21,10 @@ export class CmsBackfillService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     if (this.config.get<string>('CMS_BACKFILL_ON_BOOT') === 'false') return;
+    if (!this.config.get<string>('RABBITMQ_URL')) {
+      this.logger.warn('[CmsBackfill:users] Skipping — RABBITMQ_URL not configured, events cannot be delivered');
+      return;
+    }
     await new Promise((r) => setTimeout(r, BOOT_DELAY_MS));
     await this.run();
   }
