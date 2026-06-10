@@ -15,7 +15,9 @@ import { cn } from "@/utils/functions"
 import {
   AlertCircle,
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
+  Bank,
   BarChartSquare02,
   Briefcase,
   Calendar,
@@ -31,6 +33,7 @@ import {
   Eye,
   HelpCircle,
   Home03,
+  Lightning01,
   Mail01,
   MoreHorizontal,
   Plus,
@@ -58,6 +61,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -67,6 +71,9 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
+  Label,
+  RadioGroup,
+  RadioGroupItemSelector,
   ScrollArea,
   SearchField,
   SearchFieldButton,
@@ -533,6 +540,7 @@ export const OverviewTab = ({
   const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
   const comingSoon = (feature: string) =>
     toast({ title: feature, description: "This feature is coming soon." })
+  const [open, setOpen] = useState(false)
 
   // ── Deposit Methods state ──────────────────────────────────────
   const [methods, setMethods] = React.useState<any[]>([])
@@ -2595,7 +2603,7 @@ export const OverviewTab = ({
               variant="outlined"
               visual="gray"
               size="sm"
-              onClick={() => comingSoon("Withdraw Funds")}
+              onClick={() => setOpen(true)}
             >
               Withdraw Funds
             </Button>
@@ -2610,6 +2618,8 @@ export const OverviewTab = ({
             </Button>
           </div>
         </div>
+
+        <WithdrawFunds open={open} onOpenChange={setOpen} />
 
         {/* Recent Activity */}
         <div className="rounded-lg border flex-1 border-gray-200 bg-white mt-5 p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
@@ -2644,6 +2654,175 @@ export const OverviewTab = ({
         </div>
       </div>
     </div>
+  )
+}
+
+const WithdrawFunds = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[500px] p-0">
+        <div className="p-6 flex border-b border-gray-200 items-center justify-between">
+          <h1 className="text-lg font-semibold text-dark-blue-400">
+            Withdraw Funds
+          </h1>
+          <DialogClose asChild>
+            <IconButton visual="gray" variant="ghost">
+              <X className="size-5" />
+            </IconButton>
+          </DialogClose>
+        </div>
+
+        <div className="p-6">
+          <span className="block font-semibold leading-none text-dark-blue-400">
+            Available balance
+          </span>
+          <div className="mt-3 inline-flex items-center gap-x-[3.01px]">
+            <span className="text-2xl leading-none text-dark-blue-400/50">
+              $
+            </span>
+            <h1 className="text-[38px] leading-none text-dark-blue-400 font-semibold">
+              <span>567</span>
+              <span className="text-[22px] font-semibold text-dark-blue-400">
+                .00
+              </span>
+            </h1>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <Label size="sm">Enter Withdrawal Amount</Label>
+            <InputGroup className="mt-3">
+              <Input className="h-11 pr-[144px]" placeholder="$0.00" />
+              <InputRightElement className="right-3.5 w-auto">
+                <Button variant="link" visual="gray">
+                  Withdraw Full amount
+                </Button>
+              </InputRightElement>
+            </InputGroup>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <Label size="sm">Enter Withdrawal Amount</Label>
+            <RadioGroup>
+              <RadioGroupItemSelector value="1">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-x-1">
+                    <Lightning01 className="size-[15px] text-primary-500" />
+                    <span className="text-sm leading-5 text-dark-blue-400 font-medium">
+                      Instant
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-x-1.5">
+                    <span className="text-xs leading-[18px] text-gray-500">
+                      $1.75 fee
+                    </span>
+                    <span className="inline-block size-1 bg-gray-300" />
+                    <span className="text-xs leading-[18px] text-gray-500">
+                      arrives in about 15 minutes
+                    </span>
+                  </div>
+                </div>
+              </RadioGroupItemSelector>
+              <RadioGroupItemSelector value="2">
+                <div className="flex flex-col">
+                  <span className="text-sm inline-block leading-5 text-dark-blue-400 font-medium">
+                    1–2 Business Days
+                  </span>
+
+                  <span className="text-xs inline-block leading-[18px] text-gray-500">
+                    No fee
+                  </span>
+                </div>
+              </RadioGroupItemSelector>
+            </RadioGroup>
+          </div>
+        </div>
+        <div className="p-6 pt-0 grid">
+          <Button>Continue</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const SelectDepositMethod = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[500px] p-0">
+        <div className="p-6 flex border-b border-gray-200 items-center justify-between">
+          <div className="flex items-center gap-x-2">
+            <IconButton variant="ghost" visual="gray">
+              <ArrowLeft className="size-5" />
+            </IconButton>
+            <h1 className="text-lg font-semibold text-dark-blue-400">
+              Select Deposit Method
+            </h1>
+          </div>
+          <DialogClose asChild>
+            <IconButton visual="gray" variant="ghost">
+              <X className="size-5" />
+            </IconButton>
+          </DialogClose>
+        </div>
+
+        <div className="p-6 space-y-3">
+          <Label size="md">Where would you like to receive your $348.00?</Label>
+
+          <RadioGroup>
+            <RadioGroupItemSelector value="1">
+              <div className="flex items-center gap-x-3">
+                <div className="size-11 rounded-lg inline-flex items-center justify-center text-dark-blue-400 border-[1.5px]">
+                  <Bank className="size-5" />
+                </div>
+                <div className="flex items-center gap-x-1">
+                  <span className="text-sm leading-none font-medium text-dark-blue-400">
+                    Chase Bank
+                  </span>
+                  <span className="text-xs leading-none text-[#858585]">
+                    ...4553
+                  </span>
+                </div>
+              </div>
+            </RadioGroupItemSelector>
+            <RadioGroupItemSelector value="2">
+              <div className="flex items-center gap-x-3">
+                <div className="size-11 rounded-lg inline-flex items-center justify-center text-dark-blue-400 border-[1.5px]">
+                  <Bank className="size-5" />
+                </div>
+                <div className="flex items-center gap-x-1">
+                  <span className="text-sm leading-none font-medium text-dark-blue-400">
+                    Paypal
+                  </span>
+                  <span className="text-xs leading-none text-[#858585]">
+                    useremail123@email.com
+                  </span>
+                </div>
+              </div>
+            </RadioGroupItemSelector>
+          </RadioGroup>
+
+          <Button variant="link">
+            <Plus className="size-[15px]" />
+            Add Deposit Method
+          </Button>
+        </div>
+
+        <div className="p-6 pt-0 grid">
+          <Button>Continue</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -3023,8 +3202,8 @@ export const PayoutScheduleDialog = ({
                       className={cn(
                         "size-9 rounded-full text-sm font-medium transition-colors flex items-center justify-center",
                         selectedDay === day.key
-                          ? "bg-primary-500 text-white"
-                          : "border hover:ring-1 hover:ring-primary-500 border-gray-200 text-gray-600 hover:border-primary-500 hover:text-primary-500"
+                          ? "border ring-1 ring-primary-500 bg-primary-25 border-primary-500 text-primary-500"
+                          : "border hover:ring-1 hover:ring-primary-500 border-gray-300 text-gray-600 hover:border-primary-500 hover:text-primary-500"
                       )}
                       onClick={() => setSelectedDay(day.key)}
                     >
