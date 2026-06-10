@@ -33,14 +33,14 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Only services the API gateway actually proxies to.
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
-// but only these are started to stay within the 512 MB Render Starter plan.
-// 3 services + gateway = 4 processes. Each gets --max-old-space-size=128
-// to cap heap at ~128 MB each (4 × 128 = 512 MB — OS overhead keeps RSS lower).
-// 5 services and 9 services both OOM-killed at 512 MB (2026-05-14).
+// but only these are started. Upgraded to Render Standard (2 GB RAM, 2026-06-09).
+// 3 services + gateway = 4 processes. maxOldSpaceMb is set per-service based on
+// module count: user-service (27 modules) gets more headroom than the others.
+// 5 services and 9 services both OOM-killed at 512 MB on the old Starter plan (2026-05-14).
 const SERVICES = [
-  { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
-  { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
-  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
+  { name: 'auth-service',     port: '3001', dir: 'apps/auth-service',     maxOldSpaceMb: 384 },
+  { name: 'user-service',     port: '3002', dir: 'apps/user-service',     maxOldSpaceMb: 512 },
+  { name: 'listings-service', port: '3003', dir: 'apps/listings-service', maxOldSpaceMb: 384 },
   // Reduced to 3 core services after repeated OOM kills at 512 MB.
   // Re-enable after Render plan upgrade:
   // notification-service (3006), category-service (3023),
@@ -56,7 +56,7 @@ const SERVICES = [
   // wallet-service (3030), wire-review-service (3031), legal-service (3032)
 ];
 
-const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway' };
+const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 384 };
 
 // Gateway env — every internal service URL must be listed here so the
 // proxy can reach them. Ports must match the SERVICES array above.
@@ -105,6 +105,8 @@ function buildInternalServiceEnv(port) {
   };
 }
 
+const restartCounts = new Map();
+
 function launchService(svc, env, isGateway = false) {
   const mainCandidates = [
     path.join(__dirname, 'dist', svc.dir, 'main.js'),
@@ -129,7 +131,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', ['--max-old-space-size=128', distMain], {
+  const child = spawn('node', [`--max-old-space-size=${svc.maxOldSpaceMb || 384}`, distMain], {
     env: svcEnv,
     stdio: 'inherit',
   });
@@ -141,8 +143,11 @@ function launchService(svc, env, isGateway = false) {
       console.error('[boot] Gateway crashed — exiting.');
       process.exit(1);
     }
-    // Auto-restart other services after 2 seconds
-    setTimeout(() => launchService(svc, env, false), 2000);
+    const count = (restartCounts.get(svc.name) || 0) + 1;
+    restartCounts.set(svc.name, count);
+    const delay = Math.min(5000 * Math.pow(2, count - 1), 60000);
+    console.error(`[boot] Restarting ${svc.name} in ${delay}ms (attempt ${count})...`);
+    setTimeout(() => launchService(svc, env, false), delay);
   });
 
   return child;
@@ -155,14 +160,17 @@ async function bootstrapAll() {
 
   launchService(GATEWAY, gatewayEnv, true);
 
-  // Start the gateway first so Render discovers the public-facing process
-  // before the internal services begin listening.
-  setTimeout(() => {
-    console.log('[boot] Launching internal services after gateway head start...');
-    for (const svc of SERVICES) {
-      launchService(svc, buildInternalServiceEnv(svc.port), false);
-    }
-  }, 4000);
+  // Stagger service starts so each has a clean memory slate.
+  // auth: +4s, user: +10s, listings: +16s (6s gap per service).
+  SERVICES.forEach((svc, i) => {
+    setTimeout(
+      () => {
+        console.log(`[boot] Launching ${svc.name} (staggered +${4 + i * 6}s)...`);
+        launchService(svc, buildInternalServiceEnv(svc.port), false);
+      },
+      4000 + i * 6000,
+    );
+  });
 }
 
 bootstrapAll().catch((error) => {
