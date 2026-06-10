@@ -38,17 +38,17 @@ export default function RootLayout({
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""
 
   const content = (
-    <AuthProvider>
-      <QueryProvider>
-        <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
-        <Suspense fallback={null}>
-          <NProgressBar />
-        </Suspense>
-        <Toaster />
-        <TimezoneSync />
-        <InviteWindow />
-      </QueryProvider>
-    </AuthProvider>
+    // <AuthProvider>
+    <QueryProvider>
+      <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+      <Suspense fallback={null}>
+        <NProgressBar />
+      </Suspense>
+      <Toaster />
+      <TimezoneSync />
+      <InviteWindow />
+    </QueryProvider>
+    // </AuthProvider>
   )
 
   return (
