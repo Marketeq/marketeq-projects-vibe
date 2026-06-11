@@ -34,20 +34,25 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // Keep this list in sync with proxy.service.ts route map.
 // Active services to run at startup. All 27 are compiled in the Docker image,
 // but only these are started. Upgraded to Render Standard (2 GB RAM, 2026-06-09).
-// 3 services + gateway = 4 processes. maxOldSpaceMb is set per-service based on
+// 4 services + gateway = 5 processes. maxOldSpaceMb is set per-service based on
 // module count: user-service (27 modules) gets more headroom than the others.
 // 5 services and 9 services both OOM-killed at 512 MB on the old Starter plan (2026-05-14).
+// messaging-service re-enabled 2026-06-10 after the CMS-backfill RabbitMQ leak
+// fix freed up headroom on user-service; it already degrades gracefully when
+// RabbitMQ is unreachable (see main.ts isRabbitMqReachable check).
+// Total budget: 384+512+384+256+384(gateway) = 1920MB of 2048MB — monitor
+// Render metrics and reduce if any process creeps toward its cap.
 const SERVICES = [
-  { name: 'auth-service',     port: '3001', dir: 'apps/auth-service',     maxOldSpaceMb: 384 },
-  { name: 'user-service',     port: '3002', dir: 'apps/user-service',     maxOldSpaceMb: 512 },
-  { name: 'listings-service', port: '3003', dir: 'apps/listings-service', maxOldSpaceMb: 384 },
-  // Reduced to 3 core services after repeated OOM kills at 512 MB.
-  // Re-enable after Render plan upgrade:
+  { name: 'auth-service',      port: '3001', dir: 'apps/auth-service',      maxOldSpaceMb: 384 },
+  { name: 'user-service',      port: '3002', dir: 'apps/user-service',      maxOldSpaceMb: 512 },
+  { name: 'listings-service',  port: '3003', dir: 'apps/listings-service',  maxOldSpaceMb: 384 },
+  { name: 'messaging-service', port: '3005', dir: 'apps/messaging-service', maxOldSpaceMb: 256 },
+  // Re-enable after further headroom is confirmed:
   // notification-service (3006), category-service (3023),
   // contracts-service (3010), invitations-service (3013),
   // content-moderation-service (3014), time-tracking-service (3017),
   // Dormant until Render plan upgrade (compiled but not started):
-  // messaging-service (3005), search-service (3007), algolia-service (3008),
+  // search-service (3007), algolia-service (3008),
   // checkout-service (3009), favorites-service (3012), portfolio-service (3015),
   // autocomplete-service (3016), transaction-service (3018),
   // suggestions-service (3020), admin-service (3024),
