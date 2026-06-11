@@ -337,6 +337,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const [methods, setMethods] = React.useState<any[]>([])
   const [methodsLoading, setMethodsLoading] = React.useState(true)
   const [showAddMethod, setShowAddMethod] = React.useState(false)
+  const [canAddMore, setCanAddMore] = React.useState(true)
   const [editingMethod, setEditingMethod] = React.useState<any | null>(null)
   const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', nickname: '', bankConsent: false })
   const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'} | null>(null)
@@ -350,7 +351,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       const res = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods`, {
         headers: { Authorization: 'Bearer ' + token }
       })
-      if (res.ok) { const d = await res.json(); setMethods((d.methods ?? []).filter((m: any) => m.verificationStatus === 'verified')) }
+      if (res.ok) { const d = await res.json(); setMethods((d.methods ?? []).filter((m: any) => m.verificationStatus === 'verified')); setCanAddMore(d.canAddMore ?? true) }
     } catch (e) { console.error('Failed to fetch deposit methods', e) }
     finally { setMethodsLoading(false) }
   }, [])
@@ -732,7 +733,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 </Tooltip>
               </TooltipProvider>
             </div>
-            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => setShowAddMethod(true)}>
+            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => setShowAddMethod(true)} disabled={!canAddMore}>
               Add Deposit Method
             </Button>
           </div>
@@ -833,8 +834,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 )}
                 {verifyState.step === 'success' && (
                   <div className="p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
+                    <div className="flex items-center justify-end">
                       <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(null)}><X className="size-4" /></IconButton>
                     </div>
                     <div className="text-center py-4 space-y-3">
@@ -842,7 +842,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                         <BankLogo bankName={verifyState.bankName} size={80} />
                         <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName || 'Your Bank'}</span>
                       </div>
-                      <h4 className="text-base font-semibold text-dark-blue-400">Your bank account has been verified.</h4>
+                      <h4 className="text-base font-semibold text-dark-blue-400">Your bank account has been securely linked.</h4>
                       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3">
                         <BankIcon className="size-5 text-gray-500" />
                         <div className="flex flex-col items-start">
@@ -859,8 +859,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 {verifyState.step === 'failed' && (
                   <div className="p-6 text-center space-y-4">
                     <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><span className="text-warning-600 text-2xl">⚠</span></div>
-                    <h4 className="text-base font-semibold text-dark-blue-400">Verification Failed</h4>
-                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. Please check your deposit amounts and try again.</p>
+                    <h4 className="text-base font-semibold text-dark-blue-400">Connection Failed</h4>
+                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information.</p>
                     <div className="flex gap-2">
                       <button className="flex-1 text-sm text-gray-500 hover:text-gray-700" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
                       <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>↺ Retry</Button>
@@ -874,7 +874,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', nickname: '', bankConsent: false }); }}>
-              <div className="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
                   <div className="p-6">
@@ -906,12 +906,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 ) : addForm.methodType === 'BANK_CONNECT' ? (
                   /* Step 2: Connect your bank account — bank picker grid */
                   <div className="p-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></button>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect your bank account</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''})); }}><X className="size-4" /></IconButton>
-                    </div>
-                    <p className="text-xs text-gray-400 mb-4">Securely link your bank with Stripe connect. For all account types, it may take up to 3 days to activate</p>
+                    {!(addForm as any)._selectedBank && <>
+                      <div className="flex items-center gap-2 mb-2">
+                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></button>
+                        <h3 className="text-base font-semibold text-dark-blue-400">Connect your bank account</h3>
+                        <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''})); }}><X className="size-4" /></IconButton>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-4">Securely link your bank with Stripe connect. For all account types, it may take up to 3 days to activate</p>
+                    </>}
+                    {!!(addForm as any)._selectedBank && (
+                      <div className="absolute top-4 right-4">
+                        <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''})); }}><X className="size-4" /></IconButton>
+                      </div>
+                    )}
+                    
 
                     {!(addForm as any)._selectedBank ? (
                       <>
@@ -942,9 +950,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                             .map(bank => (
                               <div
                                 key={bank.name}
-                                className="flex items-center justify-center border border-gray-200 rounded-lg cursor-pointer hover:border-primary-400 hover:shadow-sm transition-all"
-                                style={{ height: '80px', padding: '12px' }}
-                                onClick={() => setAddForm(f => ({...f, _selectedBank: bank.name, bankAccountName: bank.name} as any))}
+                                className={`flex items-center justify-center border rounded-lg cursor-pointer hover:border-primary-400 hover:shadow-sm transition-all ${(addForm as any)._stripePickedBank === bank.name ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-200'}`}
+                                style={{ height: '100px', padding: '16px' }}
+                                onClick={() => setAddForm(f => ({...f, _stripePickedBank: bank.name} as any))}
                               >
                                 <img src={bank.logo} alt={bank.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                               </div>
@@ -953,34 +961,41 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
 
                         {/* Bottom actions */}
                         <div className="flex items-center justify-between mt-4">
-                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_MANUAL', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', nickname: '', accountType: 'CHECKING', bankConsent: false, _selectedBank: '', _stripeConnecting: false} as any))}>
-                            <BankIcon className="size-4" /> Add my bank account manually
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 whitespace-nowrap" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_MANUAL', bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', nickname: '', accountType: 'CHECKING', bankConsent: false, _selectedBank: '', _stripeConnecting: false} as any))}>
+                            <BankIcon className="size-4 shrink-0" /> Add my bank account manually
                           </button>
                           <div className="flex gap-2">
                             <Button variant="outlined" visual="gray" size="sm" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Cancel</Button>
+                            <Button variant="filled" visual="primary" size="sm" disabled={!(addForm as any)._stripePickedBank} onClick={() => setAddForm(f => ({...f, _selectedBank: (f as any)._stripePickedBank, bankAccountName: (f as any)._stripePickedBank} as any))}>Verify Account</Button>
                           </div>
                         </div>
                       </>
                     ) : (
                       <>
-                        {/* Stripe Financial Connections — connecting screen */}
-                        <div className="border border-gray-200 rounded-lg p-6 bg-gray-50 flex flex-col items-center gap-4">
-                          <BankLogo bankName={(addForm as any)._selectedBank} size={56} />
-                          <p className="text-sm font-medium text-dark-blue-400 text-center">{(addForm as any)._selectedBank}</p>
-                          <p className="text-xs text-gray-400 text-center">
-                            Securely connecting via Stripe Financial Connections.<br />
-                            You'll be redirected to authenticate with your bank.
-                          </p>
+                        {/* Stripe Connect iframe — matches Figma design exactly */}
+                        <div className="py-8 space-y-6">
+                          <div className="text-center mb-2">
+                            <span className="text-xs text-gray-400 bg-gray-100 rounded px-2 py-0.5">[Dev mock — replaced by Stripe hosted UI in production]</span>
+                          </div>
+                          <div>
+                            <input className="w-full border-0 border-b border-gray-300 px-0 py-3 text-sm bg-transparent focus:outline-none focus:border-primary-500 placeholder-gray-400" placeholder="Username" value={(addForm as any)._stripeUser || ''} onChange={e => setAddForm(f => ({...f, _stripeUser: e.target.value} as any))} />
+                          </div>
+                          <div>
+                            <input type="password" className="w-full border-0 border-b border-gray-300 px-0 py-3 text-sm bg-transparent focus:outline-none focus:border-primary-500 placeholder-gray-400" placeholder="Password" value={(addForm as any)._stripePass || ''} onChange={e => setAddForm(f => ({...f, _stripePass: e.target.value} as any))} />
+                          </div>
+                          <div className="flex items-center gap-8 text-sm text-gray-400">
+                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="accent-primary-600" /> Remember me</label>
+                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="accent-primary-600" /> Use token</label>
+                          </div>
                           <Button
-                            variant="filled" visual="primary" size="sm" className="w-full"
-                            disabled={!!(addForm as any)._stripeConnecting}
+                            variant="filled" visual="primary" size="sm" className="w-full py-3 text-base"
+                            disabled={!!(addForm as any)._stripeConnecting || !(addForm as any)._stripeUser?.trim() || !(addForm as any)._stripePass?.trim()}
                             onClick={async () => {
                               const bankName = (addForm as any)._selectedBank
                               setAddForm(f => ({...f, _stripeConnecting: true} as any))
                               try {
                                 const Cookies = (await import('js-cookie')).default
                                 const token = Cookies.get('access_token') || Cookies.get('accessToken')
-                                // Step 1: create FC session
                                 const initRes = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/stripe/restart`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -988,39 +1003,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                                 })
                                 const initData = await initRes.json()
                                 if (!initRes.ok) throw new Error('Failed to start Stripe session')
-                                const { sessionId, mode } = initData
-                                // Step 2: In dev/mock mode skip real Stripe modal — go straight to finalise
-                                // In production with real key, load @stripe/stripe-js here and call
-                                // stripe.collectBankAccountForSetup({ clientSecret }) instead
-                                if (mode === 'mock' || !initData.clientSecret?.includes('_secret_')) {
-                                  // Dev mode — show brief connecting delay, then finalise
-                                  setAddForm(f => ({...f, _stripeConnecting: true, _stripeSessionId: sessionId} as any))
-                                  await new Promise(r => setTimeout(r, 1800))
-                                  // Step 3: finalise
-                                  const finalRes = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/stripe/finalise`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                    body: JSON.stringify({ sessionId, linkedAccountId: '' }),
-                                  })
-                                  const method = await finalRes.json()
-                                  if (!finalRes.ok) throw new Error('Finalise failed')
-                                  setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _bankSearch: ''} as any))
-                                  setShowAddMethod(false)
-                                  setVerifyState({
-                                    methodId: method.id,
-                                    displayLabel: `${bankName} ••••4242`,
-                                    bankName,
-                                    step: 'verifying',
-                                  })
-                                  await new Promise(r => setTimeout(r, 2500))
-                                  setVerifyState({
-                                    methodId: method.id,
-                                    displayLabel: `${bankName} ••••4242`,
-                                    bankName,
-                                    step: 'success',
-                                  })
-                                  fetchMethods()
-                                }
+                                const { sessionId } = initData
+                                const finalRes = await fetch(`${process.env.NEXT_PUBLIC_PAYOUT_SERVICE_URL ?? 'http://localhost:3022/v1'}/deposit-methods/stripe/finalise`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                                  body: JSON.stringify({ sessionId, linkedAccountId: '' }),
+                                })
+                                const method = await finalRes.json()
+                                if (!finalRes.ok) throw new Error('Finalise failed')
+                                setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
+                                setShowAddMethod(false)
+                                setVerifyState({ methodId: method.id, displayLabel: `${bankName} ••••4242`, bankName, step: 'verifying' })
+                                await new Promise(r => setTimeout(r, 2500))
+                                setVerifyState({ methodId: method.id, displayLabel: `${bankName} ••••4242`, bankName, step: 'success' })
+                                fetchMethods()
                               } catch {
                                 setAddForm(f => ({...f, _stripeConnecting: false} as any))
                                 setVerifyState({ methodId: '', displayLabel: '', bankName: (addForm as any)._selectedBank, step: 'failed' })
@@ -1028,11 +1024,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                               }
                             }}
                           >
-                            {(addForm as any)._stripeConnecting ? 'Connecting…' : 'Connect with Stripe'}
+                            {(addForm as any)._stripeConnecting ? 'Connecting…' : 'Sign in'}
                           </Button>
-                        </div>
-                        <div className="flex gap-2 mt-4">
-                          <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, _selectedBank: '', _stripeConnecting: false, bankAccountName: '', bankAccountNumber: '', bankRoutingNumber: '', nickname: '', accountType: 'CHECKING', bankConsent: false} as any))}>← Back</Button>
+                          <div className="space-y-1">
+                            <button className="text-sm text-primary-600 hover:text-primary-700 block">Forgot username/password? ›</button>
+                            <button className="text-sm text-primary-600 hover:text-primary-700 block">Not Enrolled? Sign Up Now. ›</button>
+                          </div>
                         </div>
                       </>
                     )}

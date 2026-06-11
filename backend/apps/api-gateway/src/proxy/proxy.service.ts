@@ -67,6 +67,7 @@ export class ProxyService {
     // Always forward auth headers so downstream services can validate JWT
     const authHeader = req.headers.authorization as string | undefined
     const cookieToken = (req as any).cookies?.access_token as string | undefined
+    // Time-tracking service uses a static bearer token, not JWT
     if (authHeader) {
       headers['authorization'] = authHeader
     } else if (cookieToken) {
