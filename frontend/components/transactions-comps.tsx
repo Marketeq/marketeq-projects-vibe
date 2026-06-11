@@ -12,8 +12,10 @@ import {
   getEarningsSummary,
 } from "@/service/http/earnings"
 import { cn } from "@/utils/functions"
+import { useStateMachine } from "@/utils/hooks"
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -22,11 +24,14 @@ import {
   Briefcase,
   Calendar,
   Check,
+  CheckCircle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
+  ClockStopwatch,
   Copy,
+  DollarSign,
   Download,
   Edit03,
   ExternalLink,
@@ -37,6 +42,7 @@ import {
   Mail01,
   MoreHorizontal,
   Plus,
+  RefreshCcw02,
   Search,
   Settings02,
   Trash01,
@@ -523,6 +529,341 @@ const StatCard01 = ({
     </div>
   </div>
 )
+
+const WithdrawalSummary = ({
+  next,
+  back,
+}: {
+  next: () => void
+  back: () => void
+}) => {
+  return (
+    <Dialog defaultOpen>
+      <DialogContent className="p-0 max-w-[500px]">
+        <div className="relative p-6 border-b border-gray-200">
+          <div className="inline-flex gap-x-2 items-center">
+            <Button variant="ghost" visual="gray" onClick={back}>
+              <ArrowLeft className="size-5" />
+            </Button>
+            <div className="text-lg font-semibold leading-7 text-dark-blue-400">
+              Withdrawal Summary
+            </div>
+          </div>
+
+          <Button
+            className="absolute right-2.5 top-2.5"
+            variant="ghost"
+            visual="gray"
+          >
+            <X className="size-5" />
+          </Button>
+        </div>
+
+        <div className="p-6 grid grid-cols-2 gap-6">
+          <div className="inline-flex items-center gap-x-3">
+            <div className="size-11 rounded-lg text-dark-blue-400 inline-flex items-center justify-center border-[1.5px] border-gray-200">
+              <DollarSign className="size-5" />
+            </div>
+            <div className="space-y-1">
+              <h1 className="size-sm text-dark-blue-400 font-semibold">
+                $348.00
+              </h1>
+              <p className="text-xs text-dark-blue-400 font-light">
+                Deposit Amount
+              </p>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-x-3">
+            <div className="size-11 rounded-lg text-dark-blue-400 inline-flex items-center justify-center border-[1.5px] border-gray-200">
+              <Bank className="size-5" />
+            </div>
+            <div className="space-y-1">
+              <h1 className="size-sm text-dark-blue-400 font-semibold">
+                Chase Bank ...4553
+              </h1>
+              <p className="text-xs text-dark-blue-400 font-light">
+                Deposit Account
+              </p>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-x-3">
+            <div className="size-11 rounded-lg text-dark-blue-400 inline-flex items-center justify-center border-[1.5px] border-gray-200">
+              <Lightning01 className="size-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="inline-flex gap-x-1.5">
+                <span className="text-sm font-semibold text-dark-blue-400">
+                  Instant
+                </span>
+                <span className="size-1 text-gray-300 rounded-full" />
+                <span className="text-sm font-semibold text-dark-blue-400">
+                  $1.75 fee
+                </span>
+              </div>
+              <p className="text-xs text-dark-blue-400 font-light">
+                Deposit Account
+              </p>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-x-3">
+            <div className="size-11 rounded-lg text-dark-blue-400 inline-flex items-center justify-center border-[1.5px] border-gray-200">
+              <ClockStopwatch className="size-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="inline-flex gap-x-1.5">
+                <span className="text-sm font-semibold text-dark-blue-400">
+                  Instant
+                </span>
+                <span className="size-1 text-gray-300 rounded-full" />
+                <span className="text-sm font-semibold text-dark-blue-400">
+                  $1.75 fee
+                </span>
+              </div>
+              <p className="text-xs text-dark-blue-400 font-light">
+                Deposit Account
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 flex flex-col gap-y-3 pb-6">
+          <Button size="lg" onClick={next}>
+            Deposit Now
+          </Button>
+
+          <div className="flex items-start gap-x-3">
+            <Checkbox size="md" />
+            <Label className="text-gray-500">
+              By confirming this withdrawal, you authorize Marketeq to initiate
+              a direct deposit payment to your account. You acknowledge that all
+              transfers will comply with applicable U.S. laws and banking
+              regulations.
+            </Label>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const Declined = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: () => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-6 max-w-[485px]">
+        <div className="flex items-center justify-center">
+          <div className="size-12 rounded-full text-warning-500 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+            <AlertTriangle className="size-[24px]" />
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <h1 className="text-lg text-center leading-none font-semibold text-dark-blue-400">
+            Your withdrawal was declined.{" "}
+          </h1>
+          <div className="max-w-[315px] mt-2 mx-auto">
+            <p className="text-sm text-center text-dark-blue-400">
+              Your withdrawal is below the minimum amount. Please try again with
+              a higher amount or change your payout threshold in settings.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 grid px-[17px] grid-cols-2 gap-x-6">
+          <Button variant="link" visual="gray">
+            Retry with Higher Amount
+          </Button>
+          <Button variant="outlined" visual="gray">
+            Change Payout Threshold{" "}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const EditReserve = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: () => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-6 max-w-[485px]">
+        <div className="flex items-center justify-center">
+          <div className="size-12 rounded-full text-warning-500 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+            <AlertTriangle className="size-[24px]" />
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <h1 className="text-lg text-center leading-none font-semibold text-dark-blue-400">
+            Your withdrawal was declined.{" "}
+          </h1>
+          <div className="max-w-[315px] mt-2 mx-auto">
+            <p className="text-sm text-center text-dark-blue-400">
+              Your reserve balance is too low. You can either ignore the reserve
+              balance for this transfer, or you can edit the reserve amount in
+              your payout settings.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 flex items-center gap-x-6">
+          <Button variant="link" visual="gray">
+            Edit Reserve
+          </Button>
+          <Button variant="outlined" visual="gray">
+            Ignore Reserve Balance
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const VerifyDeposit = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: () => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-6 max-w-[485px]">
+        <div className="flex items-center justify-center">
+          <div className="size-12 rounded-full text-warning-500 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+            <AlertTriangle className="size-[24px]" />
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <h1 className="text-lg text-center leading-none font-semibold text-dark-blue-400">
+            Your withdrawal was declined.{" "}
+          </h1>
+          <div className="max-w-[315px] mt-2 mx-auto">
+            <p className="text-sm text-center text-dark-blue-400">
+              Your selected deposit method is either unverified or unsupported.
+              Please select a different deposit method or verify your selected
+              deposit account.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 flex px-[27px] items-center gap-x-6">
+          <Button variant="link" visual="gray">
+            Verify Deposit Account
+          </Button>
+          <Button variant="outlined" visual="gray">
+            Select a Different Method
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const Failed = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: () => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-6 max-w-[485px]">
+        <div className="flex items-center justify-center">
+          <div className="size-12 rounded-full text-warning-500 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+            <AlertTriangle className="size-[24px]" />
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <h1 className="text-lg text-center leading-none font-semibold text-dark-blue-400">
+            Your withdrawal attempt failed.
+          </h1>
+          <div className="max-w-[315px] mt-2 mx-auto">
+            <p className="text-sm text-center text-dark-blue-400">
+              This may be due to a temporary network issue. Please try again.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 flex items-center justify-center">
+          <Button variant="outlined" visual="gray">
+            <RefreshCcw02 className="size-[15px]" /> Retry
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const Success = () => {
+  return (
+    <Dialog defaultOpen>
+      <DialogContent className="p-6 max-w-[400px]">
+        <div className="flex items-center justify-center">
+          <div className="size-12 rounded-full text-success-500 bg-success-100 border-[8px] border-success-50 inline-flex items-center justify-center shrink-0">
+            <CheckCircle className="size-[24px]" />
+          </div>
+        </div>
+        <div className="mt-5">
+          <h1 className="text-lg font-semibold text-center leading-7 text-dark-blue-400">
+            Success!
+          </h1>
+          <div className="mt-2">
+            <h1 className="text-sm text-center font-semibold text-dark-blue-400">
+              Your $567.00 withdrawal has been processed.
+            </h1>
+
+            <div className="p-5 mt-3 bg-white border rounded-lg border-gray-200 flex items-start gap-x-3">
+              <div className="size-11 shrink-0 inline-flex text-dark-blue-400 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                <Bank className="size-5" />
+              </div>
+
+              <div className="space-y-1">
+                <h1 className="text-sm font-semibold text-dark-blue-400">
+                  Chase Bank...4553
+                </h1>
+
+                <div className="inline-flex items-center gap-x-1.5">
+                  <p className="text-xs leading-lg text-gray-500">$1.75 fee</p>
+                  <div className="size-1 rounded-full shrink-0 bg-gray-300" />
+                  <p className="text-xs leading-lg text-gray-500">
+                    ETA about 15 minutes
+                  </p>
+                </div>
+
+                <div className="inline-flex items-center gap-x-1.5">
+                  <span className="text-xs leading-lg text-gray-500">
+                    Transaction ID
+                  </span>
+                  <span className="text-xs underline font-semibold leading-[18px] text-dark-blue-400">
+                    ABCD123456789
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <Button className="w-full mt-8">Return to Dashboard</Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 // ─── Overview Tab ───────────────────────────────────────────────────────
 
@@ -2664,6 +3005,45 @@ const WithdrawFunds = ({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) => {
+  const [state, send] = useStateMachine("ideal", {
+    ideal: {
+      NEXT: "deposit",
+    },
+    deposit: {
+      NEXT: "summary",
+      PREVIOUS: "ideal",
+    },
+    summary: {
+      NEXT: "success",
+      PREVIOUS: "deposit",
+    },
+    success: {
+      PREVIOUS: "summary",
+    },
+  })
+
+  if (state === "deposit") {
+    return (
+      <SelectDepositMethod
+        next={() => send("NEXT")}
+        back={() => send("PREVIOUS")}
+      />
+    )
+  }
+
+  if (state === "summary") {
+    return (
+      <WithdrawalSummary
+        next={() => send("NEXT")}
+        back={() => send("PREVIOUS")}
+      />
+    )
+  }
+
+  if (state === "success") {
+    return <Success />
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[500px] p-0">
@@ -2743,7 +3123,7 @@ const WithdrawFunds = ({
           </div>
         </div>
         <div className="p-6 pt-0 grid">
-          <Button>Continue</Button>
+          <Button onClick={() => send("NEXT")}>Continue</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -2751,18 +3131,18 @@ const WithdrawFunds = ({
 }
 
 const SelectDepositMethod = ({
-  open,
-  onOpenChange,
+  next,
+  back,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  next: () => void
+  back: () => void
 }) => {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog defaultOpen>
       <DialogContent className="max-w-[500px] p-0">
         <div className="p-6 flex border-b border-gray-200 items-center justify-between">
           <div className="flex items-center gap-x-2">
-            <IconButton variant="ghost" visual="gray">
+            <IconButton variant="ghost" visual="gray" onClick={back}>
               <ArrowLeft className="size-5" />
             </IconButton>
             <h1 className="text-lg font-semibold text-dark-blue-400">
@@ -2819,7 +3199,7 @@ const SelectDepositMethod = ({
         </div>
 
         <div className="p-6 pt-0 grid">
-          <Button>Continue</Button>
+          <Button onClick={next}>Continue</Button>
         </div>
       </DialogContent>
     </Dialog>
