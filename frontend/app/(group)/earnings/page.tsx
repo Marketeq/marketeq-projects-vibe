@@ -67,7 +67,7 @@ export default function TransactionsPage() {
                 </TabsList>
 
                 {/* Tab-specific actions */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {activeTab === "overview" && (
                     <>
                       <Button
@@ -86,6 +86,7 @@ export default function TransactionsPage() {
                         Help & Support
                       </Button>
                       <Button
+                        className="border-primary-500 bg-white border-2 text-primary-500 ml-3"
                         variant="outlined"
                         visual="primary"
                         size="sm"
@@ -95,6 +96,7 @@ export default function TransactionsPage() {
                         Log Time
                       </Button>
                       <Button
+                        className="bg-white"
                         variant="outlined"
                         visual="gray"
                         size="sm"
@@ -117,6 +119,7 @@ export default function TransactionsPage() {
                         View Deposit Schedule
                       </Button>
                       <Button
+                        className="bg-white border-2 ml-3 border-primary-500 text-primary-500"
                         variant="outlined"
                         visual="primary"
                         size="sm"
@@ -126,6 +129,7 @@ export default function TransactionsPage() {
                         Log Time
                       </Button>
                       <Button
+                        className="bg-white"
                         variant="outlined"
                         visual="gray"
                         size="sm"
@@ -139,7 +143,8 @@ export default function TransactionsPage() {
                   {activeTab === "payouts" && (
                     <>
                       <Button
-                        variant="ghost"
+                        className="underline"
+                        variant="link"
                         visual="gray"
                         size="sm"
                         leftIcon={<HelpCircle className="size-4" />}
@@ -154,6 +159,7 @@ export default function TransactionsPage() {
                         Where Is My Deposit?
                       </Button>
                       <Button
+                        className="bg-white"
                         variant="outlined"
                         visual="gray"
                         size="sm"
@@ -168,6 +174,7 @@ export default function TransactionsPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
+                        className="bg-white"
                         variant="outlined"
                         visual="gray"
                         size="sm"
@@ -188,12 +195,13 @@ export default function TransactionsPage() {
 
                   {/* Settings gear */}
                   <IconButton
+                    className="bg-white"
                     variant="outlined"
                     visual="gray"
                     size="sm"
                     onClick={() => router.push("/settings")}
                   >
-                    <Settings02 className="size-4" />
+                    <Settings02 className="size-[15px]" />
                   </IconButton>
                 </div>
               </div>
