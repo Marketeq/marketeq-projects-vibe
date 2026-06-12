@@ -15,17 +15,28 @@ async function bootstrap() {
     : ['http://localhost:3000'];
   app.enableCors({ origin: allowedOrigins, credentials: true });
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'portfolio_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (rabbitmqUrl) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'portfolio_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+  } else {
+    console.warn('[PortfolioService] RABBITMQ_URI not set; RMQ consumer disabled');
+  }
 
-  await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3015);
-  console.log(`portfolio-service running on port ${process.env.PORT || 3015}`);
+  const port = process.env.PORT || 3015;
+  await app.listen(port);
+  console.log(`portfolio-service running on port ${port}`);
+
+  if (rabbitmqUrl) {
+    app.startAllMicroservices().catch((err) => {
+      console.error('Failed to start RMQ microservice', err);
+    });
+  }
 }
 bootstrap();

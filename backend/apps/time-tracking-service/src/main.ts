@@ -48,20 +48,30 @@ async function bootstrap() {
     }, express.static(path.join(process.cwd(), 'screenshot-uploads')));
   }
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI ?? 'amqp://localhost:5672'],
-      queue: 'time_tracking_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  const rabbitmqUrl = process.env.RABBITMQ_URI ?? process.env.RABBITMQ_URL;
+  if (rabbitmqUrl) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'time_tracking_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+  } else {
+    Logger.warn('RABBITMQ_URI not set; RMQ consumer disabled', 'Bootstrap');
+  }
 
-  await app.startAllMicroservices();
   const port = process.env.PORT ?? 3017;
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
-  Logger.log(`✅ time-tracking-service listening on http://${host}:${port}`, 'Bootstrap');
+  Logger.log(`time-tracking-service listening on http://${host}:${port}`, 'Bootstrap');
+
+  if (rabbitmqUrl) {
+    app.startAllMicroservices().catch((err) => {
+      Logger.error('Failed to start RMQ microservice', err, 'Bootstrap');
+    });
+  }
 }
 
 bootstrap();

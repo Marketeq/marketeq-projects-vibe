@@ -26,6 +26,7 @@ RUN npx nest build legal-service
 RUN npx nest build listings-service
 RUN npx nest build messaging-service
 RUN npx nest build notification-service
+RUN npx nest build offer-service
 RUN npx nest build payout-service
 RUN npx nest build portfolio-service
 RUN npx nest build pricing-service
