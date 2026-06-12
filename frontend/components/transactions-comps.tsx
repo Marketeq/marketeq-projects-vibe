@@ -974,6 +974,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       <>
                         {/* Stripe Connect iframe — matches Figma design exactly */}
                         <div className="py-8 space-y-6">
+                          <div className="text-center mb-2">
+                            <span className="text-xs text-gray-400 bg-gray-100 rounded px-2 py-0.5">[Dev mock — replaced by Stripe hosted UI in production]</span>
+                          </div>
                           <div>
                             <input className="w-full border-0 border-b border-gray-300 px-0 py-3 text-sm bg-transparent focus:outline-none focus:border-primary-500 placeholder-gray-400" placeholder="Username" value={(addForm as any)._stripeUser || ''} onChange={e => setAddForm(f => ({...f, _stripeUser: e.target.value} as any))} />
                           </div>
