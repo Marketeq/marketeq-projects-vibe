@@ -547,18 +547,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const nextResetVersion = randomUUID();
-    const updateResult = await this.userRepository.update(
-      { id: user.id, passwordResetVersion: payload.resetVersion },
-      {
-        password: await bcrypt.hash(dto.password, 10),
-        hasPassword: true,
-        passwordResetVersion: nextResetVersion,
-      },
-    );
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    if (!updateResult.affected) {
-      throw new UnauthorizedException('Invalid or expired reset token');
-    }
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id, passwordResetVersion: payload.resetVersion },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Invalid or expired reset token');
+      }
+
+      await manager.getRepository(Session).delete({ userId: user.id });
+    });
 
     user.hasPassword = true;
     user.passwordResetVersion = nextResetVersion;
