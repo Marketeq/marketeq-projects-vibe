@@ -89,3 +89,6 @@ envVarGroups:
       # ── RabbitMQ ──
       - key: RABBITMQ_URL
         sync: false
+      # ── Ably (messaging-service real-time) ──
+      - key: ABLY_API_KEY
+        sync: false

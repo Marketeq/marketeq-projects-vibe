@@ -1,14 +1,10 @@
 // frontend/src/lib/api/contracts.ts
-import Cookies from "js-cookie"
-
 const CONTRACTS_API_URL =
   process.env.NEXT_PUBLIC_CONTRACTS_API_URL || "http://localhost:3010"
 
 function authHeaders(): HeadersInit {
-  const token = Cookies.get("access_token")
   return {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 }
 
@@ -98,6 +94,7 @@ export async function getContract(
   try {
     const res = await fetch(`${CONTRACTS_API_URL}/contracts/${contractId}`, {
       headers: authHeaders(),
+      credentials: "include",
       cache: "no-store",
     })
     if (!res.ok) return null
@@ -117,6 +114,7 @@ export async function getClientContracts(
       `${CONTRACTS_API_URL}/contracts/client/${clientId}`,
       {
         headers: authHeaders(),
+        credentials: "include",
         cache: "no-store",
       }
     )
@@ -137,6 +135,7 @@ export async function getTalentContracts(
       `${CONTRACTS_API_URL}/contracts/talent/${talentId}`,
       {
         headers: authHeaders(),
+        credentials: "include",
         cache: "no-store",
       }
     )
@@ -156,6 +155,7 @@ export async function createContractGroup(
     const res = await fetch(`${CONTRACTS_API_URL}/contract-groups`, {
       method: "POST",
       headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify(dto),
     })
     if (!res.ok) {
@@ -177,6 +177,7 @@ export async function getContractGroup(
   try {
     const res = await fetch(`${CONTRACTS_API_URL}/contract-groups/${groupId}`, {
       headers: authHeaders(),
+      credentials: "include",
       cache: "no-store",
     })
     if (!res.ok) return null
@@ -198,6 +199,7 @@ export async function endContract(
       {
         method: "PUT",
         headers: authHeaders(),
+        credentials: "include",
         body: JSON.stringify(dto),
       }
     )
@@ -224,6 +226,7 @@ export async function respondToContract(
       {
         method: "PUT",
         headers: authHeaders(),
+        credentials: "include",
         body: JSON.stringify(dto),
       }
     )
@@ -250,6 +253,7 @@ export async function disputeContract(
       {
         method: "PUT",
         headers: authHeaders(),
+        credentials: "include",
         body: JSON.stringify(dto),
       }
     )

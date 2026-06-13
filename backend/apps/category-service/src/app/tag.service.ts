@@ -17,7 +17,7 @@ export class TagService {
 
   /** Upsert a tag (by slug first, then uuid fallback) from CMS/webhook/manual */
   async upsertFromCms(dto: TagDto): Promise<TagEntity> {
-    let tag =
+    const tag =
       (await this.repo.findOne({ where: { slug: dto.slug } })) ||
       (dto.uuid ? await this.repo.findOne({ where: { uuid: dto.uuid } }) : null);
 

@@ -30,6 +30,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { v4 as uuid } from 'uuid';
 import type { Logger } from 'pino';
 import type { ScreenshotRepo } from '../../db/repos/screenshot.repo';
@@ -324,6 +325,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           }
         })();
 
+        
+
         let jpegBuf: Buffer;
         let diskPath: string | null;
         if (blurOnCapture) {
@@ -332,10 +335,38 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           fs.writeFileSync(diskPath, jpegBuf);
         } else {
           jpegBuf = src.thumbnail.toJPEG(jpegQuality);
+          // macOS 26+: desktopCapturer may return empty thumbnails because
+          // Apple deprecated CGWindowListCreateImage. Fall back to the native
+          // screencapture CLI which uses ScreenCaptureKit.
+          if (jpegBuf.length === 0 && process.platform === 'darwin') {
+            log.warn('toJPEG returned 0 bytes — falling back to native screencapture');
+            try {
+              execFileSync('screencapture', ['-x', '-t', 'jpg', fullPath]);
+              jpegBuf = fs.readFileSync(fullPath);
+            } catch (scErr) {
+              log.error({ err: scErr }, 'native screencapture fallback failed');
+            }
+          }
           diskPath = fullPath;
-          fs.writeFileSync(diskPath, jpegBuf);
+          if (jpegBuf.length > 0) {
+            fs.writeFileSync(diskPath, jpegBuf);
+          }
         }
-        const blurBuf = buildBlurredThumbnail(src.thumbnail);
+        // Build blur thumbnail — if jpegBuf has data, resize it; otherwise
+        // use the (possibly empty) Electron thumbnail as-is
+        let blurBuf: Buffer;
+        if (jpegBuf.length > 0 && !blurOnCapture) {
+          // Re-read as NativeImage so we can use Electron's resize for blur
+          try {
+            const { nativeImage } = require('electron');
+            const ni = nativeImage.createFromBuffer(jpegBuf);
+            blurBuf = buildBlurredThumbnail(ni);
+          } catch {
+            blurBuf = buildBlurredThumbnail(src.thumbnail);
+          }
+        } else {
+          blurBuf = buildBlurredThumbnail(src.thumbnail);
+        }
         fs.writeFileSync(blurPath, blurBuf);
 
         const sha = crypto.createHash('sha256').update(jpegBuf).digest('hex');
@@ -357,6 +388,19 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           sha256: sha,
         });
 
+        // Detect the frontmost app on macOS
+        let activeAppName: string | null = null;
+        if (process.platform === 'darwin') {
+          try {
+            const result = execFileSync('osascript', [
+              '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
+            ], { timeout: 2000 }).toString().trim();
+            if (result) activeAppName = result;
+          } catch {
+            // Non-fatal
+          }
+        }
+
         const evt: ScreenshotTakenEvent = {
           id,
           sessionId,
@@ -368,6 +412,7 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           blurPath,
           displayId,
           sensitive: false,
+          activeAppName,
         };
         results.push(evt);
         bus.emit('taken', evt);

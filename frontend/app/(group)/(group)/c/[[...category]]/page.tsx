@@ -8,7 +8,6 @@ import {
   useCategoryPageL3,
 } from "@/src/features/category-pages/hook"
 import { type BlockItem } from "@/src/lib/api/category-pages"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -2899,10 +2898,9 @@ export default function Projects() {
     setDisplayedProjects(sorted)
   }, [allProjects])
 
-  // Load favorites on page mount (ensure dev auth first)
+
   useEffect(() => {
     async function loadFavorites() {
-      await ensureDevAuth()
       const favorites = await getAllFavorites()
       const itemIds = new Set(favorites.map((fav) => fav.itemId))
       setFavoritedItems(itemIds)

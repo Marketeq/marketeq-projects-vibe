@@ -15,7 +15,6 @@ import { decryptAES } from "@/src/crypto/e2ee"
 import { loadPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken } from "@/utils/auth"
 import { useUserChannel } from "@/utils/useUserChannel"
 import type { Conversation } from "@/types/conversation"
 
@@ -142,13 +141,9 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
 
   const fetchThreads = useCallback(async () => {
     if (!userId) return
-    const token = getAccessToken()
-    if (!token) return
     try {
       setLoading(true)
-      const data = await apiFetch<Conversation[]>("/v1/threads", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const data = await apiFetch<Conversation[]>("/v1/threads")
       setConversations(Array.isArray(data) ? data : [])
     } catch {
       setConversations([])
@@ -163,8 +158,6 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!userId || conversations.length === 0) return
-    const token = getAccessToken()
-    if (!token) return
     let cancelled = false
     ;(async () => {
       for (const conv of conversations) {
@@ -180,8 +173,7 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
           }
           try {
             const g = await apiFetch<{ name?: string }>(
-              `/v1/threads/${conv.id}`,
-              { headers: { Authorization: `Bearer ${token}` } }
+              `/v1/threads/${conv.id}`
             )
             if (cancelled) return
             if (g?.name) {
@@ -200,9 +192,7 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
             firstName?: string
             username?: string
             avatarUrl?: string
-          }>(`/users/${otherId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
+          }>(`/users/${otherId}`)
           if (cancelled) return
           const name = u.firstName?.trim() || u.username || "Unknown User"
           setParticipants((prev) =>
@@ -224,8 +214,6 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!userId || conversations.length === 0) return
-    const token = getAccessToken()
-    if (!token) return
     let cancelled = false
     ;(async () => {
       for (const conv of conversations) {
@@ -248,8 +236,7 @@ export function InboxThreadsProvider({ children }: { children: ReactNode }) {
           if (!privateKey) continue
           try {
             const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-              `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
-              { headers: { Authorization: `Bearer ${token}` } }
+              `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`
             )
             const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
               c.charCodeAt(0)

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
+import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 type ThreadStatePatch = Record<string, unknown> & { removed?: boolean }
@@ -23,24 +23,22 @@ export interface UserChannelHandlers {
  * of thread state changes (pin/star/archive/...) per Doc 05 EC-1.4.
  */
 export function useUserChannel(handlers: UserChannelHandlers) {
+  const { user } = useAuth()
   const ref = useRef(handlers)
   useEffect(() => {
     ref.current = handlers
   }, [handlers])
 
   useEffect(() => {
-    const currentUser = getCurrentUser()
-    if (!currentUser) return
+    if (!user?.id) return
 
     // Reuse the ably-token endpoint. Capability is wildcard so it covers user:{id}.
     // We piggy-back on a known threadId request param or just pass empty; backend ignores for token issuance.
     const client = new Ably.Realtime({
       authCallback: async (_params, cb) => {
         try {
-          const token = getAccessToken()
           const details = await apiFetch<any>(`/v1/threads/ably-token`, {
             method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
           })
           if (!details) {
             cb("Realtime token unavailable", null)
@@ -51,10 +49,10 @@ export function useUserChannel(handlers: UserChannelHandlers) {
           cb(err instanceof Error ? err.message : String(err), null)
         }
       },
-      clientId: currentUser.id,
+      clientId: user.id,
     })
 
-    const channel = client.channels.get(`user:${currentUser.id}`)
+    const channel = client.channels.get(`user:${user.id}`)
 
     channel.subscribe((msg) => {
       switch (msg.name) {
@@ -71,7 +69,7 @@ export function useUserChannel(handlers: UserChannelHandlers) {
           // Doc 05 EC-7.5: ignore read receipts where readerId === me.
           // Backend should only fan-out to the sender, but be defensive
           // in case backend ever publishes to the wrong channel.
-          if (msg.data?.readerId && msg.data.readerId === currentUser.id) break
+          if (msg.data?.readerId && msg.data.readerId === user.id) break
           ref.current.onMessageRead?.(msg.data)
           break
       }
@@ -81,5 +79,5 @@ export function useUserChannel(handlers: UserChannelHandlers) {
       channel.unsubscribe()
       client.close()
     }
-  }, [])
+  }, [user?.id])
 }

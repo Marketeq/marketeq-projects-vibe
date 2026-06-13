@@ -36,12 +36,14 @@ export class ProxyService {
       timeTracking: config.get('TIME_TRACKING_SERVICE_URL') || 'http://localhost:3017',
       admin: config.get('ADMIN_SERVICE_URL') || 'http://localhost:3024',
       affiliateReferral: config.get('AFFILIATE_REFERRAL_SERVICE_URL') || 'http://localhost:3025',
-      billing: config.get('BILLING_SERVICE_URL') || 'http://localhost:3026',
-      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3027',
+      billing: config.get('BILLING_SERVICE_URL') || 'http://localhost:3099',
+      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3026',
       payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3028',
       pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
       wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
+      offers: config.get('OFFER_SERVICE_URL') || 'http://localhost:3011',
+      legal: config.get('LEGAL_SERVICE_URL') || 'http://localhost:3032',
     }
   }
 
@@ -67,6 +69,7 @@ export class ProxyService {
     // Always forward auth headers so downstream services can validate JWT
     const authHeader = req.headers.authorization as string | undefined
     const cookieToken = (req as any).cookies?.access_token as string | undefined
+    // Time-tracking service uses a static bearer token, not JWT
     if (authHeader) {
       headers['authorization'] = authHeader
     } else if (cookieToken) {

@@ -11,6 +11,7 @@ import React, {
 import { useRouter } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
+import { setCurrentUserSnapshot } from "@/utils/auth"
 import Cookies from "js-cookie"
 import { ROLE, User } from "@/types/user"
 import { useToast } from "@/components/ui"
@@ -71,16 +72,12 @@ export const hasCompletedOnboarding = (
   isPreOnboardingUser(user)
 
 export const hasCompletedClientOnboarding = (
-  user?: DashboardResolvableUser | null,
-): boolean =>
-  user?.clientOnboardedAt != null ||
-  isPreOnboardingUser(user)
+  user?: DashboardResolvableUser | null
+): boolean => user?.clientOnboardedAt != null || isPreOnboardingUser(user)
 
 export const hasCompletedTalentOnboarding = (
-  user?: DashboardResolvableUser | null,
-): boolean =>
-  user?.talentOnboardedAt != null ||
-  isPreOnboardingUser(user)
+  user?: DashboardResolvableUser | null
+): boolean => user?.talentOnboardedAt != null || isPreOnboardingUser(user)
 
 export const resolveDashboardRoute = (
   user?: DashboardResolvableUser | null
@@ -134,6 +131,9 @@ export const mergeDashboardUserFields = <
     "onboardingDismissed",
     "hasCompletedOnboarding",
     "onboardedAt",
+    "clientOnboardedAt",
+    "talentOnboardedAt",
+    "createdAt",
   ] as const) {
     const authValue = (authUser as Record<string, unknown>)[key]
     if (merged[key] == null && authValue != null) {
@@ -188,17 +188,6 @@ function useProvideAuth() {
   const getUser = () => {
     setIsLoading(true)
 
-    const accessToken = Cookies.get("access_token")
-    if (!accessToken) {
-      setUser(null)
-      setIsAuthChecked(true)
-      setIsLoading(false)
-      return
-    }
-
-    // Ensure cookie is always set with path="/" so it's available on all routes
-    Cookies.set("access_token", accessToken, { path: "/" })
-
     UserAPI.me()
       .then((response) => {
         if (response?.status === 200) {
@@ -248,11 +237,13 @@ function useProvideAuth() {
 
   const logoutHandler = async () => {
     try {
-      const refreshToken = Cookies.get("refresh_token")
-      await AuthAPI.Logout(refreshToken)
+      await AuthAPI.Logout()
       document.cookie =
         "access_token=; Path=/; Max-Age=0; SameSite=None; Secure"
       document.cookie = "accessToken=; Path=/; Max-Age=0; SameSite=None; Secure"
+      document.cookie =
+        "refresh_token=; Path=/; Max-Age=0; SameSite=None; Secure"
+      document.cookie = "session_id=; Path=/; Max-Age=0; SameSite=None; Secure"
       Cookies.remove("access_token", { path: "/" })
       Cookies.remove("accessToken", { path: "/" })
       Cookies.remove("refresh_token", { path: "/" })
@@ -278,11 +269,21 @@ function useProvideAuth() {
     getUser()
   }, [])
 
+  useEffect(() => {
+    setCurrentUserSnapshot(
+      user
+        ? {
+            id: user.id,
+            username: user.username ?? "",
+            avatarUrl: user.avatarUrl ?? undefined,
+          }
+        : null
+    )
+  }, [user])
+
   // Heartbeat: keeps session alive and detects revocation
   useEffect(() => {
-    const accessToken = Cookies.get("access_token")
-    const sessionId = Cookies.get("session_id")
-    if (!accessToken || !sessionId) return
+    if (!user) return
 
     const tick = () => {
       AuthAPI.Heartbeat().catch((err) => {

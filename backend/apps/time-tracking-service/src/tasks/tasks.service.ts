@@ -14,16 +14,16 @@ export class TasksService {
 
   async getTasksByContract(contractId: string): Promise<ContractTask[]> {
     return this.taskRepo.find({
-      where: { contractId, archived: false },
-      order: { createdAt: 'ASC' },
+      where: { contractId, archived: 0 },
+      order: { name: 'ASC' },
     });
   }
 
   async createTask(dto: CreateContractTaskDto): Promise<ContractTask> {
     const task = this.taskRepo.create({
+      id: `task-${dto.contractId}-${Date.now()}`,
       contractId: dto.contractId,
       name: dto.name,
-      createdBy: dto.createdBy,
     });
     return this.taskRepo.save(task);
   }
@@ -42,7 +42,7 @@ export class TasksService {
   async deleteTask(id: string): Promise<void> {
     const task = await this.taskRepo.findOne({ where: { id } });
     if (!task) throw new NotFoundException('Task not found');
-    task.archived = true;
+    task.archived = 1;
     await this.taskRepo.save(task);
   }
 }

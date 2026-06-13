@@ -33,6 +33,7 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/talent/users',
   '/v1/users/username',
   '/v1/users/health',
+  '/services/health',
   '/v1/projects',
   '/v1/services',
 ])

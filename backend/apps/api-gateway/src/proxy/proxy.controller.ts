@@ -1,5 +1,7 @@
 import { Controller, All, Req, Res, Get, ForbiddenException } from '@nestjs/common'
 import { Request, Response } from 'express'
+import { HttpService } from '@nestjs/axios'
+import { firstValueFrom } from 'rxjs'
 import { ProxyService } from './proxy.service'
 import { HomepageService } from '../homepage/homepage.service'
 
@@ -51,6 +53,11 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   wallet: 'wallet',
   'wire-transfer': 'wireReview',
   'wire-review': 'wireReview',
+  internal: 'listings',            // internal/projects/seed, internal/services/seed
+  offers: 'offers',                // offer-service offer management
+  'counter-offers': 'offers',     // offer-service counter-offer endpoints
+  legal: 'legal',                  // legal-service NDA, documents, acceptance
+  nda: 'legal',                    // legal-service NDA endpoints
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -71,6 +78,7 @@ export class ProxyController {
   constructor(
     private readonly proxy: ProxyService,
     private readonly homepageService: HomepageService,
+    private readonly http: HttpService,
   ) {}
 
   @Get('health')
@@ -81,6 +89,65 @@ export class ProxyController {
   @Get('ready')
   ready() {
     return { status: 'ready' }
+  }
+
+  @Get('services/health')
+  async servicesHealth() {
+    const serviceUrls: Record<string, string> = {
+      'auth-service': process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+      'user-service': process.env.USER_SERVICE_URL || 'http://localhost:3002',
+      'listings-service': process.env.LISTINGS_SERVICE_URL || 'http://localhost:3003',
+      'messaging-service': process.env.MESSAGING_SERVICE_URL || 'http://localhost:3005',
+      'notification-service': process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
+      'search-service': process.env.SEARCH_SERVICE_URL || 'http://localhost:3007',
+      'algolia-service': process.env.ALGOLIA_SERVICE_URL || 'http://localhost:3008',
+      'checkout-service': process.env.CHECKOUT_SERVICE_URL || 'http://localhost:3009',
+      'contracts-service': process.env.CONTRACTS_SERVICE_URL || 'http://localhost:3010',
+      'offer-service': process.env.OFFER_SERVICE_URL || 'http://localhost:3011',
+      'favorites-service': process.env.FAVORITES_SERVICE_URL || 'http://localhost:3012',
+      'invitations-service': process.env.INVITATIONS_SERVICE_URL || 'http://localhost:3013',
+      'content-moderation-service': process.env.MODERATION_SERVICE_URL || 'http://localhost:3014',
+      'portfolio-service': process.env.PORTFOLIO_SERVICE_URL || 'http://localhost:3015',
+      'autocomplete-service': process.env.AUTOCOMPLETE_SERVICE_URL || 'http://localhost:3016',
+      'time-tracking-service': process.env.TIME_TRACKING_SERVICE_URL || 'http://localhost:3017',
+      'transaction-service': process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3018',
+      'suggestions-service': process.env.SUGGESTIONS_SERVICE_URL || 'http://localhost:3020',
+      'category-service': process.env.CATEGORY_SERVICE_URL || 'http://localhost:3023',
+      'admin-service': process.env.ADMIN_SERVICE_URL || 'http://localhost:3024',
+      'affiliate-referral-service': process.env.AFFILIATE_REFERRAL_SERVICE_URL || 'http://localhost:3025',
+      'billing-service': process.env.BILLING_SERVICE_URL || 'http://localhost:3026',
+      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3027',
+      'payout-service': process.env.PAYOUT_SERVICE_URL || 'http://localhost:3028',
+      'pricing-service': process.env.PRICING_SERVICE_URL || 'http://localhost:3029',
+      'wallet-service': process.env.WALLET_SERVICE_URL || 'http://localhost:3030',
+      'wire-review-service': process.env.WIRE_REVIEW_SERVICE_URL || 'http://localhost:3031',
+      'legal-service': process.env.LEGAL_SERVICE_URL || 'http://localhost:3032',
+    }
+
+    const results: Record<string, { status: string; code: number }> = {}
+    const checks = Object.entries(serviceUrls).map(async ([name, url]) => {
+      try {
+        const resp = await firstValueFrom(
+          this.http.get(`${url}/health`, { timeout: 3000, validateStatus: () => true }),
+        )
+        results[name] = { status: 'healthy', code: resp.status }
+      } catch {
+        results[name] = { status: 'down', code: 0 }
+      }
+    })
+
+    await Promise.all(checks)
+
+    const healthy = Object.values(results).filter((r) => r.status === 'healthy').length
+    const total = Object.keys(results).length
+    return {
+      overall: healthy === total ? 'healthy' : 'degraded',
+      healthy,
+      total,
+      uptimePercent: ((healthy / total) * 100).toFixed(1),
+      timestamp: new Date().toISOString(),
+      services: results,
+    }
   }
 
   @Get('homepage')
@@ -165,6 +232,10 @@ export class ProxyController {
       prefix = 'payouts'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
+    } else if (prefix === 'v1' && segments[1] === 'offers') {
+      prefix = 'offers'
+    } else if (prefix === 'v1' && segments[1] === 'counter-offers') {
+      prefix = 'counter-offers'
     } else if (prefix === 'v1' && segments[1] === 'rates') {
       prefix = 'rates'
     } else if (prefix === 'v1' && segments[1] === 'currency') {
@@ -194,6 +265,9 @@ export class ProxyController {
     }
     if (serviceName === 'categories') {
       downstreamPath = `/api${downstreamPath}`
+    }
+    if (serviceName === 'earnings') {
+      downstreamPath = `/v1${downstreamPath}`
     }
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')

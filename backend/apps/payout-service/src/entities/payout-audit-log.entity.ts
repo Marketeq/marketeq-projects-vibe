@@ -39,7 +39,7 @@ export class PayoutAuditLog {
   @Column({ name: 'contractor_id' })
   contractorId: string;
 
-  @Column({ name: 'payout_request_id', nullable: true })
+  @Column({ name: 'payout_request_id', nullable: true, type: 'varchar' })
   payoutRequestId: string | null;
 
   @ManyToOne(() => PayoutRequest, { nullable: true })
@@ -66,6 +66,6 @@ export class PayoutAuditLog {
   @Column({ type: 'jsonb', nullable: true })
   metadata: object | null;
 
-  @Column({ name: 'request_id', nullable: true })
+  @Column({ name: 'request_id', nullable: true, type: 'varchar' })
   requestId: string | null;
 }

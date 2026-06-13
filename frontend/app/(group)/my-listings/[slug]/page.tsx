@@ -11,7 +11,6 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { TeamsAPI } from "@/service/http/teams"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   TEAM_SEED_LISTINGS,
 } from "@/src/lib/my-listings"
@@ -21,6 +20,7 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { useAuth } from "@/contexts/auth"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import { TagsInputHiddenInput } from "@ark-ui/react"
@@ -240,13 +240,18 @@ const DescriptionCard = ({
   descHtml: string
   onEdit: () => void
 }) => {
-  const contentRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
   const [needsTruncation, setNeedsTruncation] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
 
   useEffect(() => {
-    if (!contentRef.current) return
-    setNeedsTruncation(contentRef.current.scrollHeight > DESC_MAX_HEIGHT)
+    const el = innerRef.current
+    if (!el) return
+    const check = () => setNeedsTruncation(el.scrollHeight > DESC_MAX_HEIGHT)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [descHtml])
 
   return (
@@ -255,10 +260,9 @@ const DescriptionCard = ({
         "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
         needsTruncation && !isExpanded && "h-[530px]"
       )}
-      ref={contentRef}
     >
       <IconButton
-        className="absolute top-6 right-6 rounded-full text-gray-500 hover:text-gray-800 shrink-0 z-10"
+        className="absolute top-6 right-6 rounded-full bg-white text-gray-500 hover:text-gray-800 shrink-0 z-10 shadow-sm"
         variant="ghost"
         visual="gray"
         onClick={onEdit}
@@ -266,7 +270,7 @@ const DescriptionCard = ({
         <Edit03 className="size-4" />
       </IconButton>
 
-      <div>
+      <div ref={innerRef}>
         <div
           className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
           dangerouslySetInnerHTML={{ __html: descHtml }}
@@ -1162,6 +1166,7 @@ function SortableGalleryItem({
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
+  const { user } = useAuth()
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -1228,7 +1233,7 @@ export default function ProjectDetails() {
   }, [hasChanges, pushBackGuard])
 
   const [selected, setSelected] = React.useState<string>("Details")
-  const [descDialogOpen, setDescDialogOpen] = React.useState(false)
+  const [descFullscreenOpen, setDescFullscreenOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const toTitleCase = (str: string) =>
@@ -2125,7 +2130,7 @@ export default function ProjectDetails() {
   // ── Budget & Duration computed from scope ──────────────────────────────────
   const [budgetPeriod, setBudgetPeriod] = React.useState("week")
 
-  const { budgetTotalCents, durationLabel, durationDays } =
+  const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
 
@@ -2152,21 +2157,29 @@ export default function ProjectDetails() {
       // Display rules from docs:
       // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
       let durationLabel = "—"
+      let durationValue = 0
+      let durationUnit = ""
       if (totalDays > 0) {
         if (totalDays < 7) {
+          durationValue = totalDays
+          durationUnit = "day"
           durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
         } else if (totalDays < 28) {
           const weeks = Math.max(1, Math.ceil(totalDays / 7))
+          durationValue = weeks
+          durationUnit = "week"
           durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
         } else {
           const months = Math.max(1, Math.ceil(totalDays / 30))
+          durationValue = months
+          durationUnit = "month"
           durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
         }
       }
 
       const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
 
-      return { budgetTotalCents, durationLabel, durationDays: totalDays }
+      return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
     }, [project.scope, project.budgetAmountUsdCents])
 
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
@@ -2240,14 +2253,12 @@ export default function ProjectDetails() {
 
   const [isFavorited, setIsFavorited] = React.useState(false)
 
-  // Check if this item is already favorited (ensure dev auth first)
+
   React.useEffect(() => {
     if (!project?.id) return
-    ensureDevAuth().then(() =>
-      findFavoriteByItemId(String(project.id)).then((fav) => {
-        setIsFavorited(!!fav)
-      })
-    )
+    findFavoriteByItemId(String(project.id)).then((fav) => {
+      setIsFavorited(!!fav)
+    })
   }, [project?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
@@ -2264,11 +2275,8 @@ export default function ProjectDetails() {
 
   React.useEffect(() => {
     async function fetchProject() {
+      const rawSlug = params.slug as string
       try {
-        // Ensure auth token is available before calling authenticated endpoints
-        await ensureDevAuth()
-
-        const rawSlug = params.slug as string
         // The URL param is typically a UUID (draft ID), not a slug.
         // e.g. /my-listings/abc123-def456-...
         const isUuid =
@@ -2610,7 +2618,6 @@ export default function ProjectDetails() {
       //    If the slug matches a seed listing, use its title/description
       const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === rawSlug)
       try {
-        await ensureDevAuth()
         const draftRes = await ProjectAPI.CreateProjectDraft({
           title: seedListing?.title || "",
           shortDescription: seedListing?.description || "",
@@ -3689,7 +3696,7 @@ export default function ProjectDetails() {
                             descHtml={project.description}
                             onEdit={() => {
                               setDescDraft(project.description || "")
-                              setDescDialogOpen(true)
+                              setDescFullscreenOpen(true)
                             }}
                           />
                         ) : (
@@ -3711,7 +3718,7 @@ export default function ProjectDetails() {
                               className="shrink-0 ml-[75px]"
                               onClick={() => {
                                 setDescDraft(project.description || "")
-                                setDescDialogOpen(true)
+                                setDescFullscreenOpen(true)
                               }}
                             >
                               <Plus className="size-[15px]" />
@@ -3720,113 +3727,36 @@ export default function ProjectDetails() {
                           </div>
                         )}
 
-                        <Dialog
-                          open={descDialogOpen}
-                          onOpenChange={setDescDialogOpen}
-                        >
-                          <DialogContent className="max-w-[680px] p-0 rounded-xl">
-                            <div className="flex items-center justify-between px-6 pt-6">
-                              <DialogTitle className="text-lg font-bold text-dark-blue-400">
-                                Project Description
-                              </DialogTitle>
-                              <DialogClose className="text-gray-400 hover:text-gray-600 focus-visible:outline-none">
-                                <X className="size-5" />
-                              </DialogClose>
-                            </div>
-
-                            <div className="px-6 pt-6 pb-6">
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-sm font-light text-dark-blue-400">
-                                  Provide a comprehensive description of this
-                                  project, including its purpose and features.
-                                </p>
-                                <span
-                                  className={cn(
-                                    "text-xs shrink-0 ml-2",
-                                    getRichTextCharacterCount(descDraft) >
-                                      FULL_DESCRIPTION_MAX_LENGTH
-                                      ? "text-error-500"
-                                      : "text-gray-400"
-                                  )}
-                                >
-                                  {getRichTextCharacterCount(
-                                    descDraft
-                                  ).toLocaleString()}
-                                  /
-                                  {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
-                                </span>
-                              </div>
-                              <RichTextEditor
-                                defaultValue={descDraft}
-                                placeholder="<p class='text-gray-400'>Enter a full description</p>"
-                                allowFullscreen
-                                className={cn(
-                                  "rounded-lg border focus-within:border-primary-500 bg-white",
-                                  getRichTextCharacterCount(descDraft) > 0 &&
-                                    (getRichTextCharacterCount(descDraft) <
-                                      FULL_DESCRIPTION_MIN_LENGTH ||
-                                      getRichTextCharacterCount(descDraft) >
-                                        FULL_DESCRIPTION_MAX_LENGTH)
-                                    ? "border-error-500"
-                                    : "border-gray-300"
-                                )}
-                                editorClassName="min-h-[200px] max-h-[40vh] overflow-y-auto !p-3.5"
-                                onUpdate={(html) => setDescDraft(html)}
-                              />
-                              {getRichTextCharacterCount(descDraft) > 0 &&
-                                getRichTextCharacterCount(descDraft) <
-                                  FULL_DESCRIPTION_MIN_LENGTH && (
-                                  <p className="mt-1 text-xs text-error-500">
-                                    Please enter at least{" "}
-                                    {FULL_DESCRIPTION_MIN_LENGTH} character(s)
-                                  </p>
-                                )}
-                              {getRichTextCharacterCount(descDraft) >
-                                FULL_DESCRIPTION_MAX_LENGTH && (
-                                <p className="mt-1 text-xs text-error-500">
-                                  Please do not enter more than{" "}
-                                  {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}{" "}
-                                  character(s)
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
-                              <DialogClose asChild>
-                                <Button variant="link" visual="gray">
-                                  <X className="size-4" />
-                                  Cancel
-                                </Button>
-                              </DialogClose>
-                              <Button
-                                disabled={
-                                  descDraft === (project.description || "") ||
-                                  (getRichTextCharacterCount(descDraft) > 0 &&
-                                    (getRichTextCharacterCount(descDraft) <
-                                      FULL_DESCRIPTION_MIN_LENGTH ||
-                                      getRichTextCharacterCount(descDraft) >
-                                        FULL_DESCRIPTION_MAX_LENGTH))
-                                }
-                                onClick={() => {
-                                  const savedDesc =
-                                    getRichTextCharacterCount(descDraft) === 0
-                                      ? ""
-                                      : descDraft
-                                  setProject((prev: any) => ({
-                                    ...prev,
-                                    description: savedDesc,
-                                  }))
-                                  setDescDialogOpen(false)
-                                  saveProjectFields({
-                                    fullDescription: savedDesc,
-                                  })
-                                }}
-                              >
-                                Save
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                        {descFullscreenOpen && (
+                          <RichTextEditor
+                            defaultValue={descDraft}
+                            placeholder="<p class='text-gray-400'>Enter a full description</p>"
+                            allowFullscreen
+                            fullscreenOpen={descFullscreenOpen}
+                            onFullscreenOpenChange={(open) => {
+                              if (!open) {
+                                // Auto-save on close
+                                const savedDesc =
+                                  getRichTextCharacterCount(descDraft) === 0
+                                    ? ""
+                                    : descDraft
+                                setProject((prev: any) => ({
+                                  ...prev,
+                                  description: savedDesc,
+                                }))
+                                saveProjectFields({
+                                  fullDescription: savedDesc,
+                                })
+                              }
+                              setDescFullscreenOpen(open)
+                            }}
+                            fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
+                            fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
+                            fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
+                            className="hidden"
+                            onUpdate={(html) => setDescDraft(html)}
+                          />
+                        )}
 
                         {/* Project Info Modal */}
                         <Dialog
@@ -5140,48 +5070,50 @@ export default function ProjectDetails() {
                                     >
                                       <TagsInputContext>
                                         {(tagsInput) => (
-                                          <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left w-full h-auto rounded-[5px] border border-gray-300 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 px-[14px] py-[10px] m-0">
-                                            {tagsInput.value.map(
-                                              (value, vi) => (
-                                                <TagsInputItem
-                                                  key={vi}
-                                                  index={vi}
-                                                  value={value}
-                                                >
-                                                  <TagsInputItemPreview
-                                                    visual="primary"
-                                                    size="md"
-                                                    className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                          <>
+                                            <TagsInputControl className="relative pr-[28px]">
+                                              {tagsInput.value.map(
+                                                (value, vi) => (
+                                                  <TagsInputItem
+                                                    key={vi}
+                                                    index={vi}
+                                                    value={value}
                                                   >
-                                                    <TagsInputItemText>
-                                                      {value}
-                                                    </TagsInputItemText>
-                                                    <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                                      <X2 className="size-3" />
-                                                    </TagsInputItemDeleteTrigger>
-                                                  </TagsInputItemPreview>
-                                                  <TagsInputItemInput />
-                                                </TagsInputItem>
-                                              )
-                                            )}
-                                            <TagsInputInput
-                                              options={field.options}
-                                              placeholder={
-                                                tagsInput.value.length
-                                                  ? ""
-                                                  : field.placeholder
-                                              }
-                                              allowCreateOption
-                                              className="flex-1 min-w-[100px]"
-                                              onInputValueChange={(value) => {
-                                                fetchTypeAutocomplete(
-                                                  field.acType,
-                                                  value,
-                                                  field.setOptions
+                                                    <TagsInputItemPreview
+                                                      visual="primary"
+                                                      size="md"
+                                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                                    >
+                                                      <TagsInputItemText>
+                                                        {value}
+                                                      </TagsInputItemText>
+                                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                                        <X2 className="size-3" />
+                                                      </TagsInputItemDeleteTrigger>
+                                                    </TagsInputItemPreview>
+                                                    <TagsInputItemInput />
+                                                  </TagsInputItem>
                                                 )
-                                              }}
-                                            />
-                                          </TagsInputControl>
+                                              )}
+                                              <TagsInputInput
+                                                options={field.options}
+                                                placeholder={
+                                                  tagsInput.value.length
+                                                    ? ""
+                                                    : field.placeholder
+                                                }
+                                                allowCreateOption
+                                                onInputValueChange={(value) => {
+                                                  fetchTypeAutocomplete(
+                                                    field.acType,
+                                                    value,
+                                                    field.setOptions
+                                                  )
+                                                }}
+                                              />
+                                              <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                            </TagsInputControl>
+                                          </>
                                         )}
                                       </TagsInputContext>
                                       <TagsInputHiddenInput />
@@ -8207,23 +8139,27 @@ export default function ProjectDetails() {
                   </span>
 
                   <Avatar size="sm" className="border-2 border-white">
-                    <AvatarImage src="/woman.jpg" alt="You" />
-                    <AvatarFallback>Y</AvatarFallback>
+                    {user?.avatarUrl && (
+                      <AvatarImage src={user.avatarUrl} alt={user.firstName || "Owner"} />
+                    )}
+                    <AvatarFallback>
+                      {user?.firstName?.[0]?.toUpperCase() || "O"}
+                    </AvatarFallback>
                   </Avatar>
                 </div>
 
                 <div className="mt-6 space-y-3">
                   <div className="flex items-center gap-x-[6.4px]">
-                    <Clock className="size-[18px] text-gray-400" />
-                    <span className="text-sm leading-none font-medium text-gray-500">
+                    <Clock className="size-[18px] text-primary-500" />
+                    <span className="text-sm leading-none font-medium text-dark-blue-400">
                       {durationDays > 0
-                        ? durationLabel
+                        ? `Starting from a ${durationValue} ${durationUnit} duration`
                         : "Add a scope to see duration"}
                     </span>
                   </div>
                   <div className="flex items-center gap-x-[6.4px]">
-                    <Users03 className="size-[18px] text-gray-400" />
-                    <span className="text-sm leading-none font-medium text-gray-500">
+                    <Users03 className="size-[18px] text-primary-500" />
+                    <span className="text-sm leading-none font-medium text-dark-blue-400">
                       {(() => {
                         const roles = new Set<string>()
                         for (const phase of project.scope ?? []) {
@@ -8232,7 +8168,7 @@ export default function ProjectDetails() {
                           }
                         }
                         return roles.size > 0
-                          ? `${roles.size} team member${roles.size !== 1 ? "s" : ""}`
+                          ? `Minimum ${roles.size} team member${roles.size !== 1 ? "s" : ""}`
                           : "Add a scope to see team members"
                       })()}
                     </span>

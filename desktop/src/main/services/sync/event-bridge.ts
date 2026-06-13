@@ -103,6 +103,40 @@ export function createEventBridge(deps: EventBridgeDeps) {
         // correct project/service/team contract
         const snap = deps.timer.getSnapshot();
         const contract = snap.pickedContract;
+        
+        let imageBase64: string | undefined;
+        try {
+          const fs = require('fs');
+          if (e.filePath && fs.existsSync(e.filePath)) {
+            const buf = fs.readFileSync(e.filePath);
+            if (buf.length > 0) {
+              imageBase64 = buf.toString('base64');
+            }
+          }
+        } catch (err) {
+          log?.warn({ err }, 'event-bridge: failed to read screenshot file for upload');
+        }
+
+        // Compute activity from instant idle time at capture moment
+        let keyboard = 0;
+        let mouse = 0;
+        try {
+          const { powerMonitor } = require('electron');
+          const idleSec = powerMonitor.getSystemIdleTime();
+          if (idleSec < 300) {
+            // Activity level derived from system idle time.
+            // keyboard/mouse breakdown requires native input hooks (rejected per DTT-D-009
+            // privacy guarantee — no keystroke data leaves the device). Values remain 0
+            // until an explicit repo-owner decision on a privacy-compliant measurement approach.
+            const basePct = Math.round((1 - idleSec / 300) * 100);
+            keyboard = 0; // Placeholder — see DTT-D-009
+            mouse = 0;    // Placeholder — see DTT-D-009
+            void basePct; // Available for overall activity signal if needed
+          }
+        } catch {
+          // Non-fatal
+        }
+
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
           method: 'POST',
@@ -117,6 +151,12 @@ export function createEventBridge(deps: EventBridgeDeps) {
             monitorId: e.displayId,
             contractId: contract?.contractId ?? undefined,
             taskId: contract?.taskId ?? undefined,
+            imageBase64,
+            keyboard,
+            mouse,
+            apps: e.activeAppName
+              ? [{ appName: e.activeAppName, iconUrl: '' }]
+              : undefined,
           },
         });
       } catch (err) {

@@ -156,3 +156,8 @@ vite.config.ts.timestamp-*
 build/
 .vercel
 .DS_Store
+backend/screenshot-uploads/
+backend/gen-token.js
+.DS_Store
+.vscode/
+patch-transactions-comps.js

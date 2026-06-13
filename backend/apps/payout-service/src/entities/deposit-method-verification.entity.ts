@@ -23,8 +23,8 @@ export class DepositMethodVerification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'deposit_method_id' })
-  depositMethodId: string;
+  @Column({ name: 'deposit_method_id', nullable: true })
+  depositMethodId: string | null;
 
   @ManyToOne(() => DepositMethod, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'deposit_method_id' })
@@ -57,14 +57,14 @@ export class DepositMethodVerification {
   expiresAt: Date | null;
 
   // -- OAuth / Stripe FC fields --
-  @Column({ name: 'oauth_state', nullable: true })
+  @Column({ name: 'oauth_state', nullable: true, type: 'varchar' })
   oauthState: string | null;
 
-  @Column({ name: 'oauth_code', nullable: true })
+  @Column({ name: 'oauth_code', nullable: true, type: 'varchar' })
   oauthCode: string | null;
 
   // -- Crypto confirmation --
-  @Column({ name: 'confirmation_code', nullable: true })
+  @Column({ name: 'confirmation_code', nullable: true, type: 'varchar' })
   confirmationCode: string | null;
 
   @Column({ name: 'confirmation_expires_at', type: 'timestamptz', nullable: true })

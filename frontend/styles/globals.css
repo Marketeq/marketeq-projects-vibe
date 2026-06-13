@@ -108,9 +108,7 @@ body {
 .rich-text-content > * + * {
   margin-top: 24px;
 }
-.rich-text-content > p + p {
-  margin-top: 0;
-}
+
 
 /* ── Heading spacing ── */
 .rich-text-content p + h1,
@@ -126,7 +124,7 @@ body {
   background-image: linear-gradient(currentColor, currentColor);
   background-size: 100% 1.5px;
   background-repeat: no-repeat;
-  background-position: center 55%;
+  background-position: center 48%;
 }
 
 /* ── Font sizes (inline marks via FontSizeExtension) ── */
@@ -299,7 +297,7 @@ body.rich-text-image-dragging * {
   background-image: linear-gradient(currentColor, currentColor);
   background-size: 100% 1.5px;
   background-repeat: no-repeat;
-  background-position: center 55%;
+  background-position: center 48%;
 }
 .prose [data-font-size="large-heading"] {
   font-size: 24px;

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { useRouter } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import {
   type Favorite,
   getFavoritesByGroup,
@@ -387,8 +386,6 @@ export default function FavoriteGroupDetailPage() {
     async function load() {
       setIsLoading(true)
       try {
-        await ensureDevAuth()
-
         if (isTalent) {
           const usernames = getUsernamesForGroup(groupId)
           const fallbackUsernames =

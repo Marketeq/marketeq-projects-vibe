@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -948,7 +948,6 @@ const NewGroupModal = ({
     }
     setIsCreating(true)
     setError("")
-    await ensureDevAuth()
     const defaultType =
       activeTab === "Projects"
         ? "project"
@@ -1151,7 +1150,6 @@ export default function FavoritesPage() {
     async function loadFavorites() {
       try {
         setIsLoading(true)
-        await ensureDevAuth()
         const [projGroups, svcGroups, talent, groups] = await Promise.all([
           getAllFavoritesGrouped("project"),
           getAllFavoritesGrouped("service"),
@@ -1237,7 +1235,6 @@ export default function FavoritesPage() {
 
   const handleRenameGroup = useCallback(
     async (groupId: string, newName: string) => {
-      await ensureDevAuth()
       const updated = await renameGroupApi(groupId, { name: newName })
       if (updated) {
         const updateGroups = (groups: FavGroup[]) =>
@@ -1251,7 +1248,6 @@ export default function FavoritesPage() {
   )
 
   const handleDeleteGroup = useCallback(async (groupId: string) => {
-    await ensureDevAuth()
     const success = await deleteGroupApi(groupId)
     if (success) {
       const removeGroup = (groups: FavGroup[]) =>
@@ -1302,6 +1298,7 @@ export default function FavoritesPage() {
   })
 
   return (
+    <AuthenticatedRoute>
     <div className="p-3.5 md:p-10 lg:py-[100px] lg:px-[200px]">
       <div className="md:hidden items-center flex flex-row-reverse justify-between">
         <div className="flex items-center gap-x-3 lg:gap-x-3.5">
@@ -1554,5 +1551,6 @@ export default function FavoritesPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </AuthenticatedRoute>
   )
 }

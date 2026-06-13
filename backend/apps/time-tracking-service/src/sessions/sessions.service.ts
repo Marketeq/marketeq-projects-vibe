@@ -52,4 +52,18 @@ export class SessionsService {
       order: { startedAt: 'DESC' },
     });
   }
+
+  async findById(id: string): Promise<Session> {
+    const session = await this.repo.findOneBy({ id });
+    if (!session) throw new NotFoundException('Session not found');
+    return session;
+  }
+
+  async takeOver(id: string, userId: string, newDeviceId: string): Promise<Session> {
+    const session = await this.repo.findOneBy({ id });
+    if (!session) throw new NotFoundException('Session not found');
+    if (session.userId !== userId) throw new BadRequestException('Not your session');
+    session.deviceId = newDeviceId;
+    return this.repo.save(session);
+  }
 }

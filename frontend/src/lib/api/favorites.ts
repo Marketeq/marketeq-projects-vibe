@@ -1,14 +1,10 @@
 // frontend/src/lib/api/favorites.ts
-import Cookies from "js-cookie"
-
 const FAVORITES_API_URL =
   process.env.NEXT_PUBLIC_FAVORITES_API_URL || "http://localhost:3012/favorites"
 
 function authHeaders(): HeadersInit {
-  const token = Cookies.get("access_token")
   return {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 }
 
@@ -64,6 +60,7 @@ export async function createGroup(
     const res = await fetch(`${FAVORITES_API_URL}/groups`, {
       method: "POST",
       headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify(dto),
     })
     if (!res.ok) return null
@@ -79,6 +76,7 @@ export async function getGroups(): Promise<FavoriteGroup[]> {
   try {
     const res = await fetch(`${FAVORITES_API_URL}/groups`, {
       headers: authHeaders(),
+      credentials: "include",
       cache: "no-store",
     })
     if (!res.ok) return []
@@ -98,6 +96,7 @@ export async function renameGroup(
     const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "PATCH",
       headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify(dto),
     })
     if (!res.ok) return null
@@ -114,6 +113,7 @@ export async function deleteGroup(groupId: string): Promise<boolean> {
     const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "DELETE",
       headers: authHeaders(),
+      credentials: "include",
     })
     return res.ok
   } catch (error) {
@@ -135,6 +135,7 @@ export async function getAllFavoritesGrouped(
     const url = type ? `${FAVORITES_API_URL}?type=${type}` : FAVORITES_API_URL
     const res = await fetch(url, {
       headers: authHeaders(),
+      credentials: "include",
       cache: "no-store",
     })
     if (!res.ok) return []
@@ -164,6 +165,7 @@ export async function addFavorite(
     const res = await fetch(FAVORITES_API_URL, {
       method: "POST",
       headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify(dto),
     })
     if (!res.ok) return null
@@ -183,6 +185,7 @@ export async function moveFavorite(
     const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
       method: "PATCH",
       headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify(dto),
     })
     if (!res.ok) return null
@@ -199,6 +202,7 @@ export async function removeFavorite(favoriteId: string): Promise<boolean> {
     const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
       method: "DELETE",
       headers: authHeaders(),
+      credentials: "include",
     })
     return res.ok
   } catch (error) {

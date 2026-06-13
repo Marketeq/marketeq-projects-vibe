@@ -173,7 +173,7 @@ export const isTransientNotificationsApiError = (error: unknown): boolean => {
   }
 
   if (typeof status === "number") {
-    // 401 happens frequently during auth bootstrap; UI retries after ensureDevAuth().
+    // 401 during auth bootstrap — not retryable.
     if (status === 401) return true
     // Retryable server errors.
     if (status === 408 || status === 429) return true

@@ -11,12 +11,23 @@ export async function apiFetch<T = any>(
   path: string,
   { body, headers, ...opts }: FetchOpts = {}
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const cleanBase = API_BASE.replace(/\/+$/, "");
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  let finalUrl = `${cleanBase}${cleanPath}`;
+  if (cleanBase.endsWith("/api") && cleanPath.startsWith("/api/")) {
+    finalUrl = `${cleanBase}${cleanPath.slice(4)}`;
+  }
+
+  const requestHeaders = new Headers(headers)
+  requestHeaders.set("Content-Type", "application/json")
+  requestHeaders.delete("Authorization")
+  requestHeaders.delete("authorization")
+
+  const res = await fetch(finalUrl, {
     ...(opts as any),
-    headers: {
-      "Content-Type": "application/json",
-      ...(headers || {}),
-    },
+    credentials: opts.credentials ?? "include",
+    headers: requestHeaders,
     body: body != null ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`)

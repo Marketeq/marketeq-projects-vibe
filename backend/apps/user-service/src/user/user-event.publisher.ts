@@ -1,21 +1,31 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import { User } from './entities/user.entity';
 
 @Injectable()
 export class UserEventPublisher {
   private readonly logger = new Logger(UserEventPublisher.name);
+  private readonly rabbitMqConfigured: boolean;
 
   constructor(
     @Inject('RABBITMQ_CLIENT')
     private readonly client: ClientProxy,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.rabbitMqConfigured = !!config.get<string>('RABBITMQ_URL');
+  }
 
   /**
    * Publishes a user.profile.updated event to the cms.events exchange.
    * This is consumed by cms-service to keep Payload talent profiles in sync.
    */
   async publishProfileUpdated(user: User): Promise<void> {
+    if (!this.rabbitMqConfigured) {
+      this.logger.debug(`Skipping user.profile.updated for user ${user.id} — RABBITMQ_URL not configured`);
+      return;
+    }
+
     const payload = {
       event: 'user.profile.updated',
       id: user.id,

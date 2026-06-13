@@ -39,12 +39,10 @@ export const AuthAPI = {
     return AxiosRequest.patch(`${AUTH_BASE}/auth/set-password`, data)
   },
 
-  Logout: (refreshToken?: string) => {
-    return AxiosRequest.post(
-      `${AUTH_BASE}/auth/logout`,
-      refreshToken ? { refresh_token: refreshToken } : null,
-      { withCredentials: true }
-    )
+  Logout: () => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/logout`, null, {
+      withCredentials: true,
+    })
   },
 
   ForgotPassword: (data: { email: string; redirectUrl?: string }) => {

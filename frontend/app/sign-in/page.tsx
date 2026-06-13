@@ -14,11 +14,9 @@ import { containsOneLowerCaseLetter, hookFormHasError } from "@/utils/functions"
 import { Eye, EyeOff } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
-import Cookies from "js-cookie"
 import { Controller, SubmitHandler, useForm } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton"
 import LinkedInLoginButton from "@/components/auth/LinkedInLoginButton"
@@ -47,6 +45,38 @@ const signInSchema = z.object({
 
 type SignInFormValues = z.infer<typeof signInSchema>
 
+const getLoginErrorMessage = (error: any) => {
+  const status = error?.response?.status
+  const serverMessage =
+    error?.response?.data?.message ??
+    error?.response?.data?.errors?.message
+
+  if (status === 401 || status === 403) {
+    return "Invalid email or password"
+  }
+
+  if (status === 423) {
+    return "Your account is temporarily locked. Please try again later or reset your password."
+  }
+
+  if (status === 408 || error?.code === "ECONNABORTED") {
+    return "The login request timed out. Please try again."
+  }
+
+  if (!error?.response) {
+    return "Authentication service is unavailable. Please try again shortly."
+  }
+
+  if (
+    typeof serverMessage === "string" &&
+    serverMessage.toLowerCase().includes("session")
+  ) {
+    return "Your session has expired. Please log in again."
+  }
+
+  return serverMessage || "Login failed. Please try again."
+}
+
 export default function SignIn() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -57,7 +87,6 @@ export default function SignIn() {
   const [isVisible, toggleIsVisible] = useToggle(false)
 
   const [isLoading, setIsLoading] = useState(false)
-  const [isDevLoading, setIsDevLoading] = useState(false)
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [partialToken, setPartialToken] = useState("")
   const [twoFactorMethod, setTwoFactorMethod] = useState<string>("totp")
@@ -103,15 +132,7 @@ export default function SignIn() {
         code: twoFactorCode,
         partialToken,
       })
-      if (res?.data?.access_token) {
-        Cookies.set("access_token", res.data.access_token, { path: "/" })
-        if (res.data.refresh_token) {
-          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-        }
-        if (res.data.sessionId) {
-          Cookies.set("session_id", res.data.sessionId, { path: "/" })
-        }
-
+      if (res?.data?.user) {
         let nextUser = res.data.user
         try {
           const meResponse = await UserAPI.me()
@@ -162,11 +183,11 @@ export default function SignIn() {
     }
   }
 
-  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password }) => {
+  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
     setIsLoading(true)
 
     setLoginError(null)
-    AuthAPI.LoginWithEmail({ email, password })
+    AuthAPI.LoginWithEmail({ email, password, rememberMe })
       .then(async (response) => {
         if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           setPartialToken(response.data.partialToken)
@@ -179,17 +200,7 @@ export default function SignIn() {
           return
         }
 
-        if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response.data.access_token, { path: "/" })
-          if (response.data.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, {
-              path: "/",
-            })
-          }
-          if (response.data.sessionId) {
-            Cookies.set("session_id", response.data.sessionId, { path: "/" })
-          }
-
+        if (response?.status === 200 && response?.data?.user) {
           let nextUser = response.data.user
           try {
             const meResponse = await UserAPI.me()
@@ -219,12 +230,7 @@ export default function SignIn() {
         }
       })
       .catch((error) => {
-        const msg =
-          error?.response?.data?.message ??
-          error?.response?.data?.errors?.message ??
-          error?.message ??
-          "Login failed"
-        setLoginError(msg)
+        setLoginError(getLoginErrorMessage(error))
       })
       .finally(() => {
         setIsLoading(false)
@@ -569,91 +575,6 @@ export default function SignIn() {
                     "Login to my account"
                   )}
                 </Button>
-
-                {process.env.NODE_ENV !== "production" && (
-                  <Button
-                    className="mt-3 w-full border-dashed border-2 border-orange-400 text-orange-600 hover:bg-orange-50"
-                    size="lg"
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    disabled={isDevLoading}
-                    onClick={async () => {
-                      setIsDevLoading(true)
-                      try {
-                        const gateway =
-                          getPublicApiUrl() || "http://localhost:4000"
-                        const res = await fetch(`${gateway}/auth/dev-login`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            email: "CHRISTOPHERTORRES17@GMAIL.COM",
-                          }),
-                        })
-                        if (!res.ok) throw new Error("Dev login failed")
-                        const data = await res.json()
-                        if (data.access_token) {
-                          Cookies.set("access_token", data.access_token, {
-                            path: "/",
-                          })
-                          if (data.refresh_token) {
-                            Cookies.set("refresh_token", data.refresh_token, {
-                              path: "/",
-                            })
-                          }
-                          if (data.sessionId) {
-                            Cookies.set("session_id", data.sessionId, {
-                              path: "/",
-                            })
-                          }
-                          let nextUser = data.user
-                          try {
-                            const meResponse = await UserAPI.me()
-                            if (meResponse?.status === 200) {
-                              const profileUser =
-                                meResponse?.data?.user ??
-                                meResponse?.data?.data?.user ??
-                                meResponse?.data
-                              if (
-                                profileUser &&
-                                typeof profileUser === "object"
-                              ) {
-                                nextUser = mergeDashboardUserFields(
-                                  nextUser,
-                                  profileUser
-                                )
-                              }
-                            }
-                          } catch {}
-                          if (nextUser) {
-                            nextUser.role = nextUser.role || "CLIENT"
-                            nextUser.onboardingDismissed = true
-                            setUser(nextUser)
-                          }
-                          router.push("/client-dashboard")
-                        }
-                      } catch (err) {
-                        toast({
-                          title: "Dev login failed",
-                          variant: "destructive",
-                        })
-                      } finally {
-                        setIsDevLoading(false)
-                      }
-                    }}
-                  >
-                    {isDevLoading ? (
-                      <Spinner
-                        size={24}
-                        className="stroke-orange-500"
-                        trackClassName="stroke-orange-200"
-                        strokeWidth={2}
-                      />
-                    ) : (
-                      "Dev Login (CLIENT)"
-                    )}
-                  </Button>
-                )}
 
                 <div className="flex gap-x-1 mt-10 md:mt-[50px] items-center">
                   <span className="text-sm leading-6 text-[#68707B]">

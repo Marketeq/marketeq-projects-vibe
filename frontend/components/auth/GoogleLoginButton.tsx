@@ -11,7 +11,6 @@ import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { GoogleDefault } from "@blend-metrics/icons/social"
 import { useGoogleLogin } from "@react-oauth/google"
-import Cookies from "js-cookie"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
 
@@ -36,21 +35,8 @@ const GoogleLoginButtonInner = () => {
         .then(async (response) => {
           if (
             response?.status === 200 &&
-            response?.data?.access_token &&
             response?.data?.user
           ) {
-            Cookies.set("access_token", response.data.access_token, {
-              path: "/",
-            })
-            if (response.data.refresh_token) {
-              Cookies.set("refresh_token", response.data.refresh_token, {
-                path: "/",
-              })
-            }
-            if (response.data.sessionId) {
-              Cookies.set("session_id", response.data.sessionId, { path: "/" })
-            }
-
             let nextUser = response.data.user
             try {
               const me = await UserAPI.me()

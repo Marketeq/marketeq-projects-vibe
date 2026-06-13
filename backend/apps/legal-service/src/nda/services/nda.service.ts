@@ -178,6 +178,16 @@ export class NdaService {
       ? await this.generationService.getPresignedUrl(doc.unsignedPdfR2Key)
       : null;
 
+    // If the document is signed, generate a fresh presigned URL for the signed PDF.
+    // This is generated fresh on every request so it never expires from the user's POV.
+    let signedPdfUrl: string | null = null;
+    if (doc.status === 'signed' && doc.signingEvents.length > 0) {
+      const latestEvent = doc.signingEvents[doc.signingEvents.length - 1];
+      if (latestEvent.signedPdfR2Key) {
+        signedPdfUrl = await this.generationService.getPresignedUrl(latestEvent.signedPdfR2Key);
+      }
+    }
+
     return {
       id: doc.id,
       documentType: doc.documentType,
@@ -186,6 +196,7 @@ export class NdaService {
       clientDisplayName: doc.clientDisplayName,
       listingTitle: doc.listingTitle,
       pdfUrl,
+      signedPdfUrl,
       generatedAt: doc.generatedAt,
       voidedAt: doc.voidedAt,
     };

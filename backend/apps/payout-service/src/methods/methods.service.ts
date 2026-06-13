@@ -142,7 +142,7 @@ export class MethodsService {
         method.displayLabel = 'Stripe Bank (pending verification)';
         break;
       case 'PAYPAL':
-        method.displayLabel = 'PayPal (pending authorization)';
+        if (dto.paypalEmail) { method.paypalEmail = dto.paypalEmail; method.displayLabel = 'PayPal (' + dto.paypalEmail + ')'; } else { method.displayLabel = 'PayPal (pending authorization)'; }
         break;
       case 'WISE':
         method.displayLabel = 'Wise (pending authorization)';
@@ -152,10 +152,9 @@ export class MethodsService {
         break;
     }
 
+    if (dto.nickname) method.nickname = dto.nickname;
     await this.methodRepo.save(method);
-
     const verification = await this.createVerification(method, dto);
-
     await this.auditService.log({
       contractorId, actorType: 'contractor', actorId: contractorId,
       action: 'method.added',

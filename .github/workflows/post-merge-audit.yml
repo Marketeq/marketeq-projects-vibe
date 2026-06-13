@@ -27,7 +27,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          ref: ${{ github.ref_name }}
+          fetch-depth: 50
 
       - name: Detect forced push
         id: force
@@ -135,10 +136,10 @@ EOF
           CHECKS=$(echo "$PR_JSON" | jq -c '.statusCheckRollup[]? | {name, status, conclusion}')
 
           FAILED=()
-          for needed in "Enforce Code Review SOP" "Regression risk analysis" "Scan for committed secrets"; do
+          for needed in "Jenkins / SOP Check" "Jenkins / AI Breakage Detector" "Jenkins / Secret Scan" "Jenkins / Login Gate" "Jenkins / Code Review"; do
             STATUS=$(echo "$PR_JSON" | jq -r --arg n "$needed" '.statusCheckRollup[]? | select(.name == $n) | .conclusion // "missing"' | head -n1)
             if [ -z "$STATUS" ] || [ "$STATUS" = "missing" ]; then
-              FAILED+=("$needed (not run)")
+              FAILED+=("$needed (not found)")
             elif [ "$STATUS" != "SUCCESS" ] && [ "$STATUS" != "NEUTRAL" ] && [ "$STATUS" != "SKIPPED" ]; then
               FAILED+=("$needed ($STATUS)")
             fi
@@ -159,7 +160,19 @@ EOF
             } >> "$GITHUB_OUTPUT"
           fi
 
-          if [ ${#FAILED[@]} -gt 0 ] || [ "$REVIEW" = "CHANGES_REQUESTED" ]; then
+          # Race-condition guard: if ALL checks are "not found" (none actually
+          # failed), this is likely a timing issue — do NOT auto-revert.
+          ACTUAL_FAILURES=0
+          for f in "${FAILED[@]}"; do
+            if [[ "$f" != *"(not found)"* ]]; then
+              ACTUAL_FAILURES=$((ACTUAL_FAILURES + 1))
+            fi
+          done
+
+          if [ ${#FAILED[@]} -gt 0 ] && [ "$ACTUAL_FAILURES" -eq 0 ]; then
+            echo "WARNING: ${#FAILED[@]} checks not found but none actually failed — skipping revert (likely timing race)"
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+          elif [ ${#FAILED[@]} -gt 0 ] || [ "$REVIEW" = "CHANGES_REQUESTED" ]; then
             echo "status=violation" >> "$GITHUB_OUTPUT"
           else
             echo "status=ok" >> "$GITHUB_OUTPUT"

@@ -24,6 +24,19 @@ import { Tooltip } from './tooltips/tooltip.entity';
 import { ContractTask } from './entities/contract-task.entity';
 import { Session } from './sessions/session.entity';
 
+import { TimeEntriesModule } from './time-entries/time-entries.module';
+import { BreaksModule } from './breaks/breaks.module';
+import { IdlesModule } from './idles/idles.module';
+import { ActivityModule } from './activity/activity.module';
+import { DisputesModule } from './disputes/disputes.module';
+import { DevicesModule } from './devices/devices.module';
+import { TimeEntry } from './entities/time-entry.entity';
+import { BreakEvent } from './entities/break-event.entity';
+import { IdleEvent } from './entities/idle-event.entity';
+import { ActivityMinute } from './entities/activity-minute.entity';
+import { Dispute } from './entities/dispute.entity';
+import { DeviceRegistration } from './entities/device-registration.entity';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -43,7 +56,7 @@ import { Session } from './sessions/session.entity';
         return {
           type: 'postgres' as const,
           url: config.get<string>('DATABASE_URL') ?? 'postgres://postgres:password@localhost:5432/marketeq',
-          entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip, ContractTask, Session],
+          entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip, ContractTask, Session, TimeEntry, BreakEvent, IdleEvent, ActivityMinute, Dispute, DeviceRegistration],
           synchronize: false,
           migrationsRun: true,
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
@@ -65,6 +78,12 @@ import { Session } from './sessions/session.entity';
     TooltipsModule,
     TasksModule,
     SessionsModule,
+    TimeEntriesModule,
+    BreaksModule,
+    IdlesModule,
+    ActivityModule,
+    DisputesModule,
+    DevicesModule,
   ],
   controllers: [TimeTrackingConsumer],
 })

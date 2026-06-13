@@ -20,7 +20,6 @@ import NotificationsAPI, {
 } from "@/service/http/notifications"
 import { UserAPI } from "@/service/http/user"
 import { respondToContract } from "@/src/lib/api/contracts"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 import { cn } from "@/utils/functions"
 import {
   type InboxThreadSummary,
@@ -229,10 +228,6 @@ const Notifications = () => {
   const loadNotifications = useCallback(async (allowSeed = true) => {
     try {
       setLoading(true)
-
-      if (process.env.NODE_ENV !== "production") {
-        await ensureDevAuth()
-      }
 
       const response = await NotificationsAPI.list({ limit: 8 })
       const items: UiNotificationItem[] = Array.isArray(response?.data?.data)
@@ -1395,7 +1390,9 @@ export const TopMostHeader = ({
                 }}
               >
                 <Repeat className="size-4" />
-                {user?.accountType === "TALENT"
+                {user?.accountType?.toUpperCase() === "TALENT" ||
+                user?.userType?.toLowerCase() === "talent" ||
+                user?.role?.toUpperCase() === "TALENT"
                   ? "Switch to Client"
                   : "Switch to Talent"}
               </DropdownMenuItem>

@@ -77,6 +77,7 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             mirrored_at: now,
           });
           // Ensure a default task row exists for this contract
+          // Mirror real tasks from TTS API into local SQLite
           const taskId = `task-${c.id}`;
           deps.taskRepo.upsert({
             id: taskId,
@@ -85,6 +86,24 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             archived: 0,
             mirrored_at: now,
           });
+          // Also fetch and mirror real tasks from TTS
+          try {
+            const ttsRes = await fetch(`${process.env.DTT_API_BASE_URL ?? 'http://localhost:4000'}/api/tasks/contract/${encodeURIComponent(c.id)}`);
+            if (ttsRes.ok) {
+              const tasks = await ttsRes.json();
+              if (Array.isArray(tasks)) {
+                for (const t of tasks) {
+                  deps.taskRepo.upsert({
+                    id: t.id,
+                    contract_id: c.id,
+                    name: t.name || 'Untitled task',
+                    archived: t.archived ? 1 : 0,
+                    mirrored_at: now,
+                  });
+                }
+              }
+            }
+          } catch { /* TTS unavailable — default task is enough */ }
         } catch (err) {
           log?.warn({ err, contractId: c.id }, 'failed to mirror contract to local db');
         }
