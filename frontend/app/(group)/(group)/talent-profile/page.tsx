@@ -11,7 +11,10 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
-import { getCertificationBrandFromUrl } from "@/src/lib/certification-brand"
+import {
+  getCertificationBrandFromUrl,
+  getCompanyBrandFromName,
+} from "@/src/lib/certification-brand"
 import { getCurrentUser } from "@/utils/auth"
 import { getComputedStyle } from "@/utils/dom-utils"
 import { cn, toPxIfNumber } from "@/utils/functions"
@@ -580,6 +583,9 @@ function Default() {
   const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
+  const WORK_EXPERIENCE_LIMIT = 30
+  const atWorkExperienceLimit =
+    (profile?.experience?.length ?? 0) >= WORK_EXPERIENCE_LIMIT
 
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
@@ -1825,6 +1831,12 @@ function Default() {
                                 visual="gray"
                                 className="shrink-0 bg-white"
                                 onClick={() => setWorkExperienceOpen(true)}
+                                disabled={atWorkExperienceLimit}
+                                title={
+                                  atWorkExperienceLimit
+                                    ? "You've reached the 30-entry limit for work experience."
+                                    : undefined
+                                }
                               >
                                 <Plus className="size-[15px]" /> Add Work History
                               </Button>
@@ -2189,21 +2201,70 @@ function Default() {
                                             className="flex gap-x-6"
                                           >
                                             <div className="relative flex flex-col items-center">
-                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden">
-                                                {exp.companyLogoUrl ? (
-                                                  <NextImage
-                                                    src={exp.companyLogoUrl}
-                                                    alt={exp.company || ""}
-                                                    width={45}
-                                                    height={45}
-                                                    className="object-contain"
-                                                  />
-                                                ) : (
-                                                  <span className="text-lg font-bold text-gray-400">
-                                                    {exp.company?.charAt(0) ||
-                                                      "W"}
-                                                  </span>
-                                                )}
+                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden relative">
+                                                <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                  {exp.company?.charAt(0) ||
+                                                    "W"}
+                                                </span>
+                                                {(() => {
+                                                  if (exp.companyLogoUrl) {
+                                                    return (
+                                                      <NextImage
+                                                        src={exp.companyLogoUrl}
+                                                        alt={exp.company || ""}
+                                                        width={45}
+                                                        height={45}
+                                                        className="object-contain relative"
+                                                      />
+                                                    )
+                                                  }
+                                                  const brand =
+                                                    getCompanyBrandFromName(
+                                                      exp.company
+                                                    )
+                                                  if (
+                                                    brand?.type === "component"
+                                                  ) {
+                                                    return (
+                                                      <brand.Icon className="size-9 relative bg-gray-50" />
+                                                    )
+                                                  }
+                                                  if (
+                                                    brand?.type === "remote-svg"
+                                                  ) {
+                                                    return (
+                                                      <img
+                                                        src={brand.url}
+                                                        alt={
+                                                          exp.company ||
+                                                          brand.name
+                                                        }
+                                                        width={36}
+                                                        height={36}
+                                                        className="object-contain size-9 relative bg-gray-50"
+                                                        loading="lazy"
+                                                        data-fallback="0"
+                                                        onError={(e) => {
+                                                          const el =
+                                                            e.currentTarget
+                                                          if (
+                                                            el.dataset
+                                                              .fallback === "0"
+                                                          ) {
+                                                            el.dataset.fallback =
+                                                              "1"
+                                                            el.src =
+                                                              brand.faviconUrl
+                                                          } else {
+                                                            el.style.display =
+                                                              "none"
+                                                          }
+                                                        }}
+                                                      />
+                                                    )
+                                                  }
+                                                  return null
+                                                })()}
                                               </div>
 
                                               {idx <
@@ -2347,6 +2408,12 @@ function Default() {
                                             onClick={() =>
                                               setWorkExperienceOpen(true)
                                             }
+                                            disabled={atWorkExperienceLimit}
+                                            title={
+                                              atWorkExperienceLimit
+                                                ? "You've reached the 30-entry limit for work experience."
+                                                : undefined
+                                            }
                                           >
                                             <Plus className="size-[15px]" /> Add
                                             Work Experience
@@ -2434,20 +2501,71 @@ function Default() {
                                             className="flex pb-5 items-start gap-x-6"
                                           >
                                             <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
-                                              {edu.institutionLogoUrl ? (
-                                                <NextImage
-                                                  src={edu.institutionLogoUrl}
-                                                  alt={edu.school || ""}
-                                                  fill
-                                                  sizes="55px"
-                                                  className="object-contain p-1"
-                                                />
-                                              ) : (
-                                                <span className="text-lg font-bold text-gray-400">
-                                                  {edu.school?.charAt(0) ||
-                                                    "E"}
-                                                </span>
-                                              )}
+                                              <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                {edu.school?.charAt(0) || "E"}
+                                              </span>
+                                              {(() => {
+                                                if (edu.institutionLogoUrl) {
+                                                  return (
+                                                    <NextImage
+                                                      src={
+                                                        edu.institutionLogoUrl
+                                                      }
+                                                      alt={edu.school || ""}
+                                                      fill
+                                                      sizes="55px"
+                                                      className="object-contain p-1 relative"
+                                                    />
+                                                  )
+                                                }
+                                                const brand =
+                                                  getCompanyBrandFromName(
+                                                    edu.school,
+                                                    { faviconTld: "edu" }
+                                                  )
+                                                if (
+                                                  brand?.type === "component"
+                                                ) {
+                                                  return (
+                                                    <brand.Icon className="size-9 relative bg-gray-50" />
+                                                  )
+                                                }
+                                                if (
+                                                  brand?.type === "remote-svg"
+                                                ) {
+                                                  return (
+                                                    <img
+                                                      src={brand.url}
+                                                      alt={
+                                                        edu.school ||
+                                                        brand.name
+                                                      }
+                                                      width={36}
+                                                      height={36}
+                                                      className="object-contain size-9 relative bg-gray-50"
+                                                      loading="lazy"
+                                                      data-fallback="0"
+                                                      onError={(e) => {
+                                                        const el =
+                                                          e.currentTarget
+                                                        if (
+                                                          el.dataset
+                                                            .fallback === "0"
+                                                        ) {
+                                                          el.dataset.fallback =
+                                                            "1"
+                                                          el.src =
+                                                            brand.faviconUrl
+                                                        } else {
+                                                          el.style.display =
+                                                            "none"
+                                                        }
+                                                      }}
+                                                    />
+                                                  )
+                                                }
+                                                return null
+                                              })()}
                                             </div>
 
                                             <div className="flex-auto">

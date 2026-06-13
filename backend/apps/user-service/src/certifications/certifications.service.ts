@@ -5,6 +5,13 @@ import { Certification } from './certifications.entity';
 import { CreateCertificationDto } from './dto/create-certification.dto';
 import { UpdateCertificationDto } from './dto/update-certification.dto';
 
+const parseLocalDate = (s?: string): Date | undefined => {
+  if (!s) return undefined;
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+};
+
 @Injectable()
 export class CertificationsService {
   constructor(
@@ -15,10 +22,11 @@ export class CertificationsService {
   async create(userId: string, dto: CreateCertificationDto) {
     const certification = this.certificationRepository.create({
       ...dto,
-      issueDate: new Date(dto.issueDate),
-      expirationDate: dto.expirationDate
-        ? new Date(dto.expirationDate)
-        : undefined,
+      issueDate: parseLocalDate(dto.issueDate),
+      expirationDate:
+        dto.doesntExpire === true
+          ? undefined
+          : parseLocalDate(dto.expirationDate),
     });
     certification.userId = userId;
     return this.certificationRepository.save(certification);
@@ -42,10 +50,13 @@ export class CertificationsService {
 
     Object.assign(certification, {
       ...dto,
-      issueDate: dto.issueDate ? new Date(dto.issueDate) : certification.issueDate,
-      expirationDate: dto.expirationDate
-        ? new Date(dto.expirationDate)
-        : certification.expirationDate,
+      issueDate: dto.issueDate ? parseLocalDate(dto.issueDate) : certification.issueDate,
+      expirationDate:
+        dto.doesntExpire === true
+          ? null
+          : dto.expirationDate
+            ? parseLocalDate(dto.expirationDate)
+            : certification.expirationDate,
     });
 
     return this.certificationRepository.save(certification);

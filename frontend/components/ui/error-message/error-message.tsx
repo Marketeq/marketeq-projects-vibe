@@ -25,8 +25,10 @@ export const ErrorMessage = React.forwardRef<
   HTMLSpanElement,
   React.HTMLAttributes<HTMLSpanElement> &
     VariantProps<typeof errorMessageVariants>
->(({ className, size, ...props }, ref) => (
+>(({ className, size, role, ...props }, ref) => (
   <span
+    role={role ?? "alert"}
+    aria-live="polite"
     className={cn(errorMessageVariants({ size, className }))}
     {...props}
     ref={ref}
