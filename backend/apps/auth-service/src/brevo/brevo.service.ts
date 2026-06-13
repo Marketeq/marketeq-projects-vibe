@@ -36,7 +36,7 @@ export class BrevoService {
 
   constructor() {
     const apiKey = process.env.BREVO_API_KEY || '';
-    this.fromEmail = process.env.BREVO_FROM_EMAIL || 'support@marketeqprojects.com';
+    this.fromEmail = process.env.BREVO_FROM_EMAIL || 'support@marketeqdigital.com';
     this.fromName = process.env.BREVO_FROM_NAME || 'Marketeq Projects';
 
     const raw = process.env.BREVO_PASSWORD_RESET_TEMPLATE_ID;
@@ -179,7 +179,7 @@ export class BrevoService {
       <p>What's Next?</p>
       <p>You can now use your password to log into your account and start exploring!</p>
       ${ctaHtml}
-      <p>If you didn't create this account, please contact our support team immediately at <a href="mailto:support@marketeqprojects.com" style="color:#25324B;">support@marketeqprojects.com</a>, and we'll assist you in securing your information.</p>
+      <p>If you didn't create this account, please contact our support team immediately at <a href="mailto:support@marketeqdigital.com" style="color:#25324B;">support@marketeqdigital.com</a>, and we'll assist you in securing your information.</p>
       <p>Thank you for choosing Marketeq for all your digital project needs. We look forward to helping you achieve your goals.</p>
       <p style="margin-top:28px;">Best regards,</p>
       <p>The Marketeq Projects Team</p>
