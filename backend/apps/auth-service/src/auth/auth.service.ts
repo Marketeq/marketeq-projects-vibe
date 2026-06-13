@@ -469,7 +469,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
-      select: ['id', 'email', 'username'],
+      select: ['id', 'email', 'username', 'passwordResetVersion'],
     });
 
     const message =
@@ -478,6 +478,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!user) {
       return { message };
     }
+
+    user.passwordResetVersion = randomUUID();
+    await this.userRepository.save(user);
 
     const resetToken = await this.issuePasswordResetToken(user);
 
@@ -515,7 +518,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async resetPassword(dto: ResetPasswordDto) {
-    let payload: { sub?: string; email?: string; type?: string };
+    let payload: {
+      sub?: string;
+      email?: string;
+      type?: string;
+      resetVersion?: string;
+    };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.token, {
@@ -525,22 +533,35 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    if (!payload?.sub || payload.type !== 'reset') {
+    if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'passwordResetVersion'],
     });
 
-    if (!user) {
+    if (!user || user.passwordResetVersion !== payload.resetVersion) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    user.password = await bcrypt.hash(dto.password, 10);
+    const nextResetVersion = randomUUID();
+    const updateResult = await this.userRepository.update(
+      { id: user.id, passwordResetVersion: payload.resetVersion },
+      {
+        password: await bcrypt.hash(dto.password, 10),
+        hasPassword: true,
+        passwordResetVersion: nextResetVersion,
+      },
+    );
+
+    if (!updateResult.affected) {
+      throw new UnauthorizedException('Invalid or expired reset token');
+    }
+
     user.hasPassword = true;
-    await this.userRepository.save(user);
+    user.passwordResetVersion = nextResetVersion;
     await this.sessionRepository.delete({ userId: user.id });
 
     await this.syncUserProfile(user);
@@ -1538,13 +1559,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async issuePasswordResetToken(user: {
     id: string;
     email: string;
+    passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
       this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
     );
 
     return this.jwtService.signAsync(
-      { sub: user.id, email: user.email, type: 'reset' },
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'reset',
+        resetVersion: user.passwordResetVersion,
+      },
       { expiresIn: resetExpires },
     );
   }
