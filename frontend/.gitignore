@@ -20,6 +20,7 @@ app/(group)/inbox/figma-refs/
 
 # test artifacts
 /test-results/
+/reports/
 
 # production
 /build
