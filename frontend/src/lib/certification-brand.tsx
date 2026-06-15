@@ -354,3 +354,119 @@ export const getBrandIconFromUrl = (
 
 export const getIssuerNameFromUrl = (url: string | null | undefined): string | null =>
   getCertificationBrandFromUrl(url)?.name ?? null
+
+// Override the favicon domain for well-known schools where the normalized
+// name doesn't map to the actual domain (e.g. "University of California,
+// Irvine" -> "uci.edu", not "universityofcaliforniairvine.edu").
+const KNOWN_SCHOOL_DOMAINS: Record<string, string> = {
+  // University of California system
+  universityofcaliforniaberkeley: "berkeley.edu",
+  ucberkeley: "berkeley.edu",
+  universityofcalifornialosangeles: "ucla.edu",
+  ucla: "ucla.edu",
+  universityofcaliforniasandiego: "ucsd.edu",
+  ucsd: "ucsd.edu",
+  universityofcaliforniairvine: "uci.edu",
+  uci: "uci.edu",
+  universityofcaliforniasanfrancisco: "ucsf.edu",
+  ucsf: "ucsf.edu",
+  universityofcaliforniasantabarbara: "ucsb.edu",
+  ucsb: "ucsb.edu",
+  universityofcaliforniasantacruz: "ucsc.edu",
+  ucsc: "ucsc.edu",
+  universityofcaliforniadavis: "ucdavis.edu",
+  ucdavis: "ucdavis.edu",
+  universityofcaliforniariverside: "ucr.edu",
+  ucr: "ucr.edu",
+  universityofcaliforniamerced: "ucmerced.edu",
+  ucmerced: "ucmerced.edu",
+  // Ivies + Stanford + MIT
+  harvarduniversity: "harvard.edu",
+  harvard: "harvard.edu",
+  yaleuniversity: "yale.edu",
+  yale: "yale.edu",
+  princetonuniversity: "princeton.edu",
+  princeton: "princeton.edu",
+  columbiauniversity: "columbia.edu",
+  columbia: "columbia.edu",
+  brownuniversity: "brown.edu",
+  brown: "brown.edu",
+  dartmouthcollege: "dartmouth.edu",
+  dartmouth: "dartmouth.edu",
+  cornelluniversity: "cornell.edu",
+  cornell: "cornell.edu",
+  universityofpennsylvania: "upenn.edu",
+  upenn: "upenn.edu",
+  massachusettsinstituteoftechnology: "mit.edu",
+  mit: "mit.edu",
+  stanforduniversity: "stanford.edu",
+  stanford: "stanford.edu",
+  // Other commonly-listed
+  carnegiemellon: "cmu.edu",
+  carnegiemellonuniversity: "cmu.edu",
+  cmu: "cmu.edu",
+  newyorkuniversity: "nyu.edu",
+  nyu: "nyu.edu",
+  universityofmichigan: "umich.edu",
+  umich: "umich.edu",
+  universityoftexasataustin: "utexas.edu",
+  utexas: "utexas.edu",
+  universityofwashington: "washington.edu",
+  georgiatech: "gatech.edu",
+  georgiainstituteoftechnology: "gatech.edu",
+  gatech: "gatech.edu",
+  // UK universities (ac.uk)
+  oxforduniversity: "ox.ac.uk",
+  universityofoxford: "ox.ac.uk",
+  oxford: "ox.ac.uk",
+  cambridgeuniversity: "cam.ac.uk",
+  universityofcambridge: "cam.ac.uk",
+  cambridge: "cam.ac.uk",
+}
+
+const companyNameToSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(
+      /\s+(inc\.?|corp\.?|corporation|llc|ltd\.?|limited|gmbh|s\.?a\.?|plc|co\.?|company|the|university|college|institute|school)$/gi,
+      ""
+    )
+    .replace(/^the\s+/i, "")
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]/g, "")
+}
+
+export const getCompanyBrandFromName = (
+  name: string | null | undefined,
+  options?: { faviconTld?: "com" | "edu" | "org" }
+): CertificationBrand | null => {
+  if (!name) return null
+  const trimmed = name.trim()
+  if (!trimmed) return null
+  const slug = companyNameToSlug(trimmed)
+  if (!slug || slug.length < 2) return null
+
+  for (const [host, brand] of HOST_TO_BRAND) {
+    const parts = host.split(".")
+    // Only match the apex domain (e.g. "google.com"), not subdomains
+    // (e.g. "chrome.google.com" must NOT match slug "google").
+    if (parts.length === 2 && parts[0] === slug) {
+      return { type: "component", name: brand.name, Icon: brand.Icon }
+    }
+  }
+
+  if (AGGREGATOR_HOSTS.has(slug)) return null
+
+  const remoteSlug = SIMPLE_ICONS_SLUG_ALIAS[slug] ?? slug
+  const tld = options?.faviconTld ?? "com"
+  const favDomain =
+    options?.faviconTld === "edu"
+      ? (KNOWN_SCHOOL_DOMAINS[slug] ?? `${slug}.${tld}`)
+      : `${slug}.${tld}`
+  return {
+    type: "remote-svg",
+    name: REMOTE_DISPLAY_NAMES[slug] ?? trimmed,
+    url: `https://cdn.simpleicons.org/${remoteSlug}`,
+    faviconUrl: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(favDomain)}&sz=64`,
+  }
+}

@@ -43,6 +43,7 @@ export interface CertificationPayload {
   credentialId?: string
   credentialUrl?: string
   skills?: string[]
+  doesntExpire?: boolean
 }
 
 export interface IndustryPayload {

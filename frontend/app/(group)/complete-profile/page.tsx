@@ -2001,8 +2001,7 @@ const AboutMeDialog = ({
 const skillsFormSchema = z.object({
   skills: z
     .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
-    .min(1, "Please select at least 1 skill(s)")
-    .max(50, "You have reached the maximum limit of 50 skills"),
+    .max(100, "You have reached the maximum limit of 100 skills."),
 })
 
 type SkillsFormValues = z.infer<typeof skillsFormSchema>
@@ -2083,18 +2082,53 @@ const SkillsDialog = ({
     }
   }, [profile, setValue])
 
-  const onSubmit: SubmitHandler<SkillsFormValues> = ({ skills }) => {
-    next?.()
-    if (userId) {
-      // Only add skills that don't already exist in DB
-      const newSkills = skills.filter(
-        (s) => !existingSkillNamesRef.current.has(s.name)
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const onSubmit: SubmitHandler<SkillsFormValues> = async ({ skills }) => {
+    setServerError(null)
+    if (!userId) {
+      next?.()
+      return
+    }
+    const newSkills = skills.filter(
+      (s) => !existingSkillNamesRef.current.has(s.name)
+    )
+    if (!newSkills.length) {
+      next?.()
+      return
+    }
+    setIsSaving(true)
+    try {
+      await Promise.all(
+        newSkills.map((s) => UserAPI.addSkill({ name: s.name }))
       )
-      if (newSkills.length) {
-        Promise.all(
-          newSkills.map((s) => UserAPI.addSkill({ name: s.name }))
-        ).catch(() => {})
+      newSkills.forEach((s) => existingSkillNamesRef.current.add(s.name))
+      setIsSaving(false)
+      next?.()
+    } catch (err: any) {
+      setIsSaving(false)
+      const status = err?.response?.status
+      const isTimeout =
+        err?.code === "ECONNABORTED" ||
+        /timeout/i.test(err?.message ?? "")
+      if (status === 401) {
+        try {
+          sessionStorage.setItem(
+            "complete-profile.skills.pending",
+            JSON.stringify(skills.map((s) => s.name))
+          )
+        } catch {}
+        setServerError("Your session has expired. Please sign in again.")
+      } else if (isTimeout) {
+        setServerError(
+          "This is taking longer than usual. Please try again."
+        )
+      } else {
+        setServerError(
+          "We could not save your changes. Please try again."
+        )
       }
+      console.error("[skills wizard] save failed", err)
     }
   }
 
@@ -2149,60 +2183,85 @@ const SkillsDialog = ({
 
             {!profileError && !profileLoading && (
             <div className="mt-6">
+              {serverError && (
+                <div
+                  role="alert"
+                  className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                >
+                  {serverError}
+                </div>
+              )}
               <Controller
                 name="skills"
                 control={control}
-                render={({ field: { value, onChange } }) => (
-                  <Combobox
-                    className="w-full"
-                    value={value}
-                    onChange={(val: typeof value) => {
-                      const unique = val.filter((s, i, arr) =>
-                        arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
-                      )
-                      onChange(unique)
-                      setQuery("")
-                    }}
-                    multiple
-                  >
-                    <ComboboxTrigger>
-                      <ComboboxInput
-                        size="lg"
-                        displayValue={() => query}
-                        placeholder="Search for skills"
-                        onChange={(event) => setQuery(event.target.value)}
-                        invalid={hookFormHasError({ errors, name: "skills" })}
-                      />
-                      <ComboboxButton size="lg">
-                        <SearchMd className="h-5 w-5" />
-                      </ComboboxButton>
-                    </ComboboxTrigger>
-                    <ScaleOutIn afterLeave={() => setQuery("")}>
-                      <ComboboxOptions>
-                        <ScrollArea viewportClassName="max-h-[304px]">
-                          {filteredSkills
-                            .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                            .map((skill) => (
-                              <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
-                                {skill.name}
-                              </ComboboxOption>
-                            ))}
-                          {(() => {
-                            const q = query.trim().toLowerCase()
-                            const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
-                            const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                            if (!q || alreadySelected || visibleOptions.length > 0) return null
-                            return (
-                              <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
-                                Add &ldquo;{query.trim()}&rdquo;
-                              </ComboboxOption>
-                            )
-                          })()}
-                        </ScrollArea>
-                      </ComboboxOptions>
-                    </ScaleOutIn>
-                  </Combobox>
-                )}
+                render={({ field: { value, onChange } }) => {
+                  const atSkillsLimit = (value ?? []).length >= 100
+                  return (
+                    <>
+                      <Combobox
+                        className="w-full"
+                        value={value}
+                        onChange={(val: typeof value) => {
+                          const capped = val.slice(0, 100)
+                          const unique = capped.filter((s, i, arr) =>
+                            arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                          )
+                          onChange(unique)
+                          setQuery("")
+                        }}
+                        multiple
+                        disabled={atSkillsLimit}
+                      >
+                        <ComboboxTrigger>
+                          <ComboboxInput
+                            size="lg"
+                            displayValue={() => query}
+                            placeholder="Search for skills"
+                            onChange={(event) => setQuery(event.target.value)}
+                            invalid={hookFormHasError({ errors, name: "skills" })}
+                            disabled={atSkillsLimit}
+                          />
+                          <ComboboxButton size="lg">
+                            <SearchMd className="h-5 w-5" />
+                          </ComboboxButton>
+                        </ComboboxTrigger>
+                        <ScaleOutIn afterLeave={() => setQuery("")}>
+                          <ComboboxOptions>
+                            <ScrollArea viewportClassName="max-h-[304px]">
+                              {filteredSkills
+                                .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                .map((skill) => (
+                                  <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
+                                    {skill.name}
+                                  </ComboboxOption>
+                                ))}
+                              {(() => {
+                                const q = query.trim().toLowerCase()
+                                const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
+                                const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                if (!q || alreadySelected || visibleOptions.length > 0) return null
+                                return (
+                                  <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                                    Add &ldquo;{query.trim()}&rdquo;
+                                  </ComboboxOption>
+                                )
+                              })()}
+                            </ScrollArea>
+                          </ComboboxOptions>
+                        </ScaleOutIn>
+                      </Combobox>
+                      {atSkillsLimit && (
+                        <p
+                          role="status"
+                          aria-live="assertive"
+                          className="mt-1.5 text-sm font-medium text-error-700"
+                        >
+                          You have reached the maximum limit of 100 skills.
+                        </p>
+                      )}
+                    </>
+                  )
+                }}
               />
 
               <HookFormErrorMessage
@@ -2257,11 +2316,15 @@ const SkillsDialog = ({
                 variant="ghost"
                 visual="gray"
                 onClick={next}
-                disabled={profileLoading || profileError}
+                disabled={profileLoading || profileError || isSaving}
               >
                 Skip
               </Button>
-              <Button size="md" disabled={!isValid || profileLoading || profileError}>
+              <Button
+                size="md"
+                disabled={!isValid || profileLoading || profileError || isSaving}
+                loading={isSaving}
+              >
                 Save & Continue
               </Button>
             </div>
@@ -2319,8 +2382,14 @@ const SkillsDialog = ({
 const workExperienceFormSchema = z
   .object({
     id: z.string().optional(),
-    employer: z.string().min(1, "Please enter at least 1 character(s)"),
-    jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
+    employer: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(200, "Employer must be 200 characters or fewer"),
+    jobTitle: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(120, "Job Title must be 120 characters or fewer"),
     startDate: z.object({
       month: z
         .number()
@@ -2346,7 +2415,10 @@ const workExperienceFormSchema = z
         .optional(),
     }),
     currentlyWorkHere: z.boolean(),
-    jobDescription: z.string().min(1, "Please enter at least 1 character(s)"),
+    jobDescription: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(1000, "Job Description must be 1000 characters or fewer"),
   })
   .merge(skillsFormSchema)
   .refine(
@@ -2410,6 +2482,11 @@ const months = [
   { name: "November", value: 11 },
   { name: "December", value: 12 },
 ]
+
+const workExperienceYears: number[] = (() => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({ length: 60 }, (_, i) => currentYear - i)
+})()
 
 const WorkExperienceDialog = ({
   onFinished,
@@ -3333,7 +3410,7 @@ const educationFormSchema = z
       .string()
       .min(1, "Please enter at least 1 character(s)"),
     degree: z.string().min(1, "Please enter at least 1 character(s)"),
-    major: z.string().min(1, "Please enter at least 1 character(s)"),
+    major: z.string().optional(),
     startDate: z.object({
       month: z
         .number()
@@ -3400,7 +3477,7 @@ const educationFormSchema = z
       return end >= start
     },
     {
-      message: "End date must be on or after start date",
+      message: "End date must be on or after the start date.",
       path: ["endDate.year"],
     }
   )
@@ -3445,6 +3522,7 @@ const EducationDialog = ({
     formState: { errors, isValid, isDirty },
     register,
     reset,
+    setValue: setFormValue,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
     defaultValues: {
@@ -3491,7 +3569,25 @@ const EducationDialog = ({
     }
   }, [profile, profileLoaded, setEducationQualifications])
 
-  const onSubmit: SubmitHandler<EducationFormValues> = (values) => {
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSaveError = (err: any) => {
+    const status = err?.response?.status
+    const isTimeout =
+      err?.code === "ECONNABORTED" ||
+      /timeout/i.test(err?.message ?? "")
+    if (status === 401) {
+      setServerError("Your session has expired. Please sign in again.")
+    } else if (isTimeout) {
+      setServerError("This is taking longer than usual. Please try again.")
+    } else {
+      setServerError("We could not save your changes. Please try again.")
+    }
+  }
+
+  const onSubmit: SubmitHandler<EducationFormValues> = async (values) => {
+    setServerError(null)
     const payload: EducationPayload = {
       school: values.schoolOrUniversity,
       degree: values.degree,
@@ -3502,51 +3598,68 @@ const EducationDialog = ({
       endMonth: values.currentlyAttending ? undefined : values.endDate?.month,
       currentlyStudying: values.currentlyAttending,
     }
-    if (editingIndex !== undefined) {
-      const editingEdu = educationQualifications?.[editingIndex]
-      setEducationQualifications(
-        educationQualifications?.map((qualification, index) =>
-          index === editingIndex ? { ...values, id: qualification.id } : qualification
-        )
-      )
-      if (editingEdu?.id) {
-        UserAPI.updateEducation(editingEdu.id, payload).catch(() => {})
-      } else if (userId) {
-        UserAPI.addEducation(payload).then((res) => {
-          const newId = res?.data?.id
-          if (newId) {
-            setEducationQualifications((prev) =>
-              prev?.map((e, i) => (i === editingIndex ? { ...e, id: newId } : e))
+    setIsSaving(true)
+    try {
+      if (editingIndex !== undefined) {
+        const editingEdu = educationQualifications?.[editingIndex]
+        if (editingEdu?.id) {
+          await UserAPI.updateEducation(editingEdu.id, payload)
+          setEducationQualifications(
+            educationQualifications?.map((qualification, index) =>
+              index === editingIndex
+                ? { ...values, id: qualification.id }
+                : qualification
             )
-          }
-        }).catch(() => {})
+          )
+        } else if (userId) {
+          const res = await UserAPI.addEducation(payload)
+          const newId = res?.data?.id
+          setEducationQualifications(
+            educationQualifications?.map((qualification, index) =>
+              index === editingIndex
+                ? { ...values, id: newId ?? qualification.id }
+                : qualification
+            )
+          )
+        }
+        setEditingIndex(undefined)
+      } else if (userId) {
+        const res = await UserAPI.addEducation(payload)
+        const newId = res?.data?.id
+        setEducationQualifications((prev) =>
+          prev ? [...prev, { ...values, id: newId }] : [{ ...values, id: newId }]
+        )
+      } else {
+        setEducationQualifications((prev) =>
+          prev ? [...prev, values] : [values]
+        )
       }
-      setEditingIndex(undefined)
-    } else {
-      const newIndex = educationQualifications?.length ?? 0
-      setEducationQualifications((prev) =>
-        prev ? [...prev, values] : [values]
-      )
-      if (userId) {
-        UserAPI.addEducation(payload)
-          .then((res) => {
-            const newId = res?.data?.id
-            if (newId) {
-              setEducationQualifications((prev) =>
-                prev?.map((e, i) =>
-                  i === newIndex ? { ...e, id: newId } : e
-                )
-              )
-            }
-          })
-          .catch(() => {})
-      }
+      reset()
+      setState("preview")
+    } catch (err) {
+      handleSaveError(err)
+      console.error("[education wizard] save failed", err)
+    } finally {
+      setIsSaving(false)
     }
-    reset()
-    setState("preview")
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
+
+  useEffect(() => {
+    if (currentlyAttending) {
+      setFormValue("endDate.month", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true,
+      })
+      setFormValue("endDate.year", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true,
+      })
+    }
+  }, [currentlyAttending, setFormValue])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3690,6 +3803,15 @@ const EducationDialog = ({
 
                 {state === "action" && (
                   <>
+                    {serverError && (
+                      <div
+                        role="alert"
+                        aria-live="assertive"
+                        className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                      >
+                        {serverError}
+                      </div>
+                    )}
                     <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-1.5 col-span-2">
                         <Label
@@ -3849,12 +3971,9 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {[
-                                      2020, 2021, 2022, 2023, 2024, 2025, 2026,
-                                      2027,
-                                    ].map((month) => (
-                                      <ListboxOption key={month} value={month}>
-                                        {month}
+                                    {workExperienceYears.map((year) => (
+                                      <ListboxOption key={year} value={year}>
+                                        {year}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -3892,7 +4011,11 @@ const EducationDialog = ({
                               name="endDate.month"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  key={`edu-wiz-end-month-${currentlyAttending}`}
+                                  value={value ?? null}
+                                  onChange={onChange}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) =>
                                       months.find((m) => m.value === value)
@@ -3928,7 +4051,11 @@ const EducationDialog = ({
                               name="endDate.year"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  key={`edu-wiz-end-year-${currentlyAttending}`}
+                                  value={value ?? null}
+                                  onChange={onChange}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
                                     placeholder="Year"
@@ -3938,12 +4065,9 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {[
-                                      2020, 2021, 2022, 2023, 2024, 2025, 2026,
-                                      2027,
-                                    ].map((month) => (
-                                      <ListboxOption key={month} value={month}>
-                                        {month}
+                                    {workExperienceYears.map((year) => (
+                                      <ListboxOption key={year} value={year}>
+                                        {year}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -4047,7 +4171,8 @@ const EducationDialog = ({
                 <Button
                   ref={submitTriggerRef}
                   type="submit"
-                  disabled={!isValid}
+                  disabled={!isValid || isSaving}
+                  loading={isSaving}
                 >
                   Save
                 </Button>
