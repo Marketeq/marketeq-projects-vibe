@@ -3321,7 +3321,7 @@ export default function TimeTrackingPage() {
   }
 
   return (
-    <>
+    <AuthenticatedRoute>
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
@@ -3721,6 +3721,6 @@ export default function TimeTrackingPage() {
         onDownload={handleDownloadScreenshot}
         onUpdateMeta={handleUpdateMeta}
       />
-    </>
+    </AuthenticatedRoute>
   )
 }
