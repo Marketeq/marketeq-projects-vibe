@@ -63,6 +63,7 @@ import { useToggle } from "react-use"
 import { z } from "zod"
 import { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
+import { getCompanyBrandFromName } from "@/src/lib/certification-brand"
 import {
   BecomeTopSeller,
   Carousel,
@@ -1004,8 +1005,14 @@ const moreInfoFormSchema = z
   .object({
     jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
     saveAsDefault: z.boolean(),
-    clientRate: z.number().optional(),
-    earning: z.number().optional(),
+    clientRate: z
+      .number()
+      .max(1000, "Rate cannot exceed $1,000/hr")
+      .optional(),
+    earning: z
+      .number()
+      .max(1000, "Rate cannot exceed $1,000/hr")
+      .optional(),
     fee: z.number().optional(),
   })
   .refine((data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0, {
@@ -1059,6 +1066,7 @@ const MoreInfoDialog = ({
   )
   const [editingIndex, setEditingIndex] = useState<number>()
   const [profileLoaded, setProfileLoaded] = useState(false)
+  const [duplicateError, setDuplicateError] = useState<string | null>(null)
   const [workExperiences, setWorkExperiences] = useUncontrolledState<
     MoreInfoFormValues[] | undefined
   >({
@@ -1119,6 +1127,17 @@ const MoreInfoDialog = ({
     }
   }, [profile, profileLoaded, setWorkExperiences])
   const onSubmit: SubmitHandler<MoreInfoFormValues> = (values) => {
+    const normalizedTitle = values.jobTitle.trim().toLowerCase()
+    const isDuplicate = (workExperiences ?? []).some(
+      (e, index) =>
+        index !== editingIndex &&
+        e.jobTitle.trim().toLowerCase() === normalizedTitle
+    )
+    if (isDuplicate) {
+      setDuplicateError("This job title already exists.")
+      return
+    }
+    setDuplicateError(null)
     let nextEntries: MoreInfoFormValues[]
     if (editingIndex !== undefined) {
       nextEntries = (workExperiences ?? []).map((workExperience, index) => {
@@ -1143,9 +1162,9 @@ const MoreInfoDialog = ({
         rateMax: values.clientRate ? Number(values.clientRate) : undefined,
         jobTitles: nextEntries.map((e) => ({
           jobTitle: e.jobTitle,
-          clientRate: e.clientRate,
-          earning: e.earning,
-          fee: e.fee,
+          clientRate: e.clientRate ?? 0,
+          earning: e.earning ?? 0,
+          fee: e.fee ?? 0,
           saveAsDefault: e.saveAsDefault,
         })),
         recentJobTitle: defaultEntry?.jobTitle,
@@ -1379,6 +1398,11 @@ const MoreInfoDialog = ({
                             <ErrorMessage size="sm">{message}</ErrorMessage>
                           )}
                         />
+                        {duplicateError && (
+                          <ErrorMessage size="sm">
+                            {duplicateError}
+                          </ErrorMessage>
+                        )}
                       </div>
 
                       <div className="mt-3 flex items-center gap-x-3">
@@ -2274,26 +2298,31 @@ const SkillsDialog = ({
                 )}
               />
 
-              <div className="mt-3 flex gap-3 flex-wrap">
-                {skills?.map((skill) => (
-                  <Badge key={skill.id} visual="primary">
-                    {skill.name}
-                    <button
-                      type="button"
-                      className="focus-visible:outline-none"
-                      onClick={() => {
-                        setValue(
-                          "skills",
-                          skills.filter((s) => s.id !== skill.id)
-                        )
-                        trigger()
-                      }}
-                    >
-                      <X2 className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+              <ScrollArea
+                viewportClassName="max-h-[200px]"
+                scrollBar={<ScrollBar className="w-4 p-1" />}
+              >
+                <div className="mt-3 flex gap-3 flex-wrap pr-1">
+                  {skills?.map((skill) => (
+                    <Badge key={skill.id} visual="primary">
+                      {skill.name}
+                      <button
+                        type="button"
+                        className="focus-visible:outline-none"
+                        onClick={() => {
+                          setValue(
+                            "skills",
+                            skills.filter((s) => s.id !== skill.id)
+                          )
+                          trigger()
+                        }}
+                      >
+                        <X2 className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </ScrollArea>
             </div>
             )}
           </div>
@@ -2421,6 +2450,13 @@ const workExperienceFormSchema = z
       .max(1000, "Job Description must be 1000 characters or fewer"),
   })
   .merge(skillsFormSchema)
+  .extend({
+    skills: z
+      .array(
+        z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+      )
+      .max(10, "Maximum 10 skills per work experience entry."),
+  })
   .refine(
     (data) =>
       data.currentlyWorkHere
@@ -2602,7 +2638,9 @@ const WorkExperienceDialog = ({
       employer: "",
     },
   })
-  const onSubmit: SubmitHandler<WorkExperienceFormValues> = (values) => {
+  const [serverError, setServerError] = useState<string | null>(null)
+  const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
+    setServerError(null)
     const payload: ExperiencePayload = {
       company: values.employer,
       title: values.jobTitle,
@@ -2616,46 +2654,41 @@ const WorkExperienceDialog = ({
       description: values.jobDescription,
       skills: values.skills.map((s) => s.name),
     }
-    if (editingIndex !== undefined) {
-      const editingExp = workExperiences?.[editingIndex]
-      setWorkExperiences(
-        workExperiences?.map((workExperience, index) =>
-          index === editingIndex ? { ...values, id: workExperience.id } : workExperience
+    try {
+      if (editingIndex !== undefined) {
+        const editingExp = workExperiences?.[editingIndex]
+        let savedId = editingExp?.id
+        if (editingExp?.id) {
+          await UserAPI.updateExperience(editingExp.id, payload)
+        } else if (userId) {
+          const res = await UserAPI.addExperience(payload)
+          savedId = res?.data?.id ?? undefined
+        }
+        setWorkExperiences(
+          workExperiences?.map((workExperience, index) =>
+            index === editingIndex
+              ? { ...values, id: savedId ?? workExperience.id }
+              : workExperience
+          )
         )
+        setEditingIndex(undefined)
+      } else {
+        let savedId: string | undefined
+        if (userId) {
+          const res = await UserAPI.addExperience(payload)
+          savedId = res?.data?.id ?? undefined
+        }
+        setWorkExperiences((prev) =>
+          prev ? [...prev, { ...values, id: savedId }] : [{ ...values, id: savedId }]
+        )
+      }
+      reset()
+      setState("preview")
+    } catch {
+      setServerError(
+        "We couldn't save your work experience. Please try again."
       )
-      if (editingExp?.id) {
-        UserAPI.updateExperience(editingExp.id, payload).catch(() => {})
-      } else if (userId) {
-        UserAPI.addExperience(payload).then((res) => {
-          const newId = res?.data?.id
-          if (newId) {
-            setWorkExperiences((prev) =>
-              prev?.map((w, i) => (i === editingIndex ? { ...w, id: newId } : w))
-            )
-          }
-        }).catch(() => {})
-      }
-      setEditingIndex(undefined)
-    } else {
-      const newIndex = workExperiences?.length ?? 0
-      setWorkExperiences((prev) => (prev ? [...prev, values] : [values]))
-      if (userId) {
-        UserAPI.addExperience(payload)
-          .then((res) => {
-            const newId = res?.data?.id
-            if (newId) {
-              setWorkExperiences((prev) =>
-                prev?.map((w, i) =>
-                  i === newIndex ? { ...w, id: newId } : w
-                )
-              )
-            }
-          })
-          .catch(() => {})
-      }
     }
-    reset()
-    setState("preview")
   }
 
   const skillsField = useWatch({ control, name: "skills" })
@@ -2663,6 +2696,18 @@ const WorkExperienceDialog = ({
     control,
     name: "currentlyWorkHere",
   })
+  useEffect(() => {
+    if (currentlyWorkHereField) {
+      setValue("endDate.month", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+      setValue("endDate.year", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+    }
+  }, [currentlyWorkHereField, setValue])
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -2791,7 +2836,25 @@ const WorkExperienceDialog = ({
 
                   {state === "preview" && (
                     <div className="space-y-3">
-                      {workExperiences?.map((workExperience, index) => (
+                      {workExperiences
+                        ?.map((workExperience, index) => ({
+                          workExperience,
+                          index,
+                        }))
+                        .sort((a, b) => {
+                          if (
+                            a.workExperience.currentlyWorkHere !==
+                            b.workExperience.currentlyWorkHere
+                          )
+                            return a.workExperience.currentlyWorkHere ? -1 : 1
+                          return (
+                            (b.workExperience.startDate?.year ?? 0) -
+                              (a.workExperience.startDate?.year ?? 0) ||
+                            (b.workExperience.startDate?.month ?? 0) -
+                              (a.workExperience.startDate?.month ?? 0)
+                          )
+                        })
+                        .map(({ workExperience, index }) => (
                         <WorkExperienceCard
                           onRemove={() => {
                             const updated = workExperiences?.filter(
@@ -2816,6 +2879,14 @@ const WorkExperienceDialog = ({
 
                   {state === "action" && (
                     <>
+                      {serverError && (
+                        <div
+                          role="alert"
+                          className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                        >
+                          {serverError}
+                        </div>
+                      )}
                       <div className="grid gap-4 grid-cols-2">
                         <div className="space-y-1.5">
                           <Label
@@ -2948,14 +3019,12 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {[
-                                          2020, 2021, 2022, 2023, 2024, 2025,
-                                        ].map((month) => (
+                                        {workExperienceYears.map((year) => (
                                           <ListboxOption
-                                            key={month}
-                                            value={month}
+                                            key={year}
+                                            value={year}
                                           >
-                                            {month}
+                                            {year}
                                           </ListboxOption>
                                         ))}
                                       </ScrollArea>
@@ -2997,7 +3066,11 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="endDate.month"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    key={`end-month-${currentlyWorkHereField}`}
+                                    value={value}
+                                    onChange={onChange}
+                                  >
                                     <ListboxButton
                                       placeholder="Month"
                                       displayValue={(value: number) =>
@@ -3042,7 +3115,11 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="endDate.year"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    key={`end-year-${currentlyWorkHereField}`}
+                                    value={value}
+                                    onChange={onChange}
+                                  >
                                     <ListboxButton
                                       placeholder="Year"
                                       displayValue={(value: number) => value}
@@ -3058,14 +3135,12 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {[
-                                          2020, 2021, 2022, 2023, 2024, 2025,
-                                        ].map((month) => (
+                                        {workExperienceYears.map((year) => (
                                           <ListboxOption
-                                            key={month}
-                                            value={month}
+                                            key={year}
+                                            value={year}
                                           >
-                                            {month}
+                                            {year}
                                           </ListboxOption>
                                         ))}
                                       </ScrollArea>
@@ -3142,7 +3217,10 @@ const WorkExperienceDialog = ({
                       <Controller
                         name="skills"
                         control={control}
-                        render={({ field: { value, onChange } }) => (
+                        render={({ field: { value, onChange } }) => {
+                          const atSkillsLimit = (value ?? []).length >= 10
+                          return (
+                          <>
                           <Combobox
                             className="w-full mt-[30px]"
                             value={value}
@@ -3150,7 +3228,7 @@ const WorkExperienceDialog = ({
                               const unique = val.filter((s, i, arr) =>
                                 arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
                               )
-                              onChange(unique)
+                              onChange(unique.slice(0, 10))
                               setQuery("")
                             }}
                             multiple
@@ -3200,7 +3278,18 @@ const WorkExperienceDialog = ({
                               </ComboboxOptions>
                             </ScaleOutIn>
                           </Combobox>
-                        )}
+                          {atSkillsLimit && (
+                            <p
+                              role="status"
+                              aria-live="assertive"
+                              className="mt-1.5 text-sm font-medium text-error-700"
+                            >
+                              Maximum 10 skills per work experience entry.
+                            </p>
+                          )}
+                          </>
+                          )
+                        }}
                       />
 
                       <HookFormErrorMessage
@@ -3778,7 +3867,25 @@ const EducationDialog = ({
 
                 {state === "preview" && (
                   <div className="space-y-3">
-                    {educationQualifications?.map((qualification, index) => (
+                    {educationQualifications
+                      ?.map((qualification, index) => ({
+                        qualification,
+                        index,
+                      }))
+                      .sort((a, b) => {
+                        if (
+                          a.qualification.currentlyAttending !==
+                          b.qualification.currentlyAttending
+                        )
+                          return a.qualification.currentlyAttending ? -1 : 1
+                        return (
+                          (b.qualification.startDate?.year ?? 0) -
+                            (a.qualification.startDate?.year ?? 0) ||
+                          (b.qualification.startDate?.month ?? 0) -
+                            (a.qualification.startDate?.month ?? 0)
+                        )
+                      })
+                      .map(({ qualification, index }) => (
                       <EducationCard
                         onRemove={() => {
                           const updated = educationQualifications?.filter(
@@ -3866,8 +3973,8 @@ const EducationDialog = ({
                                   "Bachelor's Degree",
                                   "Master's Degree",
                                   "Doctoral Degree (PhD)",
-                                  "Professional Degree",
-                                  "Certificate / Diploma",
+                                  "Professional Degree (MD, JD, etc.)",
+                                  "Certificate",
                                   "Other",
                                 ].map((degree) => (
                                   <ListboxOption key={degree} value={degree}>
@@ -4830,16 +4937,40 @@ const WorkExperienceCard = ({
 }: WorkExperienceCardProps) => {
   return (
     <article className="p-5 rounded-lg flex items-start gap-x-6 bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-        <div className="relative size-[45px] shrink-0">
-          <NextImage
-            className="object-cover"
-            src="/android-01.png"
-            alt="Android"
-            sizes="10vw"
-            fill
-          />
-        </div>
+      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden relative">
+        <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+          {employer?.charAt(0)?.toUpperCase() || "W"}
+        </span>
+        {(() => {
+          const brand = getCompanyBrandFromName(employer)
+          if (brand?.type === "component") {
+            return <brand.Icon className="size-9 relative bg-white" />
+          }
+          if (brand?.type === "remote-svg") {
+            return (
+              <img
+                key={brand.url}
+                src={brand.url}
+                alt={employer || brand.name}
+                width={36}
+                height={36}
+                className="object-contain size-9 relative bg-white"
+                loading="lazy"
+                data-fallback="0"
+                onError={(e) => {
+                  const el = e.currentTarget
+                  if (el.dataset.fallback === "0") {
+                    el.dataset.fallback = "1"
+                    el.src = brand.faviconUrl
+                  } else {
+                    el.style.display = "none"
+                  }
+                }}
+              />
+            )
+          }
+          return null
+        })()}
       </div>
       <div className="flex-auto min-w-0">
         <div className="flex items-start justify-between">
@@ -4929,9 +5060,9 @@ const WorkExperienceCard = ({
           </p>
         </div>
 
-        <div className="mt-3 flex items-center gap-x-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {skills?.map((skill) => (
-            <Badge key={skill.id} visual="gray">
+            <Badge key={skill.id} visual="gray" className="max-w-full break-all">
               {skill.name}
             </Badge>
           ))}
@@ -4958,16 +5089,42 @@ const EducationCard = ({
 }: EducationCardProps) => {
   return (
     <article className="p-5 rounded-lg flex items-start gap-x-6 bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-        <div className="relative size-[45px] shrink-0">
-          <NextImage
-            className="object-cover"
-            src="/cambridge.png"
-            alt="Android"
-            sizes="10vw"
-            fill
-          />
-        </div>
+      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden relative">
+        <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+          {schoolOrUniversity?.charAt(0)?.toUpperCase() || "E"}
+        </span>
+        {(() => {
+          const brand = getCompanyBrandFromName(schoolOrUniversity, {
+            faviconTld: "edu",
+          })
+          if (brand?.type === "component") {
+            return <brand.Icon className="size-9 relative bg-white" />
+          }
+          if (brand?.type === "remote-svg") {
+            return (
+              <img
+                key={brand.url}
+                src={brand.url}
+                alt={schoolOrUniversity || brand.name}
+                width={36}
+                height={36}
+                className="object-contain size-9 relative bg-white"
+                loading="lazy"
+                data-fallback="0"
+                onError={(e) => {
+                  const el = e.currentTarget
+                  if (el.dataset.fallback === "0") {
+                    el.dataset.fallback = "1"
+                    el.src = brand.faviconUrl
+                  } else {
+                    el.style.display = "none"
+                  }
+                }}
+              />
+            )
+          }
+          return null
+        })()}
       </div>
       <div className="flex-auto">
         <div className="flex items-start justify-between">

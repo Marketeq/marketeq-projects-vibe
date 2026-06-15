@@ -4,6 +4,7 @@ import React, {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
@@ -510,12 +511,14 @@ function Default() {
     label: string
   } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleDeleteWorkExperience = useCallback(
     (expId: string) => {
       const exp = profile?.experience?.find(
         (e: any) => String(e.id) === String(expId)
       )
+      setDeleteError(null)
       setDeleteConfirm({
         type: "experience",
         id: expId,
@@ -530,6 +533,7 @@ function Default() {
       const edu = profile?.education?.find(
         (e: any) => String(e.id) === String(eduId)
       )
+      setDeleteError(null)
       setDeleteConfirm({
         type: "education",
         id: eduId,
@@ -542,6 +546,7 @@ function Default() {
   const confirmDelete = useCallback(async () => {
     if (!profile?.id || !deleteConfirm) return
     setIsDeleting(true)
+    setDeleteError(null)
     try {
       if (deleteConfirm.type === "experience") {
         await UserAPI.removeExperience(deleteConfirm.id)
@@ -549,11 +554,12 @@ function Default() {
         await UserAPI.removeEducation(deleteConfirm.id)
       }
       refreshProfile()
+      setIsDeleting(false)
+      setDeleteConfirm(null)
     } catch {
-      /* noop */
+      setIsDeleting(false)
+      setDeleteError("Couldn't delete this entry. Please try again.")
     }
-    setIsDeleting(false)
-    setDeleteConfirm(null)
   }, [profile?.id, deleteConfirm, refreshProfile])
 
   const [isEditMode, setIsEditMode] = useState(true)
@@ -586,6 +592,17 @@ function Default() {
   const WORK_EXPERIENCE_LIMIT = 30
   const atWorkExperienceLimit =
     (profile?.experience?.length ?? 0) >= WORK_EXPERIENCE_LIMIT
+
+  // Deduplicate skills by name (case-insensitive) and drop blanks before display.
+  const dedupedSkills = useMemo(() => {
+    const seen = new Set<string>()
+    return (profile?.skills ?? []).filter((s: any) => {
+      const key = (s?.name ?? "").trim().toLowerCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [profile?.skills])
 
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
@@ -1078,10 +1095,10 @@ function Default() {
                       </div>
                     </div>
 
-                    {((profile?.skills && profile.skills.length > 0) ||
+                    {(dedupedSkills.length > 0 ||
                       (isEditMode && isOwnProfile)) && (
                       <div className="mt-[54px]">
-                        {profile?.skills && profile.skills.length > 0 && (
+                        {dedupedSkills.length > 0 && (
                           <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                             What I do
                           </h1>
@@ -1089,7 +1106,7 @@ function Default() {
 
                         <div className="flex items-start mt-3 gap-x-3">
                           <div className="flex gap-3 flex-wrap">
-                            {profile?.skills && profile.skills.length > 0 ? (
+                            {dedupedSkills.length > 0 ? (
                               <ShowMoreLessRoot>
                                 <ShowMoreLess
                                   trigger={(extraChildrenCount) => (
@@ -1099,6 +1116,7 @@ function Default() {
                                       size="lg"
                                       onClick={() => {
                                         setActiveTab("Skills")
+                                        setAutoExpandSkills(true)
                                         setTimeout(() => {
                                           const el =
                                             document.getElementById("skills")
@@ -1116,7 +1134,7 @@ function Default() {
                                   )}
                                   max={5}
                                 >
-                                  {profile.skills.map((skill) => (
+                                  {dedupedSkills.map((skill) => (
                                     <Badge
                                       key={skill.id}
                                       className="text-gray-700"
@@ -1273,6 +1291,7 @@ function Default() {
                           @{profile?.username ?? ""}
                         </span>
                       </span>
+
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
                         {(profile as any)?.jobTitles?.find(
                           (j: any) => j.saveAsDefault
@@ -1470,6 +1489,14 @@ function Default() {
                               <Progress
                                 key={i}
                                 className="flex-auto first:rounded-l-full last:rounded-r-full [&:not(:first-child)]:rounded-l-none [&:not(:last-child)]:rounded-r-none"
+                                indicatorClassName={cn(
+                                  i === 0 && "rounded-l-full rounded-r-none",
+                                  i === steps.length - 1 &&
+                                    "rounded-r-full rounded-l-none",
+                                  i !== 0 &&
+                                    i !== steps.length - 1 &&
+                                    "rounded-none"
+                                )}
                                 value={i < completedCount ? 100 : 0}
                                 bubble={false}
                               />
@@ -1601,7 +1628,7 @@ function Default() {
                       </h1>
                       {isEditMode &&
                         isOwnProfile &&
-                        (profile?.skills && profile.skills.length > 0 ? (
+                        dedupedSkills.length > 0 && (
                           <IconButton
                             className="rounded-full text-gray-500 hover:text-gray-800"
                             variant="ghost"
@@ -1610,19 +1637,10 @@ function Default() {
                           >
                             <Edit03 className="size-4" />
                           </IconButton>
-                        ) : (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setSkillsOpen(true)}
-                          >
-                            <Plus className="size-[15px]" />
-                            Add Skills
-                          </Button>
-                        ))}
+                        )}
                     </div>
 
-                    {profile?.skills && profile.skills.length > 0 ? (
+                    {dedupedSkills.length > 0 ? (
                       <ShowMoreLessRoot
                         value={autoExpandSkills}
                         onValueChange={setAutoExpandSkills}
@@ -1641,7 +1659,7 @@ function Default() {
                               }}
                             >
                               <ShowMoreLess max={22}>
-                                {profile.skills.map((skill) => (
+                                {dedupedSkills.map((skill) => (
                                   <Badge
                                     key={skill.id}
                                     className="text-gray-700"
@@ -1654,7 +1672,7 @@ function Default() {
                               </ShowMoreLess>
                             </div>
 
-                            {profile.skills.length > 22 && (
+                            {dedupedSkills.length > 22 && (
                               <div className="mt-6 flex items-center justify-center">
                                 <Button
                                   variant="link"
@@ -1669,12 +1687,26 @@ function Default() {
                         )}
                       </ShowMoreLessRoot>
                     ) : (
-                      <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                        Showcase your expertise and the strengths that set you
-                        apart. Highlight the skills that define your work so the
-                        right clients can recognize your value and find you
-                        faster.
-                      </p>
+                      <div className="mt-2 flex items-start justify-between gap-x-4">
+                        <div className="flex-auto min-w-0">
+                          <p className="text-sm font-light text-gray-600 leading-relaxed">
+                            Showcase your expertise and the strengths that set
+                            you apart. Highlight the skills that define your work
+                            so the right clients can recognize your value and
+                            find you faster.
+                          </p>
+                        </div>
+                        {isEditMode && isOwnProfile && (
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            className="shrink-0 bg-white -mt-7"
+                            onClick={() => setSkillsOpen(true)}
+                          >
+                            <Plus className="size-[15px]" /> Add Skills
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </LazySection>
@@ -1885,7 +1917,7 @@ function Default() {
                                   </span>
                                   {isEditMode && isOwnProfile && (
                                     <IconButton
-                                      className="text-gray-400 hover:text-gray-600"
+                                      className="rounded-full text-gray-400 hover:text-gray-600"
                                       variant="ghost"
                                       visual="gray"
                                       onClick={() => {
@@ -2135,12 +2167,18 @@ function Default() {
                                 <ShowMoreLessComp max={4}>
                                   {profile?.experience &&
                                   profile.experience.length > 0 ? (
-                                    profile.experience
-                                      .sort((a: any, b: any) =>
-                                        (b.startDate || "").localeCompare(
+                                    [...profile.experience]
+                                      .sort((a: any, b: any) => {
+                                        const aCurrent =
+                                          a.isCurrentRole || !a.endDate
+                                        const bCurrent =
+                                          b.isCurrentRole || !b.endDate
+                                        if (aCurrent !== bCurrent)
+                                          return aCurrent ? -1 : 1
+                                        return (b.startDate || "").localeCompare(
                                           a.startDate || ""
                                         )
-                                      )
+                                      })
                                       .map((exp: any, idx: number) => {
                                         const months = [
                                           "January",
@@ -2210,6 +2248,7 @@ function Default() {
                                                   if (exp.companyLogoUrl) {
                                                     return (
                                                       <NextImage
+                                                        key={exp.companyLogoUrl}
                                                         src={exp.companyLogoUrl}
                                                         alt={exp.company || ""}
                                                         width={45}
@@ -2234,6 +2273,7 @@ function Default() {
                                                   ) {
                                                     return (
                                                       <img
+                                                        key={brand.url}
                                                         src={brand.url}
                                                         alt={
                                                           exp.company ||
@@ -2466,12 +2506,21 @@ function Default() {
                                 <ShowMoreLessComp max={4}>
                                   {profile?.education &&
                                   profile.education.length > 0 ? (
-                                    profile.education
-                                      .sort(
-                                        (a: any, b: any) =>
-                                          (b.startYear ?? 0) - (a.startYear ?? 0) ||
-                                          (b.startMonth ?? 0) - (a.startMonth ?? 0)
-                                      )
+                                    [...profile.education]
+                                      .sort((a: any, b: any) => {
+                                        const aCurrent =
+                                          a.currentlyStudying || !a.endYear
+                                        const bCurrent =
+                                          b.currentlyStudying || !b.endYear
+                                        if (aCurrent !== bCurrent)
+                                          return aCurrent ? -1 : 1
+                                        return (
+                                          (b.startYear ?? 0) -
+                                            (a.startYear ?? 0) ||
+                                          (b.startMonth ?? 0) -
+                                            (a.startMonth ?? 0)
+                                        )
+                                      })
                                       .map((edu: any, idx: number) => {
                                         const months = [
                                           "January",
@@ -2508,6 +2557,7 @@ function Default() {
                                                 if (edu.institutionLogoUrl) {
                                                   return (
                                                     <NextImage
+                                                      key={edu.institutionLogoUrl}
                                                       src={
                                                         edu.institutionLogoUrl
                                                       }
@@ -2535,6 +2585,7 @@ function Default() {
                                                 ) {
                                                   return (
                                                     <img
+                                                      key={brand.url}
                                                       src={brand.url}
                                                       alt={
                                                         edu.school ||
@@ -2606,13 +2657,19 @@ function Default() {
                                                 )}
                                               </div>
                                               <div className="mt-1.5 flex items-center gap-x-2">
-                                                <span className="text-dark-blue-400 text-xs leading-none">
-                                                  {edu.degree}
-                                                </span>
-                                                <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                                <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                                  {edu.fieldOfStudy}
-                                                </span>
+                                                {edu.degree && (
+                                                  <span className="text-dark-blue-400 text-xs leading-none">
+                                                    {edu.degree}
+                                                  </span>
+                                                )}
+                                                {edu.degree && edu.fieldOfStudy && (
+                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                )}
+                                                {edu.fieldOfStudy && (
+                                                  <span className="text-dark-blue-400 font-semibold text-xs leading-none">
+                                                    {edu.fieldOfStudy}
+                                                  </span>
+                                                )}
                                               </div>
                                               <div className="mt-1.5">
                                                 <span className="text-dark-blue-400 text-xs leading-none">
@@ -4268,16 +4325,6 @@ function Default() {
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                         Affiliated Teams
                       </h1>
-                      {isEditMode && isOwnProfile && (
-                        <IconButton
-                          className="rounded-full text-gray-500 hover:text-gray-800 size-6"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setAffiliatedTeamsOpen(true)}
-                        >
-                          <Edit03 className="size-3.5" />
-                        </IconButton>
-                      )}
                     </div>
 
                     <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
@@ -4488,7 +4535,10 @@ function Default() {
           <Dialog
             open={!!deleteConfirm}
             onOpenChange={(open) => {
-              if (!open) setDeleteConfirm(null)
+              if (!open) {
+                setDeleteConfirm(null)
+                setDeleteError(null)
+              }
             }}
           >
             <DialogContent className="max-w-[409px] p-0">
@@ -4520,6 +4570,15 @@ function Default() {
                   )}{" "}
                   This cannot be undone.
                 </DialogDescription>
+
+                {deleteError && (
+                  <div
+                    role="alert"
+                    className="mt-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                  >
+                    {deleteError}
+                  </div>
+                )}
               </div>
 
               <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
@@ -4540,7 +4599,11 @@ function Default() {
                   onClick={confirmDelete}
                   disabled={isDeleting}
                 >
-                  {isDeleting ? "Deleting..." : "Yes, Delete"}
+                  {isDeleting
+                    ? "Deleting..."
+                    : deleteError
+                      ? "Try Again"
+                      : "Yes, Delete"}
                 </Button>
               </div>
             </DialogContent>
