@@ -221,15 +221,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Forgot Password' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
+  forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    return this.authService.forgotPassword(dto, ipAddress);
   }
 
   @ApiOperation({ summary: 'Reset password' })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    return this.authService.resetPassword(dto, ipAddress);
   }
 
   @ApiOperation({ summary: 'Login using Google' })
