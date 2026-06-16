@@ -242,6 +242,8 @@ export class ProxyController {
       prefix = 'currency'
     } else if (prefix === 'v1' && segments[1] === 'budget') {
       prefix = 'budget'
+    } else if (prefix === 'v1' && ['nda', 'acceptance', 'legal-documents'].includes(segments[1])) {
+      prefix = 'legal'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]

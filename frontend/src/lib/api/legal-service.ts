@@ -3,7 +3,8 @@
  *
  * Follows the same pattern as src/lib/api/contracts.ts:
  * - Reads access_token from cookie
- * - Uses NEXT_PUBLIC_LEGAL_SERVICE_URL env var (default: http://localhost:3015)
+ * - Routes through the API gateway via NEXT_PUBLIC_API_URL (gateway proxies
+ *   /v1/nda/* → legal-service internally, so no separate LEGAL_SERVICE_URL needed)
  * - Throws an Error with .status and .code properties on non-ok responses
  *   so callers can map HTTP status codes to UI error states
  */
@@ -11,7 +12,7 @@
 import Cookies from "js-cookie"
 
 const LEGAL_SERVICE_URL =
-  process.env.NEXT_PUBLIC_LEGAL_SERVICE_URL ?? "http://localhost:3015"
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"
 
 /**
  * Dev seed user ID for local testing without a real login session.
