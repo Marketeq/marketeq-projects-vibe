@@ -46,7 +46,11 @@ const SERVICES = [
   { name: 'auth-service',      port: '3001', dir: 'apps/auth-service',      maxOldSpaceMb: 384 },
   { name: 'user-service',      port: '3002', dir: 'apps/user-service',      maxOldSpaceMb: 512 },
   { name: 'listings-service',  port: '3003', dir: 'apps/listings-service',  maxOldSpaceMb: 384 },
-  { name: 'messaging-service', port: '3005', dir: 'apps/messaging-service', maxOldSpaceMb: 256 },
+  // messaging-service disabled 2026-06-16: its tables were created in the
+  // messaging_local schema instead of messaging, so every query fails and the
+  // service crash-loops, pushing the container toward OOM.  Re-enable once
+  // the schema migration is run (ALTER TABLE messaging_local.* SET SCHEMA messaging).
+  // { name: 'messaging-service', port: '3005', dir: 'apps/messaging-service', maxOldSpaceMb: 256 },
   // Re-enable after further headroom is confirmed:
   // notification-service (3006), category-service (3023),
   // contracts-service (3010), invitations-service (3013),
