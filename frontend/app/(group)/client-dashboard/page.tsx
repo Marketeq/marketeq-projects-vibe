@@ -1,8 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth"
+import { useRouter } from "next/navigation"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { ROLE } from "@/types/user"
 import { UserAPI } from "@/service/http/user"
 import { cn } from "@/utils/functions"
 import {
@@ -873,6 +875,7 @@ const Footer = () => {
 
 export default function ClientDashboard() {
   const { user } = useAuth()
+  const router = useRouter()
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [profile, setProfile] = useState<DashboardProfile | null>(null)
 
@@ -904,6 +907,15 @@ export default function ClientDashboard() {
       setShowSecurityModal(true)
     }
   }, [user])
+
+  // Redirect if the user's active role is not Client
+  useEffect(() => {
+    if (!user) return
+    const role = resolveDashboardRole(user)
+    if (role && role !== ROLE.CLIENT) {
+      router.replace("/talent-dashboard")
+    }
+  }, [user, router])
 
   return (
     <>

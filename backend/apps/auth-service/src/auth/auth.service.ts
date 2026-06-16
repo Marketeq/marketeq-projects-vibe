@@ -176,6 +176,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    await this.sendPasswordCreatedEmail(user.email, user.username, 'register');
+
     const sessionId = randomUUID();
     const tokens = await this.issueTokens({
       sub: user.id,
@@ -342,6 +344,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Invalid user');
     }
 
+    const hadPassword = current.hasPassword;
     current.password = await bcrypt.hash(dto.password, 10);
     current.hasPassword = true;
     await this.userRepository.save(current);
@@ -352,6 +355,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `setPassword: user profile sync failed for ${current.email}; continuing with auth user. reason=${(error as Error)?.message}`,
       );
+    }
+
+    if (!hadPassword) {
+      await this.sendPasswordCreatedEmail(current.email, current.username, 'setPassword');
     }
 
     return {
@@ -1775,5 +1782,27 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private generateRandomPassword(): string {
     return randomBytes(16).toString('hex');
+  }
+
+  private async sendPasswordCreatedEmail(
+    email: string,
+    firstName: string | undefined,
+    context: string,
+  ): Promise<void> {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '');
+    const signInUrl =
+      this.configService.get<string>('PASSWORD_CREATED_LOGIN_URL') ??
+      (frontendUrl ? `${frontendUrl}/login` : undefined);
+
+    try {
+      await this.brevoService.sendPasswordCreatedEmail(email, {
+        firstName,
+        signInUrl,
+      });
+    } catch (error) {
+      this.logger.error(
+        `${context}: Brevo password created email failed for ${email}: ${(error as Error)?.message}`,
+      );
+    }
   }
 }

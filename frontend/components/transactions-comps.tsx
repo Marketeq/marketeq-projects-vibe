@@ -283,17 +283,17 @@ interface StatCardProps {
 }
 
 const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardProps) => (
-  <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4 min-w-0">
-    <div className="flex items-start justify-between gap-2">
+  <div className="flex-1 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] min-w-0">
+    <div className="flex items-start justify-between gap-x-2">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-gray-500 truncate">{label}</p>
+        <p className="text-sm font-medium text-dark-blue-400 truncate">{label}</p>
         {sublabel && (
           <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>
         )}
       </div>
       <div className="text-right shrink-0">
         <p className="text-2xl font-bold text-dark-blue-400">
-          <span className="text-sm font-medium align-top">$</span>
+          <span className="text-base font-normal align-middle opacity-50">$</span>
           {amount}
         </p>
         {status && (
@@ -305,7 +305,7 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
       <div className="flex items-center gap-2 mt-2">
         {change && (
           <span className={cn(
-            "inline-flex items-center gap-0.5 text-xs font-medium",
+            "inline-flex items-center gap-x-1 text-xs font-medium",
             change.direction === "up" ? "text-success-500" : "text-error-500"
           )}>
             {change.direction === "up" ? (
@@ -316,7 +316,7 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
             {change.value}
           </span>
         )}
-        {change && <span className="text-xs text-gray-400">{change.label}</span>}
+        {change && <span className="text-xs text-dark-blue-400">{change.label}</span>}
         {extra && <span className="text-xs text-gray-500">{extra}</span>}
       </div>
     )}
@@ -498,7 +498,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       <div className="flex-1 space-y-5 min-w-0">
         {/* Congratulations Banner */}
         {showBanner && (
-          <div className="flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
+          <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
               You&apos;ve earned <span className="font-semibold text-success-600">${balance ? parseFloat(balance.totalEarnedUsd).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) : "..."}</span> total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
@@ -515,7 +515,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         )}
 
         {/* Earnings Summary */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
           <div className="flex items-center gap-2 mb-4">
             <h3 className="text-base font-semibold text-dark-blue-400">Earnings Summary</h3>
             <TooltipProvider>
@@ -637,7 +637,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         </div>
 
         {/* Direct Deposit */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-dark-blue-400">Direct Deposit</h3>
             <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
@@ -718,7 +718,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         </div>
 
         {/* Connected Accounts */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1.5">
               <h3 className="text-base font-semibold text-dark-blue-400">Connected Accounts</h3>
@@ -1152,7 +1152,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       </div>
 
       {/* Right Sidebar */}
-      <div className="w-[300px] shrink-0 space-y-5 hidden min-[1440px]:block">
+      <div className="w-[372px] shrink-0 space-y-5 hidden min-[1440px]:block">
         {/* Available for Withdrawal */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex items-center gap-1.5 mb-3">
@@ -1767,7 +1767,7 @@ export const EarningsTab = () => {
   return (
     <div className="space-y-5">
       {/* Stats Cards */}
-      <div className="flex gap-4">
+      <div className="flex gap-x-4">
         <StatCard
           label="Today"
           amount={earningsSummary?.today.amount ?? "—"}
@@ -2017,7 +2017,7 @@ export const PayoutsTab = () => {
   return (
     <div className="space-y-5">
       {/* Stats Cards */}
-      <div className="flex gap-4">
+      <div className="flex gap-x-4">
         <StatCard
           label="Next Payout"
           sublabel="Tuesday, Aug 20th"
@@ -2063,7 +2063,7 @@ export const PayoutsTab = () => {
           </SelectContent>
         </Select>
 
-        <Button variant="link" visual="gray" size="sm" onClick={() => setSearchQuery("")}>Clear All</Button>
+        <Button variant="link" size="sm" onClick={() => setSearchQuery("")}>Clear All</Button>
 
         <div className="ml-auto">
           <SearchField>

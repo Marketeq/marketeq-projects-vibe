@@ -43,11 +43,6 @@ import { PauseModule } from './pause/pause.module';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      host: process.env.DATABASE_HOST,
-      port: Number(process.env.DATABASE_PORT ?? 5432),
-      username: process.env.DATABASE_USERNAME,
-      password: process.env.DATABASE_PASSWORD,
-      database: process.env.DATABASE_NAME,
       ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true'
         ? { rejectUnauthorized: false }
         : false,
