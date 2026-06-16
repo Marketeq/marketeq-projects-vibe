@@ -35,8 +35,8 @@ export class Education {
   @Column({ type: 'int', nullable: true })
   endMonth?: number;
 
-  @Column({ default: false })
-  isCurrent: boolean;
+  @Column({ name: 'isCurrent', default: false })
+  currentlyStudying: boolean;
 
   @ManyToOne(() => User, (user) => user.educations, {
     onDelete: 'CASCADE',

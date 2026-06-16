@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsOptional,
@@ -42,4 +43,9 @@ export class CreateCertificationDto {
   @IsString({ each: true })
   @IsOptional()
   skills?: string[];
+
+  @ApiPropertyOptional({ example: false })
+  @IsBoolean()
+  @IsOptional()
+  doesntExpire?: boolean;
 }
