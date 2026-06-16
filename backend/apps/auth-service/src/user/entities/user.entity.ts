@@ -22,7 +22,7 @@ export class User {
   @Column({ default: false })
   hasPassword: boolean;
 
-  @Column({ nullable: true, select: false })
+  @Column({ type: 'varchar', nullable: true, select: false })
   passwordResetVersion: string | null;
 
   @Column({ nullable: true, select: false })
