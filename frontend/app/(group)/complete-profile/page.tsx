@@ -4444,8 +4444,12 @@ const Portfolio = ({
 
   return (
     <>
-      {caseStudyOpen && (
-        <div className="fixed inset-0 z-[100] bg-white">
+      <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+        <DialogContent
+          variant="unanimated"
+          className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
+        >
+          <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
           <CaseStudyBuilder
             onClose={() => setCaseStudyOpen(false)}
             onSave={() => {
@@ -4457,8 +4461,9 @@ const Portfolio = ({
               setCaseStudyOpen(false)
             }}
           />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[1090px] grid grid-cols-2 rounded-[24px] p-[30px]">
           <form>

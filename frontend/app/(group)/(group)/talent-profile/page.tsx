@@ -30,6 +30,7 @@ import {
   Clock,
   Edit03,
   Eye,
+  EyeOff,
   FileText,
   Heart,
   Image01,
@@ -76,6 +77,244 @@ import { HireMeButton } from "@/components/hire-me-button"
 import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
+import dynamic from "next/dynamic"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+const CaseStudyBuilder = dynamic(
+  () => import("@/components/case-study-builder"),
+  { ssr: false }
+)
+
+const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
+
+type PortfolioCardState = "filled" | "hidden" | "empty"
+interface PortfolioCardItem {
+  id: string
+  state: PortfolioCardState
+  img?: string
+}
+
+const SortablePortfolioCard = ({
+  card,
+  onOpenBuilder,
+  onToggleHide,
+  onDelete,
+}: {
+  card: PortfolioCardItem
+  onOpenBuilder: () => void
+  onToggleHide: () => void
+  onDelete: () => void
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: card.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+  const stop =
+    (fn: () => void) => (e: React.MouseEvent) => {
+      e.stopPropagation()
+      fn()
+    }
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "group relative h-[200px] select-none touch-none overflow-hidden rounded-lg border border-gray-200 bg-gray-100 cursor-grab active:cursor-grabbing",
+        isDragging && "z-10 opacity-70 shadow-lg"
+      )}
+    >
+      {card.state === "empty" ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+          <Image01 className="size-10 text-gray-300" />
+        </div>
+      ) : (
+        <img
+          src={card.img}
+          alt="Portfolio"
+          draggable={false}
+          className={cn(
+            "h-full w-full object-cover",
+            card.state === "hidden" && "opacity-40"
+          )}
+        />
+      )}
+
+      <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+        {card.state === "empty" ? (
+          <Button
+            type="button"
+            visual="gray"
+            className="bg-white"
+            onClick={stop(onOpenBuilder)}
+          >
+            <Upload className="size-[15px]" /> Add Case Study
+          </Button>
+        ) : (
+          <>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
+              onClick={stop(onOpenBuilder)}
+            >
+              <Edit03 className="size-4" />
+            </IconButton>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
+              onClick={stop(onToggleHide)}
+            >
+              {card.state === "hidden" ? (
+                <Eye className="size-4" />
+              ) : (
+                <EyeOff className="size-4" />
+              )}
+            </IconButton>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-error-500 hover:bg-white"
+              onClick={stop(onDelete)}
+            >
+              <Trash03 className="size-4" />
+            </IconButton>
+          </>
+        )}
+      </div>
+    </article>
+  )
+}
+
+const PortfolioCards = ({
+  portfolio,
+  onOpenBuilder,
+}: {
+  portfolio?: { id: string | number; imageUrl?: string | null }[]
+  onOpenBuilder: () => void
+}) => {
+  const [cards, setCards] = useState<PortfolioCardItem[]>(() =>
+    portfolio && portfolio.length > 0
+      ? portfolio.map((item) => ({
+          id: String(item.id),
+          state: "filled" as const,
+          img: item.imageUrl ?? PORTFOLIO_SAMPLE_IMG,
+        }))
+      : [
+          { id: "p1", state: "filled", img: PORTFOLIO_SAMPLE_IMG },
+          { id: "p2", state: "hidden", img: PORTFOLIO_SAMPLE_IMG },
+          { id: "p3", state: "empty" },
+        ]
+  )
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e
+    if (over && active.id !== over.id) {
+      setCards((prev) => {
+        const oldIndex = prev.findIndex((c) => c.id === active.id)
+        const newIndex = prev.findIndex((c) => c.id === over.id)
+        return arrayMove(prev, oldIndex, newIndex)
+      })
+    }
+  }
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={cards.map((c) => c.id)}
+        strategy={rectSortingStrategy}
+      >
+        <ShowMoreLessRoot>
+          {({ isShowing, setIsShowing, ref, scrollHeight }) => (
+            <>
+              <div
+                ref={ref}
+                className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
+                style={{
+                  height: isShowing
+                    ? "auto"
+                    : scrollHeight
+                      ? toPxIfNumber(scrollHeight)
+                      : "auto",
+                }}
+              >
+                <ShowMoreLess max={3}>
+                  {cards.map((card) => (
+                    <SortablePortfolioCard
+                      key={card.id}
+                      card={card}
+                      onOpenBuilder={onOpenBuilder}
+                      onToggleHide={() =>
+                        setCards((prev) =>
+                          prev.map((c) =>
+                            c.id === card.id
+                              ? {
+                                  ...c,
+                                  state:
+                                    c.state === "hidden" ? "filled" : "hidden",
+                                }
+                              : c
+                          )
+                        )
+                      }
+                      onDelete={() =>
+                        setCards((prev) =>
+                          prev.filter((c) => c.id !== card.id)
+                        )
+                      }
+                    />
+                  ))}
+                </ShowMoreLess>
+              </div>
+
+              {cards.length > 3 && (
+                <div className="my-6">
+                  <div className="flex items-center gap-x-1">
+                    <span className="flex-auto inline-block h-px bg-gray-200" />
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      onClick={() => setIsShowing((prev) => !prev)}
+                    >
+                      {isShowing ? "View Less" : "View More"}
+                    </Button>
+                    <span className="flex-auto inline-block h-px bg-gray-200" />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </ShowMoreLessRoot>
+      </SortableContext>
+    </DndContext>
+  )
+}
 import NextLink from "@/components/next-link"
 import {
   ReadMoreLess,
@@ -588,6 +827,7 @@ function Default() {
   const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
   const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
+  const [caseStudyOpen, setCaseStudyOpen] = useState(false)
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
   const WORK_EXPERIENCE_LIMIT = 30
   const atWorkExperienceLimit =
@@ -1531,91 +1771,11 @@ function Default() {
                     )
                   })()}
 
-                <ShowMoreLessRoot
-                  value={autoExpandPortfolio}
-                  onValueChange={setAutoExpandPortfolio}
-                >
-                  {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                    <>
-                      <div
-                        className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
-                        ref={ref}
-                        style={{
-                          height: isShowing
-                            ? "auto"
-                            : scrollHeight
-                              ? toPxIfNumber(scrollHeight)
-                              : "auto",
-                        }}
-                      >
-                        <ShowMoreLess max={3}>
-                          {profile?.portfolio && profile.portfolio.length > 0 ? (
-                            profile.portfolio.map((item) => (
-                              <article
-                                key={item.id}
-                                className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer bg-gray-100"
-                              >
-                                {item.imageUrl ? (
-                                  <NextImage
-                                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                                    src={item.imageUrl}
-                                    alt={item.name}
-                                    fill
-                                    sizes="33vw"
-                                  />
-                                ) : null}
-                                <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                                  <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
-                                    {item.name}
-                                  </h1>
-                                  {Array.isArray(item.tags) &&
-                                    item.tags.length > 0 && (
-                                      <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
-                                        {item.tags.map((tag, i) => (
-                                          <Badge
-                                            key={`${item.id}-${i}`}
-                                            className="text-white bg-white/20"
-                                            visual="gray"
-                                          >
-                                            {tag}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    )}
-                                </div>
-                              </article>
-                            ))
-                          ) : (
-                            [0, 1, 2].map((i) => (
-                              <div
-                                key={i}
-                                className="rounded-lg h-[200px] bg-gray-50 border border-gray-200 flex items-center justify-center"
-                              >
-                                <Image01 className="size-10 text-gray-300" />
-                              </div>
-                            ))
-                          )}
-                        </ShowMoreLess>
-                      </div>
-
-                      {profile?.portfolio && profile.portfolio.length > 3 && (
-                        <div className="my-6">
-                          <div className="flex items-center gap-x-1">
-                            <span className="flex-auto inline-block h-px bg-gray-200" />
-                            <Button
-                              variant="link"
-                              visual="gray"
-                              onClick={() => setIsShowing((prev) => !prev)}
-                            >
-                              {isShowing ? "View Less" : "View More"}
-                            </Button>
-                            <span className="flex-auto inline-block h-px bg-gray-200" />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </ShowMoreLessRoot>
+                <PortfolioCards
+                  key={profile?.portfolio?.length ? "real" : "demo"}
+                  portfolio={profile?.portfolio}
+                  onOpenBuilder={() => setCaseStudyOpen(true)}
+                />
 
                 <LazySection minHeight={300}>
                   <div
@@ -4531,6 +4691,19 @@ function Default() {
             opened={affiliatedTeamsOpen}
             onOpenedChange={setAffiliatedTeamsOpen}
           />
+
+          <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+            <DialogContent
+              variant="unanimated"
+              className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
+            >
+              <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
+              <CaseStudyBuilder
+                onClose={() => setCaseStudyOpen(false)}
+                onSave={() => setCaseStudyOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
 
           <Dialog
             open={!!deleteConfirm}
