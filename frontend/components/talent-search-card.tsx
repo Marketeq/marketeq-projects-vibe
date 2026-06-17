@@ -146,7 +146,7 @@ export const TalentSearchCard = ({
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
 
   return (
-    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col">
+    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
       <div className="p-5">
         <div className="relative">
           <NextLink href={profileHref} className="block">
