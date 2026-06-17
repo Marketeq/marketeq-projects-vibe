@@ -54,7 +54,6 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   wallet: 'wallet',
   'wire-transfer': 'wireReview',
   'wire-review': 'wireReview',
-  internal: 'listings',            // internal/projects/seed, internal/services/seed
   offers: 'offers',                // offer-service offer management
   'counter-offers': 'offers',     // offer-service counter-offer endpoints
   legal: 'legal',                  // legal-service NDA, documents, acceptance

@@ -1,4 +1,4 @@
-import { Controller, Post, Param, Body, Headers, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Param, Body, Headers, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ServicesService } from './service.service';
 
