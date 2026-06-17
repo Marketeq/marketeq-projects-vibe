@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeliverablesAdapter } from './deliverables.adapter';
 import { DeliverablesAdapterHeuristic } from './deliverables.adapter.heuristic';
-import { DeliverableGroup, ProjectContext, ScopePhaseInput } from './deliverables.types';
+import {
+  DeliverableGroup,
+  ProjectContext,
+  ScopePhaseInput,
+} from './deliverables.types';
 
 /**
  * HuggingFace text-generation adapter for deriving deliverables.
@@ -75,18 +79,23 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
             items: padded.slice(0, 6),
           });
         } else {
-          // LLM returned too few items — fall back for this phase
+          // LLM returned too few items — fall back for this phase.
+          // Pass a single-element array but fix the phaseLabel after,
+          // because the heuristic always uses its own array index (0).
           const fallback = await this.heuristic.deriveDeliverables(
             [phase],
             projectContext,
           );
-          results.push(...fallback);
+          //results.push(...fallback);
+           results.push(...fallback.map((g) => ({ ...g, phaseLabel: `Phase ${i + 1}` })));
         }
       }
       return results;
     } catch (err) {
       this.logger.warn(
-        `HF text generation failed, falling back to heuristic: ${err instanceof Error ? err.message : err}`,
+        `HF text generation failed, falling back to heuristic: ${
+          err instanceof Error ? err.message : err
+        }`,
       );
       return this.heuristic.deriveDeliverables(scope, projectContext);
     }

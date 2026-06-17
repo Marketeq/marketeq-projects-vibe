@@ -1,41 +1,68 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+} from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('projects_v2')
+@Entity({ name: 'project', schema: 'listings' })
 export class Project {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // Stable key for CMS ↔ listings sync (Payload document id as string)
-  @Column({ unique: true })
+  @Column({ default: 'project' })
+  listingType: string;
+
+  @Column({ unique: true, nullable: true })
   payloadId: string;
+
+  @Column({ nullable: true })
+  strapiId: string;
+
+  @Column({ type: 'text', nullable: true, unique: true })
+  slug?: string;
 
   @Column()
   title: string;
 
-  @Column('text')
-  description: string;
+  @Column({ nullable: true })
+  subtitle?: string;
 
-  @Column({ type: 'text', nullable: true })
-  slug?: string;
+  @Column({ nullable: true, type: 'text' })
+  shortDescription?: string;
+
+  @Column({ nullable: true, type: 'text' })
+  description?: string;
+
+  @Column({ nullable: true, type: 'text' })
+  videoUrl?: string;
+
+  @Column({ nullable: true, type: 'text' })
+  projectType?: string;
 
   @Column({ nullable: true })
-  category: string;
+  editorialLabel?: string;
+
+  @Column({ nullable: true })
+  category?: string;
 
   @Column('text', { array: true, default: [] })
   categories: string[];
 
   @Column('text', { array: true, default: [] })
-  skills: string[];
-
-  @Column('text', { array: true, default: [] })
-  tags: string[];
+  subcategories: string[];
 
   @Column('text', { name: 'industries', array: true, default: [] })
   industry: string[];
 
   @Column('text', { array: true, default: [] })
-  subcategories: string[];
+  tags: string[];
+
+  @Column('text', { array: true, default: [] })
+  skills: string[];
 
   @Column('text', { array: true, default: [] })
   programmingLanguages: string[];
@@ -52,62 +79,78 @@ export class Project {
   @Column('text', { array: true, default: [] })
   mediaUrls: string[];
 
-  @Column({ nullable: true, type: 'text' })
-  shortDescription?: string;
+  @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
+  budget?: number;
 
-  @Column({ nullable: true, type: 'text' })
-  projectType?: string;
+  @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
+  initialTeamBudget?: number;
 
-  @Column({ nullable: true, type: 'text' })
-  videoUrl?: string;
+  @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
+  priceMin?: number;
 
-  @Column('jsonb', { nullable: true, default: () => "'[]'" })
-  deliverables: Array<{ phaseLabel: string; phaseName: string; items: string[] }>;
+  @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
+  priceMax?: number;
 
-  @Column('jsonb', { nullable: true, default: '[]' })
-  faqs: { question: string; answer: string }[];
+  @Column({ nullable: true })
+  deliveryTime?: string;
 
-  @Column('jsonb', { nullable: true, default: '[]' })
+  @Column({ nullable: true, type: 'int' })
+  durationMonths?: number;
+
+  @Column({ nullable: true, type: 'int' })
+  estimatedHours?: number;
+
+  @Column({ nullable: true })
+  duration?: string;
+
+  @Column({ nullable: true })
+  timezone?: string;
+
+  @Column({ nullable: true })
+  location?: string;
+
+  @Column('jsonb', { default: [] })
+  deliverables: Array<{ phaseLabel: string; phaseName: string; items: string[]; image?: string }>;
+
+  @Column('jsonb', { default: [] })
   scope: {
     phaseName: string;
     order: number;
     tasks: {
       title: string;
       roleName: string;
+      location?: string[];
       experienceLevel: string;
       estimatedHours: number;
     }[];
   }[];
 
-  @Column({ nullable: true, type: 'int' })
-  estimatedHours?: number;
+  @Column('jsonb', { default: [] })
+  faqs: { question: string; answer: string }[];
 
-  @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.Draft })
-  status: ListingStatus;
-
-  @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
-  budget?: number;
-
-  @Column({ nullable: true })
-  duration?: string;
-
-  @Column('jsonb', { name: 'recentQuestions', nullable: true, default: '[]' })
+  @Column('jsonb', { default: [] })
   recentQuestions: Array<{ question: string; answer: string | null }>;
 
-  @Column('text', { name: 'relatedProjectIds', array: true, default: [] })
+  @Column('jsonb', { default: [] })
+  categorySelections: any[];
+
+  @Column('text', { array: true, default: [] })
   relatedProjectIds: string[];
 
-  @Column({ name: 'chatEnabled', type: 'boolean', default: false })
+  @Column({ type: 'boolean', default: false })
   chatEnabled: boolean;
 
-  @Column({ name: 'reportButtonEnabled', type: 'boolean', default: true })
+  @Column({ type: 'boolean', default: true })
   reportButtonEnabled: boolean;
 
-  @Column({ name: 'shareButtonEnabled', type: 'boolean', default: true })
+  @Column({ type: 'boolean', default: true })
   shareButtonEnabled: boolean;
 
-  @Column({ name: 'helpButtonEnabled', type: 'boolean', default: false })
+  @Column({ type: 'boolean', default: false })
   helpButtonEnabled: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  featured: boolean;
 
   @Column({ type: 'decimal', precision: 3, scale: 1, default: 0 })
   rating: number;
@@ -124,15 +167,24 @@ export class Project {
   @Column({ type: 'decimal', default: 0 })
   adminBoost: number;
 
-  @Column({ type: 'boolean', default: false })
-  featured: boolean;
+  @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.Draft })
+  status: ListingStatus;
 
-  @Column()
-  createdBy: string;
+  @Column({ nullable: true, type: 'timestamptz' })
+  projectDatePublished?: Date;
+
+  @Column({ nullable: true, type: 'uuid' })
+  userId?: string;
+
+  @Column({ nullable: true })
+  createdBy?: string;
 
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @DeleteDateColumn()
+  deletedAt?: Date;
 }

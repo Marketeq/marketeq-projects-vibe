@@ -39,15 +39,19 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.connectMicroservice({
-    transport: Transport.GRPC,
-    options: {
-      package: 'owner_target',
-      protoPath: resolveOwnerTargetProtoPath(),
-      url: `${grpcHost}:${grpcPort}`,
-    },
-  });
-  await app.startAllMicroservices();
+  try {
+    app.connectMicroservice({
+      transport: Transport.GRPC,
+      options: {
+        package: 'owner_target',
+        protoPath: resolveOwnerTargetProtoPath(),
+        url: `${grpcHost}:${grpcPort}`,
+      },
+    });
+    await app.startAllMicroservices();
+  } catch (err: any) {
+    logger.warn(`gRPC server failed to start on ${grpcHost}:${grpcPort} (non-fatal): ${err.message}`);
+  }
 
   const httpPort = Number(process.env.PORT ?? 3004);
   const httpHost = process.env.HOST || '0.0.0.0';

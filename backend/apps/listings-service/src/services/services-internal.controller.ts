@@ -1,4 +1,4 @@
-import { Controller, Post, Param, Body, Headers, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Param, Body, Headers, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ServicesService } from './service.service';
 
@@ -12,6 +12,15 @@ export class ServicesInternalController {
   private validateToken(token: string | undefined): void {
     const expected = this.config.get<string>('INTERNAL_SERVICE_TOKEN');
     if (!expected || token !== expected) throw new ForbiddenException('Invalid internal token');
+  }
+
+  @Post('seed')
+  async seed(
+    @Headers('x-internal-token') token: string | undefined,
+    @Body() dto: Record<string, any>,
+  ) {
+    this.validateToken(token);
+    return this.services.seedFromN8n(dto);
   }
 
   @Post(':id/cms-sync')

@@ -40,6 +40,7 @@ const PUBLIC_EXACT_ROUTES = new Set([
 
 // Only explicitly allowed dynamic routes are public.
 const PUBLIC_PATTERNS = [
+  /^\/internal(?:\/.*)?$/,
   /^\/search(?:\/.*)?$/,
   /^\/autocomplete(?:\/.*)?$/,
   /^\/suggestions(?:\/.*)?$/,

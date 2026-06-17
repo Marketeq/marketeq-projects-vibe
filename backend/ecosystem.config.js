@@ -45,6 +45,17 @@ module.exports = {
     svc('category-service', 3023),
     svc('autocomplete-service', 3016),
     {
+      name: 'cms-service',
+      script: 'npm',
+      args: 'run start:dev',
+      cwd: `${__dirname}/apps/cms-service`,
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 2000,
+      env: { PORT: 3020, NODE_ENV: 'development' },
+    },
+    {
       name: 'scheduling-service',
       script: 'npm',
       args: 'run start:dev',

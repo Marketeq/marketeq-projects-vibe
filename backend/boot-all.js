@@ -33,6 +33,7 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 // ── All 28 backend services ──────────────────────────────────────────────
 // Ports must match the gatewayEnv map below and proxy.service.ts defaults.
 const SERVICES = [
+<<<<<<< Updated upstream
   // Tier 1 — Core (highest traffic)
   { name: 'auth-service',              port: '3001', dir: 'apps/auth-service',              maxOldSpaceMb: 128 },
   { name: 'user-service',              port: '3002', dir: 'apps/user-service',              maxOldSpaceMb: 224 },
@@ -68,6 +69,25 @@ const SERVICES = [
   { name: 'wallet-service',            port: '3030', dir: 'apps/wallet-service',            maxOldSpaceMb: 96 },
   { name: 'wire-review-service',       port: '3031', dir: 'apps/wire-review-service',       maxOldSpaceMb: 128 },
   { name: 'legal-service',             port: '3032', dir: 'apps/legal-service',             maxOldSpaceMb: 96 },
+=======
+  { name: 'auth-service',               port: '3001', dir: 'apps/auth-service' },
+  { name: 'user-service',               port: '3002', dir: 'apps/user-service' },
+  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service' },
+  { name: 'cms-service',                port: '3020', dir: 'apps/cms-service' },
+  // Reduced to 3 core services after repeated OOM kills at 512 MB.
+  // Re-enable after Render plan upgrade:
+  // notification-service (3006), category-service (3023),
+  // contracts-service (3010), invitations-service (3013),
+  // content-moderation-service (3014), time-tracking-service (3017),
+  // Dormant until Render plan upgrade (compiled but not started):
+  // messaging-service (3005), search-service (3007), algolia-service (3008),
+  // checkout-service (3009), favorites-service (3012), portfolio-service (3015),
+  // autocomplete-service (3016), transaction-service (3018),
+  // suggestions-service (3020), admin-service (3024),
+  // affiliate-referral-service (3025), billing-service (3026),
+  // earnings-service (3027), payout-service (3028), pricing-service (3029),
+  // wallet-service (3030), wire-review-service (3031), legal-service (3032)
+>>>>>>> Stashed changes
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 160 };
@@ -78,6 +98,7 @@ const gatewayEnv = {
   ...process.env,
   PORT: GATEWAY_PORT,
   HOST: '0.0.0.0',
+<<<<<<< Updated upstream
   AUTH_SERVICE_URL:               'http://localhost:3001',
   USER_SERVICE_URL:               'http://localhost:3002',
   LISTINGS_SERVICE_URL:           'http://localhost:3003',
@@ -97,6 +118,29 @@ const gatewayEnv = {
   SUGGESTIONS_SERVICE_URL:        'http://localhost:3020',
   CATEGORY_SERVICE_URL:           'http://localhost:3023',
   ADMIN_SERVICE_URL:              'http://localhost:3024',
+=======
+  AUTH_SERVICE_URL:             'http://localhost:3001',
+  USER_SERVICE_URL:             'http://localhost:3002',
+  LISTINGS_SERVICE_URL:         'http://localhost:3003',
+  MESSAGING_SERVICE_URL:        'http://localhost:3005',
+  NOTIFICATION_SERVICE_URL:     'http://localhost:3006',
+  SEARCH_SERVICE_URL:           'http://localhost:3007',
+  ALGOLIA_SERVICE_URL:          'http://localhost:3008',
+  CHECKOUT_SERVICE_URL:         'http://localhost:3009',
+  CONTRACTS_SERVICE_URL:        'http://localhost:3010',
+  FAVORITES_SERVICE_URL:        'http://localhost:3012',
+  INVITATIONS_SERVICE_URL:      'http://localhost:3013',
+  MODERATION_SERVICE_URL:       'http://localhost:3014',
+  PORTFOLIO_SERVICE_URL:        'http://localhost:3015',
+  AUTOCOMPLETE_SERVICE_URL:     'http://localhost:3016',
+  LEGAL_SERVICE_URL:            'http://localhost:3032',
+  TIME_TRACKING_SERVICE_URL:    'http://localhost:3017',
+  TRANSACTION_SERVICE_URL:      'http://localhost:3018',
+  CMS_SERVICE_URL:              'http://localhost:3020',
+  SUGGESTIONS_SERVICE_URL:      'http://localhost:3020',
+  CATEGORY_SERVICE_URL:         'http://localhost:3023',
+  ADMIN_SERVICE_URL:            'http://localhost:3024',
+>>>>>>> Stashed changes
   AFFILIATE_REFERRAL_SERVICE_URL: 'http://localhost:3025',
   BILLING_SERVICE_URL:            'http://localhost:3026',
   EARNINGS_SERVICE_URL:           'http://localhost:3027',
