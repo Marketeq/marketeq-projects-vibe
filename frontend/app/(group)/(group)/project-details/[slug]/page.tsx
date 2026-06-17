@@ -3640,7 +3640,7 @@ export default function ProjectDetails() {
                   const locationToFlag = (
                     location: string | null | undefined
                   ): string => {
-                    const v = (location || "").trim().toLowerCase()
+                    const v = (typeof location === "string" ? location : String(location ?? "")).trim().toLowerCase()
                     if (!v) return ""
                     // Minimal mapping for current seed/demo data + common markets.
                     if (v === "united states" || v === "usa" || v === "us")
