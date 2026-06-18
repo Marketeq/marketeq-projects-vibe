@@ -18,6 +18,7 @@ import { InternalAuthGuard } from '../../guards/internal-auth.guard';
 import { SigningRateLimitGuard } from '../../guards/signing-rate-limit.guard';
 import { NdaService } from '../services/nda.service';
 import { GenerateNdaDto } from '../dto/generate-nda.dto';
+import { SelfGenerateNdaDto } from '../dto/self-generate-nda.dto';
 import { SignNdaDto } from '../dto/sign-nda.dto';
 import { UpdateNdaSettingsDto } from '../dto/update-nda-settings.dto';
 
@@ -25,6 +26,7 @@ import { UpdateNdaSettingsDto } from '../dto/update-nda-settings.dto';
  * All NDA lifecycle routes.
  *
  * Routes protected by JWT (global JwtAuthGuard):
+ *   POST /v1/nda/self-generate — create NDA where caller is the client (demo/talent flow)
  *   GET  /v1/nda/:id           — fetch NDA + presigned URL
  *   POST /v1/nda/:id/sign      — submit e-signature
  *   GET  /v1/nda/:id/audit     — full audit trail
@@ -32,7 +34,7 @@ import { UpdateNdaSettingsDto } from '../dto/update-nda-settings.dto';
  *   GET  /v1/nda/:id/preview   — preview unsigned PDF
  *
  * Routes protected by InternalAuthGuard (machine-to-machine only):
- *   POST /v1/nda/generate      — create NDA for a listing
+ *   POST /v1/nda/generate      — create NDA for a listing (service-to-service)
  *   POST /v1/nda/:id/void      — void an unsigned NDA
  */
 @Controller('v1/nda')
@@ -58,6 +60,13 @@ export class NdaController {
   }
 
   // ─── JWT-protected routes ──────────────────────────────────────────────────
+
+  @Post('self-generate')
+  @HttpCode(HttpStatus.CREATED)
+  selfGenerate(@Req() req: Request, @Body() dto: SelfGenerateNdaDto) {
+    const userId = (req as any).user?.sub as string;
+    return this.ndaService.generate({ ...dto, clientUserId: userId });
+  }
 
   @Get(':id')
   findOne(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
