@@ -101,7 +101,7 @@ export class NdaController {
 
   @Get(':id/preview')
   preview(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {
-    const userId = (req as any).user?.sub as string;
+    const userId = (req as any).user?.sub as string ?? '';
     return this.ndaService.preview(userId, id);
   }
 }
