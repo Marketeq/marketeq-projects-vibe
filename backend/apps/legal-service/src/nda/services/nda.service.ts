@@ -320,16 +320,20 @@ export class NdaService {
   // ─── Preview ───────────────────────────────────────────────────────────────
 
   async preview(
-    _userId: string,
+    userId: string,
     id: string,
   ): Promise<{ pdfUrl: string | null }> {
     const doc = await this.ndaDocumentRepo.findOne({
       where: { id },
+      relations: ['signingEvents'],
     });
     if (!doc) throw new NotFoundException('NDA document not found');
 
-    // Preview is read-only — any authenticated user can preview an NDA
-    // (ownership is enforced on sign/settings/audit endpoints instead)
+    const isClient = doc.clientUserId === userId;
+    const isSigner = doc.signingEvents.some((e) => e.signerUserId === userId);
+    if (!isClient && !isSigner) {
+      throw new ForbiddenException('Access denied to this NDA');
+    }
 
     const pdfUrl = doc.unsignedPdfR2Key
       ? await this.generationService.getPresignedUrl(doc.unsignedPdfR2Key)
