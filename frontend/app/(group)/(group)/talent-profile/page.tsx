@@ -203,6 +203,24 @@ const SortablePortfolioCard = ({
           </>
         )}
       </div>
+
+      {card.state !== "empty" && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <svg
+            viewBox="0 0 46 6"
+            className="w-11"
+            fill="#ffffff"
+            fillOpacity="0.65"
+            aria-hidden="true"
+          >
+            {[1, 5].map((cy) =>
+              Array.from({ length: 12 }, (_, i) => 1 + i * 4).map((cx) => (
+                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.3" />
+              ))
+            )}
+          </svg>
+        </div>
+      )}
     </article>
   )
 }
