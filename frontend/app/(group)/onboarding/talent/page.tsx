@@ -462,16 +462,19 @@ const CreateYourUsername = ({
     },
   })
 
+  const { user } = useAuth()
   const { username } = watch()
-  const generatedUsernameSuggestions = useMemo(
-    () =>
-      generateUsernameSuggestions(
-        stepData?.firstName || "",
-        stepData?.lastName || "",
-        stepData?.recentJobTitle || ""
-      ),
-    [stepData?.firstName, stepData?.lastName, stepData?.recentJobTitle]
-  )
+  const generatedUsernameSuggestions = useMemo(() => {
+    const contextParts = [stepData?.recentJobTitle, user?.email]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+    return generateUsernameSuggestions(
+      stepData?.firstName || "",
+      stepData?.lastName || "",
+      contextParts
+    )
+  }, [stepData?.firstName, stepData?.lastName, stepData?.recentJobTitle, user?.email])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, prevStep, setStep } = useStepperContext()
