@@ -1738,59 +1738,21 @@ export default function PaymentPage() {
               ) : null}
 
               {pay === "IN_INSTALLMENTS" && (
-                <>
-                  <div className="mt-6 rounded-lg border border-primary-200 bg-primary-25 p-5">
-                    <h4 className="text-sm font-semibold leading-5 text-dark-blue-400">
-                      Installment Plan Details
-                    </h4>
-                    <div className="mt-4 grid grid-cols-3 gap-3">
-                      <div className="rounded-md border border-gray-200 bg-white p-3">
-                        <span className="block text-xs font-light leading-none text-dark-blue-400">
-                          Initial payment
-                        </span>
-                        <span className="mt-2 block text-base font-bold leading-none text-dark-blue-400">
-                          {formatter.format(initialInstallmentAmount)}
-                        </span>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-white p-3">
-                        <span className="block text-xs font-light leading-none text-dark-blue-400">
-                          Recurring payment
-                        </span>
-                        <span className="mt-2 block text-base font-bold leading-none text-dark-blue-400">
-                          {formatter.format(recurringInstallmentAmount)}
-                        </span>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-white p-3">
-                        <span className="block text-xs font-light leading-none text-dark-blue-400">
-                          First recurring date
-                        </span>
-                        <span className="mt-2 block text-base font-bold leading-none text-dark-blue-400">
-                          {formattedFirstRecurringPaymentDate}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs leading-5 text-gray-500">
-                      The {formatter.format(fullAmount)} project total is split
-                      equally across {projectDurationMonths} months.
-                    </p>
-                  </div>
-                  <Alert className="mt-6">
-                    <AlertIcon>
-                      <AlertCircle className="h-5 w-5" />
-                    </AlertIcon>
-                    <AlertContent>
-                      <AlertTitle className="inline-block">
-                        Please Note:{" "}
-                        <AlertDescription className="inline mt-0 font-normal">
-                          To confirm this {installmentSubjectLabel}, an initial
-                          one-time payment is required. Your installment plan
-                          will begin after this payment is successfully
-                          processed.
-                        </AlertDescription>
-                      </AlertTitle>
-                    </AlertContent>
-                  </Alert>
-                </>
+                <Alert className="mt-6">
+                  <AlertIcon>
+                    <AlertCircle className="h-5 w-5" />
+                  </AlertIcon>
+                  <AlertContent>
+                    <AlertTitle className="inline-block">
+                      Please Note:{" "}
+                      <AlertDescription className="inline mt-0 font-normal">
+                        To confirm this {installmentSubjectLabel}, an initial
+                        one-time payment is required. Your installment plan
+                        will begin after this payment is successfully processed.
+                      </AlertDescription>
+                    </AlertTitle>
+                  </AlertContent>
+                </Alert>
               )}
 
               {/* Available Balance */}
