@@ -2,10 +2,10 @@ import { cache } from "react"
 import type { Metadata } from "next"
 import { cookies } from "next/headers"
 import type { HomepagePayload } from "@/types/homepage"
-import { getPublicHomepageUrl } from "@/lib/runtime-urls"
+import { getServerBackendUrl } from "@/lib/runtime-urls"
 import { HomepageClient } from "./homepage-client"
 
-const HOMEPAGE_BASE = getPublicHomepageUrl() || "http://localhost:4000"
+const HOMEPAGE_BASE = getServerBackendUrl() || "http://localhost:4000"
 
 const fetchHomepage = cache(async (): Promise<HomepagePayload | null> => {
   try {

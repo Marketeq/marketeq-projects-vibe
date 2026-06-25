@@ -203,7 +203,6 @@ const SortablePortfolioCard = ({
           </>
         )}
       </div>
-
       {card.state !== "empty" && (
         <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
           <svg
