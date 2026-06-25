@@ -4595,89 +4595,52 @@ export const CertificationsDialog = ({
                     <Controller
                       name="skills"
                       control={control}
-                      render={({ field: { value, onChange } }) => {
-                        const atSkillsLimit = (value ?? []).length >= 10
-                        const visibleSkills = filteredSkills.filter(
-                          (skill) =>
-                            !(value ?? []).some(
-                              (s) =>
-                                s.name.toLowerCase() ===
-                                skill.name.toLowerCase()
-                            )
-                        )
-                        return (
-                          <>
-                            <Combobox
-                              multiple
-                              className="w-auto"
-                              value={value}
-                              onChange={(val: typeof value) => {
-                                const unique = val.filter(
-                                  (s, i, arr) =>
-                                    arr.findIndex(
-                                      (x) =>
-                                        x.name.toLowerCase() ===
-                                        s.name.toLowerCase()
-                                    ) === i
-                                )
-                                onChange(unique.slice(0, 10))
-                                setQuery("")
-                              }}
-                              disabled={atSkillsLimit}
-                            >
-                              <ComboboxTrigger>
-                                <ComboboxInput
-                                  className="w-full"
-                                  size="lg"
-                                  displayValue={(skill: {
-                                    id: number
-                                    name: string
-                                  }) => skill.name}
-                                  onChange={(event) =>
-                                    setQuery(event.target.value)
-                                  }
-                                  placeholder="Find skills"
-                                  disabled={atSkillsLimit}
-                                />
-                                <ComboboxButton>
-                                  <SearchMd className="size-5" />
-                                </ComboboxButton>
-                              </ComboboxTrigger>
-                              <ScaleOutIn afterLeave={() => setQuery("")}>
-                                <ComboboxOptions className="bottom-full mt-0 mb-1 origin-bottom">
-                                  <ScrollArea viewportClassName="max-h-[240px]">
-                                    {visibleSkills.length > 0 ? (
-                                      visibleSkills.map((skill) => (
-                                        <ComboboxOption
-                                          key={skill.id}
-                                          value={skill}
-                                        >
-                                          {skill.name}
-                                        </ComboboxOption>
-                                      ))
-                                    ) : (
-                                      <div className="px-3 py-2 text-sm font-light text-gray-500">
-                                        {query.trim()
-                                          ? "No matching skills found."
-                                          : "Start typing to search skills."}
-                                      </div>
-                                    )}
-                                  </ScrollArea>
-                                </ComboboxOptions>
-                              </ScaleOutIn>
-                            </Combobox>
-                            {atSkillsLimit && (
-                              <p
-                                role="status"
-                                aria-live="assertive"
-                                className="mt-1.5 text-sm font-medium text-error-700"
-                              >
-                                Maximum of 10 skills allowed.
-                              </p>
-                            )}
-                          </>
-                        )
-                      }}
+                      render={({ field: { value, onChange } }) => (
+                        <Combobox
+                          multiple
+                          className="w-auto"
+                          value={value}
+                          onChange={onChange}
+                        >
+                          <ComboboxTrigger>
+                            <ComboboxInput
+                              className="w-full"
+                              size="lg"
+                              displayValue={(skill: {
+                                id: number
+                                name: string
+                              }) => skill.name}
+                              onChange={(event) => setQuery(event.target.value)}
+                              placeholder="Find skills"
+                            />
+                            <ComboboxButton>
+                              <SearchMd className="size-5" />
+                            </ComboboxButton>
+                          </ComboboxTrigger>
+                          <ScaleOutIn afterLeave={() => setQuery("")}>
+                            <ComboboxOptions className="bottom-full mt-0 mb-1 origin-bottom">
+                              <ScrollArea className="h-[240px]">
+                                {filteredSkills.length > 0 ? (
+                                  filteredSkills.map((skill) => (
+                                    <ComboboxOption
+                                      key={skill.id}
+                                      value={skill}
+                                    >
+                                      {skill.name}
+                                    </ComboboxOption>
+                                  ))
+                                ) : (
+                                  <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                    {query.trim()
+                                      ? "No matching skills found."
+                                      : "Start typing to search skills."}
+                                  </div>
+                                )}
+                              </ScrollArea>
+                            </ComboboxOptions>
+                          </ScaleOutIn>
+                        </Combobox>
+                      )}
                     />
                   ) : (
                     <Button
@@ -4730,7 +4693,7 @@ export const CertificationsDialog = ({
               <DialogContent className="max-w-[409px] p-0">
                 <div className="p-6">
                   <DialogTitle className="text-dark-blue-400">
-                    Save Certification?
+                    Save Job Title & Rate?
                   </DialogTitle>
                   <DialogDescription className="text-dark-blue-400 mt-2">
                     Do you want to save your information?

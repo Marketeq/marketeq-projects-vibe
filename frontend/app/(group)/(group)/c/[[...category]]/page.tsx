@@ -3218,7 +3218,7 @@ export default function Projects() {
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -3726,7 +3726,7 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
@@ -3948,7 +3948,7 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4155,7 +4155,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4277,7 +4277,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Back-End Development">
@@ -4288,7 +4288,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Blockchain">Blockchain</TabsTrigger>
@@ -4297,7 +4297,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Data Structure & Algorithms">
@@ -4308,7 +4308,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Cloud Computing">
@@ -4319,7 +4319,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Front-End Development">
@@ -4681,7 +4681,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4849,7 +4849,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -5004,7 +5004,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Project Type">Project Type</TabsTrigger>
@@ -5013,7 +5013,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Industry">Industry</TabsTrigger>
@@ -5022,7 +5022,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Budget">Budget</TabsTrigger>
@@ -5031,7 +5031,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Project Length">
@@ -5042,7 +5042,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Team Size">Team Size</TabsTrigger>
@@ -5224,7 +5224,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -5404,7 +5404,7 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
@@ -5614,7 +5614,7 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
@@ -5823,7 +5823,7 @@ export default function Projects() {
 
             <div className="grid grid-cols-2 gap-x-8 mt-6">
               <div className="flex flex-col gap-y-8">
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+                <article className="flex gap-x-6 group cursor-pointer">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -5836,7 +5836,7 @@ export default function Projects() {
                     <span className="text-xs font-medium leading-none text-dark-blue-400">
                       Software Testing
                     </span>
-                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400 group-hover:underline">
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
                       The Art of Software Testing: A Comprehensive Guide
                     </h1>
                     <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
@@ -5850,7 +5850,7 @@ export default function Projects() {
                     </p>
 
                     <Button
-                      className="text-dark-blue-400 mt-3 group-hover:underline"
+                      className="text-dark-blue-400 mt-3"
                       size="md"
                       variant="link"
                       visual="gray"
@@ -5859,7 +5859,7 @@ export default function Projects() {
                     </Button>
                   </div>
                 </article>
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+                <article className="flex gap-x-6 group cursor-pointer">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -5872,7 +5872,7 @@ export default function Projects() {
                     <span className="text-xs font-medium leading-none text-dark-blue-400">
                       Software Testing
                     </span>
-                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400 group-hover:underline">
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
                       The Art of Software Testing: A Comprehensive Guide
                     </h1>
                     <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
@@ -5886,7 +5886,7 @@ export default function Projects() {
                     </p>
 
                     <Button
-                      className="text-dark-blue-400 mt-3 group-hover:underline"
+                      className="text-dark-blue-400 mt-3"
                       size="md"
                       variant="link"
                       visual="gray"
@@ -5896,9 +5896,9 @@ export default function Projects() {
                   </div>
                 </article>
               </div>
-              <div className="rounded-lg overflow-hidden relative group cursor-pointer focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+              <div className="rounded-lg overflow-hidden relative group cursor-pointer">
                 <NextImage
-                  className="object-cover group-hover:scale-105 motion-safe:transition-transform motion-safe:[transition-duration:3000ms]"
+                  className="object-cover"
                   src="/artificial-hand.jpeg"
                   alt="Guide"
                   sizes="50vw"
@@ -5909,7 +5909,7 @@ export default function Projects() {
                     <span className="text-xs font-medium leading-none text-dark-blue-400">
                       Software Testing
                     </span>
-                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400 group-hover:underline">
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
                       The Art of Software Testing: A Comprehensive Guide
                     </h1>
                     <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
@@ -5923,7 +5923,7 @@ export default function Projects() {
                     </p>
 
                     <Button
-                      className="text-dark-blue-400 mt-3 group-hover:underline"
+                      className="text-dark-blue-400 mt-3"
                       size="md"
                       variant="link"
                       visual="gray"
@@ -5947,21 +5947,21 @@ export default function Projects() {
             <TabsList className="flex flex-col items-start gap-y-3 bg-transparent h-auto min-w-[240px]">
               <TabsTrigger
                 value="general"
-                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 hover:bg-gray-50 hover:border-gray-200 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 General Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
               </TabsTrigger>
               <TabsTrigger
                 value="career"
-                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 hover:bg-gray-50 hover:border-gray-200 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 Career Related Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
               </TabsTrigger>
               <TabsTrigger
                 value="technical"
-                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 hover:bg-gray-50 hover:border-gray-200 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 Technical Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />

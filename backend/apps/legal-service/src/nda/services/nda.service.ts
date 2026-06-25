@@ -51,15 +51,6 @@ export class NdaService {
   async generate(
     dto: GenerateNdaDto,
   ): Promise<{ documentId: string; status: string; version: string }> {
-    // Upsert: return existing document if one already exists for this user+listing pair.
-    // Prevents duplicate NDA documents when the page reloads or generate is called twice.
-    const existing = await this.ndaDocumentRepo.findOne({
-      where: { clientUserId: dto.clientUserId, jobListingId: dto.jobListingId },
-    });
-    if (existing) {
-      return { documentId: existing.id, status: existing.status, version: existing.templateVersion };
-    }
-
     // Fetch client display name from user-service
     let clientDisplayName = 'Client User';
     try {

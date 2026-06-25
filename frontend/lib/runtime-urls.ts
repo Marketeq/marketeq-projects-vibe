@@ -84,21 +84,6 @@ export const getPublicHomepageUrl = (): string => {
   return normalizePublicUrl(stripApiSuffix(homepageBase))
 }
 
-export const getServerBackendUrl = (): string => {
-  const publicUrl = getPublicHomepageUrl()
-  if (/^https?:\/\//i.test(publicUrl)) return publicUrl
-
-  const proxyTarget = (process.env.API_PROXY_TARGET ?? "").trim()
-  if (/^https?:\/\//i.test(proxyTarget)) {
-    return proxyTarget
-      .replace(/\/+$/, "")
-      .replace(/\/api$/i, "")
-      .replace(/\/+$/, "")
-  }
-
-  return ""
-}
-
 export const getPublicListingsUrl = (): string =>
   normalizePublicUrl(
     firstNonEmpty(

@@ -33,7 +33,7 @@ async function bootstrap() {
 
   const vercelPreviewPattern = process.env.VERCEL_PREVIEW_ORIGIN_REGEX
     ? new RegExp(process.env.VERCEL_PREVIEW_ORIGIN_REGEX)
-    : /^(?:[a-z0-9-]+-)?marketeq-projects(?:-[a-z0-9-]+)?\.vercel\.app$/
+    : /^marketeq-projects(?:-[a-z0-9-]+)?-[a-z0-9-]+\.vercel\.app$/
 
   const isMarketeqVercelPreview = (origin: string) => {
     try {

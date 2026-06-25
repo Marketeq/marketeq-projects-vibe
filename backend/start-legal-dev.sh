@@ -49,4 +49,4 @@ fi
 
 echo ""
 echo "Ready! Refresh: http://localhost:3000/job-details/legal-service-nda"
-echo "Sign with full name: Priya Bharathi (auth auto-resolves via /user/me mock)"
+echo "Sign with full name: Priya Bharathi"

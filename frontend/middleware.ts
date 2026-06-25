@@ -43,7 +43,6 @@ function validateRuntimeUrls(): string | null {
   for (const name of REQUIRED_RUNTIME_URLS) {
     const value = process.env[name]?.trim()
     if (!value) return `${name} is required`
-    if (value.startsWith("/")) continue
     if (/localhost|127\.0\.0\.1|0\.0\.0\.0/.test(value)) {
       return `${name} must not point to localhost`
     }

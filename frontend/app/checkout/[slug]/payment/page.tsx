@@ -100,32 +100,23 @@ const formatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 })
 
-const currencyWithCentsFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
 const parseCurrencyAmount = (value?: string | null) => {
   if (!value) return undefined
 
-  const numericValue = Number(value.replace(/[^0-9.-]/g, ""))
+  const numericValue = Number(value.replace(/[^0-9.]/g, ""))
   return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
 const sanitizeBalanceInput = (value: string): string => {
-  const isNegative = value.trim().startsWith("-")
   const sanitized = value.replace(/[^0-9.]/g, "")
   const [integerPart, ...decimalParts] = sanitized.split(".")
   const normalizedIntegerPart = integerPart.replace(/^0+(?=\d)/, "")
-  const sign = isNegative ? "-" : ""
 
   if (decimalParts.length === 0) {
-    return `${sign}${normalizedIntegerPart}`
+    return normalizedIntegerPart
   }
 
-  return `${sign}${normalizedIntegerPart}.${decimalParts.join("").slice(0, 2)}`
+  return `${normalizedIntegerPart}.${decimalParts.join("").slice(0, 2)}`
 }
 
 const normalizeGiftCardCode = (value: string): string =>
@@ -470,13 +461,6 @@ export default function PaymentPage() {
   const selectedSchedule = searchParams.get("schedule") || "full-time"
   const selectedDuration =
     searchParams.get("duration") || (isTalentCheckout ? "Ongoing" : "")
-  const isInstallmentServiceAvailable =
-    searchParams.get("installments") !== "unavailable"
-  const isBalanceServiceAvailable =
-    searchParams.get("balanceService") !== "unavailable"
-  const balanceAmountParam = parseCurrencyAmount(searchParams.get("balance"))
-  const availableBalance =
-    balanceAmountParam === undefined ? 4000 : Math.max(balanceAmountParam, 0)
   const checkoutTypeParam = (
     searchParams.get("checkoutType") ||
     searchParams.get("type") ||
@@ -669,9 +653,7 @@ export default function PaymentPage() {
     isAddBankInstallmentMethodDialogOpen,
     setIsAddBankInstallmentMethodDialogOpen,
   ] = React.useState(false)
-  const [useBalance, setUseBalance] = React.useState(
-    isBalanceServiceAvailable && availableBalance > 0
-  )
+  const [useBalance, setUseBalance] = React.useState(false)
   const [isBalanceCustom, setIsBalanceCustom] = React.useState(false)
   const [customAmount, setCustomAmount] = React.useState("")
   const [showGiftCard, setShowGiftCard] = React.useState(false)
@@ -713,20 +695,6 @@ export default function PaymentPage() {
       setPay("IN_INSTALLMENTS")
     }
   }, [isOngoingTalentContract])
-
-  React.useEffect(() => {
-    if (!isInstallmentServiceAvailable && pay === "IN_INSTALLMENTS") {
-      setPay("AT_ONCE")
-    }
-  }, [isInstallmentServiceAvailable, pay])
-
-  React.useEffect(() => {
-    if (!isBalanceServiceAvailable || availableBalance <= 0) {
-      setUseBalance(false)
-      setIsBalanceCustom(false)
-      setCustomAmount("")
-    }
-  }, [availableBalance, isBalanceServiceAvailable])
 
   React.useEffect(() => {
     if (typeof window === "undefined") return
@@ -820,57 +788,17 @@ export default function PaymentPage() {
     showFullPaymentMethods,
   ])
 
-  const projectCost = 94_000
-  const estimatedProjectTax = 4_000
-  const fullAmount = projectCost + estimatedProjectTax
-  const projectDurationMonths = 8
-  const installmentAmount = fullAmount / projectDurationMonths
-  const initialInstallmentAmount = installmentAmount
-  const recurringInstallmentAmount = installmentAmount
-  const [
-    formattedFirstRecurringPaymentDate,
-    setFormattedFirstRecurringPaymentDate,
-  ] = React.useState("")
+  const availableBalance = 4000
+  const fullAmount = 98_000
   const parsedCustomAmount = parseCurrencyAmount(customAmount)
-  const amountDueNow =
-    pay === "IN_INSTALLMENTS" ? initialInstallmentAmount : fullAmount
-  const maxApplicableBalance = Math.min(availableBalance, amountDueNow)
-  const customBalanceError =
-    customAmount.trim() === "" || parsedCustomAmount === undefined
-      ? ""
-      : parsedCustomAmount <= 0
-        ? "Please enter an amount greater than $0"
-        : parsedCustomAmount > availableBalance
-          ? `Amount cannot exceed your available balance of ${currencyWithCentsFormatter.format(availableBalance)}`
-          : parsedCustomAmount > amountDueNow
-            ? `Amount cannot exceed your order total of ${currencyWithCentsFormatter.format(amountDueNow)}`
-            : ""
-  const hasValidCustomBalanceAmount =
-    parsedCustomAmount !== undefined &&
-    customBalanceError === "" &&
-    parsedCustomAmount > 0
-  const appliedBalanceAmount =
-    isBalanceServiceAvailable && useBalance
-      ? customAmount.trim() !== ""
-        ? hasValidCustomBalanceAmount
-          ? parsedCustomAmount
-          : 0
-        : maxApplicableBalance
-      : 0
+  const normalizedCustomAmount =
+    parsedCustomAmount === undefined
+      ? undefined
+      : Math.min(Math.max(parsedCustomAmount, 0), availableBalance)
+  const appliedBalanceAmount = useBalance
+    ? (normalizedCustomAmount ?? availableBalance)
+    : 0
   const remainingAvailableBalance = availableBalance - appliedBalanceAmount
-  const totalAmountToBePaid = Math.max(amountDueNow - appliedBalanceAmount, 0)
-
-  React.useEffect(() => {
-    const nextMonth = new Date()
-    nextMonth.setMonth(nextMonth.getMonth() + 1, 1)
-    setFormattedFirstRecurringPaymentDate(
-      nextMonth.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      })
-    )
-  }, [])
 
   const handleSubmitOrder = () => {
     setIsProcessing(true)
@@ -893,14 +821,6 @@ export default function PaymentPage() {
     setGiftCardInput("")
     setShowGiftCardSuccess(true)
     setTimeout(() => setShowGiftCardSuccess(false), 5000)
-  }
-
-  const handleCustomBalanceSubmit = (event: React.FormEvent) => {
-    event.preventDefault()
-
-    if (!hasValidCustomBalanceAmount) return
-    setUseBalance(true)
-    setIsBalanceCustom(false)
   }
 
   const billingAddressSummary = {
@@ -1717,228 +1637,146 @@ export default function PaymentPage() {
                         {formatter.format(fullAmount)}
                       </HelperText>
                     </RadioGroupItemSelector>
-                    {isInstallmentServiceAvailable ? (
-                      <RadioGroupItemSelector size="md" value="IN_INSTALLMENTS">
-                        <Label size="sm" asChild>
-                          <span>Pay in Installments</span>
-                        </Label>
-                        <HelperText size="sm">
-                          {projectDurationMonths} monthly payments
-                        </HelperText>
-                      </RadioGroupItemSelector>
-                    ) : null}
+                    <RadioGroupItemSelector size="md" value="IN_INSTALLMENTS">
+                      <Label size="sm" asChild>
+                        <span>Pay In Installments</span>
+                      </Label>
+                      <HelperText size="sm">
+                        Select your payment plan
+                      </HelperText>
+                    </RadioGroupItemSelector>
                   </RadioGroup>
-                  {!isInstallmentServiceAvailable ? (
-                    <p className="mt-3 text-xs leading-5 text-gray-500">
-                      Installment plans are temporarily unavailable. You can
-                      still pay the full project amount today.
-                    </p>
-                  ) : null}
                 </div>
               ) : null}
 
               {pay === "IN_INSTALLMENTS" && (
-                <>
-                  <div className="mt-6 rounded-lg border border-primary-200 bg-primary-25 p-5">
-                    <h4 className="text-sm font-semibold leading-5 text-dark-blue-400">
-                      Installment Plan Details
-                    </h4>
-                    <div className="mt-4 grid grid-cols-3 gap-3">
-                      <div className="rounded-md border border-gray-200 bg-white p-3">
-                        <span className="block text-xs font-light leading-none text-dark-blue-400">
-                          Initial payment
-                        </span>
-                        <span className="mt-2 block text-base font-bold leading-none text-dark-blue-400">
-                          {formatter.format(initialInstallmentAmount)}
-                        </span>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-white p-3">
-                        <span className="block text-xs font-light leading-none text-dark-blue-400">
-                          Recurring payment
-                        </span>
-                        <span className="mt-2 block text-base font-bold leading-none text-dark-blue-400">
-                          {formatter.format(recurringInstallmentAmount)}
-                        </span>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-white p-3">
-                        <span className="block text-xs font-light leading-none text-dark-blue-400">
-                          First recurring date
-                        </span>
-                        <span className="mt-2 block text-base font-bold leading-none text-dark-blue-400">
-                          {formattedFirstRecurringPaymentDate}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs leading-5 text-gray-500">
-                      The {formatter.format(fullAmount)} project total is split
-                      equally across {projectDurationMonths} months.
-                    </p>
-                  </div>
-                  <Alert className="mt-6">
-                    <AlertIcon>
-                      <AlertCircle className="h-5 w-5" />
-                    </AlertIcon>
-                    <AlertContent>
-                      <AlertTitle className="inline-block">
-                        Please Note:{" "}
-                        <AlertDescription className="inline mt-0 font-normal">
-                          To confirm this {installmentSubjectLabel}, an initial
-                          one-time payment is required. Your installment plan
-                          will begin after this payment is successfully
-                          processed.
-                        </AlertDescription>
-                      </AlertTitle>
-                    </AlertContent>
-                  </Alert>
-                </>
+                <Alert className="mt-6">
+                  <AlertIcon>
+                    <AlertCircle className="h-5 w-5" />
+                  </AlertIcon>
+                  <AlertContent>
+                    <AlertTitle className="inline-block">
+                      Please Note:{" "}
+                      <AlertDescription className="inline mt-0 font-normal">
+                        To confirm this {installmentSubjectLabel}, an initial
+                        one-time payment is required. Your installment plan will
+                        begin after this payment is successfully processed.
+                      </AlertDescription>
+                    </AlertTitle>
+                  </AlertContent>
+                </Alert>
               )}
 
               {/* Available Balance */}
-              {isBalanceServiceAvailable ? (
-                <div className="mt-6 border-t pt-6 border-gray-200">
-                  <h3 className="text-base leading-[.7] font-semibold text-dark-blue-400">
-                    Your Available Balance
-                  </h3>
+              <div className="mt-6 border-t pt-6 border-gray-200">
+                <h3 className="text-base leading-[.7] font-semibold text-dark-blue-400">
+                  Your Available Balance
+                </h3>
 
-                  <div className="mt-5 flex items-start gap-x-4">
-                    <Checkbox
-                      size="md"
-                      checked={useBalance}
-                      disabled={availableBalance <= 0}
-                      onCheckedChange={(value) => {
-                        const checked = value === true
-                        setUseBalance(checked)
-                        if (!checked) {
+                <div className="mt-5 flex items-start gap-x-4">
+                  <Checkbox
+                    size="md"
+                    checked={useBalance}
+                    onCheckedChange={(v) => setUseBalance(v === true)}
+                  />
+
+                  <div className="flex-auto flex flex-col items-start">
+                    {isBalanceCustom ? (
+                      <form
+                        className="contents"
+                        onSubmit={(e) => {
+                          e.preventDefault()
                           setIsBalanceCustom(false)
-                        }
-                      }}
-                    />
+                        }}
+                      >
+                        <div className="flex items-center flex-auto max-w-[328px] gap-x-3">
+                          <Input
+                            className="flex-auto"
+                            placeholder="Enter amount"
+                            value={customAmount}
+                            onChange={(e) =>
+                              setCustomAmount(
+                                sanitizeBalanceInput(e.target.value)
+                              )
+                            }
+                          />
+                          <Button size="lg">Apply</Button>
+                        </div>
 
-                    <div className="flex-auto flex flex-col items-start">
-                      {isBalanceCustom ? (
-                        <form
-                          className="contents"
-                          onSubmit={handleCustomBalanceSubmit}
+                        <div className="mt-2">
+                          <span className="block text-xs leading-none text-gray-500">
+                            {formatter.format(remainingAvailableBalance)}{" "}
+                            remaining of available balance
+                          </span>
+                        </div>
+
+                        <Button
+                          className="underline mt-1"
+                          variant="link"
+                          visual="gray"
+                          type="button"
+                          onClick={() => {
+                            setCustomAmount("")
+                            setIsBalanceCustom(false)
+                          }}
                         >
-                          <div className="flex items-center flex-auto max-w-[328px] gap-x-3">
-                            <Input
-                              className="flex-auto"
-                              aria-invalid={customBalanceError ? true : false}
-                              placeholder="Enter amount"
-                              value={customAmount}
-                              onChange={(event) =>
-                                setCustomAmount(
-                                  sanitizeBalanceInput(event.target.value)
-                                )
-                              }
-                            />
-                            <Button
-                              size="lg"
-                              disabled={
-                                !hasValidCustomBalanceAmount ||
-                                availableBalance <= 0
-                              }
-                            >
-                              Apply
-                            </Button>
-                          </div>
-
-                          {customBalanceError ? (
-                            <span className="mt-2 block text-xs leading-none text-error-500">
-                              {customBalanceError}
-                            </span>
-                          ) : (
-                            <span className="mt-2 block text-xs leading-none text-gray-500">
-                              {currencyWithCentsFormatter.format(
-                                Math.max(remainingAvailableBalance, 0)
-                              )}{" "}
-                              remaining of available balance
-                            </span>
-                          )}
-
+                          Use full balance
+                        </Button>
+                      </form>
+                    ) : normalizedCustomAmount !== undefined ? (
+                      <>
+                        <Label size="sm">
+                          Using{" "}
+                          <span className="font-bold">
+                            {formatter.format(normalizedCustomAmount)}
+                          </span>{" "}
+                          of total available balance of{" "}
+                          {formatter.format(availableBalance)}
+                        </Label>
+                        <div className="flex items-center gap-x-1 mt-1.5">
                           <Button
-                            className="underline mt-1"
+                            className="underline"
                             variant="link"
                             visual="gray"
-                            type="button"
-                            onClick={() => {
-                              setCustomAmount("")
-                              setUseBalance(true)
-                              setIsBalanceCustom(false)
-                            }}
+                            onClick={() => setIsBalanceCustom(true)}
+                          >
+                            Edit amount
+                          </Button>
+                          <span className="inline-block text-xs leading-[15px] text-gray-500">
+                            or
+                          </span>
+                          <Button
+                            className="underline"
+                            variant="link"
+                            visual="gray"
+                            onClick={() => setCustomAmount("")}
                           >
                             Use full balance
                           </Button>
-                        </form>
-                      ) : useBalance &&
-                        customAmount.trim() !== "" &&
-                        hasValidCustomBalanceAmount ? (
-                        <>
-                          <Label size="sm">
-                            Using{" "}
-                            <span className="font-bold">
-                              {currencyWithCentsFormatter.format(
-                                parsedCustomAmount ?? 0
-                              )}
-                            </span>{" "}
-                            of total available balance of{" "}
-                            {currencyWithCentsFormatter.format(
-                              availableBalance
-                            )}
-                          </Label>
-                          <div className="flex items-center gap-x-1 mt-1.5">
-                            <Button
-                              className="underline"
-                              variant="link"
-                              visual="gray"
-                              onClick={() => setIsBalanceCustom(true)}
-                            >
-                              Edit amount
-                            </Button>
-                            <span className="inline-block text-xs leading-[15px] text-gray-500">
-                              or
-                            </span>
-                            <Button
-                              className="underline"
-                              variant="link"
-                              visual="gray"
-                              onClick={() => {
-                                setCustomAmount("")
-                                setUseBalance(true)
-                              }}
-                            >
-                              Use full balance
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <Label size="sm">
-                            <span className="font-bold">
-                              {currencyWithCentsFormatter.format(
-                                availableBalance
-                              )}
-                            </span>{" "}
-                            available balance
-                          </Label>
-                          <Button
-                            className="underline mt-1.5"
-                            variant="link"
-                            visual="gray"
-                            disabled={availableBalance <= 0}
-                            onClick={() => {
-                              setUseBalance(true)
-                              setIsBalanceCustom(true)
-                            }}
-                          >
-                            Apply Custom Amount
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Label size="sm">
+                          Use my{" "}
+                          <span className="font-bold">
+                            {formatter.format(availableBalance)}
+                          </span>{" "}
+                          available balance{" "}
+                        </Label>
+                        <Button
+                          className="underline mt-1.5"
+                          variant="link"
+                          visual="gray"
+                          onClick={() => setIsBalanceCustom(true)}
+                        >
+                          Apply Custom Amount
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
-              ) : null}
+              </div>
 
               {/* Gift Cards */}
               <div className="mt-6 border-y py-6 border-gray-200">
@@ -4030,7 +3868,7 @@ export default function PaymentPage() {
                             Project cost
                           </span>
                           <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                            {formatter.format(projectCost)}
+                            $94,000
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -4038,50 +3876,10 @@ export default function PaymentPage() {
                             Estimated tax *
                           </span>
                           <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                            {formatter.format(estimatedProjectTax)}
+                            $4,000
                           </span>
                         </div>
-                        {pay === "IN_INSTALLMENTS" && (
-                          <>
-                            <div className="flex items-center justify-between">
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                Initial payment
-                              </span>
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                {formatter.format(initialInstallmentAmount)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                Recurring payment
-                              </span>
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                {formatter.format(recurringInstallmentAmount)}
-                              </span>
-                            </div>
-                          </>
-                        )}
-                        {pay === "AT_ONCE" && (
-                          <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                              Payment option
-                            </span>
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                              Pay Full Amount
-                            </span>
-                          </div>
-                        )}
-                        {pay === "IN_INSTALLMENTS" && (
-                          <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                              Payment option
-                            </span>
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                              Pay in Installments
-                            </span>
-                          </div>
-                        )}
-                        {appliedBalanceAmount > 0 && (
+                        {useBalance && (
                           <div className="flex items-center justify-between">
                             <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
                               Balance applied
@@ -4097,12 +3895,10 @@ export default function PaymentPage() {
                     <div className="mt-4">
                       <div className="flex items-center justify-between">
                         <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                          {pay === "IN_INSTALLMENTS"
-                            ? "Amount due today"
-                            : "Total amount to be paid"}
+                          Total amount to be paid
                         </span>
                         <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                          {formatter.format(totalAmountToBePaid)}
+                          $94,000
                         </h1>
                       </div>
 

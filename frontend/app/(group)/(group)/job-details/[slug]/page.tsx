@@ -6,10 +6,8 @@ import {
   fetchNdaStatus,
   fetchNdaAudit,
   submitNdaSign,
-  generateNda,
   type LegalServiceError,
 } from "@/src/lib/api/legal-service"
-import { useAuth } from "@/contexts/auth"
 import {
   ArrowLeft,
   Check,
@@ -252,10 +250,7 @@ const titleizeSlug = (value: string) =>
  * TODO: replace with real ndaDocumentId from listing payload
  * once listings-service exposes it in the listing data.
  */
-// Seed fallback used only in local dev (no JWT → no real user ID available).
-// On staging/production the document ID is generated dynamically per logged-in user.
-const NDA_SEED_DOCUMENT_ID = "44444444-4444-4444-a444-444444444444"
-const NDA_TEST_LISTING_ID = "66666666-6666-4666-a666-666666666666"
+const NDA_DOCUMENT_ID = "44444444-4444-4444-a444-444444444444"
 
 const NDA_REVIEW_PDF_HREF = "/legal-service/nda-review.pdf"
 const NDA_REVIEW_PAGES = [
@@ -301,13 +296,11 @@ export default function JobDetailsPage({
     slugTitle && slugTitle !== "Placeholder"
       ? slugTitle
       : job.subtitle
-  const { user } = useAuth()
   const isLegalServiceNda = heroVariant === "legal-service-nda"
   const primaryCtaLabel = isLegalServiceNda ? "Accept Offer" : "Apply"
   const metaLeadLabel = isLegalServiceNda
     ? `Offer received ${job.posted} ago`
     : `Posted ${job.posted}`
-  const [ndaDocumentId, setNdaDocumentId] = useState<string>(NDA_SEED_DOCUMENT_ID)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewGateCleared, setReviewGateCleared] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
@@ -388,28 +381,12 @@ export default function JobDetailsPage({
       }
   const [activeTab, setActiveTab] = useState(tabLabels.description)
 
-  // ─── Generate NDA document for logged-in user on page load ──────────────
-  // On staging/production a real user UUID is available from JWT; generate()
-  // returns an existing document if one already exists (upsert behaviour).
-  // Falls back to the seed UUID in local dev where user is null (no JWT).
-  useEffect(() => {
-    if (!isLegalServiceNda || !user?.id) return
-    generateNda({
-      jobListingId: NDA_TEST_LISTING_ID,
-      listingTitle: "Test NDA Document",
-    })
-      .then((data) => setNdaDocumentId(data.documentId))
-      .catch(() => {
-        // Keep seed fallback if generate fails
-      })
-  }, [isLegalServiceNda, user?.id])
-
   // ─── Check NDA status from backend on page load ───────────────────────────
   // Also fetches the signer name from the audit trail so the overlay shows
   // the correct name even after a page refresh (React state reset).
   useEffect(() => {
     if (!isLegalServiceNda) return
-    fetchNdaStatus(ndaDocumentId)
+    fetchNdaStatus(NDA_DOCUMENT_ID)
       .then(async (data) => {
         if (data.status === "signed") {
           setNdaStatus("signed")
@@ -419,13 +396,13 @@ export default function JobDetailsPage({
             setSignedPdfUrl(data.signedPdfUrl)
           }
           // Restore drawn/uploaded signature image from localStorage (visual UX only)
-          const storedArtifact = localStorage.getItem(`nda_artifact_${ndaDocumentId}`)
+          const storedArtifact = localStorage.getItem(`nda_artifact_${NDA_DOCUMENT_ID}`)
           if (storedArtifact) {
             setSignedArtifactForPreview(storedArtifact)
           }
           // Fetch audit trail to restore signer name for the overlay
           try {
-            const audit = await fetchNdaAudit(ndaDocumentId)
+            const audit = await fetchNdaAudit(NDA_DOCUMENT_ID)
             const latestEvent = audit.signingEvents?.[0]
             if (latestEvent?.signerTypedName) {
               setSignedByName(latestEvent.signerTypedName)
@@ -441,12 +418,12 @@ export default function JobDetailsPage({
         // Stay in unsigned state — user will hit the error when they open the modal
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLegalServiceNda, ndaDocumentId])
+  }, [isLegalServiceNda])
 
   // ─── Fetch real presigned preview URL when review modal opens ─────────────
   useEffect(() => {
     if (!reviewModalOpen || !isLegalServiceNda) return
-    fetchNdaPreview(ndaDocumentId)
+    fetchNdaPreview(NDA_DOCUMENT_ID)
       .then((data) => {
         setNdaPreviewPdfUrl(data.pdfUrl)
       })
@@ -924,11 +901,12 @@ export default function JobDetailsPage({
             ? "uploaded_signature"
             : "typed"
 
-      const result = await submitNdaSign(ndaDocumentId, {
+      const result = await submitNdaSign(NDA_DOCUMENT_ID, {
         typedName: trimmedSignerName,
         signingMethod: backendSigningMethod,
         consentCheckboxChecked: true,
-        jobListingId: NDA_TEST_LISTING_ID,
+        // TODO: replace NDA_DOCUMENT_ID with real jobListingId from listing data
+        jobListingId: NDA_DOCUMENT_ID,
         initials: trimmedSignerInitials || undefined,
       })
 
@@ -945,15 +923,15 @@ export default function JobDetailsPage({
       // Persist the artifact in localStorage so it survives page refreshes.
       // Keyed by document ID so different documents don't share artifacts.
       if (artifactSrc) {
-        localStorage.setItem(`nda_artifact_${ndaDocumentId}`, artifactSrc)
+        localStorage.setItem(`nda_artifact_${NDA_DOCUMENT_ID}`, artifactSrc)
       } else {
-        localStorage.removeItem(`nda_artifact_${ndaDocumentId}`)
+        localStorage.removeItem(`nda_artifact_${NDA_DOCUMENT_ID}`)
       }
       setSignedByName(trimmedSignerName)
       setSignedPdfUrl(result.signedPdfUrl)
       // Also persist the signed PDF URL so Download button works after refresh
       if (result.signedPdfUrl) {
-        localStorage.setItem(`nda_signed_pdf_${ndaDocumentId}`, result.signedPdfUrl)
+        localStorage.setItem(`nda_signed_pdf_${NDA_DOCUMENT_ID}`, result.signedPdfUrl)
       }
       setNdaStatus("signed")
       setNdaModalStep("success")
@@ -966,11 +944,7 @@ export default function JobDetailsPage({
       } else if (lsErr.status === 404) {
         setSignError("not-found")
       } else if (lsErr.status === 409) {
-        // Already signed — restore signer name from form then fetch fresh signed PDF URL
-        setSignedByName(trimmedSignerName)
-        fetchNdaStatus(ndaDocumentId).then((s) => {
-          if (s.signedPdfUrl) setSignedPdfUrl(s.signedPdfUrl)
-        }).catch(() => {})
+        // Already signed — treat as success, show signed state
         setNdaStatus("signed")
         setNdaModalStep("success")
       } else if (lsErr.status === 410) {

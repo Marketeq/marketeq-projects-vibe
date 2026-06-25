@@ -4,7 +4,6 @@ import React, {
   Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -30,7 +29,6 @@ import {
   Clock,
   Edit03,
   Eye,
-  EyeOff,
   FileText,
   Heart,
   Image01,
@@ -77,244 +75,6 @@ import { HireMeButton } from "@/components/hire-me-button"
 import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
-import dynamic from "next/dynamic"
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core"
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-
-const CaseStudyBuilder = dynamic(
-  () => import("@/components/case-study-builder"),
-  { ssr: false }
-)
-
-const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
-
-type PortfolioCardState = "filled" | "hidden" | "empty"
-interface PortfolioCardItem {
-  id: string
-  state: PortfolioCardState
-  img?: string
-}
-
-const SortablePortfolioCard = ({
-  card,
-  onOpenBuilder,
-  onToggleHide,
-  onDelete,
-}: {
-  card: PortfolioCardItem
-  onOpenBuilder: () => void
-  onToggleHide: () => void
-  onDelete: () => void
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: card.id })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-  const stop =
-    (fn: () => void) => (e: React.MouseEvent) => {
-      e.stopPropagation()
-      fn()
-    }
-  return (
-    <article
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={cn(
-        "group relative h-[200px] select-none touch-none overflow-hidden rounded-lg border border-gray-200 bg-gray-100 cursor-grab active:cursor-grabbing",
-        isDragging && "z-10 opacity-70 shadow-lg"
-      )}
-    >
-      {card.state === "empty" ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-          <Image01 className="size-10 text-gray-300" />
-        </div>
-      ) : (
-        <img
-          src={card.img}
-          alt="Portfolio"
-          draggable={false}
-          className={cn(
-            "h-full w-full object-cover",
-            card.state === "hidden" && "opacity-40"
-          )}
-        />
-      )}
-
-      <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
-        {card.state === "empty" ? (
-          <Button
-            type="button"
-            visual="gray"
-            className="bg-white"
-            onClick={stop(onOpenBuilder)}
-          >
-            <Upload className="size-[15px]" /> Add Case Study
-          </Button>
-        ) : (
-          <>
-            <IconButton
-              type="button"
-              variant="ghost"
-              visual="gray"
-              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
-              onClick={stop(onOpenBuilder)}
-            >
-              <Edit03 className="size-4" />
-            </IconButton>
-            <IconButton
-              type="button"
-              variant="ghost"
-              visual="gray"
-              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
-              onClick={stop(onToggleHide)}
-            >
-              {card.state === "hidden" ? (
-                <Eye className="size-4" />
-              ) : (
-                <EyeOff className="size-4" />
-              )}
-            </IconButton>
-            <IconButton
-              type="button"
-              variant="ghost"
-              visual="gray"
-              className="rounded-full bg-white/90 text-error-500 hover:bg-white"
-              onClick={stop(onDelete)}
-            >
-              <Trash03 className="size-4" />
-            </IconButton>
-          </>
-        )}
-      </div>
-    </article>
-  )
-}
-
-const PortfolioCards = ({
-  portfolio,
-  onOpenBuilder,
-}: {
-  portfolio?: { id: string | number; imageUrl?: string | null }[]
-  onOpenBuilder: () => void
-}) => {
-  const [cards, setCards] = useState<PortfolioCardItem[]>(() =>
-    portfolio && portfolio.length > 0
-      ? portfolio.map((item) => ({
-          id: String(item.id),
-          state: "filled" as const,
-          img: item.imageUrl ?? PORTFOLIO_SAMPLE_IMG,
-        }))
-      : [
-          { id: "p1", state: "filled", img: PORTFOLIO_SAMPLE_IMG },
-          { id: "p2", state: "hidden", img: PORTFOLIO_SAMPLE_IMG },
-          { id: "p3", state: "empty" },
-        ]
-  )
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  )
-  const onDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e
-    if (over && active.id !== over.id) {
-      setCards((prev) => {
-        const oldIndex = prev.findIndex((c) => c.id === active.id)
-        const newIndex = prev.findIndex((c) => c.id === over.id)
-        return arrayMove(prev, oldIndex, newIndex)
-      })
-    }
-  }
-  return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={onDragEnd}
-    >
-      <SortableContext
-        items={cards.map((c) => c.id)}
-        strategy={rectSortingStrategy}
-      >
-        <ShowMoreLessRoot>
-          {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-            <>
-              <div
-                ref={ref}
-                className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
-                style={{
-                  height: isShowing
-                    ? "auto"
-                    : scrollHeight
-                      ? toPxIfNumber(scrollHeight)
-                      : "auto",
-                }}
-              >
-                <ShowMoreLess max={3}>
-                  {cards.map((card) => (
-                    <SortablePortfolioCard
-                      key={card.id}
-                      card={card}
-                      onOpenBuilder={onOpenBuilder}
-                      onToggleHide={() =>
-                        setCards((prev) =>
-                          prev.map((c) =>
-                            c.id === card.id
-                              ? {
-                                  ...c,
-                                  state:
-                                    c.state === "hidden" ? "filled" : "hidden",
-                                }
-                              : c
-                          )
-                        )
-                      }
-                      onDelete={() =>
-                        setCards((prev) =>
-                          prev.filter((c) => c.id !== card.id)
-                        )
-                      }
-                    />
-                  ))}
-                </ShowMoreLess>
-              </div>
-
-              {cards.length > 3 && (
-                <div className="my-6">
-                  <div className="flex items-center gap-x-1">
-                    <span className="flex-auto inline-block h-px bg-gray-200" />
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      onClick={() => setIsShowing((prev) => !prev)}
-                    >
-                      {isShowing ? "View Less" : "View More"}
-                    </Button>
-                    <span className="flex-auto inline-block h-px bg-gray-200" />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </ShowMoreLessRoot>
-      </SortableContext>
-    </DndContext>
-  )
-}
 import NextLink from "@/components/next-link"
 import {
   ReadMoreLess,
@@ -750,14 +510,12 @@ function Default() {
     label: string
   } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleDeleteWorkExperience = useCallback(
     (expId: string) => {
       const exp = profile?.experience?.find(
         (e: any) => String(e.id) === String(expId)
       )
-      setDeleteError(null)
       setDeleteConfirm({
         type: "experience",
         id: expId,
@@ -772,7 +530,6 @@ function Default() {
       const edu = profile?.education?.find(
         (e: any) => String(e.id) === String(eduId)
       )
-      setDeleteError(null)
       setDeleteConfirm({
         type: "education",
         id: eduId,
@@ -785,7 +542,6 @@ function Default() {
   const confirmDelete = useCallback(async () => {
     if (!profile?.id || !deleteConfirm) return
     setIsDeleting(true)
-    setDeleteError(null)
     try {
       if (deleteConfirm.type === "experience") {
         await UserAPI.removeExperience(deleteConfirm.id)
@@ -793,12 +549,11 @@ function Default() {
         await UserAPI.removeEducation(deleteConfirm.id)
       }
       refreshProfile()
-      setIsDeleting(false)
-      setDeleteConfirm(null)
     } catch {
-      setIsDeleting(false)
-      setDeleteError("Couldn't delete this entry. Please try again.")
+      /* noop */
     }
+    setIsDeleting(false)
+    setDeleteConfirm(null)
   }, [profile?.id, deleteConfirm, refreshProfile])
 
   const [isEditMode, setIsEditMode] = useState(true)
@@ -827,22 +582,10 @@ function Default() {
   const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
   const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
-  const [caseStudyOpen, setCaseStudyOpen] = useState(false)
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
   const WORK_EXPERIENCE_LIMIT = 30
   const atWorkExperienceLimit =
     (profile?.experience?.length ?? 0) >= WORK_EXPERIENCE_LIMIT
-
-  // Deduplicate skills by name (case-insensitive) and drop blanks before display.
-  const dedupedSkills = useMemo(() => {
-    const seen = new Set<string>()
-    return (profile?.skills ?? []).filter((s: any) => {
-      const key = (s?.name ?? "").trim().toLowerCase()
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-  }, [profile?.skills])
 
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
@@ -1335,10 +1078,10 @@ function Default() {
                       </div>
                     </div>
 
-                    {(dedupedSkills.length > 0 ||
+                    {((profile?.skills && profile.skills.length > 0) ||
                       (isEditMode && isOwnProfile)) && (
                       <div className="mt-[54px]">
-                        {dedupedSkills.length > 0 && (
+                        {profile?.skills && profile.skills.length > 0 && (
                           <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                             What I do
                           </h1>
@@ -1346,7 +1089,7 @@ function Default() {
 
                         <div className="flex items-start mt-3 gap-x-3">
                           <div className="flex gap-3 flex-wrap">
-                            {dedupedSkills.length > 0 ? (
+                            {profile?.skills && profile.skills.length > 0 ? (
                               <ShowMoreLessRoot>
                                 <ShowMoreLess
                                   trigger={(extraChildrenCount) => (
@@ -1356,7 +1099,6 @@ function Default() {
                                       size="lg"
                                       onClick={() => {
                                         setActiveTab("Skills")
-                                        setAutoExpandSkills(true)
                                         setTimeout(() => {
                                           const el =
                                             document.getElementById("skills")
@@ -1374,7 +1116,7 @@ function Default() {
                                   )}
                                   max={5}
                                 >
-                                  {dedupedSkills.map((skill) => (
+                                  {profile.skills.map((skill) => (
                                     <Badge
                                       key={skill.id}
                                       className="text-gray-700"
@@ -1531,7 +1273,6 @@ function Default() {
                           @{profile?.username ?? ""}
                         </span>
                       </span>
-
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
                         {(profile as any)?.jobTitles?.find(
                           (j: any) => j.saveAsDefault
@@ -1729,14 +1470,6 @@ function Default() {
                               <Progress
                                 key={i}
                                 className="flex-auto first:rounded-l-full last:rounded-r-full [&:not(:first-child)]:rounded-l-none [&:not(:last-child)]:rounded-r-none"
-                                indicatorClassName={cn(
-                                  i === 0 && "rounded-l-full rounded-r-none",
-                                  i === steps.length - 1 &&
-                                    "rounded-r-full rounded-l-none",
-                                  i !== 0 &&
-                                    i !== steps.length - 1 &&
-                                    "rounded-none"
-                                )}
                                 value={i < completedCount ? 100 : 0}
                                 bubble={false}
                               />
@@ -1771,11 +1504,91 @@ function Default() {
                     )
                   })()}
 
-                <PortfolioCards
-                  key={profile?.portfolio?.length ? "real" : "demo"}
-                  portfolio={profile?.portfolio}
-                  onOpenBuilder={() => setCaseStudyOpen(true)}
-                />
+                <ShowMoreLessRoot
+                  value={autoExpandPortfolio}
+                  onValueChange={setAutoExpandPortfolio}
+                >
+                  {({ isShowing, setIsShowing, ref, scrollHeight }) => (
+                    <>
+                      <div
+                        className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
+                        ref={ref}
+                        style={{
+                          height: isShowing
+                            ? "auto"
+                            : scrollHeight
+                              ? toPxIfNumber(scrollHeight)
+                              : "auto",
+                        }}
+                      >
+                        <ShowMoreLess max={3}>
+                          {profile?.portfolio && profile.portfolio.length > 0 ? (
+                            profile.portfolio.map((item) => (
+                              <article
+                                key={item.id}
+                                className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer bg-gray-100"
+                              >
+                                {item.imageUrl ? (
+                                  <NextImage
+                                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    fill
+                                    sizes="33vw"
+                                  />
+                                ) : null}
+                                <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
+                                  <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
+                                    {item.name}
+                                  </h1>
+                                  {Array.isArray(item.tags) &&
+                                    item.tags.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
+                                        {item.tags.map((tag, i) => (
+                                          <Badge
+                                            key={`${item.id}-${i}`}
+                                            className="text-white bg-white/20"
+                                            visual="gray"
+                                          >
+                                            {tag}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    )}
+                                </div>
+                              </article>
+                            ))
+                          ) : (
+                            [0, 1, 2].map((i) => (
+                              <div
+                                key={i}
+                                className="rounded-lg h-[200px] bg-gray-50 border border-gray-200 flex items-center justify-center"
+                              >
+                                <Image01 className="size-10 text-gray-300" />
+                              </div>
+                            ))
+                          )}
+                        </ShowMoreLess>
+                      </div>
+
+                      {profile?.portfolio && profile.portfolio.length > 3 && (
+                        <div className="my-6">
+                          <div className="flex items-center gap-x-1">
+                            <span className="flex-auto inline-block h-px bg-gray-200" />
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              onClick={() => setIsShowing((prev) => !prev)}
+                            >
+                              {isShowing ? "View Less" : "View More"}
+                            </Button>
+                            <span className="flex-auto inline-block h-px bg-gray-200" />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </ShowMoreLessRoot>
 
                 <LazySection minHeight={300}>
                   <div
@@ -1788,7 +1601,7 @@ function Default() {
                       </h1>
                       {isEditMode &&
                         isOwnProfile &&
-                        dedupedSkills.length > 0 && (
+                        (profile?.skills && profile.skills.length > 0 ? (
                           <IconButton
                             className="rounded-full text-gray-500 hover:text-gray-800"
                             variant="ghost"
@@ -1797,10 +1610,19 @@ function Default() {
                           >
                             <Edit03 className="size-4" />
                           </IconButton>
-                        )}
+                        ) : (
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setSkillsOpen(true)}
+                          >
+                            <Plus className="size-[15px]" />
+                            Add Skills
+                          </Button>
+                        ))}
                     </div>
 
-                    {dedupedSkills.length > 0 ? (
+                    {profile?.skills && profile.skills.length > 0 ? (
                       <ShowMoreLessRoot
                         value={autoExpandSkills}
                         onValueChange={setAutoExpandSkills}
@@ -1819,7 +1641,7 @@ function Default() {
                               }}
                             >
                               <ShowMoreLess max={22}>
-                                {dedupedSkills.map((skill) => (
+                                {profile.skills.map((skill) => (
                                   <Badge
                                     key={skill.id}
                                     className="text-gray-700"
@@ -1832,7 +1654,7 @@ function Default() {
                               </ShowMoreLess>
                             </div>
 
-                            {dedupedSkills.length > 22 && (
+                            {profile.skills.length > 22 && (
                               <div className="mt-6 flex items-center justify-center">
                                 <Button
                                   variant="link"
@@ -1847,26 +1669,12 @@ function Default() {
                         )}
                       </ShowMoreLessRoot>
                     ) : (
-                      <div className="mt-2 flex items-start justify-between gap-x-4">
-                        <div className="flex-auto min-w-0">
-                          <p className="text-sm font-light text-gray-600 leading-relaxed">
-                            Showcase your expertise and the strengths that set
-                            you apart. Highlight the skills that define your work
-                            so the right clients can recognize your value and
-                            find you faster.
-                          </p>
-                        </div>
-                        {isEditMode && isOwnProfile && (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            className="shrink-0 bg-white -mt-7"
-                            onClick={() => setSkillsOpen(true)}
-                          >
-                            <Plus className="size-[15px]" /> Add Skills
-                          </Button>
-                        )}
-                      </div>
+                      <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                        Showcase your expertise and the strengths that set you
+                        apart. Highlight the skills that define your work so the
+                        right clients can recognize your value and find you
+                        faster.
+                      </p>
                     )}
                   </div>
                 </LazySection>
@@ -2077,7 +1885,7 @@ function Default() {
                                   </span>
                                   {isEditMode && isOwnProfile && (
                                     <IconButton
-                                      className="rounded-full text-gray-400 hover:text-gray-600"
+                                      className="text-gray-400 hover:text-gray-600"
                                       variant="ghost"
                                       visual="gray"
                                       onClick={() => {
@@ -2327,18 +2135,12 @@ function Default() {
                                 <ShowMoreLessComp max={4}>
                                   {profile?.experience &&
                                   profile.experience.length > 0 ? (
-                                    [...profile.experience]
-                                      .sort((a: any, b: any) => {
-                                        const aCurrent =
-                                          a.isCurrentRole || !a.endDate
-                                        const bCurrent =
-                                          b.isCurrentRole || !b.endDate
-                                        if (aCurrent !== bCurrent)
-                                          return aCurrent ? -1 : 1
-                                        return (b.startDate || "").localeCompare(
+                                    profile.experience
+                                      .sort((a: any, b: any) =>
+                                        (b.startDate || "").localeCompare(
                                           a.startDate || ""
                                         )
-                                      })
+                                      )
                                       .map((exp: any, idx: number) => {
                                         const months = [
                                           "January",
@@ -2408,7 +2210,6 @@ function Default() {
                                                   if (exp.companyLogoUrl) {
                                                     return (
                                                       <NextImage
-                                                        key={exp.companyLogoUrl}
                                                         src={exp.companyLogoUrl}
                                                         alt={exp.company || ""}
                                                         width={45}
@@ -2433,7 +2234,6 @@ function Default() {
                                                   ) {
                                                     return (
                                                       <img
-                                                        key={brand.url}
                                                         src={brand.url}
                                                         alt={
                                                           exp.company ||
@@ -2666,21 +2466,12 @@ function Default() {
                                 <ShowMoreLessComp max={4}>
                                   {profile?.education &&
                                   profile.education.length > 0 ? (
-                                    [...profile.education]
-                                      .sort((a: any, b: any) => {
-                                        const aCurrent =
-                                          a.currentlyStudying || !a.endYear
-                                        const bCurrent =
-                                          b.currentlyStudying || !b.endYear
-                                        if (aCurrent !== bCurrent)
-                                          return aCurrent ? -1 : 1
-                                        return (
-                                          (b.startYear ?? 0) -
-                                            (a.startYear ?? 0) ||
-                                          (b.startMonth ?? 0) -
-                                            (a.startMonth ?? 0)
-                                        )
-                                      })
+                                    profile.education
+                                      .sort(
+                                        (a: any, b: any) =>
+                                          (b.startYear ?? 0) - (a.startYear ?? 0) ||
+                                          (b.startMonth ?? 0) - (a.startMonth ?? 0)
+                                      )
                                       .map((edu: any, idx: number) => {
                                         const months = [
                                           "January",
@@ -2717,7 +2508,6 @@ function Default() {
                                                 if (edu.institutionLogoUrl) {
                                                   return (
                                                     <NextImage
-                                                      key={edu.institutionLogoUrl}
                                                       src={
                                                         edu.institutionLogoUrl
                                                       }
@@ -2745,7 +2535,6 @@ function Default() {
                                                 ) {
                                                   return (
                                                     <img
-                                                      key={brand.url}
                                                       src={brand.url}
                                                       alt={
                                                         edu.school ||
@@ -2817,19 +2606,13 @@ function Default() {
                                                 )}
                                               </div>
                                               <div className="mt-1.5 flex items-center gap-x-2">
-                                                {edu.degree && (
-                                                  <span className="text-dark-blue-400 text-xs leading-none">
-                                                    {edu.degree}
-                                                  </span>
-                                                )}
-                                                {edu.degree && edu.fieldOfStudy && (
-                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                                )}
-                                                {edu.fieldOfStudy && (
-                                                  <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                                    {edu.fieldOfStudy}
-                                                  </span>
-                                                )}
+                                                <span className="text-dark-blue-400 text-xs leading-none">
+                                                  {edu.degree}
+                                                </span>
+                                                <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                <span className="text-dark-blue-400 font-semibold text-xs leading-none">
+                                                  {edu.fieldOfStudy}
+                                                </span>
                                               </div>
                                               <div className="mt-1.5">
                                                 <span className="text-dark-blue-400 text-xs leading-none">
@@ -4485,6 +4268,16 @@ function Default() {
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                         Affiliated Teams
                       </h1>
+                      {isEditMode && isOwnProfile && (
+                        <IconButton
+                          className="rounded-full text-gray-500 hover:text-gray-800 size-6"
+                          variant="ghost"
+                          visual="gray"
+                          onClick={() => setAffiliatedTeamsOpen(true)}
+                        >
+                          <Edit03 className="size-3.5" />
+                        </IconButton>
+                      )}
                     </div>
 
                     <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
@@ -4692,26 +4485,10 @@ function Default() {
             onOpenedChange={setAffiliatedTeamsOpen}
           />
 
-          <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
-            <DialogContent
-              variant="unanimated"
-              className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
-            >
-              <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
-              <CaseStudyBuilder
-                onClose={() => setCaseStudyOpen(false)}
-                onSave={() => setCaseStudyOpen(false)}
-              />
-            </DialogContent>
-          </Dialog>
-
           <Dialog
             open={!!deleteConfirm}
             onOpenChange={(open) => {
-              if (!open) {
-                setDeleteConfirm(null)
-                setDeleteError(null)
-              }
+              if (!open) setDeleteConfirm(null)
             }}
           >
             <DialogContent className="max-w-[409px] p-0">
@@ -4743,15 +4520,6 @@ function Default() {
                   )}{" "}
                   This cannot be undone.
                 </DialogDescription>
-
-                {deleteError && (
-                  <div
-                    role="alert"
-                    className="mt-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
-                  >
-                    {deleteError}
-                  </div>
-                )}
               </div>
 
               <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
@@ -4772,11 +4540,7 @@ function Default() {
                   onClick={confirmDelete}
                   disabled={isDeleting}
                 >
-                  {isDeleting
-                    ? "Deleting..."
-                    : deleteError
-                      ? "Try Again"
-                      : "Yes, Delete"}
+                  {isDeleting ? "Deleting..." : "Yes, Delete"}
                 </Button>
               </div>
             </DialogContent>

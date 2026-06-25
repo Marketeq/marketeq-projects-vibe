@@ -1,10 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
-import { StrongPassword } from './password-validation';
+import { IsString, Matches, MinLength } from 'class-validator';
 
 export class SetPasswordDto {
   @ApiProperty()
   @IsString()
-  @StrongPassword()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(/[a-z]/, { message: 'Password must contain at least one lowercase letter' })
+  @Matches(/[A-Z]/, { message: 'Password must contain at least one uppercase letter' })
+  @Matches(/\d/, { message: 'Password must contain at least one number' })
+  @Matches(/[^a-zA-Z0-9]/, { message: 'Password must contain at least one special character' })
   password: string;
 }

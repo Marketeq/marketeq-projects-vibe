@@ -22,9 +22,6 @@ export class User {
   @Column({ default: false })
   hasPassword: boolean;
 
-  @Column({ type: 'varchar', nullable: true, select: false })
-  passwordResetVersion: string | null;
-
   @Column({ nullable: true, select: false })
   twoFactorSecret: string;
 
