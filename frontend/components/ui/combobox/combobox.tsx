@@ -41,6 +41,7 @@ interface ComboboxProps<TValue> extends Omit<
   onChange?: (value: TValue) => void
   multiple?: boolean
   nullable?: boolean
+  disabled?: boolean
   defaultValue?: TValue
   className?: string
   children?:
