@@ -23,20 +23,13 @@ import {
   Lock,
   Plus,
   RefreshCcw,
+  ShieldTick,
   SwitchHorizontal01,
   Trash03,
   X,
+  Zap,
 } from "@blend-metrics/icons"
 import CurrencyInput from "react-currency-input-field"
-import {
-  loadStripe,
-  Stripe,
-  StripeCardCvcElement,
-  StripeCardExpiryElement,
-  StripeCardNumberElement,
-  StripeElements,
-} from "@stripe/stripe-js"
-import { apiFetch } from "@/src/lib/api"
 import type { UserProfile } from "@/types/user"
 import CreditDebitCardArticle1, {
   CreditDebitCardArticle2,
@@ -114,130 +107,12 @@ const currencyWithCentsFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 })
 
-const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-const isStripePublishableKeyConfigured = Boolean(
-  stripePublishableKey &&
-    /^pk_(test|live)_/.test(stripePublishableKey) &&
-    !stripePublishableKey.includes("YOUR") &&
-    !stripePublishableKey.endsWith("...")
-)
-const stripeElementStyle = {
-  base: {
-    color: "#0F172A",
-    fontFamily: "Inter, system-ui, sans-serif",
-    fontSize: "14px",
-    "::placeholder": {
-      color: "#98A2B3",
-    },
-  },
-  invalid: {
-    color: "#D92D20",
-  },
-}
-
-type StripeCardField = "cardNumber" | "expirationDate" | "cvv"
-type BankField =
-  | "accountType"
-  | "accountHolderName"
-  | "bankRoutingNumber"
-  | "accountNumber"
-  | "confirmAccountNumber"
-
-type CheckoutPaymentIntentResponse = {
-  paymentIntentId: string
-  clientSecret: string
-  checkoutSessionId: string
-  billingName?: string
-  billingEmail?: string
-}
-
-type CheckoutConfirmPaymentIntentResponse = {
-  status: string
-  verified: boolean
-  paymentMethod?: {
-    id: string
-    type: string
-    brand?: string
-    last4?: string
-    expMonth?: number
-    expYear?: number
-    bankName?: string
-    accountType?: string
-    financialConnectionsAccount?: string
-  } | null
-}
-
-type WireTransferDetails = {
-  wireTransferId: string
-  referenceCode: string
-  amount: number
-  status: string
-  confirmedAt?: string | null
-  reminderAt: string
-  expiresAt: string
-  processingTimeline: string
-  expiryWindowDays: number
-  wireInstructions: {
-    accountNumber: string
-    routingNumber: string
-    swiftCode: string
-    accountName: string
-    bankName: string
-    bankAddress: string
-    reference: string
-  }
-}
-
 const parseCurrencyAmount = (value?: string | null) => {
   if (!value) return undefined
 
   const numericValue = Number(value.replace(/[^0-9.-]/g, ""))
   return Number.isFinite(numericValue) ? numericValue : undefined
 }
-
-const isValidAbaRoutingNumber = (value: string) => {
-  if (!/^\d{9}$/.test(value)) return false
-  const digits = value.split("").map(Number)
-  const checksum =
-    3 * (digits[0] + digits[3] + digits[6]) +
-    7 * (digits[1] + digits[4] + digits[7]) +
-    (digits[2] + digits[5] + digits[8])
-
-  return checksum > 0 && checksum % 10 === 0
-}
-
-const getBankFieldErrors = ({
-  accountType,
-  accountHolderName,
-  bankRoutingNumber,
-  accountNumber,
-  confirmAccountNumber,
-}: {
-  accountType: string
-  accountHolderName: string
-  bankRoutingNumber: string
-  accountNumber: string
-  confirmAccountNumber: string
-}): Record<BankField, string> => ({
-  accountType: accountType
-    ? ""
-    : "Please select an account type — checking or savings.",
-  accountHolderName:
-    accountHolderName.trim().length >= 2 &&
-    /^[A-Za-z ]+$/.test(accountHolderName.trim())
-      ? ""
-      : "Please enter the full name as it appears on your bank account.",
-  bankRoutingNumber: isValidAbaRoutingNumber(bankRoutingNumber)
-    ? ""
-    : "Please enter a valid 9-digit routing number.",
-  accountNumber: /^\d{4,17}$/.test(accountNumber)
-    ? ""
-    : "Please enter a valid account number between 4 and 17 digits.",
-  confirmAccountNumber:
-    confirmAccountNumber && accountNumber === confirmAccountNumber
-      ? ""
-      : "Account numbers do not match. Please check and try again.",
-})
 
 const sanitizeBalanceInput = (value: string): string => {
   const isNegative = value.trim().startsWith("-")
@@ -319,10 +194,6 @@ type AppliedGiftCard = {
   amount: number
 }
 
-type CardField = "cardNumber" | "cardName" | "expirationDate" | "cvv"
-type BillingAddressMode = "summary" | "saved" | "new"
-type StripeLinkStep = "intro" | "select" | "login" | "account" | "success"
-
 type PaymentPageSnapshot = {
   pay: "AT_ONCE" | "IN_INSTALLMENTS"
   selectedTalentPaymentPlanId: string
@@ -333,25 +204,8 @@ type PaymentPageSnapshot = {
   firstInstallmentMethods: InstallmentPaymentMethod[]
   secondInstallmentMethods: InstallmentPaymentMethod[]
   isWireTransfer: boolean
-  wireTransferDetails: WireTransferDetails | null
   giftCards: AppliedGiftCard[]
 }
-
-const sanitizeBankPaymentMethod = (
-  method: InstallmentPaymentMethod
-): InstallmentPaymentMethod => {
-  if (method.method !== "BANK_ACCOUNT" || !method.accountNumber) {
-    return method
-  }
-
-  return {
-    ...method,
-    accountNumber: method.accountNumber.slice(-4),
-  }
-}
-
-const sanitizeBankPaymentMethods = (methods: InstallmentPaymentMethod[]) =>
-  methods.map(sanitizeBankPaymentMethod)
 
 const MasterCard01 = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -485,13 +339,13 @@ const PAYMENT_METHODS = [
   {
     value: "item-0",
     title: "Credit / Debit Card",
-    desc: "3% per transaction",
+    desc: "Visa, Mastercard, AMEX",
     icons: [<MasterCard01 key="mc" />, <Visa01 key="visa" />],
   },
   {
     value: "item-1",
-    title: "Bank Account",
-    desc: "0.8% per transaction",
+    title: "Bank Account (ACH)",
+    desc: "Direct bank transfer",
     icons: [<BankIcon key="bank" className="size-8 text-gray-500" />],
   },
   {
@@ -502,90 +356,29 @@ const PAYMENT_METHODS = [
   },
 ]
 
-const BANK_OPTIONS = [
+const EXISTING_INSTALLMENT_PAYMENT_METHODS: InstallmentPaymentMethod[] = [
   {
-    id: "chase",
-    name: "JP Morgan Chase",
-    shortName: "Chase",
-    logo: "CHASE",
-    color: "#1F2937",
+    id: "amex-1234",
+    method: "CREDIT_DEBIT_CARD",
+    title: "American Express",
+    subtitle: "Credit ****1234",
+    cardNumber: "3782123412341234",
+    saveDefaultPaymentMethod: true,
   },
   {
-    id: "boa",
-    name: "Bank of America",
-    shortName: "Bank of America",
-    logo: "BANK OF AMERICA",
-    color: "#123C7C",
+    id: "visa-1234",
+    method: "CREDIT_DEBIT_CARD",
+    title: "Visa",
+    subtitle: "Credit ****1234",
+    cardNumber: "4111111111111234",
   },
   {
-    id: "wells-fargo",
-    name: "Wells Fargo",
-    shortName: "Wells Fargo",
-    logo: "WELLS FARGO",
-    color: "#D71920",
-  },
-  {
-    id: "citibank",
-    name: "Citibank",
-    shortName: "Citibank",
-    logo: "citibank",
-    color: "#064F7A",
-  },
-  {
-    id: "usaa",
-    name: "USAA",
-    shortName: "USAA",
-    logo: "USAA",
-    color: "#22376B",
-  },
-  {
-    id: "td",
-    name: "TD Bank",
-    shortName: "TD Bank",
-    logo: "TD Bank",
-    color: "#00843D",
-  },
-  {
-    id: "regions",
-    name: "Regions Bank",
-    shortName: "Regions",
-    logo: "REGIONS",
-    color: "#6BB536",
-  },
-  {
-    id: "capital-one",
-    name: "Capital One",
-    shortName: "Capital One",
-    logo: "Capital One",
-    color: "#004B7A",
-  },
-  {
-    id: "pnc",
-    name: "PNC",
-    shortName: "PNC",
-    logo: "PNC",
-    color: "#F58220",
-  },
-  {
-    id: "barclays",
-    name: "Barclays",
-    shortName: "Barclays",
-    logo: "BARCLAYS",
-    color: "#00AEEF",
-  },
-  {
-    id: "hsbc",
-    name: "HSBC",
-    shortName: "HSBC",
-    logo: "HSBC",
-    color: "#DB0011",
-  },
-  {
-    id: "amex",
-    name: "American Express",
-    shortName: "American Express",
-    logo: "AMERICAN EXPRESS",
-    color: "#006FCF",
+    id: "bank-1234",
+    method: "BANK_ACCOUNT",
+    title: "Bank of America",
+    subtitle: "Checking ****1234",
+    accountType: "Checking",
+    accountNumber: "1234",
   },
 ]
 
@@ -652,261 +445,6 @@ const getInstallmentCardBrandIcon = (cardNumber?: string) => {
     </div>
   )
 }
-
-const getCardDigits = (value: string) => value.replace(/\D/g, "")
-
-const formatExpiryInput = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 6)
-
-  if (digits.length <= 2) return digits
-
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`
-}
-
-const isValidLuhn = (value: string) => {
-  const digits = getCardDigits(value)
-
-  if (digits.length < 13) return false
-
-  let sum = 0
-  let shouldDouble = false
-
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    let digit = Number(digits[i])
-
-    if (shouldDouble) {
-      digit *= 2
-      if (digit > 9) digit -= 9
-    }
-
-    sum += digit
-    shouldDouble = !shouldDouble
-  }
-
-  return sum % 10 === 0
-}
-
-const getCardNumberError = (value: string) => {
-  const digits = getCardDigits(value)
-  const cardType = getCardType(digits)
-  const expectedLength = cardType === "amex" ? 15 : 16
-
-  if (digits.length === 0) return "Please enter your credit card number"
-  if (
-    cardType === "unknown" ||
-    digits.length !== expectedLength ||
-    !isValidLuhn(digits)
-  ) {
-    return "Please enter a valid card number."
-  }
-
-  return ""
-}
-
-const getCardNameError = (value: string) => {
-  const normalized = value.trim().replace(/\s+/g, " ")
-
-  if (normalized.length < 2 || !/^[A-Za-z ]+$/.test(normalized)) {
-    return "Please enter the full name as it appears on your card."
-  }
-
-  return ""
-}
-
-const getExpiryError = (value: string) => {
-  const match = value.match(/^(\d{2})\/(\d{2}|\d{4})$/)
-
-  if (!match) return "Please enter a valid expiry date in MM/YY format."
-
-  const month = Number(match[1])
-  const rawYear = Number(match[2])
-  const year = match[2].length === 2 ? 2000 + rawYear : rawYear
-
-  if (month < 1 || month > 12) {
-    return "Please enter a valid expiry date in MM/YY format."
-  }
-
-  const expiryDate = new Date(year, month, 0, 23, 59, 59)
-  if (expiryDate < new Date()) {
-    return "This card has expired. Please use a different card."
-  }
-
-  return ""
-}
-
-const getCvvError = (value: string, cardNumber: string) => {
-  const digits = value.replace(/\D/g, "")
-  const cardType = getCardType(getCardDigits(cardNumber))
-  const expectedLength = cardType === "amex" ? 4 : 3
-
-  if (digits.length !== expectedLength) return "Please enter a valid CVV."
-
-  return ""
-}
-
-const formatPreviewCardNumber = (value: string) => {
-  const digits = getCardDigits(value || "5375441145400954").slice(0, 16)
-  const paddedDigits = digits.padEnd(16, "0")
-
-  return paddedDigits.replace(/(.{4})(?=.)/g, "$1 ")
-}
-
-const ContactlessMark = ({ className }: { className?: string }) => (
-  <NextImage
-    alt=""
-    aria-hidden="true"
-    className={cn("object-contain", className)}
-    data-testid="credit-card-contactless-icon"
-    height={50}
-    src="/checkout/contactless-icon.png"
-    width={40}
-  />
-)
-
-const CardChip = () => (
-  <div
-    className="absolute left-[20px] top-[60.65px] h-[29.01px] w-[40.67px] overflow-hidden rounded-[3.8px] border-[0.95px] border-[#667085]"
-    aria-hidden="true"
-  >
-    <span className="absolute left-[-1px] top-[8.9px] h-[0.95px] w-[42px] bg-[#667085]" />
-    <span className="absolute left-[-1px] top-[20.1px] h-[0.95px] w-[42px] bg-[#667085]" />
-    <span className="absolute left-[10px] top-[-1px] h-[31px] w-[0.95px] bg-[#667085]" />
-    <span className="absolute right-[9.8px] top-[-1px] h-[31px] w-[0.95px] bg-[#667085]" />
-    <span className="absolute left-[13.7px] top-[11.2px] h-[8.6px] w-[13.2px] rounded-[1.6px] border-[0.95px] border-[#667085] border-l-0" />
-  </div>
-)
-
-const MastercardMark = () => (
-  <div
-    className="absolute left-[223.67px] top-[125.29px] h-[36.27px] w-[61px]"
-    aria-hidden="true"
-  >
-    <span className="absolute left-0 top-0 h-[36.27px] w-[36.27px] rounded-full bg-[#98A2B3]" />
-    <span className="absolute left-[24.73px] top-0 h-[36.27px] w-[36.27px] rounded-full bg-[#EAECF0]" />
-    <span className="absolute left-[24.73px] top-0 h-[36.27px] w-[11.54px] rounded-full bg-[#D0D5DD]" />
-  </div>
-)
-
-const CreditCardPreview = ({
-  cardNumber,
-  cardName,
-  expiry,
-  cvv,
-  isBack,
-}: {
-  cardNumber: string
-  cardName: string
-  expiry: string
-  cvv: string
-  isBack: boolean
-}) => {
-  const displayCardNumber = formatPreviewCardNumber(cardNumber)
-  const displayCardName =
-    cardName.trim().toUpperCase() || "DONALD FLINCH CORTEZ"
-  const cardNameFontSize =
-    displayCardName.length > 22 ? 9 : displayCardName.length > 18 ? 10 : 11.5
-  const displayExpiry = expiry || "06/24"
-  const displayCvv = cvv.replace(/\D/g, "").slice(0, 3) || "537"
-
-  return (
-    <div
-      data-testid={
-        isBack ? "credit-card-preview-back" : "credit-card-preview-front"
-      }
-      className="relative h-[181.95px] w-[305px] overflow-hidden rounded-[11.4px] border-2 border-[#EAECF0] bg-white shadow-[3.8px_4.75px_7.6px_0px_rgba(0,0,0,0.05)]"
-    >
-      {isBack ? (
-        <>
-          <div className="absolute left-0 top-[17.1px] h-[29.45px] w-[305px] bg-[#F3F3F3]" />
-          <div className="absolute left-[20.43px] top-[60.81px] h-[33.26px] w-[189.08px] bg-[#F6F6F6]" />
-          <div className="absolute left-[217.11px] top-[66.99px] flex h-[20.9px] w-[47.03px] items-center justify-center bg-transparent px-[4.75px] font-mono text-[18px] font-bold leading-none tracking-[0.16em] text-[#334155]">
-            {displayCvv}
-          </div>
-          <div className="absolute left-[34.77px] top-[103.17px] flex h-[11.6px] w-[234.71px] rotate-180 items-center justify-center overflow-visible bg-gradient-to-b from-[#475569] to-[#334155] bg-clip-text font-mono text-[15px] leading-[11.6px] tracking-[0.18em] text-transparent opacity-10 shadow-[0px_0.24px_0px_0px_#0F172A] whitespace-nowrap">
-            {displayCardNumber}
-          </div>
-          <ContactlessMark className="absolute left-[264.14px] top-[133.97px] h-[24.82px] w-[19.35px]" />
-        </>
-      ) : (
-        <>
-          <div
-            className="absolute left-[20px] top-[25.58px] h-[13px] w-[56px] text-[20px] font-bold leading-[26.68px] tracking-[-0.02em] text-[#667085]"
-            style={{ fontFamily: "Sen, Inter, sans-serif" }}
-          >
-            credit
-          </div>
-          <div className="absolute left-[117.5px] top-[27px] h-[24px] w-px bg-[#D0D5DD]" />
-          <div
-            className="absolute left-[137px] top-[27.58px] h-[9px] w-[72px] text-[13.15px] font-medium leading-[17.54px] tracking-[-0.02em] text-[#667085]"
-            style={{ fontFamily: "Sen, Inter, sans-serif" }}
-          >
-            Credit Bank
-          </div>
-          <ContactlessMark className="absolute left-[264.14px] top-[25.58px] h-[24.82px] w-[19.35px]" />
-          <CardChip />
-          <div className="absolute left-[30.02px] top-[98.42px] flex h-[21.11px] w-[244.21px] items-center justify-center overflow-hidden bg-transparent px-[4.75px] font-mono text-[17px] leading-[21.11px] tracking-[0.12em] text-[#667085] whitespace-nowrap">
-            {displayCardNumber}
-          </div>
-          <div className="absolute left-[128px] top-[133.33px] flex h-[9.87px] w-[72px] items-center justify-end gap-[4px] text-[#667085]">
-            <span className="text-[6px] font-bold leading-[5.5px]">
-              VALID
-              <br />
-              THRU
-            </span>
-            <span className="font-mono text-[13px] font-bold leading-[9.87px] tracking-[0.1em]">
-              {displayExpiry}
-            </span>
-          </div>
-          <div
-            className="absolute left-[16.11px] top-[149.03px] flex h-[17.6px] w-[176.37px] items-center overflow-visible rounded-[2.38px] bg-transparent font-mono font-bold leading-none tracking-[0.12em] text-[#667085] whitespace-nowrap"
-            style={{
-              fontSize: `${cardNameFontSize}px`,
-              textShadow: "0px 0.24px 0px #0F172A",
-            }}
-          >
-            {displayCardName}
-          </div>
-          <MastercardMark />
-        </>
-      )}
-    </div>
-  )
-}
-
-const savedBillingAddresses = [
-  {
-    id: "jarvis-1",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-  {
-    id: "jarvis-2",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-  {
-    id: "jarvis-3",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-  {
-    id: "jarvis-4",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-]
 
 export default function PaymentPage() {
   const params = useParams()
@@ -1108,7 +646,7 @@ export default function PaymentPage() {
     isOngoingTalentContract ? "IN_INSTALLMENTS" : "AT_ONCE"
   )
   const [savedInstallmentPaymentMethods, setSavedInstallmentPaymentMethods] =
-    React.useState<InstallmentPaymentMethod[]>([])
+    React.useState(EXISTING_INSTALLMENT_PAYMENT_METHODS)
   const [fullPaymentMethods, setFullPaymentMethods] = React.useState<
     InstallmentPaymentMethod[]
   >([])
@@ -1161,20 +699,8 @@ export default function PaymentPage() {
   const [giftCardError, setGiftCardError] = React.useState("")
   const [showAllGiftCards, setShowAllGiftCards] = React.useState(false)
   const [showGiftCardSuccess, setShowGiftCardSuccess] = React.useState(false)
-  const [paymentMethod, setPaymentMethod] = React.useState("item-0")
+  const [paymentMethod, setPaymentMethod] = React.useState("")
   const [isWireTransfer, setIsWireTransfer] = React.useState(false)
-  const [wireTransferDetails, setWireTransferDetails] =
-    React.useState<WireTransferDetails | null>(null)
-  const [wireTransferConfirmed, setWireTransferConfirmed] =
-    React.useState(false)
-  const [isWireTransferLoading, setIsWireTransferLoading] =
-    React.useState(false)
-  const [isWireTransferSubmitting, setIsWireTransferSubmitting] =
-    React.useState(false)
-  const [wireTransferError, setWireTransferError] = React.useState("")
-  const [wireTransferType, setWireTransferType] = React.useState<
-    "Domestic Transfer" | "International Transfer"
-  >("Domestic Transfer")
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [hasHydratedPaymentState, setHasHydratedPaymentState] =
     React.useState(false)
@@ -1184,43 +710,7 @@ export default function PaymentPage() {
   const [cardName, setCardName] = React.useState("")
   const [expirationDate, setExpirationDate] = React.useState("")
   const [cvv, setCvv] = React.useState("")
-  const [activeCardField, setActiveCardField] =
-    React.useState<CardField | null>(null)
   const [saveCard, setSaveCard] = React.useState(false)
-  const [cardFieldTouched, setCardFieldTouched] = React.useState<
-    Record<CardField, boolean>
-  >({
-    cardNumber: false,
-    cardName: false,
-    expirationDate: false,
-    cvv: false,
-  })
-  const stripeRef = React.useRef<Stripe | null>(null)
-  const stripeElementsRef = React.useRef<StripeElements | null>(null)
-  const stripeCardNumberElementRef =
-    React.useRef<StripeCardNumberElement | null>(null)
-  const stripeCardExpiryElementRef =
-    React.useRef<StripeCardExpiryElement | null>(null)
-  const stripeCardCvcElementRef = React.useRef<StripeCardCvcElement | null>(
-    null
-  )
-  const stripeCardNumberMountRef = React.useRef<HTMLDivElement | null>(null)
-  const stripeCardExpiryMountRef = React.useRef<HTMLDivElement | null>(null)
-  const stripeCardCvcMountRef = React.useRef<HTMLDivElement | null>(null)
-  const [stripeCardFieldErrors, setStripeCardFieldErrors] = React.useState<
-    Partial<Record<StripeCardField, string>>
-  >({})
-  const [stripeCardFieldComplete, setStripeCardFieldComplete] = React.useState<
-    Record<StripeCardField, boolean>
-  >({
-    cardNumber: false,
-    expirationDate: false,
-    cvv: false,
-  })
-  const [paymentError, setPaymentError] = React.useState("")
-  const [hasAttemptedCardSubmit, setHasAttemptedCardSubmit] =
-    React.useState(false)
-  const [savedCardNotification, setSavedCardNotification] = React.useState("")
 
   // Billing address
   const [fullName, setFullName] = React.useState("")
@@ -1230,12 +720,6 @@ export default function PaymentPage() {
   const [billingState, setBillingState] = React.useState("")
   const [zipcode, setZipcode] = React.useState("")
   const [phoneNumber, setPhoneNumber] = React.useState("")
-  const [billingAddressMode, setBillingAddressMode] =
-    React.useState<BillingAddressMode>("summary")
-  const [selectedBillingAddressId, setSelectedBillingAddressId] =
-    React.useState(savedBillingAddresses[0].id)
-  const [isConfirmAddressDialogOpen, setIsConfirmAddressDialogOpen] =
-    React.useState(false)
 
   // Bank account
   const [accountType, setAccountType] = React.useState("")
@@ -1244,64 +728,12 @@ export default function PaymentPage() {
   const [accountNumber, setAccountNumber] = React.useState("")
   const [confirmAccountNumber, setConfirmAccountNumber] = React.useState("")
   const [saveBankAccount, setSaveBankAccount] = React.useState(false)
-  const [bankFieldTouched, setBankFieldTouched] = React.useState<
-    Record<BankField, boolean>
-  >({
-    accountType: false,
-    accountHolderName: false,
-    bankRoutingNumber: false,
-    accountNumber: false,
-    confirmAccountNumber: false,
-  })
-  const [hasAttemptedBankSubmit, setHasAttemptedBankSubmit] =
-    React.useState(false)
-  const [isBankAccountFocused, setIsBankAccountFocused] = React.useState(false)
-  const [isConfirmBankAccountFocused, setIsConfirmBankAccountFocused] =
-    React.useState(false)
-  const [isBankSubmitting, setIsBankSubmitting] = React.useState(false)
-  const [isBankConnecting, setIsBankConnecting] = React.useState(false)
-  const [bankSubmissionError, setBankSubmissionError] = React.useState("")
-  const [microDepositMessage, setMicroDepositMessage] = React.useState("")
-  const [isSessionExpiredDialogOpen, setIsSessionExpiredDialogOpen] =
-    React.useState(false)
-  const [isOtherCheckoutTabOpen, setIsOtherCheckoutTabOpen] =
-    React.useState(false)
-  const [bankSearch, setBankSearch] = React.useState("")
-  const [selectedBankId, setSelectedBankId] = React.useState("chase")
-  const [isStripeLinkDialogOpen, setIsStripeLinkDialogOpen] =
-    React.useState(false)
-  const [stripeLinkStep, setStripeLinkStep] =
-    React.useState<StripeLinkStep>("intro")
-  const [stripeLinkUsername, setStripeLinkUsername] = React.useState("")
-  const [stripeLinkPassword, setStripeLinkPassword] = React.useState("")
-  const [stripeLinkError, setStripeLinkError] = React.useState("")
-  const [stripeLinkAccountType, setStripeLinkAccountType] = React.useState<
-    "Checking" | "Savings"
-  >("Checking")
 
   React.useEffect(() => {
     if (isOngoingTalentContract) {
       setPay("IN_INSTALLMENTS")
     }
   }, [isOngoingTalentContract])
-
-  React.useEffect(() => {
-    const tabKey = `checkout-active-tab:${basePath}:${decodedSlug}`
-    const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const existingTabId = window.localStorage.getItem(tabKey)
-
-    if (existingTabId && existingTabId !== tabId) {
-      setIsOtherCheckoutTabOpen(true)
-    }
-
-    window.localStorage.setItem(tabKey, tabId)
-
-    return () => {
-      if (window.localStorage.getItem(tabKey) === tabId) {
-        window.localStorage.removeItem(tabKey)
-      }
-    }
-  }, [basePath, decodedSlug])
 
   React.useEffect(() => {
     if (!isInstallmentServiceAvailable && pay === "IN_INSTALLMENTS") {
@@ -1340,12 +772,12 @@ export default function PaymentPage() {
 
       if (Array.isArray(snapshot.savedInstallmentPaymentMethods)) {
         setSavedInstallmentPaymentMethods(
-          sanitizeBankPaymentMethods(snapshot.savedInstallmentPaymentMethods)
+          snapshot.savedInstallmentPaymentMethods
         )
       }
 
       if (Array.isArray(snapshot.fullPaymentMethods)) {
-        setFullPaymentMethods(sanitizeBankPaymentMethods(snapshot.fullPaymentMethods))
+        setFullPaymentMethods(snapshot.fullPaymentMethods)
       }
 
       if (typeof snapshot.hasSplitFullPayment === "boolean") {
@@ -1357,30 +789,23 @@ export default function PaymentPage() {
       }
 
       if (Array.isArray(snapshot.firstInstallmentMethods)) {
-        setFirstInstallmentMethods(
-          sanitizeBankPaymentMethods(snapshot.firstInstallmentMethods)
-        )
+        setFirstInstallmentMethods(snapshot.firstInstallmentMethods)
       }
 
       if (Array.isArray(snapshot.secondInstallmentMethods)) {
-        setSecondInstallmentMethods(
-          sanitizeBankPaymentMethods(snapshot.secondInstallmentMethods)
-        )
+        setSecondInstallmentMethods(snapshot.secondInstallmentMethods)
       }
 
       if (typeof snapshot.isWireTransfer === "boolean") {
         setIsWireTransfer(snapshot.isWireTransfer)
       }
 
-      if (snapshot.wireTransferDetails) {
-        setWireTransferDetails(snapshot.wireTransferDetails)
-      }
-
       if (Array.isArray(snapshot.giftCards)) {
         setGiftCards(
           snapshot.giftCards.filter(
             (card): card is AppliedGiftCard =>
-              typeof card?.code === "string" && typeof card?.amount === "number"
+              typeof card?.code === "string" &&
+              typeof card?.amount === "number"
           )
         )
         if (snapshot.giftCards.length > 0) {
@@ -1409,7 +834,6 @@ export default function PaymentPage() {
       firstInstallmentMethods,
       secondInstallmentMethods,
       isWireTransfer,
-      wireTransferDetails,
       giftCards,
     }
 
@@ -1430,7 +854,6 @@ export default function PaymentPage() {
     secondInstallmentMethods,
     selectedTalentPaymentPlanId,
     showFullPaymentMethods,
-    wireTransferDetails,
   ])
 
   const projectCost = 94_000
@@ -1481,26 +904,6 @@ export default function PaymentPage() {
   )
   const normalizedGiftCardInput = normalizeGiftCardCode(giftCardInput)
   const isGiftCardApplyDisabled = normalizedGiftCardInput.length !== 16
-  const isRedeemedGiftCardError = giftCardError.includes(
-    "already been redeemed"
-  )
-  const isBankAccountSelectedWithoutSavedMethod =
-    pay === "AT_ONCE" &&
-    paymentMethod === "item-1" &&
-    fullPaymentMethods.every((method) => method.method !== "BANK_ACCOUNT")
-  const isCardPaymentSelected =
-    pay === "AT_ONCE" &&
-    (paymentMethod === "item-0" ||
-      fullPaymentMethods.some((method) => method.method === "CREDIT_DEBIT_CARD"))
-  const isWireTransferSelectedWithoutSavedMethod =
-    pay === "AT_ONCE" &&
-    paymentMethod === "item-2" &&
-    !isWireTransfer &&
-    fullPaymentMethods.every((method) => method.method !== "WIRE_TRANSFER")
-  const isSubmitOrderDisabled =
-    isProcessing ||
-    isBankAccountSelectedWithoutSavedMethod ||
-    isWireTransferSelectedWithoutSavedMethod
 
   React.useEffect(() => {
     const nextMonth = new Date()
@@ -1514,254 +917,14 @@ export default function PaymentPage() {
     )
   }, [])
 
-  const navigateToConfirmation = () => {
-    const nextSearchParams = new URLSearchParams(searchParams.toString())
-    const nextUrl = nextSearchParams.toString()
-      ? `${basePath}/${safeSlugSegment}/confirmation?${nextSearchParams.toString()}`
-      : `${basePath}/${safeSlugSegment}/confirmation`
-    router.push(nextUrl)
-  }
-
-  const getCheckoutProjectId = () => searchParams.get("projectId") || decodedSlug
-
-  const formatWireDate = (value?: string | null) =>
-    value
-      ? new Date(value).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : "Pending"
-
-  const getWireTransferDownloadText = (details: WireTransferDetails) => {
-    const instructions = details.wireInstructions
-
-    return [
-      "Marketeq Wire Transfer Instructions",
-      `Amount due: ${currencyWithCentsFormatter.format(details.amount)}`,
-      `Account name: ${instructions.accountName}`,
-      `Bank name: ${instructions.bankName}`,
-      `Bank address: ${instructions.bankAddress}`,
-      `Account number: ${instructions.accountNumber}`,
-      `Routing number: ${instructions.routingNumber}`,
-      `SWIFT code: ${instructions.swiftCode}`,
-      `Reference number: ${details.referenceCode}`,
-      `Processing timeline: ${details.processingTimeline}`,
-      `Expires: ${formatWireDate(details.expiresAt)}`,
-    ].join("\n")
-  }
-
-  const downloadWireTransferFile = (
-    filename: string,
-    details: WireTransferDetails
-  ) => {
-    const blob = new Blob([getWireTransferDownloadText(details)], {
-      type: "text/plain;charset=utf-8",
-    })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = filename
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const loadWireTransferDetails = async () => {
-    if (isWireTransferLoading) return wireTransferDetails
-
-    setIsWireTransferLoading(true)
-    setWireTransferError("")
-
-    try {
-      const timeout = new Promise<never>((_, reject) => {
-        window.setTimeout(
-          () =>
-            reject(
-              new Error(
-                "Connection timed out. Please check your internet connection and try again."
-              )
-            ),
-          10_000
-        )
-      })
-
-      const details = await Promise.race([
-        apiFetch<WireTransferDetails>("/checkout/v1/checkout/wire-transfer", {
-          method: "POST",
-          body: {
-            projectId: getCheckoutProjectId(),
-            contractId: searchParams.get("contractId") || undefined,
-            amount: totalAmountToBePaid,
-          },
-        }),
-        timeout,
-      ])
-
-      setWireTransferDetails(details)
-      setWireTransferConfirmed(Boolean(details.confirmedAt))
-      return details
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "We were unable to load your wire transfer details. Please try again or contact support."
-
-      if (message.includes("API error 401")) {
-        setIsSessionExpiredDialogOpen(true)
-        return
-      }
-
-      setWireTransferError(message)
-      return null
-    } finally {
-      setIsWireTransferLoading(false)
-    }
-  }
-
-  React.useEffect(() => {
-    if (
-      hasHydratedPaymentState &&
-      paymentMethod === "item-2" &&
-      !isWireTransfer &&
-      (!wireTransferDetails ||
-        wireTransferDetails.amount !== totalAmountToBePaid) &&
-      !isWireTransferLoading
-    ) {
-      void loadWireTransferDetails()
-    }
-  }, [
-    hasHydratedPaymentState,
-    isWireTransfer,
-    isWireTransferLoading,
-    paymentMethod,
-    totalAmountToBePaid,
-    wireTransferDetails,
-  ])
-
-  const handleSubmitOrder = async () => {
-    setPaymentError("")
-
-    if (isCardPaymentSelected && totalAmountToBePaid > 0) {
-      setHasAttemptedCardSubmit(true)
-      if (!isFullPaymentCardFormValid) return
-
-      if (!isStripePublishableKeyConfigured) {
-        setPaymentError(
-          "Stripe is not configured for this environment. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to enable real card payments."
-        )
-        return
-      }
-
-      const stripe = stripeRef.current
-      const card = stripeCardNumberElementRef.current
-
-      if (!stripe || !card) {
-        setPaymentError(
-          "Secure card entry is still loading. Please wait a moment and try again."
-        )
-        return
-      }
-
-      setIsProcessing(true)
-      try {
-        const intent = await apiFetch<CheckoutPaymentIntentResponse>(
-          "/checkout/v1/checkout/payment-intent",
-          {
-            method: "POST",
-            body: {
-              amount: totalAmountToBePaid,
-              currency: "usd",
-              paymentMethod: "card",
-              projectId: searchParams.get("projectId") || decodedSlug,
-              contractId: searchParams.get("contractId") || undefined,
-              savePaymentMethod: saveCard,
-              metadata: {
-                checkoutSlug: decodedSlug,
-                checkoutType: isTalentCheckout ? "talent" : "project",
-                pay,
-              },
-            },
-          }
-        )
-
-        const { error, paymentIntent } = await stripe.confirmCardPayment(
-          intent.clientSecret,
-          {
-            payment_method: {
-              card,
-              billing_details: {
-                name: cardName,
-                address: {
-                  line1: billingAddressSummary.addressLine1,
-                  city: city || selectedBillingAddress.cityStateZip,
-                  postal_code: zipcode || undefined,
-                  country: "US",
-                },
-                phone: billingAddressSummary.phoneNumber,
-              },
-            },
-          }
-        )
-
-        if (error || !paymentIntent) {
-          setPaymentError(
-            error?.message || "Stripe could not confirm this payment."
-          )
-          return
-        }
-
-        const confirmation =
-          await apiFetch<CheckoutConfirmPaymentIntentResponse>(
-            "/checkout/v1/checkout/payment-intent/confirm",
-            {
-              method: "POST",
-              body: {
-                paymentIntentId: paymentIntent.id,
-              },
-            }
-          )
-
-        if (!confirmation.verified) {
-          setPaymentError(
-            "Payment is not complete yet. Please finish any bank or card authentication and try again."
-          )
-          return
-        }
-
-        if (confirmation.paymentMethod?.last4) {
-          const brand = confirmation.paymentMethod.brand || "card"
-          const title =
-            brand === "amex"
-              ? "American Express"
-              : brand.charAt(0).toUpperCase() + brand.slice(1)
-          setFullPaymentMethods([
-            {
-              id: confirmation.paymentMethod.id,
-              method: "CREDIT_DEBIT_CARD",
-              title,
-              subtitle: `Credit ****${confirmation.paymentMethod.last4}`,
-              cardNumber: confirmation.paymentMethod.last4,
-              saveDefaultPaymentMethod: saveCard,
-            },
-          ])
-        }
-
-        navigateToConfirmation()
-      } catch (error) {
-        setPaymentError(
-          error instanceof Error
-            ? error.message
-            : "Unable to process this payment. Please try again."
-        )
-      } finally {
-        setIsProcessing(false)
-      }
-      return
-    }
-
+  const handleSubmitOrder = () => {
     setIsProcessing(true)
     setTimeout(() => {
-      navigateToConfirmation()
+      const nextSearchParams = new URLSearchParams(searchParams.toString())
+      const nextUrl = nextSearchParams.toString()
+        ? `${basePath}/${safeSlugSegment}/confirmation?${nextSearchParams.toString()}`
+        : `${basePath}/${safeSlugSegment}/confirmation`
+      router.push(nextUrl)
     }, 1500)
   }
 
@@ -1773,13 +936,10 @@ export default function PaymentPage() {
 
     setShowGiftCardSuccess(false)
 
-    if (
-      giftCards.some((giftCard) => giftCard.code === normalizedGiftCardCode)
-    ) {
+    if (giftCards.some((giftCard) => giftCard.code === normalizedGiftCardCode)) {
       setGiftCardError(
         `Gift Card "${formatGiftCardCode(normalizedGiftCardCode)}" has already been redeemed.`
       )
-      setGiftCardInput("")
       return
     }
 
@@ -1815,117 +975,6 @@ export default function PaymentPage() {
     setShowGiftCardSuccess(false)
   }
 
-  React.useEffect(() => {
-    if (!isStripePublishableKeyConfigured || !stripePublishableKey) {
-      return
-    }
-
-    let isActive = true
-
-    const initializeStripeElements = async () => {
-      const stripe = await loadStripe(stripePublishableKey)
-      if (!stripe || !isActive) return
-      stripeRef.current = stripe
-
-      if (
-        !stripeCardNumberMountRef.current ||
-        !stripeCardExpiryMountRef.current ||
-        !stripeCardCvcMountRef.current ||
-        stripeCardNumberElementRef.current
-      ) {
-        return
-      }
-
-      const elements = stripe.elements()
-      const cardNumberElement = elements.create("cardNumber", {
-        style: stripeElementStyle,
-        placeholder: "1234 1234 1234 1234",
-      })
-      const cardExpiryElement = elements.create("cardExpiry", {
-        style: stripeElementStyle,
-        placeholder: "MM / YY",
-      })
-      const cardCvcElement = elements.create("cardCvc", {
-        style: stripeElementStyle,
-        placeholder: "CVC",
-      })
-
-      cardNumberElement.mount(stripeCardNumberMountRef.current!)
-      cardExpiryElement.mount(stripeCardExpiryMountRef.current!)
-      cardCvcElement.mount(stripeCardCvcMountRef.current!)
-
-      stripeElementsRef.current = elements
-      stripeCardNumberElementRef.current = cardNumberElement
-      stripeCardExpiryElementRef.current = cardExpiryElement
-      stripeCardCvcElementRef.current = cardCvcElement
-
-      cardNumberElement.on("change", (event) => {
-        setPaymentError("")
-        setStripeCardFieldErrors((current) => ({
-          ...current,
-          cardNumber: event.error?.message,
-        }))
-        setStripeCardFieldComplete((current) => ({
-          ...current,
-          cardNumber: event.complete,
-        }))
-      })
-      cardExpiryElement.on("change", (event) => {
-        setPaymentError("")
-        setStripeCardFieldErrors((current) => ({
-          ...current,
-          expirationDate: event.error?.message,
-        }))
-        setStripeCardFieldComplete((current) => ({
-          ...current,
-          expirationDate: event.complete,
-        }))
-      })
-      cardCvcElement.on("change", (event) => {
-        setPaymentError("")
-        setStripeCardFieldErrors((current) => ({
-          ...current,
-          cvv: event.error?.message,
-        }))
-        setStripeCardFieldComplete((current) => ({
-          ...current,
-          cvv: event.complete,
-        }))
-      })
-      cardNumberElement.on("focus", () => setActiveCardField("cardNumber"))
-      cardExpiryElement.on("focus", () => setActiveCardField("expirationDate"))
-      cardCvcElement.on("focus", () => setActiveCardField("cvv"))
-      cardNumberElement.on("blur", () =>
-        setCardFieldTouched((current) => ({ ...current, cardNumber: true }))
-      )
-      cardExpiryElement.on("blur", () =>
-        setCardFieldTouched((current) => ({
-          ...current,
-          expirationDate: true,
-        }))
-      )
-      cardCvcElement.on("blur", () =>
-        setCardFieldTouched((current) => ({ ...current, cvv: true }))
-      )
-    }
-
-    initializeStripeElements()
-
-    return () => {
-      isActive = false
-      stripeCardNumberElementRef.current?.destroy()
-      stripeCardExpiryElementRef.current?.destroy()
-      stripeCardCvcElementRef.current?.destroy()
-      stripeCardNumberElementRef.current = null
-      stripeCardExpiryElementRef.current = null
-      stripeCardCvcElementRef.current = null
-      stripeElementsRef.current = null
-      if (!isStripePublishableKeyConfigured) {
-        stripeRef.current = null
-      }
-    }
-  }, [paymentMethod])
-
   const handleCustomBalanceSubmit = (event: React.FormEvent) => {
     event.preventDefault()
 
@@ -1934,59 +983,15 @@ export default function PaymentPage() {
     setIsBalanceCustom(false)
   }
 
-  const selectedBillingAddress =
-    savedBillingAddresses.find(
-      (address) => address.id === selectedBillingAddressId
-    ) ?? savedBillingAddresses[0]
   const billingAddressSummary = {
-    fullName: fullName || selectedBillingAddress.fullName,
-    addressLine1: addressLine1 || selectedBillingAddress.addressLine1,
+    fullName: fullName || "Jarvis Batman",
+    addressLine1: addressLine1 || "2614 Rio Grande St, Apt 211",
     cityStateZip:
       city && billingState && zipcode
         ? `${city}, ${billingState} ${zipcode}`
-        : selectedBillingAddress.cityStateZip,
-    phoneNumber: phoneNumber || selectedBillingAddress.phoneNumber,
+        : "Austin, TX 78705-4017",
+    phoneNumber: phoneNumber || "+1 (737) 436-4562",
   }
-  const cardNumberError = isStripePublishableKeyConfigured
-    ? stripeCardFieldErrors.cardNumber ||
-      (stripeCardFieldComplete.cardNumber
-        ? ""
-        : "Please enter your credit card number")
-    : getCardNumberError(cardNumber)
-  const cardNameError = getCardNameError(cardName)
-  const expirationDateError = isStripePublishableKeyConfigured
-    ? stripeCardFieldErrors.expirationDate ||
-      (stripeCardFieldComplete.expirationDate
-        ? ""
-        : "Please enter a valid expiry date.")
-    : getExpiryError(expirationDate)
-  const cvvError = isStripePublishableKeyConfigured
-    ? stripeCardFieldErrors.cvv ||
-      (stripeCardFieldComplete.cvv ? "" : "Please enter a valid CVV.")
-    : getCvvError(cvv, cardNumber)
-  const cardFieldErrors: Record<CardField, string> = {
-    cardNumber: cardNumberError,
-    cardName: cardNameError,
-    expirationDate: expirationDateError,
-    cvv: cvvError,
-  }
-  const shouldShowCardFieldError = (field: CardField) =>
-    (hasAttemptedCardSubmit || cardFieldTouched[field]) &&
-    Boolean(cardFieldErrors[field])
-  const isBillingAddressValid =
-    billingAddressMode !== "new" ||
-    (fullName.trim().length >= 2 &&
-      addressLine1.trim().length > 0 &&
-      city.trim().length > 0 &&
-      billingState.trim().length > 0 &&
-      /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()))
-  const isFullPaymentCardFormValid =
-    !cardNumberError &&
-    !cardNameError &&
-    !expirationDateError &&
-    !cvvError &&
-    isBillingAddressValid
-  const showCardBackPreview = activeCardField === "cvv"
   const recurringPaymentFrequencyMeasureRef =
     React.useRef<HTMLSpanElement>(null)
   const [recurringPaymentFrequencyWidth, setRecurringPaymentFrequencyWidth] =
@@ -2004,37 +1009,18 @@ export default function PaymentPage() {
   }, [paymentFrequency])
 
   const isInstallmentCardFormValid =
-    !cardNumberError && !cardNameError && !expirationDateError && !cvvError
+    Boolean(cardNumber) &&
+    Boolean(cardName) &&
+    Boolean(expirationDate) &&
+    Boolean(cvv)
 
-  const bankFieldErrors = getBankFieldErrors({
-    accountType,
-    accountHolderName,
-    bankRoutingNumber,
-    accountNumber,
-    confirmAccountNumber,
-  })
-  const shouldShowBankFieldError = (field: BankField) =>
-    (hasAttemptedBankSubmit || bankFieldTouched[field]) &&
-    Boolean(bankFieldErrors[field])
-  const isInstallmentBankFormValid = Object.values(bankFieldErrors).every(
-    (error) => !error
-  )
-
-  const selectedBank =
-    BANK_OPTIONS.find((bankOption) => bankOption.id === selectedBankId) ||
-    BANK_OPTIONS[0]!
-
-  const filteredBankOptions = React.useMemo(() => {
-    const normalizedSearch = bankSearch.trim().toLowerCase()
-
-    if (!normalizedSearch) return BANK_OPTIONS
-
-    return BANK_OPTIONS.filter((bankOption) =>
-      `${bankOption.name} ${bankOption.logo}`
-        .toLowerCase()
-        .includes(normalizedSearch)
-    )
-  }, [bankSearch])
+  const isInstallmentBankFormValid =
+    Boolean(accountType) &&
+    Boolean(accountHolderName) &&
+    Boolean(bankRoutingNumber) &&
+    Boolean(accountNumber) &&
+    Boolean(confirmAccountNumber) &&
+    accountNumber === confirmAccountNumber
 
   const closeInstallmentMethodDialogs = () => {
     setIsExistingInstallmentMethodsDialogOpen(false)
@@ -2073,24 +1059,7 @@ export default function PaymentPage() {
     setCardName("")
     setExpirationDate("")
     setCvv("")
-    stripeCardNumberElementRef.current?.clear()
-    stripeCardExpiryElementRef.current?.clear()
-    stripeCardCvcElementRef.current?.clear()
-    setStripeCardFieldErrors({})
-    setStripeCardFieldComplete({
-      cardNumber: false,
-      expirationDate: false,
-      cvv: false,
-    })
-    setPaymentError("")
     setSaveCard(false)
-    setCardFieldTouched({
-      cardNumber: false,
-      cardName: false,
-      expirationDate: false,
-      cvv: false,
-    })
-    setHasAttemptedCardSubmit(false)
   }
 
   const resetInstallmentBankForm = () => {
@@ -2100,16 +1069,6 @@ export default function PaymentPage() {
     setAccountNumber("")
     setConfirmAccountNumber("")
     setSaveBankAccount(false)
-    setBankFieldTouched({
-      accountType: false,
-      accountHolderName: false,
-      bankRoutingNumber: false,
-      accountNumber: false,
-      confirmAccountNumber: false,
-    })
-    setHasAttemptedBankSubmit(false)
-    setBankSubmissionError("")
-    setMicroDepositMessage("")
   }
 
   const openInstallmentMethodFlow = (block: InstallmentBlock) => {
@@ -2228,33 +1187,33 @@ export default function PaymentPage() {
   }
 
   const handleSaveInstallmentCard = () => {
-    setHasAttemptedCardSubmit(true)
     if (!isInstallmentCardFormValid) return
 
     const method: InstallmentPaymentMethod = {
       id: `card-${Date.now()}`,
       method: "CREDIT_DEBIT_CARD",
-      title: "Credit Card",
-      subtitle: "Stripe card",
+      title: getInstallmentCardBrandName(cardNumber),
+      subtitle: `Credit ****${cardNumber.slice(-4)}`,
+      cardNumber,
       saveDefaultPaymentMethod: saveCard,
     }
 
     setSavedInstallmentPaymentMethods((prev) => [method, ...prev])
     assignPaymentMethodToFlowTarget(method)
     closeInstallmentMethodDialogs()
+    resetInstallmentCardForm()
   }
 
   const handleSaveInstallmentBank = () => {
     if (!isInstallmentBankFormValid) return
 
-    const accountLast4 = accountNumber.slice(-4)
     const method: InstallmentPaymentMethod = {
       id: `bank-${Date.now()}`,
       method: "BANK_ACCOUNT",
       title: accountHolderName || "Bank Account",
-      subtitle: `${accountType} ****${accountLast4}`,
+      subtitle: `${accountType} ****${accountNumber.slice(-4)}`,
       accountType,
-      accountNumber: accountLast4,
+      accountNumber,
       saveDefaultPaymentMethod: saveBankAccount,
     }
 
@@ -2273,7 +1232,6 @@ export default function PaymentPage() {
     setBillingState("")
     setZipcode("")
     setPhoneNumber("")
-    setBillingAddressMode("summary")
   }
 
   const resetFullPaymentBankForm = () => {
@@ -2295,494 +1253,48 @@ export default function PaymentPage() {
   }
 
   const handleSaveFullPaymentCard = () => {
-    setHasAttemptedCardSubmit(true)
-    if (!isFullPaymentCardFormValid) return
+    if (!isInstallmentCardFormValid) return
 
     const method: InstallmentPaymentMethod = {
       id: `full-card-${Date.now()}`,
       method: "CREDIT_DEBIT_CARD",
-      title: "Credit Card",
-      subtitle: "Stripe card",
+      title: getInstallmentCardBrandName(cardNumber),
+      subtitle: `Credit ****${cardNumber.slice(-4)}`,
+      cardNumber,
       saveDefaultPaymentMethod: saveCard,
     }
 
-    if (hasSplitFullPayment && fullPaymentMethods.length > 0) {
-      saveFullPaymentMethod(method)
-    }
-    setSavedCardNotification(
-      "Your card is ready and will be securely confirmed by Stripe when you review your order."
-    )
-    window.setTimeout(() => setSavedCardNotification(""), 5000)
+    saveFullPaymentMethod(method)
+    resetFullPaymentCardForm()
   }
 
-  const handleSaveFullPaymentBank = (options?: { resetForm?: boolean }) => {
-    setHasAttemptedBankSubmit(true)
+  const handleSaveFullPaymentBank = () => {
     if (!isInstallmentBankFormValid) return
 
-    const accountLast4 = accountNumber.slice(-4)
     const method: InstallmentPaymentMethod = {
       id: `full-bank-${Date.now()}`,
       method: "BANK_ACCOUNT",
-      title: selectedBank.name,
-      subtitle: `${accountType} ****${accountLast4}`,
+      title: accountHolderName || "Bank of America",
+      subtitle: `${accountType} ****${accountNumber.slice(-4)}`,
       accountType,
-      accountNumber: accountLast4,
+      accountNumber,
       saveDefaultPaymentMethod: saveBankAccount,
     }
 
     saveFullPaymentMethod(method)
-    setSavedCardNotification(
-      `${selectedBank.shortName} ${accountType.toLowerCase()} *${accountLast4} is saved and applied to this order`
-    )
-    window.setTimeout(() => setSavedCardNotification(""), 5000)
-    if (options?.resetForm !== false) {
-      resetFullPaymentBankForm()
-    }
+    resetFullPaymentBankForm()
   }
 
-  const clearSensitiveBankDetails = () => {
-    setAccountHolderName("")
-    setBankRoutingNumber("")
-    setAccountNumber("")
-    setConfirmAccountNumber("")
-  }
-
-  const saveConnectedBankPaymentMethod = (
-    paymentMethod: NonNullable<
-      CheckoutConfirmPaymentIntentResponse["paymentMethod"]
-    >,
-    fallbackBankName: string
-  ) => {
-    if (paymentMethod.type !== "us_bank_account" || !paymentMethod.last4) {
-      setBankSubmissionError(
-        "Stripe connected your bank, but did not return usable account details. Please try again."
-      )
-      return false
-    }
-
-    const bankName = paymentMethod.bankName || fallbackBankName
-    const connectedAccountType = paymentMethod.accountType
-      ? paymentMethod.accountType.charAt(0).toUpperCase() +
-        paymentMethod.accountType.slice(1)
-      : "Bank Account"
-
+  const handleSaveFullPaymentWire = () => {
     const method: InstallmentPaymentMethod = {
-      id: paymentMethod.id,
-      method: "BANK_ACCOUNT",
-      title: bankName,
-      subtitle: `${connectedAccountType} ****${paymentMethod.last4}`,
-      accountType: connectedAccountType,
-      accountNumber: paymentMethod.last4,
-      saveDefaultPaymentMethod: saveBankAccount,
-    }
-
-    saveFullPaymentMethod(method)
-    setSavedCardNotification(
-      `${bankName} *${paymentMethod.last4} is saved and applied to this order`
-    )
-    window.setTimeout(() => setSavedCardNotification(""), 5000)
-    return true
-  }
-
-  const handleManualBankContinue = async () => {
-    setHasAttemptedBankSubmit(true)
-    setBankSubmissionError("")
-    setMicroDepositMessage("")
-
-    if (!isInstallmentBankFormValid) return
-
-    if (!isStripePublishableKeyConfigured) {
-      handleSaveFullPaymentBank({ resetForm: false })
-      clearSensitiveBankDetails()
-      setMicroDepositMessage(
-        "Micro-deposit verification is required. Stripe will send two small deposits in 1 to 2 business days, and payment will only be processed after the account is verified."
-      )
-      return
-    }
-
-    const stripe = stripeRef.current
-    if (!stripe || typeof (stripe as any).confirmUsBankAccountPayment !== "function") {
-      setBankSubmissionError(
-        "We were unable to verify your bank account. Please check your details and try again or use a different payment method."
-      )
-      return
-    }
-
-    setIsBankSubmitting(true)
-
-    try {
-      const intent = await apiFetch<CheckoutPaymentIntentResponse>(
-        "/checkout/v1/checkout/payment-intent",
-        {
-          method: "POST",
-          body: {
-            amount: totalAmountToBePaid,
-            currency: "usd",
-            paymentMethod: "ach",
-            projectId: searchParams.get("projectId") || decodedSlug,
-            contractId: searchParams.get("contractId") || undefined,
-            savePaymentMethod: saveBankAccount,
-            metadata: {
-              checkoutSlug: decodedSlug,
-              checkoutType: isTalentCheckout ? "talent" : "project",
-              pay,
-              accountType,
-            },
-          },
-        }
-      )
-
-      const timeout = new Promise<never>((_, reject) => {
-        window.setTimeout(
-          () => reject(new Error("Connection timed out. Please check your internet connection and try again.")),
-          10_000
-        )
-      })
-
-      const result = await Promise.race([
-        (stripe as any).confirmUsBankAccountPayment(intent.clientSecret, {
-          payment_method: {
-            billing_details: {
-              name: accountHolderName.trim(),
-            },
-            us_bank_account: {
-              routing_number: bankRoutingNumber,
-              account_number: accountNumber,
-              account_holder_type: "individual",
-              account_type: accountType.toLowerCase(),
-            },
-          },
-        }),
-        timeout,
-      ])
-
-      if (result.error) {
-        const code = result.error.code || ""
-        setBankSubmissionError(
-          code === "routing_number_invalid"
-            ? "The routing number you entered could not be found. Please check and try again."
-            : result.error.message ||
-                "We were unable to verify your bank account. Please check your details and try again or use a different payment method."
-        )
-        return
-      }
-
-      const paymentIntent = result.paymentIntent
-      if (
-        paymentIntent?.status === "processing" ||
-        paymentIntent?.status === "requires_action"
-      ) {
-        setMicroDepositMessage(
-          "Micro-deposit verification is required. Stripe will send two small deposits in 1 to 2 business days, and payment will only be processed after the account is verified."
-        )
-      }
-
-      if (paymentIntent?.id) {
-        await apiFetch<CheckoutConfirmPaymentIntentResponse>(
-          "/checkout/v1/checkout/payment-intent/confirm",
-          {
-            method: "POST",
-            body: { paymentIntentId: paymentIntent.id },
-          }
-        ).catch(() => null)
-      }
-
-      handleSaveFullPaymentBank({ resetForm: false })
-      clearSensitiveBankDetails()
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "We were unable to verify your bank account. Please check your details and try again or use a different payment method."
-
-      if (message.includes("API error 401")) {
-        resetFullPaymentBankForm()
-        setIsSessionExpiredDialogOpen(true)
-        return
-      }
-
-      setBankSubmissionError(message)
-    } finally {
-      setIsBankSubmitting(false)
-    }
-  }
-
-  const openStripeLinkFlow = async (bankId?: string) => {
-    const bankForFlow =
-      BANK_OPTIONS.find((bankOption) => bankOption.id === bankId) ||
-      selectedBank
-
-    if (bankId) {
-      setSelectedBankId(bankId)
-    }
-
-    setBankSubmissionError("")
-    setMicroDepositMessage("")
-    setStripeLinkError("")
-
-    if (!isStripePublishableKeyConfigured) {
-      setBankSubmissionError(
-        "Stripe is not configured for this environment. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to enable real bank connections."
-      )
-      return
-    }
-
-    const billingName = fullName.trim() || accountHolderName.trim()
-    if (!billingName) {
-      setBankSubmissionError(
-        "Please enter the account holder name before connecting your bank."
-      )
-      window.setTimeout(
-        () => document.getElementById("connect-account-holder-name")?.focus(),
-        0
-      )
-      return
-    }
-
-    const stripe = stripeRef.current
-    if (
-      !stripe ||
-      typeof (stripe as any).collectBankAccountForPayment !== "function"
-    ) {
-      setBankSubmissionError(
-        "Stripe bank connection is still loading. Please wait a moment and try again."
-      )
-      return
-    }
-
-    setIsBankConnecting(true)
-
-    try {
-      const intent = await apiFetch<CheckoutPaymentIntentResponse>(
-        "/checkout/v1/checkout/payment-intent",
-        {
-          method: "POST",
-          body: {
-            amount: totalAmountToBePaid,
-            currency: "usd",
-            paymentMethod: "ach",
-            projectId: searchParams.get("projectId") || decodedSlug,
-            contractId: searchParams.get("contractId") || undefined,
-            savePaymentMethod: saveBankAccount,
-            metadata: {
-              checkoutSlug: decodedSlug,
-              checkoutType: isTalentCheckout ? "talent" : "project",
-              pay,
-              connectionType: "stripe_financial_connections",
-            },
-          },
-        }
-      )
-
-      const collected = await (stripe as any).collectBankAccountForPayment({
-        clientSecret: intent.clientSecret,
-        params: {
-          payment_method_type: "us_bank_account",
-          payment_method_data: {
-            billing_details: {
-              name: intent.billingName || billingName,
-              email: intent.billingEmail,
-            },
-          },
-        },
-      })
-
-      if (collected.error || !collected.paymentIntent) {
-        setBankSubmissionError(
-          collected.error?.message ||
-            "Stripe could not connect your bank account. Please try again or add your bank manually."
-        )
-        return
-      }
-
-      let paymentIntent = collected.paymentIntent
-
-      if (paymentIntent.status === "requires_confirmation") {
-        if (typeof (stripe as any).confirmUsBankAccountPayment !== "function") {
-          setBankSubmissionError(
-            "Stripe connected your bank, but payment confirmation is unavailable. Please try again."
-          )
-          return
-        }
-
-        const confirmed = await (stripe as any).confirmUsBankAccountPayment(
-          intent.clientSecret
-        )
-
-        if (confirmed.error || !confirmed.paymentIntent) {
-          setBankSubmissionError(
-            confirmed.error?.message ||
-              "Stripe could not confirm your bank payment authorization."
-          )
-          return
-        }
-
-        paymentIntent = confirmed.paymentIntent
-      }
-
-      const confirmation =
-        await apiFetch<CheckoutConfirmPaymentIntentResponse>(
-          "/checkout/v1/checkout/payment-intent/confirm",
-          {
-            method: "POST",
-            body: { paymentIntentId: paymentIntent.id },
-          }
-        )
-
-      if (
-        confirmation.status === "requires_payment_method" ||
-        confirmation.status === "canceled"
-      ) {
-        setBankSubmissionError(
-          "Stripe could not use that bank account for this payment. Please choose another account or add details manually."
-        )
-        return
-      }
-
-      if (!confirmation.paymentMethod) {
-        setBankSubmissionError(
-          "Stripe connected your bank, but did not return a payment method. Please try again."
-        )
-        return
-      }
-
-      if (
-        confirmation.status === "processing" ||
-        confirmation.status === "requires_action"
-      ) {
-        setMicroDepositMessage(
-          "Your bank account is connected. If Stripe needs micro-deposit verification, payment will process after verification is complete."
-        )
-      }
-
-      saveConnectedBankPaymentMethod(
-        confirmation.paymentMethod,
-        bankForFlow.name
-      )
-      clearSensitiveBankDetails()
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Stripe could not connect your bank account. Please try again."
-
-      if (message.includes("API error 401")) {
-        resetFullPaymentBankForm()
-        setIsSessionExpiredDialogOpen(true)
-        return
-      }
-
-      setBankSubmissionError(message)
-    } finally {
-      setIsBankConnecting(false)
-    }
-  }
-
-  const closeStripeLinkFlow = () => {
-    setIsStripeLinkDialogOpen(false)
-    setStripeLinkStep("intro")
-    setStripeLinkError("")
-    setStripeLinkUsername("")
-    setStripeLinkPassword("")
-  }
-
-  const handleStripeLinkBankSelect = (bankId: string) => {
-    void openStripeLinkFlow(bankId)
-  }
-
-  const handleStripeLinkLogin = () => {
-    if (!stripeLinkUsername.trim() || !stripeLinkPassword.trim()) {
-      setStripeLinkError(
-        "We were unable to connect your bank account. Please try again or use a different account."
-      )
-      return
-    }
-
-    setStripeLinkError("")
-    setStripeLinkStep("account")
-  }
-
-  const completeStripeLinkConnection = () => {
-    const method: InstallmentPaymentMethod = {
-      id: `full-bank-${Date.now()}`,
-      method: "BANK_ACCOUNT",
-      title: selectedBank.name,
-      subtitle: `${stripeLinkAccountType} ****1234`,
-      accountType: stripeLinkAccountType,
-      accountNumber: "1234",
-      saveDefaultPaymentMethod: true,
-    }
-
-    saveFullPaymentMethod(method)
-    setSavedCardNotification(
-      `${selectedBank.shortName} ${stripeLinkAccountType.toLowerCase()} *1234 is saved and applied to this order`
-    )
-    window.setTimeout(() => setSavedCardNotification(""), 5000)
-    closeStripeLinkFlow()
-  }
-
-  const confirmStripeLinkAccount = () => {
-    setStripeLinkError("")
-    setStripeLinkStep("success")
-  }
-
-  const handleSaveFullPaymentWire = async () => {
-    setWireTransferError("")
-
-    const details = wireTransferDetails || (await loadWireTransferDetails())
-    if (!details) return
-
-    if (!wireTransferConfirmed) {
-      setWireTransferError(
-        "Please confirm you have initiated the wire transfer before continuing."
-      )
-      return
-    }
-
-    setIsWireTransferSubmitting(true)
-
-    try {
-      await apiFetch<{ success: boolean; status: string }>(
-        "/checkout/v1/checkout/confirm-wire-initiation",
-        {
-          method: "POST",
-          body: { wireTransferId: details.wireTransferId },
-        }
-      )
-      setWireTransferDetails({
-        ...details,
-        confirmedAt: new Date().toISOString(),
-      })
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "We were unable to record your confirmation. Please try again or contact support."
-
-      if (message.includes("API error 401")) {
-        setIsSessionExpiredDialogOpen(true)
-        return
-      }
-
-      setWireTransferError(message)
-      return
-    } finally {
-      setIsWireTransferSubmitting(false)
-    }
-
-    const method: InstallmentPaymentMethod = {
-      id: details.wireTransferId,
+      id: `full-wire-${Date.now()}`,
       method: "WIRE_TRANSFER",
-      title: wireTransferType,
-      subtitle: `Reference ${details.referenceCode}`,
+      title: "Domestic Wire Transfer",
+      subtitle: "Wire details will appear after you submit the order",
     }
 
     saveFullPaymentMethod(method)
     setIsWireTransfer(true)
-    setSavedCardNotification(
-      `Wire transfer ${details.referenceCode} is saved for this order`
-    )
-    window.setTimeout(() => setSavedCardNotification(""), 5000)
   }
 
   const handleStartFullPaymentSplit = () => {
@@ -2846,18 +1358,10 @@ export default function PaymentPage() {
   }
 
   const handleRemoveFullPaymentMethod = (methodId: string) => {
-    const removedMethod = fullPaymentMethods.find(
-      (method) => method.id === methodId
-    )
     const nextMethods = fullPaymentMethods.filter(
       (method) => method.id !== methodId
     )
     setFullPaymentMethods(nextMethods)
-
-    if (removedMethod?.method === "WIRE_TRANSFER") {
-      setIsWireTransfer(false)
-      setWireTransferConfirmed(false)
-    }
 
     if (nextMethods.length <= 1) {
       setShowFullPaymentMethods(false)
@@ -2865,7 +1369,6 @@ export default function PaymentPage() {
 
     if (nextMethods.length === 0) {
       setHasSplitFullPayment(false)
-      setPaymentMethod("")
     }
   }
 
@@ -3024,8 +1527,6 @@ export default function PaymentPage() {
           cardNumber={method.cardNumber}
           saveDefaultPaymentMethod={method.saveDefaultPaymentMethod}
           onChange={options?.onEdit}
-          onEdit={options?.onEdit}
-          onRemove={options?.onRemove}
         />
       )
     }
@@ -3242,8 +1743,7 @@ export default function PaymentPage() {
   )
 
   return (
-    <>
-      <div className="bg-gray-50 pt-[64px]">
+    <div className="bg-gray-50 pt-[64px]">
       {/* Navigation */}
       <CheckoutNavigation
         currentStep={2}
@@ -3251,291 +1751,6 @@ export default function PaymentPage() {
           isTalentCheckout ? "Contract Details" : "Project Details"
         }
       />
-
-      {savedCardNotification ? (
-        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-x-3 rounded-md bg-black px-4 py-3 text-sm font-semibold text-white shadow-lg">
-          <CheckCircle className="size-5 text-success-500" />
-          {savedCardNotification}
-        </div>
-      ) : null}
-
-      {isStripeLinkDialogOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#667085]/75 px-4">
-          <div className="relative w-[360px] overflow-hidden rounded-xl bg-white shadow-[0_20px_45px_rgba(16,24,40,0.18)]">
-            <button
-              type="button"
-              aria-label="Close Stripe Link"
-              className="absolute right-5 top-5 z-10 inline-flex size-6 items-center justify-center text-gray-500 hover:text-gray-700"
-              onClick={closeStripeLinkFlow}
-            >
-              <X className="size-5" />
-            </button>
-
-            {stripeLinkStep === "intro" ? (
-              <div className="flex min-h-[560px] flex-col px-6 py-6">
-                <div className="mt-10 flex items-center justify-center gap-x-3">
-                  <span className="inline-flex size-14 items-center justify-center rounded-xl bg-gray-950 text-2xl font-bold text-white">
-                    M
-                  </span>
-                  <span className="text-2xl font-bold text-gray-400">...</span>
-                  <span className="inline-flex size-14 items-center justify-center rounded-xl bg-[#635BFF] text-2xl font-bold text-white">
-                    S
-                  </span>
-                </div>
-                <h2 className="mt-8 text-center text-2xl font-bold leading-8 text-gray-900">
-                  Marketeq uses Stripe to connect your accounts
-                </h2>
-                <div className="mt-8 space-y-5">
-                  <div className="flex gap-x-3">
-                    <RefreshCcw className="mt-0.5 size-5 shrink-0 text-gray-700" />
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">
-                        Fast and simple
-                      </h3>
-                      <p className="mt-1 text-sm leading-5 text-gray-600">
-                        Connect your account in seconds.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-x-3">
-                    <Lock className="mt-0.5 size-5 shrink-0 text-gray-700" />
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">
-                        Data is encrypted
-                      </h3>
-                      <p className="mt-1 text-sm leading-5 text-gray-600">
-                        Your shared data is protected, and you can disconnect at
-                        any time.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-auto">
-                  <p className="text-center text-xs leading-5 text-gray-600">
-                    By continuing, you agree to Stripe&apos;s{" "}
-                    <span className="underline">Terms</span> and{" "}
-                    <span className="underline">Privacy Policy</span>
-                  </p>
-                  <Button
-                    className="mt-4 h-12 w-full bg-[#635BFF] text-sm font-bold text-white hover:bg-[#5548e8]"
-                    onClick={() => setStripeLinkStep("select")}
-                  >
-                    Agree and continue
-                  </Button>
-                  <button
-                    type="button"
-                    className="mt-4 w-full text-center text-xs font-semibold text-gray-600 underline"
-                    onClick={closeStripeLinkFlow}
-                  >
-                    Manually verify instead
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {stripeLinkStep === "select" ? (
-              <div className="flex min-h-[560px] flex-col px-6 py-6">
-                <button
-                  type="button"
-                  className="mb-6 inline-flex size-6 items-center justify-center text-gray-600"
-                  onClick={() => setStripeLinkStep("intro")}
-                  aria-label="Back"
-                >
-                  <ArrowLeft className="size-5" />
-                </button>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Select bank
-                </h2>
-                <div className="mt-6">
-                  <Input
-                    value={bankSearch}
-                    onChange={(event) => setBankSearch(event.target.value)}
-                    placeholder="Search"
-                  />
-                </div>
-                <div className="mt-6 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                  {filteredBankOptions.map((bankOption) => (
-                    <button
-                      key={bankOption.id}
-                      type="button"
-                      className="flex w-full items-center gap-x-3 rounded-lg p-2 text-left hover:bg-gray-50"
-                      onClick={() => handleStripeLinkBankSelect(bankOption.id)}
-                    >
-                      <span
-                        className="inline-flex size-12 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold leading-none text-white"
-                        style={{ backgroundColor: bankOption.color }}
-                      >
-                        {bankOption.logo}
-                      </span>
-                      <span>
-                        <span className="block text-sm font-bold text-gray-900">
-                          {bankOption.name}
-                        </span>
-                        <span className="block text-xs text-gray-500">
-                          {bankOption.shortName
-                            .toLowerCase()
-                            .replaceAll(" ", "")}
-                          .com
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {stripeLinkStep === "login" ? (
-              <div className="flex min-h-[560px] flex-col px-6 py-6">
-                <button
-                  type="button"
-                  className="mb-6 inline-flex size-6 items-center justify-center text-gray-600"
-                  onClick={() => setStripeLinkStep("select")}
-                  aria-label="Back"
-                >
-                  <ArrowLeft className="size-5" />
-                </button>
-                <span
-                  className="inline-flex size-14 items-center justify-center rounded-xl text-[10px] font-bold leading-none text-white"
-                  style={{ backgroundColor: selectedBank.color }}
-                >
-                  {selectedBank.logo}
-                </span>
-                <h2 className="mt-5 text-2xl font-bold text-gray-900">
-                  Log in to {selectedBank.shortName}
-                </h2>
-                <div className="mt-6 space-y-3">
-                  <Input
-                    value={stripeLinkUsername}
-                    onChange={(event) =>
-                      setStripeLinkUsername(event.target.value)
-                    }
-                    placeholder="Username"
-                  />
-                  <Input
-                    value={stripeLinkPassword}
-                    onChange={(event) =>
-                      setStripeLinkPassword(event.target.value)
-                    }
-                    placeholder="Password"
-                    type="password"
-                  />
-                </div>
-                {stripeLinkError ? (
-                  <div className="mt-4 rounded-md border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-500">
-                    {stripeLinkError}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  className="mt-6 text-center text-sm font-semibold text-[#635BFF]"
-                >
-                  Forgot password?
-                </button>
-                <Button
-                  className="mt-auto h-12 w-full bg-[#635BFF] text-sm font-bold text-white hover:bg-[#5548e8]"
-                  onClick={handleStripeLinkLogin}
-                >
-                  Log in
-                </Button>
-              </div>
-            ) : null}
-
-            {stripeLinkStep === "account" ? (
-              <div className="flex min-h-[560px] flex-col px-6 py-6">
-                <button
-                  type="button"
-                  className="mb-6 inline-flex size-6 items-center justify-center text-gray-600"
-                  onClick={() => setStripeLinkStep("login")}
-                  aria-label="Back"
-                >
-                  <ArrowLeft className="size-5" />
-                </button>
-                <span
-                  className="inline-flex size-14 items-center justify-center rounded-xl text-[10px] font-bold leading-none text-white"
-                  style={{ backgroundColor: selectedBank.color }}
-                >
-                  {selectedBank.logo}
-                </span>
-                <h2 className="mt-5 text-2xl font-bold text-gray-900">
-                  Select account
-                </h2>
-                <div className="mt-6 space-y-3">
-                  {(["Savings", "Checking"] as const).map((type, index) => (
-                    <button
-                      key={type}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-center justify-between rounded-lg border p-4 text-left",
-                        stripeLinkAccountType === type
-                          ? "border-[#635BFF] ring-1 ring-[#635BFF]"
-                          : "border-gray-200"
-                      )}
-                      onClick={() => setStripeLinkAccountType(type)}
-                    >
-                      <span>
-                        <span className="block text-sm font-bold text-gray-900">
-                          {type}
-                        </span>
-                        <span className="block text-xs text-gray-500">
-                          ....{index === 0 ? "4242" : "1234"}
-                        </span>
-                      </span>
-                      {stripeLinkAccountType === type ? (
-                        <Check className="size-5 text-[#635BFF]" />
-                      ) : null}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    disabled
-                    className="flex w-full items-center justify-between rounded-lg border border-gray-200 p-4 text-left opacity-50"
-                  >
-                    <span>
-                      <span className="block text-sm font-bold text-gray-500">
-                        Credit Card
-                      </span>
-                      <span className="block text-xs text-gray-400">
-                        Not available
-                      </span>
-                    </span>
-                  </button>
-                </div>
-                <p className="mt-auto text-center text-xs leading-5 text-gray-600">
-                  Marketeq will have access to account details, balances and
-                  transactions. <span className="underline">Learn more</span>
-                </p>
-                <Button
-                  className="mt-4 h-12 w-full bg-[#635BFF] text-sm font-bold text-white hover:bg-[#5548e8]"
-                  onClick={confirmStripeLinkAccount}
-                >
-                  Connect account
-                </Button>
-              </div>
-            ) : null}
-
-            {stripeLinkStep === "success" ? (
-              <div className="flex min-h-[560px] flex-col items-center justify-center px-6 py-6 text-center">
-                <span className="inline-flex size-16 items-center justify-center rounded-full bg-[#635BFF]">
-                  <Check className="size-8 text-white" />
-                </span>
-                <h2 className="mt-8 text-2xl font-bold text-gray-900">
-                  Success
-                </h2>
-                <p className="mt-4 text-sm leading-5 text-gray-600">
-                  Your account was connected.
-                </p>
-                <Button
-                  className="mt-16 h-12 w-full bg-[#635BFF] text-sm font-bold text-white hover:bg-[#5548e8]"
-                  onClick={completeStripeLinkConnection}
-                >
-                  Back to Marketeq
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       {/* Content */}
       <div className="px-[150px] py-[50px]">
@@ -3612,8 +1827,8 @@ export default function PaymentPage() {
                       Please Note:{" "}
                       <AlertDescription className="inline mt-0 font-normal">
                         To confirm this {installmentSubjectLabel}, an initial
-                        one-time payment is required. Your installment plan will
-                        begin after this payment is successfully processed.
+                        one-time payment is required. Your installment plan
+                        will begin after this payment is successfully processed.
                       </AlertDescription>
                     </AlertTitle>
                   </AlertContent>
@@ -3817,49 +2032,31 @@ export default function PaymentPage() {
                       )}
                     </div>
 
-                    <form className="mt-3" onSubmit={handleGiftCardSubmit}>
-                      <div className="flex items-center gap-x-3">
-                        <InputGroup className="flex-auto">
-                          <Input
-                            className={cn(
-                              "pr-11",
-                              giftCardError &&
-                                !isRedeemedGiftCardError &&
-                                "border-error-300 text-gray-950 focus:border-error-300 focus:ring-error-100"
-                            )}
-                            placeholder="Enter gift card number"
-                            value={giftCardInput}
-                            aria-invalid={giftCardError ? true : false}
-                            onChange={(e) => {
-                              setGiftCardInput(
-                                formatGiftCardCode(e.target.value)
-                              )
-                              setGiftCardError("")
-                              setShowGiftCardSuccess(false)
-                            }}
-                          />
-                          {giftCardError && !isRedeemedGiftCardError ? (
-                            <InputRightElement>
-                              <AlertCircle className="size-5 text-error-500" />
-                            </InputRightElement>
-                          ) : null}
-                        </InputGroup>
-                        <Button
-                          className="w-[64px]"
-                          size="lg"
-                          disabled={isGiftCardApplyDisabled}
-                        >
-                          Apply
-                        </Button>
-                      </div>
-                      {giftCardError && !isRedeemedGiftCardError ? (
-                        <p className="mt-2 text-sm font-normal leading-5 text-error-500">
-                          {giftCardError}
-                        </p>
-                      ) : null}
+                    <form
+                      className="mt-3 flex items-center gap-x-3"
+                      onSubmit={handleGiftCardSubmit}
+                    >
+                      <Input
+                        className="flex-auto"
+                        placeholder="Enter gift card number"
+                        value={giftCardInput}
+                        aria-invalid={giftCardError ? true : false}
+                        onChange={(e) => {
+                          setGiftCardInput(formatGiftCardCode(e.target.value))
+                          setGiftCardError("")
+                          setShowGiftCardSuccess(false)
+                        }}
+                      />
+                      <Button
+                        className="w-[64px]"
+                        size="lg"
+                        disabled={isGiftCardApplyDisabled}
+                      >
+                        Apply
+                      </Button>
                     </form>
 
-                    {giftCardError && isRedeemedGiftCardError ? (
+                    {giftCardError ? (
                       <Alert
                         variant="error"
                         className="mt-3 max-w-[420px] items-center p-3"
@@ -4093,19 +2290,7 @@ export default function PaymentPage() {
 
                     <div className="mt-5">
                       {renderFullPaymentMethodRow(fullPaymentMethods[0], {
-                        onEdit: () =>
-                          handleEditPrimaryFullPaymentMethod(
-                            fullPaymentMethods[0].method === "BANK_ACCOUNT"
-                              ? "item-1"
-                              : fullPaymentMethods[0].method ===
-                                  "WIRE_TRANSFER"
-                                ? "item-2"
-                              : "item-0"
-                          ),
-                        onRemove: () =>
-                          handleRemoveFullPaymentMethod(
-                            fullPaymentMethods[0].id
-                          ),
+                        onEdit: () => openFullPaymentMethodFlow(false),
                       })}
                     </div>
                   </div>
@@ -4123,19 +2308,7 @@ export default function PaymentPage() {
 
                     <div className="mt-5">
                       {renderFullPaymentMethodRow(fullPaymentMethods[0], {
-                        onEdit: () =>
-                          handleEditPrimaryFullPaymentMethod(
-                            fullPaymentMethods[0].method === "BANK_ACCOUNT"
-                              ? "item-1"
-                              : fullPaymentMethods[0].method ===
-                                  "WIRE_TRANSFER"
-                                ? "item-2"
-                              : "item-0"
-                          ),
-                        onRemove: () =>
-                          handleRemoveFullPaymentMethod(
-                            fullPaymentMethods[0].id
-                          ),
+                        onEdit: () => openFullPaymentMethodFlow(true),
                       })}
                     </div>
                   </div>
@@ -4281,163 +2454,92 @@ export default function PaymentPage() {
                           complete your wire transfer
                         </p>
                       </div>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        disabled={!wireTransferDetails}
-                        onClick={() =>
-                          wireTransferDetails &&
-                          downloadWireTransferFile(
-                            `marketeq-wire-invoice-${wireTransferDetails.referenceCode}.txt`,
-                            wireTransferDetails
-                          )
-                        }
-                      >
+                      <Button variant="outlined" visual="gray">
                         <Download02 className="size-[15px]" /> Download Invoice
                       </Button>
                     </div>
 
-                    {isWireTransferLoading ? (
-                      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                        <div className="h-5 w-48 rounded bg-gray-100" />
-                        <div className="mt-6 space-y-3">
-                          {[0, 1, 2, 3, 4, 5].map((item) => (
-                            <div
-                              key={item}
-                              className="h-12 rounded bg-gray-50"
-                            />
-                          ))}
-                        </div>
+                    <div className="mt-6 border border-gray-200 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-white rounded-lg">
+                      <Tabs defaultValue="Domestic Transfer">
+                        <TabsList className="justify-start w-full">
+                          <TabsTrigger value="Domestic Transfer">
+                            Domestic Transfer
+                          </TabsTrigger>
+                          <TabsTrigger value="International Transfer">
+                            International Transfer
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+
+                      <div className="py-4 px-6 border-b border-gray-200">
+                        <span className="text-gray-950 text-sm">
+                          Domestic wire transfers will take 24 - 48 hours to
+                          receive.
+                        </span>
                       </div>
-                    ) : wireTransferError && !wireTransferDetails ? (
-                      <Alert className="mt-6 border-error-200 bg-error-50">
-                        <AlertIcon>
-                          <AlertCircle className="size-5" />
-                        </AlertIcon>
-                        <AlertContent>
-                          <AlertTitle>
-                            We were unable to load your wire transfer details
-                          </AlertTitle>
-                          <AlertDescription>
-                            {wireTransferError}
-                            <Button
-                              className="ml-2"
-                              variant="link"
-                              onClick={() => void loadWireTransferDetails()}
-                            >
-                              Try again
-                            </Button>
-                          </AlertDescription>
-                        </AlertContent>
-                      </Alert>
-                    ) : wireTransferDetails ? (
-                      <>
-                        <div className="mt-6 border border-gray-200 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-white rounded-lg">
-                          <Tabs
-                            value={wireTransferType}
-                            onValueChange={(value) =>
-                              setWireTransferType(
-                                value as
-                                  | "Domestic Transfer"
-                                  | "International Transfer"
-                              )
-                            }
-                          >
-                            <TabsList className="justify-start w-full">
-                              <TabsTrigger value="Domestic Transfer">
-                                Domestic Transfer
-                              </TabsTrigger>
-                              <TabsTrigger value="International Transfer">
-                                International Transfer
-                              </TabsTrigger>
-                            </TabsList>
-                          </Tabs>
 
-                          <div className="py-4 px-6 border-b border-gray-200">
-                            <span className="text-gray-950 text-sm">
-                              {wireTransferType === "Domestic Transfer"
-                                ? "Domestic wire transfers typically take 1 to 2 business days to receive."
-                                : "International wire transfers can take up to 5 business days to receive."}
-                            </span>
-                          </div>
-
-                          <Table>
-                            <TableBody className="[&_tr:last-child]:rounded-b-lg [&_td]:[&_tr:last-child]:rounded-b-lg">
-                              {[
-                                {
-                                  label: "Account Number:",
-                                  value:
-                                    wireTransferDetails.wireInstructions
-                                      .accountNumber,
-                                },
-                                ...(wireTransferType === "Domestic Transfer"
-                                  ? [
-                                      {
-                                        label: "Routing Number:",
-                                        value:
-                                          wireTransferDetails.wireInstructions
-                                            .routingNumber,
-                                      },
-                                    ]
-                                  : [
-                                      {
-                                        label: "SWIFT Code:",
-                                        value:
-                                          wireTransferDetails.wireInstructions
-                                            .swiftCode,
-                                      },
-                                    ]),
-                                {
-                                  label: "Account Name:",
-                                  value:
-                                    wireTransferDetails.wireInstructions
-                                      .accountName,
-                                },
-                                {
-                                  label: "Bank Name:",
-                                  value:
-                                    wireTransferDetails.wireInstructions.bankName,
-                                },
-                                {
-                                  label: "Bank Address:",
-                                  value:
-                                    wireTransferDetails.wireInstructions
-                                      .bankAddress,
-                                },
-                                {
-                                  label: "Remark:",
-                                  value: wireTransferDetails.referenceCode,
-                                },
-                              ].map((row) => (
-                                <TableRow
-                                  key={row.label}
-                                  className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200"
-                                >
-                                  <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                                    {row.label}
-                                  </TableCell>
-                                  <TableCell className="font-semibold py-4 px-6 text-gray-950">
-                                    {row.label === "Remark:" ? (
-                                      <div className="flex items-center gap-x-6">
-                                        #{row.value}
-                                        <div className="inline-flex flex-auto items-center gap-x-2">
-                                          <ArrowLeft className="size-4 text-gray-500" />
-                                          <span className="text-sm font-normal whitespace-nowrap text-gray-500">
-                                            Please attach this order number
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      row.value
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </>
-                    ) : null}
+                      <Table>
+                        <TableBody className="[&_tr:last-child]:rounded-b-lg [&_td]:[&_tr:last-child]:rounded-b-lg">
+                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
+                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                              Account Number:
+                            </TableCell>
+                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
+                              712000528
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
+                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                              Routing Number:
+                            </TableCell>
+                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
+                              111000523
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
+                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                              Account Name:
+                            </TableCell>
+                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
+                              Marketeq Digital Inc.
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
+                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                              Bank Name:
+                            </TableCell>
+                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
+                              JP Morgan Chase & Co.
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
+                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                              Bank Address:
+                            </TableCell>
+                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
+                              111 Wall Street New York, New York 10043, United
+                              States
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
+                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                              Remark:
+                            </TableCell>
+                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
+                              <div className="flex items-center gap-x-6">
+                                #22602731500102292
+                                <div className="inline-flex flex-auto items-center gap-x-2">
+                                  <ArrowLeft className="size-4 text-gray-500" />
+                                  <span className="text-sm font-normal whitespace-nowrap text-gray-500">
+                                    Please attach this order number
+                                  </span>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
 
                   {/* Steps to complete wire transfer */}
@@ -4446,18 +2548,7 @@ export default function PaymentPage() {
                       <h1 className="text-lg font-bold text-dark-blue-400 leading-none">
                         Steps to complete your wire transfer
                       </h1>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        disabled={!wireTransferDetails}
-                        onClick={() =>
-                          wireTransferDetails &&
-                          downloadWireTransferFile(
-                            `marketeq-wire-instructions-${wireTransferDetails.referenceCode}.txt`,
-                            wireTransferDetails
-                          )
-                        }
-                      >
+                      <Button variant="outlined" visual="gray">
                         <Download02 className="size-[15px]" /> Download
                         Instructions
                       </Button>
@@ -4534,35 +2625,6 @@ export default function PaymentPage() {
                     </div>
                   </div>
 
-                  {wireTransferError && wireTransferDetails ? (
-                    <Alert className="mt-5 border-error-200 bg-error-50">
-                      <AlertIcon>
-                        <AlertCircle className="size-5" />
-                      </AlertIcon>
-                      <AlertContent>
-                        <AlertTitle>Wire transfer action failed</AlertTitle>
-                        <AlertDescription>{wireTransferError}</AlertDescription>
-                      </AlertContent>
-                    </Alert>
-                  ) : null}
-
-                  <div className="mt-6 flex items-start gap-x-3 rounded-lg border border-gray-200 bg-white p-4">
-                    <Checkbox
-                      id="wire-transfer-confirmed"
-                      checked={wireTransferConfirmed}
-                      onCheckedChange={(value) =>
-                        setWireTransferConfirmed(value === true)
-                      }
-                    />
-                    <Label
-                      htmlFor="wire-transfer-confirmed"
-                      className="text-sm font-normal leading-5 text-dark-blue-400"
-                    >
-                      I have initiated this wire transfer through my bank and
-                      included the reference number shown above.
-                    </Label>
-                  </div>
-
                   <div className="mt-[26px]">
                     <div className="flex items-center gap-x-2">
                       <Button
@@ -4574,16 +2636,9 @@ export default function PaymentPage() {
                       </Button>
                       <Button
                         onClick={handleSaveFullPaymentWire}
-                        disabled={
-                          !wireTransferDetails ||
-                          !wireTransferConfirmed ||
-                          isWireTransferSubmitting
-                        }
-                        className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white disabled:text-primary-300"
+                        className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
                       >
-                        {isWireTransferSubmitting
-                          ? "Saving..."
-                          : "Save Payment Method"}
+                        Save Payment Method
                       </Button>
                     </div>
                     <div className="mt-3.5">
@@ -4613,12 +2668,10 @@ export default function PaymentPage() {
                         </div>
                         <div className="inline-flex flex-col gap-y-1">
                           <span className="inline-block text-sm text-dark-blue-400">
-                            {wireTransferType}
+                            Domestic Wire Transfer
                           </span>
                           <span className="inline-block text-xs text-[#858585] leading-none">
-                            {wireTransferDetails
-                              ? `Reference ${wireTransferDetails.referenceCode}`
-                              : "Wire transfer pending confirmation"}
+                            Wire details will appear after you submit the order
                           </span>
                         </div>
                       </div>
@@ -4638,7 +2691,7 @@ export default function PaymentPage() {
               {paymentMethod === "item-0" && (
                 <div className="mt-[50px]">
                   <h1 className="text-lg leading-none font-bold text-dark-blue-400">
-                    Add Your Credit / Debit Card
+                    Add your credit / debit card
                   </h1>
                   <p className="mt-3 text-gray-500 text-xs leading-none flex items-center gap-x-1">
                     <Lock className="size-4" /> Your payment is secure. Your
@@ -4648,80 +2701,27 @@ export default function PaymentPage() {
                   <div className="mt-6 space-y-3">
                     <div className="space-y-1.5">
                       <Label size="sm" htmlFor="card-number">
-                        Card Number
+                        Card number
                       </Label>
-                      {isStripePublishableKeyConfigured ? (
-                        <div
-                          id="card-number"
-                          ref={stripeCardNumberMountRef}
-                          aria-invalid={shouldShowCardFieldError("cardNumber")}
-                          className={cn(
-                            inputVariants({
-                              className:
-                                "flex h-[43px] items-center px-3 py-2",
-                            }),
-                            shouldShowCardFieldError("cardNumber") &&
-                              "border-error-300 focus:border-error-300 focus:ring-error-100"
-                          )}
-                        />
-                      ) : (
-                        <CreditCardInput
-                          id="card-number"
-                          value={cardNumber}
-                          onValueChange={setCardNumber}
-                          onFocus={() => setActiveCardField("cardNumber")}
-                          onBlur={() =>
-                            setCardFieldTouched((current) => ({
-                              ...current,
-                              cardNumber: true,
-                            }))
-                          }
-                          aria-invalid={shouldShowCardFieldError("cardNumber")}
-                          className={cn(
-                            "h-[43px]",
-                            shouldShowCardFieldError("cardNumber") &&
-                              "border-error-300 focus:border-error-300 focus:ring-error-100"
-                          )}
-                        />
-                      )}
-                      {shouldShowCardFieldError("cardNumber") ? (
-                        <span className="block text-xs leading-5 text-error-500">
-                          {cardNumberError}
-                        </span>
-                      ) : null}
+                      <Input
+                        id="card-number"
+                        placeholder="0000 0000 0000 0000"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                      />
                     </div>
 
                     <div className="space-y-1.5">
                       <Label size="sm" htmlFor="name-on-card">
-                        Name On Card
+                        Name on card
                       </Label>
                       <Input
                         id="name-on-card"
                         type="text"
                         placeholder="John Doe"
                         value={cardName}
-                        onFocus={() => setActiveCardField("cardName")}
-                        onChange={(e) =>
-                          setCardName(e.target.value.replace(/[^A-Za-z ]/g, ""))
-                        }
-                        onBlur={() =>
-                          setCardFieldTouched((current) => ({
-                            ...current,
-                            cardName: true,
-                          }))
-                        }
-                        aria-invalid={shouldShowCardFieldError("cardName")}
-                        className={cn(
-                          "h-[43px]",
-                          shouldShowCardFieldError("cardName") &&
-                            "border-error-300 focus:border-error-300 focus:ring-error-100"
-                        )}
+                        onChange={(e) => setCardName(e.target.value)}
                       />
-                      {shouldShowCardFieldError("cardName") ? (
-                        <span className="block text-xs leading-5 text-error-500">
-                          {cardNameError}
-                        </span>
-                      ) : null}
                     </div>
 
                     <div className="grid grid-cols-2 gap-x-3">
@@ -4729,57 +2729,25 @@ export default function PaymentPage() {
                         <Label size="sm" htmlFor="expiration-date">
                           Expiration Date
                         </Label>
-                        {isStripePublishableKeyConfigured ? (
-                          <div
-                            id="expiration-date"
-                            ref={stripeCardExpiryMountRef}
-                            aria-invalid={shouldShowCardFieldError(
-                              "expirationDate"
-                            )}
-                            className={cn(
-                              inputVariants({
-                                className:
-                                  "flex h-[43px] items-center px-3 py-2",
-                              }),
-                              shouldShowCardFieldError("expirationDate") &&
-                                "border-error-300 focus:border-error-300 focus:ring-error-100"
-                            )}
-                          />
-                        ) : (
-                          <Input
-                            id="expiration-date"
-                            type="text"
-                            placeholder="MM/YYYY"
-                            value={expirationDate}
-                            onFocus={() =>
-                              setActiveCardField("expirationDate")
-                            }
-                            onChange={(e) =>
+                        <Input
+                          id="expiration-date"
+                          type="text"
+                          placeholder="MM/YY"
+                          value={expirationDate}
+                          onChange={(e) => {
+                            const sanitized = e.target.value.replace(
+                              /[^\d]/g,
+                              ""
+                            )
+                            if (sanitized.length >= 2) {
                               setExpirationDate(
-                                formatExpiryInput(e.target.value)
+                                `${sanitized.slice(0, 2)}/${sanitized.slice(2, 4)}`
                               )
+                            } else {
+                              setExpirationDate(sanitized)
                             }
-                            onBlur={() =>
-                              setCardFieldTouched((current) => ({
-                                ...current,
-                                expirationDate: true,
-                              }))
-                            }
-                            aria-invalid={shouldShowCardFieldError(
-                              "expirationDate"
-                            )}
-                            className={cn(
-                              "h-[43px]",
-                              shouldShowCardFieldError("expirationDate") &&
-                                "border-error-300 focus:border-error-300 focus:ring-error-100"
-                            )}
-                          />
-                        )}
-                        {shouldShowCardFieldError("expirationDate") ? (
-                          <span className="block text-xs leading-5 text-error-500">
-                            {expirationDateError}
-                          </span>
-                        ) : null}
+                          }}
+                        />
                       </div>
 
                       <div className="space-y-1.5">
@@ -4787,46 +2755,16 @@ export default function PaymentPage() {
                           CVV / CVC
                         </Label>
                         <InputGroup>
-                          {isStripePublishableKeyConfigured ? (
-                            <div
-                              id="cvv-cvc"
-                              ref={stripeCardCvcMountRef}
-                              aria-invalid={shouldShowCardFieldError("cvv")}
-                              className={cn(
-                                inputVariants({
-                                  className:
-                                    "flex h-[43px] items-center px-3 py-2 pr-10",
-                                }),
-                                shouldShowCardFieldError("cvv") &&
-                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
-                              )}
-                            />
-                          ) : (
-                            <Input
-                              id="cvv-cvc"
-                              type="text"
-                              placeholder="3 or 4 digits"
-                              value={cvv}
-                              onFocus={() => setActiveCardField("cvv")}
-                              onChange={(e) => {
-                                setCvv(
-                                  e.target.value.replace(/\D/g, "").slice(0, 4)
-                                )
-                              }}
-                              onBlur={() => {
-                                setCardFieldTouched((current) => ({
-                                  ...current,
-                                  cvv: true,
-                                }))
-                              }}
-                              aria-invalid={shouldShowCardFieldError("cvv")}
-                              className={cn(
-                                "h-[43px]",
-                                shouldShowCardFieldError("cvv") &&
-                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
-                              )}
-                            />
-                          )}
+                          <Input
+                            id="cvv-cvc"
+                            type="text"
+                            placeholder="3 or 4 digits"
+                            value={cvv}
+                            onChange={(e) => {
+                              if (e.target.value.length <= 4)
+                                setCvv(e.target.value)
+                            }}
+                          />
                           <InputRightElement>
                             <TooltipProvider delayDuration={75}>
                               <Tooltip>
@@ -4843,11 +2781,6 @@ export default function PaymentPage() {
                             </TooltipProvider>
                           </InputRightElement>
                         </InputGroup>
-                        {shouldShowCardFieldError("cvv") ? (
-                          <span className="block text-xs leading-5 text-error-500">
-                            {cvvError}
-                          </span>
-                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -4864,526 +2797,210 @@ export default function PaymentPage() {
                     </Label>
                   </div>
 
-                  {paymentError ? (
-                    <Alert className="mt-5 border-error-200 bg-error-50">
-                      <AlertIcon>
-                        <AlertCircle className="size-5" />
-                      </AlertIcon>
-                      <AlertContent>
-                        <AlertTitle>Payment could not be completed</AlertTitle>
-                        <AlertDescription>{paymentError}</AlertDescription>
-                      </AlertContent>
-                    </Alert>
-                  ) : null}
-
                   {/* Billing Address */}
                   <div className="mt-[50px]">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg leading-none font-bold text-dark-blue-400">
-                        Billing Address
-                      </h3>
-                      {billingAddressMode === "new" ? (
-                        <Button
-                          className="underline"
-                          variant="link"
-                          onClick={() => setBillingAddressMode("saved")}
-                        >
-                          Use a Saved Address
-                        </Button>
-                      ) : null}
+                    <h3 className="text-lg leading-none font-bold text-dark-blue-400">
+                      Billing Address
+                    </h3>
+
+                    <div className="mt-6 space-y-3">
+                      <div className="space-y-1.5">
+                        <Label size="sm" htmlFor="full-name">
+                          Full Name
+                        </Label>
+                        <Input
+                          placeholder="John Doe"
+                          id="full-name"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label size="sm" htmlFor="address-line-1">
+                          Address Line 1
+                        </Label>
+                        <Input
+                          placeholder="Street Address or P.O. Box"
+                          id="address-line-1"
+                          value={addressLine1}
+                          onChange={(e) => setAddressLine1(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label size="sm" htmlFor="address-line-2">
+                          Address Line 2
+                        </Label>
+                        <Input
+                          placeholder="Apt, Suite, Unit, or Building #"
+                          id="address-line-2"
+                          value={addressLine2}
+                          onChange={(e) => setAddressLine2(e.target.value)}
+                        />
+                      </div>
+                      <div className="gap-x-3 grid grid-cols-3">
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="city">
+                            City
+                          </Label>
+                          <Input
+                            placeholder="Marketown"
+                            id="city"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="state">
+                            State
+                          </Label>
+                          <Listbox
+                            value={billingState}
+                            onChange={setBillingState}
+                          >
+                            <ListboxButton placeholder="Select" />
+                            <ListboxOptions>
+                              {[
+                                "New York",
+                                "Florida",
+                                "Alaska",
+                                "Arizona",
+                                "Georgia",
+                                "Hawaii",
+                                "California",
+                              ].map((s) => (
+                                <ListboxOption key={s} value={s}>
+                                  {s}
+                                </ListboxOption>
+                              ))}
+                            </ListboxOptions>
+                          </Listbox>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="zipcode">
+                            Zipcode
+                          </Label>
+                          <Input
+                            placeholder="12345"
+                            id="zipcode"
+                            value={zipcode}
+                            onChange={(e) => setZipcode(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label size="sm" htmlFor="phone-number">
+                          Phone number
+                        </Label>
+                        <Input
+                          placeholder="+1 (555) 000-0000"
+                          id="phone-number"
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(e.target.value)}
+                        />
+                      </div>
                     </div>
-
-                    {billingAddressMode === "summary" ? (
-                      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                        <div className="flex items-center justify-between gap-x-6">
-                          <div className="text-base leading-6 text-dark-blue-400">
-                            <p className="font-bold">
-                              {billingAddressSummary.fullName}
-                            </p>
-                            <p>{billingAddressSummary.addressLine1}</p>
-                            <p>{billingAddressSummary.cityStateZip}</p>
-                            <p>United States</p>
-                            <p>{billingAddressSummary.phoneNumber}</p>
-                          </div>
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setBillingAddressMode("saved")}
-                          >
-                            Change Address
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {billingAddressMode === "saved" ? (
-                      <div className="mt-6">
-                        <p className="text-sm text-gray-500">
-                          Please choose a billing address from your address book
-                          below, or{" "}
-                          <button
-                            type="button"
-                            className="font-semibold text-primary-500 underline"
-                            onClick={() => setBillingAddressMode("new")}
-                          >
-                            add a new billing address
-                          </button>
-                        </p>
-                        <RadioGroup
-                          className="mt-6 space-y-3"
-                          value={selectedBillingAddressId}
-                          onValueChange={setSelectedBillingAddressId}
-                        >
-                          {savedBillingAddresses.map((address) => (
-                            <HeadlessRadioGroupItem
-                              key={address.id}
-                              value={address.id}
-                              className="group flex h-10 items-center gap-x-4 rounded-lg border border-transparent px-3 text-sm text-gray-500 focus-visible:outline-none data-[state=checked]:border-primary-500 data-[state=checked]:ring-1 data-[state=checked]:ring-primary-500"
-                            >
-                              <span className="inline-flex size-5 items-center justify-center rounded-full border border-gray-300 group-data-[state=checked]:border-primary-500 group-data-[state=checked]:ring-4 group-data-[state=checked]:ring-primary-50">
-                                <span className="hidden size-2.5 rounded-full bg-primary-500 group-data-[state=checked]:block" />
-                              </span>
-                              <span>
-                                <span className="font-bold text-dark-blue-400">
-                                  {address.fullName},
-                                </span>{" "}
-                                {address.line}
-                              </span>
-                            </HeadlessRadioGroupItem>
-                          ))}
-                        </RadioGroup>
-                        <div className="mt-6 flex items-center gap-x-3">
-                          <Button
-                            variant="light"
-                            onClick={() => setIsConfirmAddressDialogOpen(true)}
-                          >
-                            Use This Address
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setBillingAddressMode("new")}
-                          >
-                            <Plus className="size-[15px]" />
-                            New Address
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {billingAddressMode === "new" ? (
-                      <div className="mt-6 space-y-3">
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="full-name">
-                            Full Name
-                          </Label>
-                          <Input
-                            placeholder="John Doe"
-                            id="full-name"
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="address-line-1">
-                            Address Line 1
-                          </Label>
-                          <Input
-                            placeholder="Street Address or P.O. Box"
-                            id="address-line-1"
-                            value={addressLine1}
-                            onChange={(e) => setAddressLine1(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="address-line-2">
-                            Address Line 2
-                          </Label>
-                          <Input
-                            placeholder="Apt, Suite, Unit, or Building #"
-                            id="address-line-2"
-                            value={addressLine2}
-                            onChange={(e) => setAddressLine2(e.target.value)}
-                          />
-                        </div>
-                        <div className="gap-x-3 grid grid-cols-3">
-                          <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="city">
-                              City
-                            </Label>
-                            <Input
-                              placeholder="Marketown"
-                              id="city"
-                              value={city}
-                              onChange={(e) => setCity(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="state">
-                              State
-                            </Label>
-                            <Listbox
-                              value={billingState}
-                              onChange={setBillingState}
-                            >
-                              <ListboxButton placeholder="Select" />
-                              <ListboxOptions>
-                                {[
-                                  "New York",
-                                  "Florida",
-                                  "Alaska",
-                                  "Arizona",
-                                  "Georgia",
-                                  "Hawaii",
-                                  "California",
-                                ].map((s) => (
-                                  <ListboxOption key={s} value={s}>
-                                    {s}
-                                  </ListboxOption>
-                                ))}
-                              </ListboxOptions>
-                            </Listbox>
-                            {shouldShowBankFieldError("accountType") ? (
-                              <span className="block text-xs leading-5 text-error-500">
-                                {bankFieldErrors.accountType}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="zipcode">
-                              Zipcode
-                            </Label>
-                            <Input
-                              placeholder="12345"
-                              id="zipcode"
-                              value={zipcode}
-                              onChange={(e) =>
-                                setZipcode(
-                                  e.target.value.replace(/[^\d-]/g, "")
-                                )
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="phone-number">
-                            Phone Number
-                          </Label>
-                          <InputGroup>
-                            <Input
-                              className="pl-[68px]"
-                              placeholder="(555) 000-0000"
-                              id="phone-number"
-                              value={phoneNumber}
-                              onChange={(e) => setPhoneNumber(e.target.value)}
-                            />
-                            <div className="absolute inset-y-0 left-0 my-auto flex w-[58px] items-center justify-center gap-x-1 rounded-l-[5px] border-r border-gray-200 text-sm text-dark-blue-400">
-                              🇺🇸 +1
-                            </div>
-                          </InputGroup>
-                        </div>
-                        {hasAttemptedCardSubmit && !isBillingAddressValid ? (
-                          <span className="block text-xs leading-5 text-error-500">
-                            {!/^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
-                            zipcode.trim()
-                              ? "Please enter a valid zip code."
-                              : "Please complete all required billing address fields."}
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : null}
 
                     <div className="flex mt-[50px] justify-end">
-                      <TooltipProvider delayDuration={75}>
-                        <Tooltip
-                          open={!isFullPaymentCardFormValid ? undefined : false}
-                        >
-                          <TooltipTrigger asChild>
-                            <span
-                              onClick={() => {
-                                if (!isFullPaymentCardFormValid) {
-                                  setHasAttemptedCardSubmit(true)
-                                }
-                              }}
-                            >
-                              <Button
-                                className={cn(
-                                  !isFullPaymentCardFormValid &&
-                                    "pointer-events-none"
-                                )}
-                                disabled={!isFullPaymentCardFormValid}
-                                onClick={handleSaveFullPaymentCard}
-                              >
-                                Save Card
-                              </Button>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent visual="gray">
-                            Please fill in the required fields
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Button onClick={handleSaveFullPaymentCard}>
+                        Save Card
+                      </Button>
                     </div>
                   </div>
-
-                  <Dialog
-                    open={isConfirmAddressDialogOpen}
-                    onOpenChange={setIsConfirmAddressDialogOpen}
-                  >
-                    <DialogContent className="max-w-[640px] p-6">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h2 className="text-lg font-semibold text-dark-blue-400">
-                            Confirm Address
-                          </h2>
-                          <p className="mt-2 max-w-[386px] text-sm leading-5 text-gray-500">
-                            The address you provided doesn&apos;t match official
-                            postal records. Here&apos;s a suggested alternative.
-                          </p>
-                        </div>
-                        <DialogClose asChild>
-                          <IconButton variant="ghost" visual="gray">
-                            <X className="size-5" />
-                          </IconButton>
-                        </DialogClose>
-                      </div>
-
-                      <div className="mt-8 grid grid-cols-2 gap-x-12">
-                        {["We Recommend", "You Provided"].map(
-                          (title, index) => (
-                            <button
-                              key={title}
-                              type="button"
-                              className="flex items-start gap-x-4 text-left"
-                            >
-                              <span
-                                className={cn(
-                                  "mt-0.5 inline-flex size-5 items-center justify-center rounded-full border",
-                                  index === 0
-                                    ? "border-primary-500 ring-4 ring-primary-50"
-                                    : "border-gray-300"
-                                )}
-                              >
-                                {index === 0 ? (
-                                  <span className="size-2.5 rounded-full bg-primary-500" />
-                                ) : null}
-                              </span>
-                              <span className="text-sm leading-5 text-dark-blue-400">
-                                <span className="block font-bold">{title}</span>
-                                <span className="block">Jarvis Batman</span>
-                                <span className="block font-bold">
-                                  2614 Rio Grande St, Apt 211
-                                </span>
-                                <span className="block">
-                                  Austin, TX 78705-4017
-                                </span>
-                                <span className="block">United States</span>
-                                <span className="block">+1 (737) 436-4562</span>
-                              </span>
-                            </button>
-                          )
-                        )}
-                      </div>
-
-                      <div className="mt-8 flex justify-end">
-                        <Button
-                          size="lg"
-                          onClick={() => {
-                            setIsConfirmAddressDialogOpen(false)
-                            setBillingAddressMode("summary")
-                          }}
-                        >
-                          Use this address
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
                 </div>
               )}
 
               {/* Bank Account Form */}
               {paymentMethod === "item-1" && (
                 <>
-                  <div className="mt-8">
-                    <h1 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Payment Method
-                    </h1>
-
-                    <div className="mt-5 grid grid-cols-2 gap-x-4">
-                      <button
-                        type="button"
-                        className="relative flex h-[150px] flex-col items-center justify-center rounded-lg border-2 border-primary-500 bg-white px-6 text-center shadow-sm"
-                      >
-                        <span className="absolute left-3 top-3 flex size-6 items-center justify-center rounded-full bg-primary-500 text-white">
-                          <Check className="size-4" />
-                        </span>
-                        <ACH />
-                        <span className="mt-4 text-base font-medium text-gray-950">
-                          Pay with Bank Account
-                        </span>
-                        <span className="mt-2 text-sm text-gray-500">
-                          0.8% per transaction
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="flex h-[150px] flex-col items-center justify-center rounded-lg border border-gray-200 bg-white px-6 text-center shadow-sm transition hover:border-gray-300"
-                        onClick={() => setPaymentMethod("")}
-                      >
-                        <SwitchHorizontal01 className="size-6 text-gray-500" />
-                        <span className="mt-4 text-base font-medium text-gray-950">
-                          Change Payment Method
-                        </span>
-                      </button>
-                    </div>
-
-                    <div className="mt-10 max-w-[504px]">
-                      <div className="mb-4 space-y-1.5">
-                        <Label size="sm" htmlFor="connect-account-holder-name">
-                          Account Holder Name
-                        </Label>
-                        <Input
-                          id="connect-account-holder-name"
-                          type="text"
-                          placeholder="John Doe"
-                          value={accountHolderName}
-                          onChange={(event) =>
-                            setAccountHolderName(
-                              event.target.value.replace(/[^A-Za-z ]/g, "")
-                            )
-                          }
+                  <div className="mt-[50px]">
+                    <div className="px-[55.25px] flex items-end pb-5 gap-x-[22.55px]">
+                      <div className="h-[95.88px] shrink-0 relative w-[198.92px]">
+                        <NextImage
+                          className="object-contain"
+                          src="/connect-bank-account.png"
+                          alt="Connect Bank Account"
+                          fill
+                          sizes="25vw"
                         />
                       </div>
-                      <Button
-                        type="button"
-                        className="h-14 w-full gap-x-3 rounded-lg bg-black px-8 text-[22px] font-bold leading-none text-white hover:bg-black/90"
-                        disabled={isBankConnecting}
-                        onClick={() => void openStripeLinkFlow()}
-                      >
-                        {isBankConnecting ? "Connecting..." : "Connect My Account"}
-                        <Download02 className="size-5" />
-                      </Button>
-                      <p className="mt-3 max-w-[504px] text-sm leading-5 text-gray-500">
-                        You&apos;ll be redirected to Stripe Link to securely
-                        authenticate your bank account. Marketeq will never see
-                        or store your bank login credentials.
-                      </p>
-                      {bankSubmissionError ? (
-                        <Alert className="mt-4 border-error-200 bg-error-50">
-                          <AlertIcon>
-                            <AlertCircle className="size-5" />
-                          </AlertIcon>
-                          <AlertContent>
-                            <AlertTitle>Bank connection did not open</AlertTitle>
-                            <AlertDescription>
-                              {bankSubmissionError}
-                            </AlertDescription>
-                          </AlertContent>
-                        </Alert>
-                      ) : null}
+                      <h1 className="text-[26.62px] leading-[1.2] text-gray-950">
+                        Marketeq uses <span className="font-bold">Plaid</span>{" "}
+                        to connect your bank account
+                      </h1>
                     </div>
 
-                    <div className="mt-10">
-                      <div className="relative">
-                        <span className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2">
-                          <span className="absolute left-0 top-0 size-4 rounded-full border-2 border-gray-400" />
-                          <span className="absolute left-[13px] top-[14px] h-2 w-0.5 -rotate-45 rounded-full bg-gray-400" />
-                        </span>
-                        <Input
-                          value={bankSearch}
-                          onChange={(event) =>
-                            setBankSearch(event.target.value)
-                          }
-                          placeholder="Find your bank"
-                          className="h-12 pl-12 text-base"
-                        />
+                    <div className="py-[50px] px-[75px] rounded-xl border-2 border-gray-200 bg-white grid grid-cols-2 gap-x-[60px] items-center">
+                      <div className="space-y-[30px]">
+                        <div className="flex items-start gap-x-2.5">
+                          <Zap className="size-[14.77px] shrink-0 text-gray-950" />
+                          <div className="flex-auto">
+                            <h3 className="text-[13px] leading-none font-semibold text-gray-950">
+                              Connect in seconds
+                            </h3>
+                            <p className="mt-2 text-[13px] leading-none font-light text-gray-950">
+                              8000+ apps trust Plaid to quickly connect to
+                              financial institutions
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-x-2.5">
+                          <ShieldTick className="size-[14.77px] shrink-0 text-gray-950" />
+                          <div className="flex-auto">
+                            <h3 className="text-[13px] leading-none font-semibold text-gray-950">
+                              Keep your data safe
+                            </h3>
+                            <p className="mt-2 text-[13px] leading-none font-light text-gray-950">
+                              Plaid uses best-in-class encryption to help
+                              protect your data
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <div className="mt-4 grid grid-cols-4 gap-4">
-                        {filteredBankOptions.map((bankOption) => (
-	                          <button
-	                            key={bankOption.id}
-	                            type="button"
-	                            className="flex h-[118px] items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-center shadow-sm transition hover:border-primary-300 hover:shadow-md"
-	                            disabled={isBankConnecting}
-	                            onClick={() =>
-	                              handleStripeLinkBankSelect(bankOption.id)
-	                            }
-                          >
-                            <span
-                              className="text-[20px] font-bold leading-tight"
-                              style={{ color: bankOption.color }}
-                            >
-                              {bankOption.logo}
-                            </span>
-                          </button>
-                        ))}
+                      <div className="space-y-5">
+                        <Button className="h-[56.24px] bg-black gap-x-3 hover:bg-black/70 px-8 text-[17.62px] leading-[20.88px] font-semibold">
+                          Connect my account
+                        </Button>
+                        <div>
+                          <span className="inline-block text-[11px] leading-[1.5] font-light text-gray-950">
+                            By continuing, you agree to Plaid&apos;s{" "}
+                            <span className="underline inline-block">
+                              Privacy Policy
+                            </span>{" "}
+                            and to receiving updates on plaid.com
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mt-10 flex items-center gap-x-4">
-                      <span className="h-px flex-auto bg-gray-200" />
-                      <span className="text-sm font-medium leading-5 text-gray-400">
+                    <div className="mt-[50px] flex items-center gap-x-[9px]">
+                      <span className="inline-block flex-auto h-px bg-[#E1E6EA]" />
+                      <span className="text-xs font-medium text-[#939DA7] leading-5">
                         Or
                       </span>
-                      <span className="h-px flex-auto bg-gray-200" />
+                      <span className="inline-block flex-auto h-px bg-[#E1E6EA]" />
                     </div>
                   </div>
 
-                  <div className="mt-10">
+                  <div className="mt-[50px]">
                     <h1 className="text-lg leading-none font-bold text-dark-blue-400">
                       Add Your Bank Account Manually
                     </h1>
 
                     <div className="mt-6 space-y-3">
                       <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="manual-account-type-checking">
+                        <Label size="sm" htmlFor="account-type">
                           Account Type
                         </Label>
-                        <div className="grid grid-cols-2 gap-3">
-                          {["Checking", "Savings"].map((option) => {
-                            const selected = accountType === option
-
-                            return (
-                              <button
-                                key={option}
-                                id={`manual-account-type-${option.toLowerCase()}`}
-                                type="button"
-                                onClick={() => {
-                                  setAccountType(option)
-                                  setBankFieldTouched((current) => ({
-                                    ...current,
-                                    accountType: true,
-                                  }))
-                                }}
-                                className={cn(
-                                  "flex h-11 items-center gap-x-3 rounded-[5px] border px-3 text-left text-sm font-medium transition",
-                                  selected
-                                    ? "border-primary-500 text-primary-500 ring-1 ring-primary-500"
-                                    : "border-gray-200 text-dark-blue-400 hover:border-gray-300"
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    "flex size-5 items-center justify-center rounded-full border",
-                                    selected
-                                      ? "border-primary-500"
-                                      : "border-gray-300"
-                                  )}
-                                >
-                                  {selected ? (
-                                    <span className="size-2.5 rounded-full bg-primary-500" />
-                                  ) : null}
-                                </span>
+                        <Listbox value={accountType} onChange={setAccountType}>
+                          <ListboxButton placeholder="Select" />
+                          <ListboxOptions>
+                            {["Checking", "Savings"].map((option) => (
+                              <ListboxOption key={option} value={option}>
                                 {option}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {shouldShowBankFieldError("accountType") ? (
-                          <span className="block text-xs leading-5 text-error-500">
-                            {bankFieldErrors.accountType}
-                          </span>
-                        ) : null}
+                              </ListboxOption>
+                            ))}
+                          </ListboxOptions>
+                        </Listbox>
                       </div>
                       <div className="space-y-1.5">
                         <Label size="sm" htmlFor="account-holder-name">
@@ -5394,30 +3011,8 @@ export default function PaymentPage() {
                           type="text"
                           placeholder="John Doe"
                           value={accountHolderName}
-                          onChange={(e) =>
-                            setAccountHolderName(
-                              e.target.value.replace(/[^A-Za-z ]/g, "")
-                            )
-                          }
-                          onBlur={() =>
-                            setBankFieldTouched((current) => ({
-                              ...current,
-                              accountHolderName: true,
-                            }))
-                          }
-                          aria-invalid={shouldShowBankFieldError(
-                            "accountHolderName"
-                          )}
-                          className={cn(
-                            shouldShowBankFieldError("accountHolderName") &&
-                              "border-error-300 focus:border-error-300 focus:ring-error-100"
-                          )}
+                          onChange={(e) => setAccountHolderName(e.target.value)}
                         />
-                        {shouldShowBankFieldError("accountHolderName") ? (
-                          <span className="block text-xs leading-5 text-error-500">
-                            {bankFieldErrors.accountHolderName}
-                          </span>
-                        ) : null}
                       </div>
                       <div className="space-y-1.5">
                         <Label size="sm" htmlFor="bank-routing-number">
@@ -5428,30 +3023,8 @@ export default function PaymentPage() {
                           type="text"
                           placeholder="xxxx-xxxx-xx"
                           value={bankRoutingNumber}
-                          onChange={(e) =>
-                            setBankRoutingNumber(
-                              e.target.value.replace(/\D/g, "").slice(0, 9)
-                            )
-                          }
-                          onBlur={() =>
-                            setBankFieldTouched((current) => ({
-                              ...current,
-                              bankRoutingNumber: true,
-                            }))
-                          }
-                          aria-invalid={shouldShowBankFieldError(
-                            "bankRoutingNumber"
-                          )}
-                          className={cn(
-                            shouldShowBankFieldError("bankRoutingNumber") &&
-                              "border-error-300 focus:border-error-300 focus:ring-error-100"
-                          )}
+                          onChange={(e) => setBankRoutingNumber(e.target.value)}
                         />
-                        {shouldShowBankFieldError("bankRoutingNumber") ? (
-                          <span className="block text-xs leading-5 text-error-500">
-                            {bankFieldErrors.bankRoutingNumber}
-                          </span>
-                        ) : null}
                       </div>
                       <div className="grid grid-cols-2 gap-x-3">
                         <div className="space-y-1.5">
@@ -5460,35 +3033,11 @@ export default function PaymentPage() {
                           </Label>
                           <Input
                             id="account-number"
-                            type={isBankAccountFocused ? "text" : "password"}
+                            type="text"
                             placeholder="Up to 17 digits"
                             value={accountNumber}
-                            onFocus={() => setIsBankAccountFocused(true)}
-                            onBlur={() => {
-                              setIsBankAccountFocused(false)
-                              setBankFieldTouched((current) => ({
-                                ...current,
-                                accountNumber: true,
-                              }))
-                            }}
-                            onChange={(e) =>
-                              setAccountNumber(
-                                e.target.value.replace(/\D/g, "").slice(0, 17)
-                              )
-                            }
-                            aria-invalid={shouldShowBankFieldError(
-                              "accountNumber"
-                            )}
-                            className={cn(
-                              shouldShowBankFieldError("accountNumber") &&
-                                "border-error-300 focus:border-error-300 focus:ring-error-100"
-                            )}
+                            onChange={(e) => setAccountNumber(e.target.value)}
                           />
-                          {shouldShowBankFieldError("accountNumber") ? (
-                            <span className="block text-xs leading-5 text-error-500">
-                              {bankFieldErrors.accountNumber}
-                            </span>
-                          ) : null}
                         </div>
                         <div className="space-y-1.5">
                           <Label size="sm" htmlFor="re-enter-account-number">
@@ -5496,86 +3045,16 @@ export default function PaymentPage() {
                           </Label>
                           <Input
                             id="re-enter-account-number"
-                            type={
-                              isConfirmBankAccountFocused ? "text" : "password"
-                            }
+                            type="text"
                             placeholder="Up to 17 digits"
                             value={confirmAccountNumber}
-                            onFocus={() =>
-                              setIsConfirmBankAccountFocused(true)
-                            }
-                            onBlur={() => {
-                              setIsConfirmBankAccountFocused(false)
-                              setBankFieldTouched((current) => ({
-                                ...current,
-                                confirmAccountNumber: true,
-                              }))
-                            }}
                             onChange={(e) =>
-                              setConfirmAccountNumber(
-                                e.target.value.replace(/\D/g, "").slice(0, 17)
-                              )
+                              setConfirmAccountNumber(e.target.value)
                             }
-                            aria-invalid={shouldShowBankFieldError(
-                              "confirmAccountNumber"
-                            )}
-                            className={cn(
-                              shouldShowBankFieldError(
-                                "confirmAccountNumber"
-                              ) &&
-                                "border-error-300 focus:border-error-300 focus:ring-error-100"
-                            )}
                           />
-                          {shouldShowBankFieldError("confirmAccountNumber") ? (
-                            <span className="block text-xs leading-5 text-error-500">
-                              {bankFieldErrors.confirmAccountNumber}
-                            </span>
-                          ) : null}
                         </div>
                       </div>
                     </div>
-
-                    <Alert className="mt-5 border-primary-100 bg-primary-50">
-                      <AlertIcon>
-                        <HelpCircle className="size-5" />
-                      </AlertIcon>
-                      <AlertContent>
-                        <AlertTitle>Micro-deposit verification may be required</AlertTitle>
-                        <AlertDescription>
-                          If instant verification is unavailable, Stripe will
-                          send two small deposits in 1 to 2 business days.
-                          Payment is processed only after verification.
-                        </AlertDescription>
-                      </AlertContent>
-                    </Alert>
-
-                    {bankSubmissionError ? (
-                      <Alert className="mt-5 border-error-200 bg-error-50">
-                        <AlertIcon>
-                          <AlertCircle className="size-5" />
-                        </AlertIcon>
-                        <AlertContent>
-                          <AlertTitle>Bank account could not be verified</AlertTitle>
-                          <AlertDescription>
-                            {bankSubmissionError}
-                          </AlertDescription>
-                        </AlertContent>
-                      </Alert>
-                    ) : null}
-
-                    {microDepositMessage ? (
-                      <Alert className="mt-5 border-primary-100 bg-primary-50">
-                        <AlertIcon>
-                          <CheckCircle className="size-5" />
-                        </AlertIcon>
-                        <AlertContent>
-                          <AlertTitle>Micro-deposit verification pending</AlertTitle>
-                          <AlertDescription>
-                            {microDepositMessage}
-                          </AlertDescription>
-                        </AlertContent>
-                      </Alert>
-                    ) : null}
 
                     <div className="mt-[22px] flex items-center gap-x-3">
                       <Checkbox
@@ -5595,28 +3074,22 @@ export default function PaymentPage() {
                           type="button"
                           variant="outlined"
                           visual="gray"
-                          onClick={() => {
-                            resetFullPaymentBankForm()
-                            setPaymentMethod("")
-                          }}
+                          onClick={() => setPaymentMethod("")}
                         >
                           Cancel
                         </Button>
                         <Button
-                          className="bg-primary-500 text-white hover:bg-primary-600 disabled:bg-primary-50 disabled:text-primary-300"
-                          disabled={
-                            !isInstallmentBankFormValid || isBankSubmitting
-                          }
-                          onClick={handleManualBankContinue}
+                          className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
+                          onClick={handleSaveFullPaymentBank}
                         >
-                          {isBankSubmitting ? "Saving..." : "Save Account"}
+                          Save account
                         </Button>
                       </div>
                       <div className="mt-3.5 flex items-center justify-end">
                         <span className="text-xs font-light text-dark-blue-400">
                           By adding your bank account, you agree to
                           Marketeq&apos;s{" "}
-                          <Button variant="link">Terms & Conditions</Button>
+                          <Button variant="link">Terms and Conditions</Button>
                         </span>
                       </div>
                     </div>
@@ -6089,7 +3562,6 @@ export default function PaymentPage() {
                               id="installment-card-number"
                               value={cardNumber}
                               onValueChange={setCardNumber}
-                              onFocus={() => setActiveCardField("cardNumber")}
                             />
                           </div>
 
@@ -6102,7 +3574,6 @@ export default function PaymentPage() {
                               type="text"
                               placeholder="John Doe"
                               value={cardName}
-                              onFocus={() => setActiveCardField("cardName")}
                               onChange={(event) =>
                                 setCardName(event.target.value)
                               }
@@ -6122,9 +3593,6 @@ export default function PaymentPage() {
                                 type="text"
                                 placeholder="MM/YYYY"
                                 value={expirationDate}
-                                onFocus={() =>
-                                  setActiveCardField("expirationDate")
-                                }
                                 onChange={(event) => {
                                   const sanitized = event.target.value.replace(
                                     /[^\d]/g,
@@ -6151,13 +3619,10 @@ export default function PaymentPage() {
                                   type="text"
                                   placeholder="3 or 4 digits"
                                   value={cvv}
-                                  onFocus={() => setActiveCardField("cvv")}
                                   onChange={(event) => {
-                                    setCvv(
-                                      event.target.value
-                                        .replace(/\D/g, "")
-                                        .slice(0, 4)
-                                    )
+                                    if (event.target.value.length <= 4) {
+                                      setCvv(event.target.value)
+                                    }
                                   }}
                                 />
                                 <InputRightElement>
@@ -6297,13 +3762,7 @@ export default function PaymentPage() {
                             </Label>
                             <Listbox
                               value={accountType}
-                              onChange={(value) => {
-                                setAccountType(value)
-                                setBankFieldTouched((current) => ({
-                                  ...current,
-                                  accountType: true,
-                                }))
-                              }}
+                              onChange={setAccountType}
                             >
                               <ListboxButton placeholder="Select" />
                               <ListboxOptions>
@@ -6329,22 +3788,9 @@ export default function PaymentPage() {
                               placeholder="John Doe"
                               value={accountHolderName}
                               onChange={(event) =>
-                                setAccountHolderName(
-                                  event.target.value.replace(/[^A-Za-z ]/g, "")
-                                )
-                              }
-                              onBlur={() =>
-                                setBankFieldTouched((current) => ({
-                                  ...current,
-                                  accountHolderName: true,
-                                }))
+                                setAccountHolderName(event.target.value)
                               }
                             />
-                            {shouldShowBankFieldError("accountHolderName") ? (
-                              <span className="block text-xs leading-5 text-error-500">
-                                {bankFieldErrors.accountHolderName}
-                              </span>
-                            ) : null}
                           </div>
 
                           <div className="space-y-1.5">
@@ -6360,24 +3806,9 @@ export default function PaymentPage() {
                               placeholder="xxxx-xxxx-xx"
                               value={bankRoutingNumber}
                               onChange={(event) =>
-                                setBankRoutingNumber(
-                                  event.target.value
-                                    .replace(/\D/g, "")
-                                    .slice(0, 9)
-                                )
-                              }
-                              onBlur={() =>
-                                setBankFieldTouched((current) => ({
-                                  ...current,
-                                  bankRoutingNumber: true,
-                                }))
+                                setBankRoutingNumber(event.target.value)
                               }
                             />
-                            {shouldShowBankFieldError("bankRoutingNumber") ? (
-                              <span className="block text-xs leading-5 text-error-500">
-                                {bankFieldErrors.bankRoutingNumber}
-                              </span>
-                            ) : null}
                           </div>
 
                           <div className="grid grid-cols-2 gap-x-3">
@@ -6394,24 +3825,9 @@ export default function PaymentPage() {
                                 placeholder="Up to 17 digits"
                                 value={accountNumber}
                                 onChange={(event) =>
-                                  setAccountNumber(
-                                    event.target.value
-                                      .replace(/\D/g, "")
-                                      .slice(0, 17)
-                                  )
-                                }
-                                onBlur={() =>
-                                  setBankFieldTouched((current) => ({
-                                    ...current,
-                                    accountNumber: true,
-                                  }))
+                                  setAccountNumber(event.target.value)
                                 }
                               />
-                              {shouldShowBankFieldError("accountNumber") ? (
-                                <span className="block text-xs leading-5 text-error-500">
-                                  {bankFieldErrors.accountNumber}
-                                </span>
-                              ) : null}
                             </div>
 
                             <div className="space-y-1.5">
@@ -6427,26 +3843,9 @@ export default function PaymentPage() {
                                 placeholder="Up to 17 digits"
                                 value={confirmAccountNumber}
                                 onChange={(event) =>
-                                  setConfirmAccountNumber(
-                                    event.target.value
-                                      .replace(/\D/g, "")
-                                      .slice(0, 17)
-                                  )
-                                }
-                                onBlur={() =>
-                                  setBankFieldTouched((current) => ({
-                                    ...current,
-                                    confirmAccountNumber: true,
-                                  }))
+                                  setConfirmAccountNumber(event.target.value)
                                 }
                               />
-                              {shouldShowBankFieldError(
-                                "confirmAccountNumber"
-                              ) ? (
-                                <span className="block text-xs leading-5 text-error-500">
-                                  {bankFieldErrors.confirmAccountNumber}
-                                </span>
-                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -6693,7 +4092,7 @@ export default function PaymentPage() {
                         <div className="grid mt-5">
                           <Button
                             onClick={handleSubmitOrder}
-                            disabled={isSubmitOrderDisabled}
+                            disabled={isProcessing}
                           >
                             {isProcessing ? "Loading..." : "Review your order"}
                           </Button>
@@ -6888,7 +4287,7 @@ export default function PaymentPage() {
                       <div className="grid mt-5">
                         <Button
                           onClick={handleSubmitOrder}
-                          disabled={isSubmitOrderDisabled}
+                          disabled={isProcessing}
                         >
                           {isProcessing ? "Loading..." : "Review your order"}
                         </Button>
@@ -6926,62 +4325,10 @@ export default function PaymentPage() {
                   </>
                 )}
               </div>
-              {!isTalentCheckout &&
-              paymentMethod === "item-0" &&
-              fullPaymentMethods.length < 1 ? (
-                <div className="mt-8 flex justify-center">
-                  <CreditCardPreview
-                    cardNumber={cardNumber}
-                    cardName={cardName}
-                    expiry={expirationDate}
-                    cvv={cvv}
-                    isBack={showCardBackPreview}
-                  />
-                </div>
-              ) : null}
             </div>
           </div>
         </div>
       </div>
-      </div>
-
-      <Dialog
-        open={isOtherCheckoutTabOpen}
-        onOpenChange={setIsOtherCheckoutTabOpen}
-      >
-        <DialogContent className="max-w-[480px] p-6">
-          <h2 className="text-lg font-semibold text-dark-blue-400">
-            Checkout open in another tab
-          </h2>
-          <p className="mt-3 text-sm leading-5 text-gray-500">
-            You have checkout open in another tab. Please complete or close
-            that session before continuing.
-          </p>
-          <div className="mt-6 flex justify-end">
-            <Button onClick={() => setIsOtherCheckoutTabOpen(false)}>
-              Continue Here
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isSessionExpiredDialogOpen}
-        onOpenChange={setIsSessionExpiredDialogOpen}
-      >
-        <DialogContent className="max-w-[480px] p-6">
-          <h2 className="text-lg font-semibold text-dark-blue-400">
-            Your session has expired
-          </h2>
-          <p className="mt-3 text-sm leading-5 text-gray-500">
-            Please log in again to continue. Your bank account details were
-            cleared for security.
-          </p>
-          <div className="mt-6 flex justify-end">
-            <Button onClick={() => router.push("/login")}>Log In</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+    </div>
   )
 }
