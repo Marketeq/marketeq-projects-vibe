@@ -15,9 +15,16 @@ import {
   ArrowLeft,
   ChevronDown,
   Edit03,
+  Globe,
   Lock,
   MoreHorizontal,
   Plus,
+  Search,
+  Star,
+  SwitchHorizontal01,
+  Trash03,
+  UserCircle,
+  X,
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
 import type { UserProfile } from "@/types/user"
@@ -50,15 +57,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DisclosureContent,
   DisclosureTrigger,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  Input,
   Listbox,
   ListboxButton,
   ListboxOption,
@@ -73,6 +82,10 @@ import {
   Tabs,
   TabsContent,
   TabsList,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 
 const UserGroup = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => (
@@ -190,6 +203,167 @@ type PaymentPlanOption = {
   value: string
 }
 
+type CheckoutTeamMember = {
+  id: string
+  name: string
+  handle: string
+  role: string
+  phases: string
+  experience: string
+  location: string
+  rate: string
+  status: "Confirmed" | "Pending Invite" | "Unassigned"
+  avatarSrc: string
+  source?: "All" | "Favorites" | "Talent Network"
+  favorite?: boolean
+}
+
+const initialCheckoutTeamMembers: CheckoutTeamMember[] = [
+  {
+    id: "chris-1",
+    name: "Chris",
+    handle: "@uxdesignmaster",
+    role: "Product Manager",
+    phases: "4 Phases",
+    experience: "Guru",
+    location: "United States",
+    rate: "$500/hr",
+    status: "Confirmed",
+    avatarSrc: "/man.jpg",
+  },
+  {
+    id: "parth-1",
+    name: "Parth",
+    handle: "@topanalyst",
+    role: "Business Analyst",
+    phases: "Research",
+    experience: "Junior",
+    location: "United States",
+    rate: "$30/hr",
+    status: "Confirmed",
+    avatarSrc: "/man.jpg",
+  },
+  {
+    id: "dheeraj-1",
+    name: "Dheeraj",
+    handle: "@topfrontend",
+    role: "Front-End Developer",
+    phases: "Front-End",
+    experience: "Junior",
+    location: "India",
+    rate: "$130/hr",
+    status: "Pending Invite",
+    avatarSrc: "/man.jpg",
+  },
+  {
+    id: "abdul-1",
+    name: "Abdul",
+    handle: "@topfullstack",
+    role: "Full Stack Developer",
+    phases: "Back-End",
+    experience: "Medior",
+    location: "Pakistan",
+    rate: "$55/hr",
+    status: "Pending Invite",
+    avatarSrc: "/man.jpg",
+  },
+  {
+    id: "waseem-1",
+    name: "Waseem",
+    handle: "@topbackend",
+    role: "Full Stack Developer",
+    phases: "Back-End",
+    experience: "Senior",
+    location: "India",
+    rate: "$80/hr",
+    status: "Pending Invite",
+    avatarSrc: "/man.jpg",
+  },
+  {
+    id: "andrew-1",
+    name: "Andrew",
+    handle: "@topqa",
+    role: "QA Test Engineer",
+    phases: "Testing",
+    experience: "Junior",
+    location: "United States",
+    rate: "$195/hr",
+    status: "Pending Invite",
+    avatarSrc: "/man.jpg",
+  },
+  {
+    id: "unassigned-1",
+    name: "Unassigned Member",
+    handle: "",
+    role: "UX Researcher",
+    phases: "2 Phases",
+    experience: "Medior",
+    location: "United States",
+    rate: "$30/hr",
+    status: "Unassigned",
+    avatarSrc: "",
+  },
+]
+
+const replacementTeamMembers: CheckoutTeamMember[] = [
+  {
+    id: "christopher",
+    name: "Christopher",
+    handle: "@topdesigner241",
+    role: "UX Researcher",
+    phases: "4 Phases",
+    experience: "Junior",
+    location: "United States",
+    rate: "$500/hr",
+    status: "Confirmed",
+    avatarSrc: "/man.jpg",
+    source: "All",
+    favorite: true,
+  },
+  {
+    id: "sofia",
+    name: "Sofia",
+    handle: "@sofiaproduct",
+    role: "Product Designer",
+    phases: "4 Phases",
+    experience: "Senior",
+    location: "United States",
+    rate: "$650/hr",
+    status: "Confirmed",
+    avatarSrc: "/man.jpg",
+    source: "Favorites",
+    favorite: true,
+  },
+  {
+    id: "daniel",
+    name: "Daniel",
+    handle: "@danielux",
+    role: "UX Researcher",
+    phases: "3 Phases",
+    experience: "Medior",
+    location: "United States",
+    rate: "$575/hr",
+    status: "Confirmed",
+    avatarSrc: "/man.jpg",
+    source: "Talent Network",
+    favorite: false,
+  },
+  {
+    id: "amara",
+    name: "Amara",
+    handle: "@amararesearch",
+    role: "UX Researcher",
+    phases: "2 Phases",
+    experience: "Junior",
+    location: "United States",
+    rate: "$500/hr",
+    status: "Confirmed",
+    avatarSrc: "/man.jpg",
+    source: "Talent Network",
+    favorite: false,
+  },
+]
+
 const safeDecodeSlug = (value: string): string => {
   try {
     return decodeURIComponent(value)
@@ -230,6 +404,30 @@ export default function CheckoutPage() {
     searchParams.get("duration") || "Ongoing"
   )
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
+  const [checkoutExitDialog, setCheckoutExitDialog] = React.useState<
+    "edit-scope" | "add-task" | null
+  >(null)
+  const [teamMemberDialog, setTeamMemberDialog] = React.useState<{
+    action: "profile" | "replace" | "remove"
+    memberId: string
+    memberName: string
+    memberHandle: string
+    memberRole: string
+    memberExperience: string
+    memberLocation: string
+    memberRate: string
+    memberAvatarSrc: string
+  } | null>(null)
+  const [teamMembers, setTeamMembers] = React.useState<CheckoutTeamMember[]>(
+    initialCheckoutTeamMembers
+  )
+  const [selectedReplacementId, setSelectedReplacementId] = React.useState<
+    string | null
+  >(null)
+  const [replacementFilter, setReplacementFilter] = React.useState<
+    "All" | "Favorites" | "Talent Network"
+  >("All")
+  const [replacementSearch, setReplacementSearch] = React.useState("")
 
   React.useEffect(() => {
     setSelectedRateValue(searchParams.get("rate") || "web-development")
@@ -393,6 +591,11 @@ export default function CheckoutPage() {
           ? "Estimated Monthly Cost"
           : "Estimated Total Cost"
   const formattedDueTodayTotal = `$${Math.round(dueTodayTotal).toLocaleString()}`
+  const projectPlanningPath = `/project-details/${safeSlugSegment}`
+
+  const preventCheckoutDialogDismiss = (event: Event) => {
+    event.preventDefault()
+  }
 
   React.useEffect(() => {
     if (
@@ -445,6 +648,205 @@ export default function CheckoutPage() {
     },
     [pathname, router, searchParams]
   )
+
+  const leaveCheckoutForProjectPlanning = React.useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(addOnStateStorageKey)
+    }
+    router.push(projectPlanningPath)
+  }, [addOnStateStorageKey, projectPlanningPath, router])
+
+  const continueToPaymentDetails = React.useCallback(() => {
+    if (isTalentCheckout) {
+      const nextSearchParams = new URLSearchParams(searchParams.toString())
+      nextSearchParams.set("rate", selectedRateValue)
+      nextSearchParams.set("schedule", selectedSchedule)
+      nextSearchParams.set("duration", selectedDuration)
+      nextSearchParams.set("paymentPlan", selectedTalentPaymentPlanId)
+      router.push(
+        `${basePath}/${safeSlugSegment}/payment?${nextSearchParams.toString()}`
+      )
+      return
+    }
+
+    router.push(`${basePath}/${safeSlugSegment}/payment`)
+  }, [
+    basePath,
+    isTalentCheckout,
+    router,
+    safeSlugSegment,
+    searchParams,
+    selectedDuration,
+    selectedRateValue,
+    selectedSchedule,
+    selectedTalentPaymentPlanId,
+  ])
+
+  const closeTeamMemberDialog = () => {
+    setTeamMemberDialog(null)
+    setSelectedReplacementId(null)
+    setReplacementFilter("All")
+    setReplacementSearch("")
+  }
+
+  const selectedReplacementMember = replacementTeamMembers.find(
+    (member) => member.id === selectedReplacementId
+  )
+  const filteredReplacementMembers = replacementTeamMembers.filter((member) => {
+    const matchesFilter =
+      replacementFilter === "All" ||
+      (replacementFilter === "Favorites" && member.favorite) ||
+      member.source === replacementFilter
+    const normalizedSearch = replacementSearch.trim().toLowerCase()
+    const matchesSearch =
+      normalizedSearch === "" ||
+      [member.name, member.handle, member.role, member.experience, member.location]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearch)
+
+    return matchesFilter && matchesSearch
+  })
+
+  const replaceTeamMember = () => {
+    if (!teamMemberDialog || !selectedReplacementMember) return
+
+    setTeamMembers((currentMembers) =>
+      currentMembers.map((member) =>
+        member.id === teamMemberDialog.memberId
+          ? {
+              ...selectedReplacementMember,
+              id: member.id,
+              phases: member.phases,
+              status: member.status,
+            }
+          : member
+      )
+    )
+    closeTeamMemberDialog()
+  }
+
+  const removeTeamMember = () => {
+    if (!teamMemberDialog) return
+
+    setTeamMembers((currentMembers) =>
+      currentMembers.filter((member) => member.id !== teamMemberDialog.memberId)
+    )
+    closeTeamMemberDialog()
+  }
+
+  const renderTeamMemberActions = (member: CheckoutTeamMember) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          aria-label={`Actions for ${member.name}`}
+          className="w-[27px] h-[23px]"
+          variant="ghost"
+          visual="gray"
+        >
+          <MoreHorizontal className="size-[15px]" />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[240px]">
+        <DropdownMenuItem
+          className="gap-x-3"
+          onSelect={() =>
+            setTeamMemberDialog({
+              action: "profile",
+              memberId: member.id,
+              memberName: member.name,
+              memberHandle: member.handle,
+              memberRole: member.role,
+              memberExperience: member.experience,
+              memberLocation: member.location,
+              memberRate: member.rate,
+              memberAvatarSrc: member.avatarSrc,
+            })
+          }
+        >
+          <UserCircle className="size-5 text-gray-500" />
+          View profile
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-x-3"
+          onSelect={() =>
+            setTeamMemberDialog({
+              action: "replace",
+              memberId: member.id,
+              memberName: member.name,
+              memberHandle: member.handle,
+              memberRole: member.role,
+              memberExperience: member.experience,
+              memberLocation: member.location,
+              memberRate: member.rate,
+              memberAvatarSrc: member.avatarSrc,
+            })
+          }
+        >
+          <SwitchHorizontal01 className="size-5 text-gray-500" />
+          Replace Member
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="gap-x-3"
+          visual="destructive"
+          onSelect={() =>
+            setTeamMemberDialog({
+              action: "remove",
+              memberId: member.id,
+              memberName: member.name,
+              memberHandle: member.handle,
+              memberRole: member.role,
+              memberExperience: member.experience,
+              memberLocation: member.location,
+              memberRate: member.rate,
+              memberAvatarSrc: member.avatarSrc,
+            })
+          }
+        >
+          <Trash03 className="size-5" />
+          Remove Member
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  const renderTeamMemberStatus = (member: CheckoutTeamMember) => {
+    const statusBadge =
+      member.status === "Confirmed" ? (
+        <Badge visual="success">{member.status}</Badge>
+      ) : member.status === "Pending Invite" ? (
+        <Badge className="bg-warning-50 text-warning-700 hover:bg-warning-50">
+          {member.status}
+        </Badge>
+      ) : (
+        <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">
+          {member.status}
+        </Badge>
+      )
+
+    if (member.status === "Confirmed") return statusBadge
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className="inline-flex focus-visible:outline-none"
+              type="button"
+            >
+              {statusBadge}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[360px] bg-dark-blue-400 px-5 py-3 text-sm leading-6 text-white">
+            {member.status === "Pending Invite"
+              ? "This user is currently pending, but they can be replaced at any time if they don't accept your invite."
+              : "This user can be assigned at any time, their hourly rate will not affect your initial payment."}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
 
   const toggleAddOn = (addOnId: string, enabled?: boolean) => {
     setSelectedAddOnIds((current) => {
@@ -831,7 +1233,9 @@ export default function CheckoutPage() {
                         <div className="mt-2 inline-flex items-center gap-x-2">
                           <UserGroup />
                           <span className="text-xs leading-5 font-semibold text-primary-500">
-                            8 team members
+                            {teamMembers.length > 0
+                              ? `${teamMembers.length} team members`
+                              : "Team details unavailable"}
                           </span>
                         </div>
 
@@ -876,43 +1280,14 @@ export default function CheckoutPage() {
                           </DisclosureTrigger>
                         </TabsList>
 
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outlined"
-                              className="bg-white text-xs leading-5"
-                            >
-                              <Edit03 className="size-[15px] text-gray-500" />{" "}
-                              Edit Scope
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>
-                                Are you sure you want to leave checkout to edit
-                                the scope?
-                              </DialogTitle>
-                            </DialogHeader>
-                            <DialogFooter className="mt-8">
-                              <DialogClose asChild>
-                                <Button
-                                  variant="outlined"
-                                  visual="gray"
-                                  onClick={() =>
-                                    router.push(
-                                      `/project-details/${safeSlugSegment}`
-                                    )
-                                  }
-                                >
-                                  Edit Scope
-                                </Button>
-                              </DialogClose>
-                              <DialogClose asChild>
-                                <Button>Continue Checkout</Button>
-                              </DialogClose>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                        <Button
+                          variant="outlined"
+                          className="bg-white text-xs leading-5"
+                          onClick={() => setCheckoutExitDialog("edit-scope")}
+                        >
+                          <Edit03 className="size-[15px] text-gray-500" /> Edit
+                          Scope
+                        </Button>
                       </div>
                       <TabsContent value="Team Members">
                         <div className="rounded-lg mt-6 bg-white border border-gray-200 overflow-hidden">
@@ -942,226 +1317,86 @@ export default function CheckoutPage() {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              <TableRow className="hover:bg-white">
-                                <TableCell className="py-4 px-6">
-                                  <span className="inline-flex items-start gap-x-2">
-                                    <Avatar size="sm">
-                                      <AvatarImage src="/man.jpg" alt="Man" />
-                                      <AvatarFallback>M</AvatarFallback>
-                                    </Avatar>
-
-                                    <span className="inline-flex flex-col">
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                        Vivek
-                                      </span>
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                        @topdesigner321
-                                      </span>
-                                    </span>
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge
-                                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
-                                    visual="gray"
-                                    size="lg"
+                              {teamMembers.length > 0 ? (
+                                teamMembers.map((member) => (
+                                  <TableRow
+                                    key={member.id}
+                                    className="hover:bg-white"
                                   >
-                                    4 Phases
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Dropdown defaultValue="Junior" />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <CountriesCombobox
-                                    triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
-                                    defaultValue="United States"
-                                  />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
-                                    $500/hr
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge visual="success">Confirmed</Badge>
-                                </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <span className="inline-flex items-start gap-x-2">
+                                        <Avatar size="sm">
+                                          {member.avatarSrc ? (
+                                            <AvatarImage
+                                              src={member.avatarSrc}
+                                              alt={member.name}
+                                            />
+                                          ) : null}
+                                          <AvatarFallback>
+                                            {member.name.slice(0, 1)}
+                                          </AvatarFallback>
+                                        </Avatar>
 
-                                <TableCell className="py-4 px-6">
-                                  <IconButton
-                                    className="w-[27px] h-[23px]"
-                                    variant="ghost"
-                                    visual="gray"
-                                  >
-                                    <MoreHorizontal className="size-[15px]" />
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
-                              <TableRow className="hover:bg-white">
-                                <TableCell className="py-4 px-6">
-                                  <span className="inline-flex items-start gap-x-2">
-                                    <Avatar size="sm">
-                                      <AvatarImage src="/man.jpg" alt="Man" />
-                                      <AvatarFallback>M</AvatarFallback>
-                                    </Avatar>
-
-                                    <span className="inline-flex flex-col">
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                        Vivek
+                                        <span className="inline-flex flex-col">
+                                          <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                            {member.name}
+                                          </span>
+                                          {member.handle ? (
+                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                              {member.handle}
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                              {member.role}
+                                            </span>
+                                          )}
+                                        </span>
                                       </span>
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                        @topdesigner321
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <Badge
+                                        className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                                        visual="gray"
+                                        size="lg"
+                                      >
+                                        {member.phases}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <Dropdown
+                                        defaultValue={member.experience}
+                                      />
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <CountriesCombobox
+                                        triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
+                                        defaultValue={member.location}
+                                      />
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
+                                        {member.rate}
                                       </span>
-                                    </span>
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge
-                                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    4 Phases
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Dropdown defaultValue="Junior" />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <CountriesCombobox
-                                    triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
-                                    defaultValue="United States"
-                                  />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
-                                    $500/hr
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge visual="success">Confirmed</Badge>
-                                </TableCell>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      {renderTeamMemberStatus(member)}
+                                    </TableCell>
 
-                                <TableCell className="py-4 px-6">
-                                  <IconButton
-                                    className="w-[27px] h-[23px]"
-                                    variant="ghost"
-                                    visual="gray"
+                                    <TableCell className="py-4 px-6">
+                                      {renderTeamMemberActions(member)}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              ) : (
+                                <TableRow className="hover:bg-white">
+                                  <TableCell
+                                    className="py-10 px-6 text-center text-sm text-gray-500"
+                                    colSpan={7}
                                   >
-                                    <MoreHorizontal className="size-[15px]" />
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
-                              <TableRow className="hover:bg-white">
-                                <TableCell className="py-4 px-6">
-                                  <span className="inline-flex items-start gap-x-2">
-                                    <Avatar size="sm">
-                                      <AvatarImage src="/man.jpg" alt="Man" />
-                                      <AvatarFallback>M</AvatarFallback>
-                                    </Avatar>
-
-                                    <span className="inline-flex flex-col">
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                        Vivek
-                                      </span>
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                        @topdesigner321
-                                      </span>
-                                    </span>
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge
-                                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    4 Phases
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Dropdown defaultValue="Junior" />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <CountriesCombobox
-                                    triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
-                                    defaultValue="United States"
-                                  />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
-                                    $500/hr
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge visual="success">Confirmed</Badge>
-                                </TableCell>
-
-                                <TableCell className="py-4 px-6">
-                                  <IconButton
-                                    className="w-[27px] h-[23px]"
-                                    variant="ghost"
-                                    visual="gray"
-                                  >
-                                    <MoreHorizontal className="size-[15px]" />
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
-                              <TableRow className="hover:bg-white">
-                                <TableCell className="py-4 px-6">
-                                  <span className="inline-flex items-start gap-x-2">
-                                    <Avatar size="sm">
-                                      <AvatarImage src="/man.jpg" alt="Man" />
-                                      <AvatarFallback>M</AvatarFallback>
-                                    </Avatar>
-
-                                    <span className="inline-flex flex-col">
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                        Vivek
-                                      </span>
-                                      <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                        @topdesigner321
-                                      </span>
-                                    </span>
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge
-                                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    4 Phases
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Dropdown defaultValue="Junior" />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <CountriesCombobox
-                                    triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
-                                    defaultValue="United States"
-                                  />
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
-                                    $500/hr
-                                  </span>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge visual="success">Confirmed</Badge>
-                                </TableCell>
-
-                                <TableCell className="py-4 px-6">
-                                  <IconButton
-                                    className="w-[27px] h-[23px]"
-                                    variant="ghost"
-                                    visual="gray"
-                                  >
-                                    <MoreHorizontal className="size-[15px]" />
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
+                                    No team members selected.
+                                  </TableCell>
+                                </TableRow>
+                              )}
                             </TableBody>
                           </Table>
                         </div>
@@ -1379,9 +1614,15 @@ export default function CheckoutPage() {
                                     </span>
                                   </div>
 
-                                  <Button visual="gray" variant="outlined">
+                                  <Button
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() =>
+                                      setCheckoutExitDialog("add-task")
+                                    }
+                                  >
                                     <Plus className="size-[15px]" />
-                                    Add task
+                                    Add Task
                                   </Button>
                                 </div>
                               </div>
@@ -1600,9 +1841,15 @@ export default function CheckoutPage() {
                                     </span>
                                   </div>
 
-                                  <Button visual="gray" variant="outlined">
+                                  <Button
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() =>
+                                      setCheckoutExitDialog("add-task")
+                                    }
+                                  >
                                     <Plus className="size-[15px]" />
-                                    Add task
+                                    Add Task
                                   </Button>
                                 </div>
                               </div>
@@ -1817,9 +2064,15 @@ export default function CheckoutPage() {
                                     </span>
                                   </div>
 
-                                  <Button visual="gray" variant="outlined">
+                                  <Button
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() =>
+                                      setCheckoutExitDialog("add-task")
+                                    }
+                                  >
                                     <Plus className="size-[15px]" />
-                                    Add task
+                                    Add Task
                                   </Button>
                                 </div>
                               </div>
@@ -2218,7 +2471,15 @@ export default function CheckoutPage() {
                       </li>
                       <li className="flex items-center justify-between">
                         <span className="text-xs font-light text-dark-blue-400">
-                          Project cost
+                          Estimated tax *
+                        </span>
+                        <span className="text-xs text-dark-blue-400">
+                          $0.00
+                        </span>
+                      </li>
+                      <li className="flex items-center justify-between">
+                        <span className="text-xs font-light text-dark-blue-400">
+                          Balance applied
                         </span>
                         <span className="text-xs text-dark-blue-400">
                           $0.00
@@ -2229,7 +2490,7 @@ export default function CheckoutPage() {
                     <ul className="pt-4 mt-4 space-y-2 border-t border-gray-200">
                       <li className="flex items-center justify-between">
                         <span className="text-xs font-light text-dark-blue-400">
-                          Project cost
+                          Total amount to be paid
                         </span>
                         <span className="text-base font-bold leading-none text-dark-blue-400">
                           $94,000
@@ -2243,29 +2504,9 @@ export default function CheckoutPage() {
                   <Button
                     className="w-full"
                     size="md"
-                    onClick={() => {
-                      if (isTalentCheckout) {
-                        const nextSearchParams = new URLSearchParams(
-                          searchParams.toString()
-                        )
-                        nextSearchParams.set("rate", selectedRateValue)
-                        nextSearchParams.set("schedule", selectedSchedule)
-                        nextSearchParams.set("duration", selectedDuration)
-                        nextSearchParams.set(
-                          "paymentPlan",
-                          selectedTalentPaymentPlanId
-                        )
-                        router.push(
-                          `${basePath}/${safeSlugSegment}/payment?${nextSearchParams.toString()}`
-                        )
-                        return
-                      }
-                      router.push(`${basePath}/${safeSlugSegment}/payment`)
-                    }}
+                    onClick={continueToPaymentDetails}
                   >
-                    {isTalentCheckout
-                      ? "Proceed to Payment"
-                      : "Proceed to Payment"}
+                    {isTalentCheckout ? "Proceed to Payment" : "Continue"}
                   </Button>
                 </div>
 
@@ -2312,6 +2553,369 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
+      {!isTalentCheckout ? (
+        <Dialog
+          open={checkoutExitDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) return
+            setCheckoutExitDialog((current) => current ?? "edit-scope")
+          }}
+        >
+          <DialogContent
+            className="w-[360px]"
+            onEscapeKeyDown={preventCheckoutDialogDismiss}
+            onInteractOutside={preventCheckoutDialogDismiss}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                {checkoutExitDialog === "add-task"
+                  ? "Are you sure you want to leave checkout to add a task?"
+                  : "Are you sure you want to leave checkout to edit the scope?"}
+              </DialogTitle>
+            </DialogHeader>
+            <DialogFooter className="mt-8">
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={leaveCheckoutForProjectPlanning}
+              >
+                {checkoutExitDialog === "add-task" ? "Add Task" : "Edit Scope"}
+              </Button>
+              <Button onClick={() => setCheckoutExitDialog(null)}>
+                Continue Checkout
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {!isTalentCheckout ? (
+        <>
+          <Dialog
+            open={teamMemberDialog?.action === "profile"}
+            onOpenChange={(open) => {
+              if (!open) closeTeamMemberDialog()
+            }}
+          >
+            <DialogContent className="w-[420px]">
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <DialogTitle>Team Member Profile</DialogTitle>
+                  <DialogClose asChild>
+                    <IconButton variant="ghost" visual="gray">
+                      <X className="size-5" />
+                    </IconButton>
+                  </DialogClose>
+                </div>
+              </DialogHeader>
+
+              <div className="mt-5 flex items-start gap-x-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <Avatar size="lg">
+                  {teamMemberDialog?.memberAvatarSrc ? (
+                    <AvatarImage
+                      src={teamMemberDialog.memberAvatarSrc}
+                      alt={teamMemberDialog.memberName}
+                    />
+                  ) : null}
+                  <AvatarFallback>
+                    {(teamMemberDialog?.memberName ?? "T").slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-auto">
+                  <h3 className="text-sm font-semibold leading-5 text-dark-blue-400">
+                    {teamMemberDialog?.memberName ?? "Team Member"}
+                  </h3>
+                  {teamMemberDialog?.memberHandle ? (
+                    <p className="text-sm leading-5 text-gray-500">
+                      {teamMemberDialog.memberHandle}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-sm leading-5 text-dark-blue-400">
+                    {teamMemberDialog?.memberRole ?? "Project contributor"}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge visual="gray">
+                      {teamMemberDialog?.memberExperience ?? "Junior"}
+                    </Badge>
+                    <Badge visual="gray">
+                      {teamMemberDialog?.memberLocation ?? "United States"}
+                    </Badge>
+                    <Badge visual="gray">
+                      {teamMemberDialog?.memberRate ?? "$30/hr"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={teamMemberDialog?.action === "replace"}
+            onOpenChange={(open) => {
+              if (!open) closeTeamMemberDialog()
+            }}
+          >
+            <DialogContent className="max-w-[558px]">
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <DialogTitle>Replace Team Member</DialogTitle>
+                  <DialogClose asChild>
+                    <IconButton variant="ghost" visual="gray">
+                      <X className="size-5" />
+                    </IconButton>
+                  </DialogClose>
+                </div>
+              </DialogHeader>
+
+              <div className="border-2 mt-5 border-gray-300 bg-gray-50 rounded-lg min-h-[72px] flex items-center">
+                <div className="flex items-center px-6 py-4 flex-auto">
+                  <span className="inline-flex items-start gap-x-2">
+                    <Avatar size="sm">
+                      <AvatarImage
+                        src={teamMemberDialog?.memberAvatarSrc ?? "/man.jpg"}
+                        alt={teamMemberDialog?.memberName ?? "Team member"}
+                      />
+                      <AvatarFallback>
+                        {(teamMemberDialog?.memberName ?? "T").slice(0, 1)}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <span className="inline-flex flex-col">
+                      <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                        {teamMemberDialog?.memberName ?? "Vivek"}
+                      </span>
+                      <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                        {teamMemberDialog?.memberRole ?? "UX Researcher"}
+                      </span>
+                    </span>
+                  </span>
+                </div>
+                <div className="flex items-center px-3 py-4">
+                  <Badge
+                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                    visual="gray"
+                  >
+                    {teamMemberDialog?.memberExperience ?? "Junior"}
+                  </Badge>
+                </div>
+                <div className="flex items-center px-3 py-4">
+                  <Badge
+                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                    visual="gray"
+                  >
+                    {teamMemberDialog?.memberLocation === "United States"
+                      ? "USA"
+                      : (teamMemberDialog?.memberLocation ?? "USA")}
+                  </Badge>
+                </div>
+                <div className="flex items-center px-6 py-4">
+                  <span className="whitespace-nowrap inline-block text-sm leading-5 font-semibold text-dark-blue-400">
+                    {teamMemberDialog?.memberRate ?? "$500/hr"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <h2 className="text-sm leading-5 font-semibold text-dark-blue-400">
+                  Select a new team member to replace{" "}
+                  {teamMemberDialog?.memberHandle ?? "@topdesigner321"}
+                </h2>
+
+                <div className="mt-3 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden">
+                  <div className="flex h-12 items-center justify-between border-b border-gray-200 px-4">
+                    <div className="flex items-center gap-x-4 text-sm font-medium text-dark-blue-400">
+                      {(["All", "Favorites", "Talent Network"] as const).map(
+                        (filter) => (
+                          <button
+                            key={filter}
+                            className={cn(
+                              "inline-flex h-12 items-center gap-x-1 border-b-2 border-transparent text-sm font-semibold text-gray-500 transition focus-visible:outline-none",
+                              replacementFilter === filter &&
+                                "border-primary-500 text-primary-500"
+                            )}
+                            type="button"
+                            onClick={() => setReplacementFilter(filter)}
+                          >
+                            {filter === "All" ? null : filter === "Favorites" ? (
+                              <Star className="size-4" />
+                            ) : (
+                              <Globe className="size-4" />
+                            )}
+                            {filter}
+                          </button>
+                        )
+                      )}
+                    </div>
+                    <div className="relative flex h-9 w-[180px] items-center">
+                      <Search className="absolute left-2 size-4 text-primary-500" />
+                      <Input
+                        className="h-9 border-0 border-b border-primary-500 bg-transparent pl-8 pr-8 text-sm shadow-none focus-visible:ring-0"
+                        placeholder="Search"
+                        value={replacementSearch}
+                        onChange={(event) =>
+                          setReplacementSearch(event.target.value)
+                        }
+                      />
+                      {replacementSearch ? (
+                        <button
+                          aria-label="Clear replacement search"
+                          className="absolute right-2 text-gray-400"
+                          type="button"
+                          onClick={() => setReplacementSearch("")}
+                        >
+                          <X className="size-4" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-white">
+                        <TableHead className="px-6 py-3">Name</TableHead>
+                        <TableHead className="px-3 py-3">Experience</TableHead>
+                        <TableHead className="px-3 py-3">Country</TableHead>
+                        <TableHead className="px-6 py-3">Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReplacementMembers.length > 0 ? (
+                        filteredReplacementMembers.map((candidate) => (
+                          <TableRow
+                            key={candidate.id}
+                            aria-selected={
+                              selectedReplacementId === candidate.id
+                            }
+                            tabIndex={0}
+                            onClick={() =>
+                              setSelectedReplacementId(candidate.id)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault()
+                                setSelectedReplacementId(candidate.id)
+                              }
+                            }}
+                            className={cn(
+                              "cursor-pointer hover:bg-gray-50 focus-visible:outline-none",
+                              selectedReplacementId === candidate.id &&
+                                "outline outline-2 outline-primary-500 outline-offset-[-2px]"
+                            )}
+                          >
+                            <TableCell className="px-6 py-3">
+                              <span className="inline-flex items-start gap-x-2">
+                                <Avatar size="sm">
+                                  <AvatarImage
+                                    src={candidate.avatarSrc}
+                                    alt={candidate.name}
+                                  />
+                                  <AvatarFallback>
+                                    {candidate.name.slice(0, 1)}
+                                  </AvatarFallback>
+                                </Avatar>
+
+                                <span className="inline-flex flex-col">
+                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
+                                    {candidate.name}
+                                  </span>
+                                  <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
+                                    {candidate.role}
+                                  </span>
+                                </span>
+                              </span>
+                            </TableCell>
+                            <TableCell className="px-3 py-3">
+                              <Badge
+                                className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                                visual="gray"
+                              >
+                                {candidate.experience}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-3 py-3">
+                              <Badge
+                                className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                                visual="gray"
+                              >
+                                {candidate.location === "United States"
+                                  ? "USA"
+                                  : candidate.location}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-6 py-3">
+                              <span className="whitespace-nowrap inline-block text-sm leading-5 font-semibold text-dark-blue-400">
+                                {candidate.rate}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow className="hover:bg-white">
+                          <TableCell
+                            className="px-6 py-8 text-center text-sm text-gray-500"
+                            colSpan={4}
+                          >
+                            No matching team members.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <DialogFooter className="mt-5">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={closeTeamMemberDialog}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!selectedReplacementMember}
+                  onClick={replaceTeamMember}
+                >
+                  Replace
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={teamMemberDialog?.action === "remove"}
+            onOpenChange={(open) => {
+              if (!open) closeTeamMemberDialog()
+            }}
+          >
+            <DialogContent className="w-[360px]">
+              <DialogHeader>
+                <DialogTitle>Remove Team Member?</DialogTitle>
+              </DialogHeader>
+
+              <p className="mt-2 text-sm leading-5 text-gray-500">
+                Are you sure you want to remove{" "}
+                {teamMemberDialog?.memberName ?? "Vivek"}{" "}
+                {teamMemberDialog?.memberRole
+                  ? `(${teamMemberDialog.memberRole})`
+                  : ""}{" "}
+                from the team?
+              </p>
+
+              <DialogFooter className="mt-8">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={closeTeamMemberDialog}
+                >
+                  Cancel
+                </Button>
+                <Button visual="error" onClick={removeTeamMember}>
+                  Yes, Remove
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      ) : null}
       {isTalentCheckout ? (
         <OfferDialog
           open={isEditOfferOpen}
