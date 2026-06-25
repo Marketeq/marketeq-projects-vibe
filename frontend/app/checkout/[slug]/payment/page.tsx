@@ -132,7 +132,20 @@ const normalizeGiftCardCode = (value: string): string =>
   value
     .trim()
     .toUpperCase()
-    .replace(/[\s-]+/g, "")
+    .replace(/[^A-Z0-9]/g, "")
+
+const formatGiftCardCode = (value: string): string =>
+  normalizeGiftCardCode(value)
+    .slice(0, 16)
+    .replace(/(.{4})(?=.)/g, "$1-")
+
+const maskGiftCardCode = (code: string): string => `*${code.slice(-4)}`
+
+const giftCardAmounts: Record<string, number> = {
+  A23SDBTREQWTDQAE: 1000,
+  A23SDBTREQWTWEQ2: 2500,
+  A23SDBTREQWT12CD: 2000,
+}
 
 const safeDecodeSlug = (value: string): string => {
   try {
@@ -176,6 +189,11 @@ type NewPaymentMethodOptionValue =
   | "google-pay"
   | "apple-pay"
 
+type AppliedGiftCard = {
+  code: string
+  amount: number
+}
+
 type PaymentPageSnapshot = {
   pay: "AT_ONCE" | "IN_INSTALLMENTS"
   selectedTalentPaymentPlanId: string
@@ -186,6 +204,7 @@ type PaymentPageSnapshot = {
   firstInstallmentMethods: InstallmentPaymentMethod[]
   secondInstallmentMethods: InstallmentPaymentMethod[]
   isWireTransfer: boolean
+  giftCards: AppliedGiftCard[]
 }
 
 const MasterCard01 = (props: React.SVGProps<SVGSVGElement>) => (
@@ -676,7 +695,9 @@ export default function PaymentPage() {
   const [customAmount, setCustomAmount] = React.useState("")
   const [showGiftCard, setShowGiftCard] = React.useState(false)
   const [giftCardInput, setGiftCardInput] = React.useState("")
-  const [giftCards, setGiftCards] = React.useState<string[]>([])
+  const [giftCards, setGiftCards] = React.useState<AppliedGiftCard[]>([])
+  const [giftCardError, setGiftCardError] = React.useState("")
+  const [showAllGiftCards, setShowAllGiftCards] = React.useState(false)
   const [showGiftCardSuccess, setShowGiftCardSuccess] = React.useState(false)
   const [paymentMethod, setPaymentMethod] = React.useState("")
   const [isWireTransfer, setIsWireTransfer] = React.useState(false)
@@ -778,6 +799,19 @@ export default function PaymentPage() {
       if (typeof snapshot.isWireTransfer === "boolean") {
         setIsWireTransfer(snapshot.isWireTransfer)
       }
+
+      if (Array.isArray(snapshot.giftCards)) {
+        setGiftCards(
+          snapshot.giftCards.filter(
+            (card): card is AppliedGiftCard =>
+              typeof card?.code === "string" &&
+              typeof card?.amount === "number"
+          )
+        )
+        if (snapshot.giftCards.length > 0) {
+          setShowGiftCard(true)
+        }
+      }
     } catch {
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(paymentStateStorageKey)
@@ -800,6 +834,7 @@ export default function PaymentPage() {
       firstInstallmentMethods,
       secondInstallmentMethods,
       isWireTransfer,
+      giftCards,
     }
 
     window.sessionStorage.setItem(
@@ -809,6 +844,7 @@ export default function PaymentPage() {
   }, [
     firstInstallmentMethods,
     fullPaymentMethods,
+    giftCards,
     hasHydratedPaymentState,
     hasSplitFullPayment,
     isWireTransfer,
@@ -858,7 +894,16 @@ export default function PaymentPage() {
         : maxApplicableBalance
       : 0
   const remainingAvailableBalance = availableBalance - appliedBalanceAmount
-  const totalAmountToBePaid = Math.max(amountDueNow - appliedBalanceAmount, 0)
+  const totalGiftCardAmount = giftCards.reduce(
+    (total, giftCard) => total + giftCard.amount,
+    0
+  )
+  const totalAmountToBePaid = Math.max(
+    amountDueNow - appliedBalanceAmount - totalGiftCardAmount,
+    0
+  )
+  const normalizedGiftCardInput = normalizeGiftCardCode(giftCardInput)
+  const isGiftCardApplyDisabled = normalizedGiftCardInput.length !== 16
 
   React.useEffect(() => {
     const nextMonth = new Date()
@@ -886,13 +931,48 @@ export default function PaymentPage() {
   const handleGiftCardSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const normalizedGiftCardCode = normalizeGiftCardCode(giftCardInput)
-    if (!normalizedGiftCardCode || giftCards.includes(normalizedGiftCardCode))
-      return
 
-    setGiftCards((prev) => [...prev, normalizedGiftCardCode])
+    if (isGiftCardApplyDisabled) return
+
+    setShowGiftCardSuccess(false)
+
+    if (giftCards.some((giftCard) => giftCard.code === normalizedGiftCardCode)) {
+      setGiftCardError(
+        `Gift Card "${formatGiftCardCode(normalizedGiftCardCode)}" has already been redeemed.`
+      )
+      return
+    }
+
+    const giftCardAmount = giftCardAmounts[normalizedGiftCardCode]
+
+    if (!giftCardAmount) {
+      setGiftCardError(
+        "You have enter an invalid gift card code. Please check the code and try again."
+      )
+      return
+    }
+
+    setGiftCards((prev) => [
+      ...prev,
+      { code: normalizedGiftCardCode, amount: giftCardAmount },
+    ])
     setGiftCardInput("")
+    setGiftCardError("")
     setShowGiftCardSuccess(true)
     setTimeout(() => setShowGiftCardSuccess(false), 5000)
+  }
+
+  const removeGiftCard = (code: string) => {
+    setGiftCards((currentGiftCards) =>
+      currentGiftCards.filter((giftCard) => giftCard.code !== code)
+    )
+    setShowGiftCardSuccess(false)
+  }
+
+  const removeAllGiftCards = () => {
+    setGiftCards([])
+    setShowAllGiftCards(false)
+    setShowGiftCardSuccess(false)
   }
 
   const handleCustomBalanceSubmit = (event: React.FormEvent) => {
@@ -1905,7 +1985,7 @@ export default function PaymentPage() {
               {/* Gift Cards */}
               <div className="mt-6 border-y py-6 border-gray-200">
                 {showGiftCard ? (
-                  <div className="max-w-[477px] p-5 rounded-lg space-y-3 bg-primary-25">
+                  <div className="max-w-[656px] rounded-lg bg-primary-25 p-5">
                     <div className="flex items-center justify-between">
                       <Label size="sm">
                         Redeem a gift card{" "}
@@ -1913,36 +1993,98 @@ export default function PaymentPage() {
                           (dashes not required)
                         </span>
                       </Label>
-                      <Button
-                        variant="link"
-                        visual="gray"
-                        onClick={() => setShowGiftCard(false)}
-                      >
-                        Cancel
-                      </Button>
+                      {giftCards.length > 0 ? (
+                        <RmDialog
+                          title={
+                            giftCards.length > 1
+                              ? "Remove All Gift Cards?"
+                              : "Remove Gift Card?"
+                          }
+                          description={
+                            giftCards.length > 1
+                              ? `Are you sure you want to remove all added gift cards for the amount of ${formatter.format(totalGiftCardAmount)}?`
+                              : `Are you sure you want to remove gift card ending in ${maskGiftCardCode(giftCards[0].code)} for the amount of ${formatter.format(giftCards[0].amount)}?`
+                          }
+                          onRemove={removeAllGiftCards}
+                          trigger={({ isOpen, setIsOpen }) => (
+                            <button
+                              type="button"
+                              onClick={() => setIsOpen(!isOpen)}
+                              className="inline-flex items-center gap-x-2 text-xs font-semibold leading-none text-gray-500"
+                            >
+                              Remove ({giftCards.length})
+                              <Trash03 className="size-[15px]" />
+                            </button>
+                          )}
+                        />
+                      ) : (
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          onClick={() => {
+                            setShowGiftCard(false)
+                            setGiftCardInput("")
+                            setGiftCardError("")
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
                     </div>
 
                     <form
-                      className="flex items-center gap-x-3"
+                      className="mt-3 flex items-center gap-x-3"
                       onSubmit={handleGiftCardSubmit}
                     >
                       <Input
                         className="flex-auto"
+                        placeholder="Enter gift card number"
                         value={giftCardInput}
-                        onChange={(e) => setGiftCardInput(e.target.value)}
+                        aria-invalid={giftCardError ? true : false}
+                        onChange={(e) => {
+                          setGiftCardInput(formatGiftCardCode(e.target.value))
+                          setGiftCardError("")
+                          setShowGiftCardSuccess(false)
+                        }}
                       />
-                      <Button size="lg">Apply</Button>
+                      <Button
+                        className="w-[64px]"
+                        size="lg"
+                        disabled={isGiftCardApplyDisabled}
+                      >
+                        Apply
+                      </Button>
                     </form>
 
-                    {showGiftCardSuccess && giftCards.length > 0 && (
-                      <Alert variant="success" className="mt-3">
+                    {giftCardError ? (
+                      <Alert
+                        variant="error"
+                        className="mt-3 max-w-[420px] items-center p-3"
+                      >
                         <AlertIcon>
-                          <CheckCircle className="size-5" />
+                          <AlertCircle className="size-4" />
                         </AlertIcon>
                         <AlertContent>
-                          <AlertTitle>
-                            Gift Card &quot;{giftCards.at(-1)}&quot; has been
-                            applied.
+                          <AlertTitle className="text-xs leading-5">
+                            {giftCardError}
+                          </AlertTitle>
+                        </AlertContent>
+                      </Alert>
+                    ) : null}
+
+                    {showGiftCardSuccess && giftCards.length > 0 && (
+                      <Alert
+                        variant="success"
+                        className="mt-3 max-w-[420px] items-center p-3"
+                      >
+                        <AlertIcon>
+                          <CheckCircle className="size-4" />
+                        </AlertIcon>
+                        <AlertContent>
+                          <AlertTitle className="text-xs leading-5">
+                            Gift Card &quot;
+                            {formatGiftCardCode(giftCards.at(-1)?.code ?? "")}
+                            &quot; has been applied.
                           </AlertTitle>
                         </AlertContent>
                       </Alert>
@@ -1953,13 +2095,70 @@ export default function PaymentPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs leading-none text-dark-blue-400 font-light">
                             Total gift card amount{" "}
-                            <span className="font-bold">$1,000</span>
+                            <span className="font-bold">
+                              {formatter.format(totalGiftCardAmount)}
+                            </span>
                           </span>
-                          <Button variant="link" visual="gray">
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            onClick={() =>
+                              setShowAllGiftCards((isOpen) => !isOpen)
+                            }
+                          >
                             View All Gift Cards
-                            <ChevronDown className="size-[15px]" />
+                            <ChevronDown
+                              className={cn(
+                                "size-[15px]",
+                                showAllGiftCards && "rotate-180"
+                              )}
+                            />
                           </Button>
                         </div>
+
+                        {showAllGiftCards ? (
+                          <div className="mt-5 space-y-3">
+                            {giftCards.map((giftCard) => (
+                              <div
+                                key={giftCard.code}
+                                className="flex items-center justify-between text-xs leading-none text-dark-blue-400"
+                              >
+                                <div className="flex items-center gap-x-3">
+                                  <div className="flex size-5 items-center justify-center rounded-sm border border-dark-blue-400">
+                                    <DivideSquare className="size-4" />
+                                  </div>
+                                  <span className="font-semibold">
+                                    Gift card ending in{" "}
+                                    {maskGiftCardCode(giftCard.code)}
+                                  </span>
+                                </div>
+                                <span>
+                                  Amount:{" "}
+                                  <span className="font-bold">
+                                    {currencyWithCentsFormatter.format(
+                                      giftCard.amount
+                                    )}
+                                  </span>
+                                </span>
+                                <RmDialog
+                                  title="Remove Gift Card?"
+                                  description={`Are you sure you want to remove gift card ending in ${maskGiftCardCode(giftCard.code)} for the amount of ${formatter.format(giftCard.amount)}?`}
+                                  onRemove={() => removeGiftCard(giftCard.code)}
+                                  trigger={({ isOpen, setIsOpen }) => (
+                                    <IconButton
+                                      className="size-6 text-gray-400 hover:bg-error-50 hover:text-error-500"
+                                      variant="ghost"
+                                      visual="gray"
+                                      onClick={() => setIsOpen(!isOpen)}
+                                    >
+                                      <Trash03 className="size-[15px]" />
+                                    </IconButton>
+                                  )}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -3931,7 +4130,11 @@ export default function PaymentPage() {
                         </div>
 
                         <div className="mt-5 flex items-center justify-center">
-                          <Button variant="link" visual="gray">
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            onClick={() => setShowGiftCard(true)}
+                          >
                             Add Gift Card / Promo Code
                           </Button>
                         </div>
@@ -4053,6 +4256,19 @@ export default function PaymentPage() {
                             </span>
                           </div>
                         )}
+                        {totalGiftCardAmount > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                              {giftCards.length}{" "}
+                              {giftCards.length === 1
+                                ? "Gift card applied"
+                                : "Gift cards applied"}
+                            </span>
+                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                              - {formatter.format(totalGiftCardAmount)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -4097,7 +4313,11 @@ export default function PaymentPage() {
                       </div>
 
                       <div className="mt-5 flex items-center justify-center">
-                        <Button variant="link" visual="gray">
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          onClick={() => setShowGiftCard(true)}
+                        >
                           Add Gift Card / Promo Code
                         </Button>
                       </div>
