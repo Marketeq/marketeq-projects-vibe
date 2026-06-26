@@ -1,6 +1,7 @@
 "use client"
 
 import { use, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   fetchNdaPreview,
   fetchNdaStatus,
@@ -296,13 +297,15 @@ export default function JobDetailsPage({
   heroVariant?: JobDetailsHeroVariant
 }) {
   const { slug } = use(params)
+  const searchParams = useSearchParams()
   const slugTitle = titleizeSlug(slug)
   const subtitle =
     slugTitle && slugTitle !== "Placeholder"
       ? slugTitle
       : job.subtitle
   const { user } = useAuth()
-  const isLegalServiceNda = heroVariant === "legal-service-nda"
+  const isLegalServiceNda =
+    heroVariant === "legal-service-nda" || searchParams.get("view") === "offer"
   const primaryCtaLabel = isLegalServiceNda ? "Accept Offer" : "Apply"
   const metaLeadLabel = isLegalServiceNda
     ? `Offer received ${job.posted} ago`

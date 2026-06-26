@@ -19,7 +19,8 @@ import NotificationsAPI, {
   isTransientNotificationsApiError,
 } from "@/service/http/notifications"
 import { UserAPI } from "@/service/http/user"
-import { respondToContract } from "@/src/lib/api/contracts"
+import { getContract, respondToContract } from "@/src/lib/api/contracts"
+import { jobDetailsUrl } from "@/src/lib/listing-urls"
 import { cn } from "@/utils/functions"
 import {
   type InboxThreadSummary,
@@ -100,6 +101,136 @@ const readMetadataString = (metadata: NotificationMetadata, key: string) => {
     : undefined
 }
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  )
+
+const getOfferJobHref = (
+  metadata: NotificationMetadata,
+  fallbackHref?: string
+) => {
+  const explicitHref =
+    readMetadataString(metadata, "jobHref") ||
+    readMetadataString(metadata, "jobUrl") ||
+    readMetadataString(metadata, "projectHref") ||
+    readMetadataString(metadata, "listingHref")
+  if (explicitHref) return explicitHref
+
+  const jobSlugOrId =
+    readMetadataString(metadata, "jobSlug") ||
+    readMetadataString(metadata, "jobId") ||
+    readMetadataString(metadata, "listingSlug") ||
+    readMetadataString(metadata, "listingId")
+  if (jobSlugOrId) return jobDetailsUrl(jobSlugOrId)
+
+  return fallbackHref?.includes("/job-details/") ? fallbackHref : "/find-jobs"
+}
+
+const withOfferView = (href: string) => {
+  if (!href.includes("/job-details/")) return href
+
+  const separator = href.includes("?") ? "&" : "?"
+  return `${href}${separator}view=offer`
+}
+
+const normalizeInboxHref = (href: string) => {
+  if (!href.startsWith("/inbox")) return href
+
+  const [pathname, query = ""] = href.split("?")
+  const params = new URLSearchParams(query)
+  const legacyThreadId = params.get("thread")
+
+  if (legacyThreadId && !params.get("threadId")) {
+    params.set("threadId", legacyThreadId)
+    params.delete("thread")
+  }
+
+  const normalizedQuery = params.toString()
+  return normalizedQuery ? `${pathname}?${normalizedQuery}` : pathname
+}
+
+const getInboxHref = (href?: string) => {
+  if (!href?.startsWith("/inbox")) return undefined
+  return normalizeInboxHref(href)
+}
+
+const normalizeContactText = (value?: string) =>
+  value
+    ?.trim()
+    .replace(/^@/, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+
+const getOfferThreadHref = (
+  threads: InboxThreadSummary[],
+  senderUsername?: string,
+  senderDisplayName?: string
+) => {
+  const normalizedUsername = normalizeContactText(senderUsername)
+  const normalizedDisplayName = normalizeContactText(senderDisplayName)
+
+  if (!normalizedUsername && !normalizedDisplayName) return undefined
+
+  const thread = threads.find((candidate) => {
+    const participantUsername = normalizeContactText(
+      candidate.participantUsername
+    )
+    const displayName = normalizeContactText(candidate.displayName)
+    const participantName = normalizeContactText(candidate.participantName)
+
+    return (
+      (!!normalizedUsername &&
+        (participantUsername === normalizedUsername ||
+          displayName === normalizedUsername ||
+          participantName === normalizedUsername)) ||
+      (!!normalizedDisplayName &&
+        (displayName === normalizedDisplayName ||
+          participantName === normalizedDisplayName))
+    )
+  })
+
+  return thread ? `/inbox?threadId=${encodeURIComponent(thread.id)}` : undefined
+}
+
+const getOfferAcceptedMessageHref = (
+  metadata: NotificationMetadata,
+  messageHref: string,
+  clientId?: string | null,
+  threads: InboxThreadSummary[] = [],
+  senderUsername?: string,
+  senderDisplayName?: string
+) => {
+  const explicitMessageHref = getInboxHref(
+    readMetadataString(metadata, "messageHref")
+  )
+  if (explicitMessageHref) return explicitMessageHref
+
+  const threadId =
+    readMetadataString(metadata, "threadId") ||
+    readMetadataString(metadata, "messageThreadId")
+  if (threadId) return `/inbox?threadId=${encodeURIComponent(threadId)}`
+
+  const participantId =
+    readMetadataString(metadata, "participantId") ||
+    readMetadataString(metadata, "senderId") ||
+    readMetadataString(metadata, "senderUserId") ||
+    readMetadataString(metadata, "clientId") ||
+    clientId
+  if (participantId) {
+    return `/inbox?participantId=${encodeURIComponent(participantId)}`
+  }
+
+  const threadHref = getOfferThreadHref(
+    threads,
+    senderUsername,
+    senderDisplayName
+  )
+  if (threadHref) return threadHref
+
+  return getInboxHref(messageHref) || "/inbox"
+}
+
 const ensureUsernameHandle = (value?: string) => {
   if (!value) return undefined
   return value.startsWith("@") ? value : `@${value}`
@@ -172,11 +303,7 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
     offerType: readMetadataString(metadata, "offerType") || "Project",
     receivedLabel,
     offerTitle,
-    viewJobHref:
-      readMetadataString(metadata, "jobHref") ||
-      readMetadataString(metadata, "projectHref") ||
-      item.href ||
-      "/inbox",
+   viewJobHref: withOfferView(getOfferJobHref(metadata, item.href)),
     messageHref: readMetadataString(metadata, "messageHref") || "/inbox",
     offerRate: readMetadataString(metadata, "offerRate") || "$45/hr",
     role: readMetadataString(metadata, "role") || "UX Designer",
@@ -329,6 +456,7 @@ const Notifications = () => {
     const details = selectedOfferNotification
       ? getOfferNotificationDetails(selectedOfferNotification)
       : null
+    const metadata = selectedOfferNotification?.metadata
 
     if (!selectedOfferNotification || !details?.contractId || !user?.id) {
       setOfferDialogOpen(false)
@@ -338,17 +466,70 @@ const Notifications = () => {
     setOfferActionLoading(accepted ? "accept" : "decline")
 
     try {
+      const acceptedMessageHref = getOfferAcceptedMessageHref(
+        metadata,
+        details.messageHref,
+        undefined,
+        inboxThreads,
+        details.senderUsername,
+        details.senderDisplayName
+      )
+
+      if (accepted && !isUuid(details.contractId)) {
+        setOfferDialogOpen(false)
+        setSelectedOfferNotification(null)
+        resetOfferDialogState()
+        router.push(acceptedMessageHref)
+        return
+      }
+
+      const offerContract = accepted
+        ? await getContract(details.contractId)
+        : null
       const response = await respondToContract(details.contractId, {
         accepted,
         talentId: user.id,
       })
 
-      if (response) {
-        setOfferDialogOpen(false)
-        setSelectedOfferNotification(null)
-        resetOfferDialogState()
-        await loadNotifications(false)
+      if (!response) {
+        if (
+          accepted &&
+          offerContract?.clientId &&
+          offerContract.status.toUpperCase() !== "PENDING"
+        ) {
+          setOfferDialogOpen(false)
+          setSelectedOfferNotification(null)
+          resetOfferDialogState()
+          router.push(
+            getOfferAcceptedMessageHref(
+              metadata,
+              details.messageHref,
+              offerContract.clientId,
+              inboxThreads,
+              details.senderUsername,
+              details.senderDisplayName
+            )
+          )
+        }
+        return
       }
+
+      setOfferDialogOpen(false)
+      setSelectedOfferNotification(null)
+      resetOfferDialogState()
+      if (accepted) {
+        router.push(
+            getOfferAcceptedMessageHref(
+              metadata,
+              details.messageHref,
+              response.clientId ?? offerContract?.clientId,
+              inboxThreads,
+              details.senderUsername,
+              details.senderDisplayName
+          )
+        )
+      }
+     await loadNotifications(false)
     } finally {
       setOfferActionLoading(null)
     }
@@ -370,7 +551,7 @@ const Notifications = () => {
 
   const handleInboxThreadClick = (thread: InboxThreadSummary) => {
     setOpen(false)
-    router.push(`/inbox?thread=${thread.id}`)
+    router.push(`/inbox?threadId=${thread.id}`)
   }
 
   const renderInboxThreadItem = (thread: InboxThreadSummary) => {
@@ -661,7 +842,12 @@ const Notifications = () => {
           onTermsAcceptedChange={setOfferTermsAccepted}
           onDeclineMessageChange={setOfferDeclineNote}
           onDeclineReasonChange={setOfferDeclineReason}
-          onViewJob={() => router.push(selectedOfferDetails.viewJobHref)}
+          onViewJob={() => {
+            setOfferDialogOpen(false)
+            setSelectedOfferNotification(null)
+            resetOfferDialogState()
+            router.push(selectedOfferDetails.viewJobHref || "/find-jobs")
+          }}
           onMessage={() => {
             setOfferDialogOpen(false)
             setSelectedOfferNotification(null)
