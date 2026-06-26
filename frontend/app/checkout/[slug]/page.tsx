@@ -747,9 +747,12 @@ export default function CheckoutPage() {
           <MoreHorizontal className="size-[15px]" />
         </IconButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[240px]">
+      <DropdownMenuContent
+        align="end"
+        className="w-[165px] min-w-0 rounded-lg border border-gray-100 p-1 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]"
+      >
         <DropdownMenuItem
-          className="gap-x-3"
+          className="h-9 gap-x-2 px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500"
           onSelect={() =>
             setTeamMemberDialog({
               action: "profile",
@@ -764,11 +767,11 @@ export default function CheckoutPage() {
             })
           }
         >
-          <UserCircle className="size-5 text-gray-500" />
-          View profile
+          <UserCircle className="h-3 w-[10.67px] shrink-0 text-gray-500" />
+          <span className="whitespace-nowrap">View profile</span>
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="gap-x-3"
+          className="h-9 gap-x-2 px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500"
           onSelect={() =>
             setTeamMemberDialog({
               action: "replace",
@@ -783,12 +786,12 @@ export default function CheckoutPage() {
             })
           }
         >
-          <SwitchHorizontal01 className="size-5 text-gray-500" />
-          Replace Member
+          <SwitchHorizontal01 className="h-3 w-[10.67px] shrink-0 text-gray-500" />
+          <span className="whitespace-nowrap">Replace Member</span>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="my-0" />
         <DropdownMenuItem
-          className="gap-x-3"
+          className="h-9 gap-x-2 px-3 py-2.5 text-[13px] font-medium leading-[13.3px]"
           visual="destructive"
           onSelect={() =>
             setTeamMemberDialog({
@@ -804,8 +807,8 @@ export default function CheckoutPage() {
             })
           }
         >
-          <Trash03 className="size-5" />
-          Remove Member
+          <Trash03 className="h-3 w-[10.67px] shrink-0" />
+          <span className="whitespace-nowrap">Remove Member</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
