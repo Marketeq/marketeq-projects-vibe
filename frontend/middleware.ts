@@ -13,7 +13,6 @@ const PROTECTED_PREFIXES = [
   "/my-jobs",
   "/my-listings",
   "/notifications",
-  "/onboarding",
   "/payments",
   "/reports",
   "/settings",
