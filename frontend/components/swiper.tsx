@@ -44,6 +44,7 @@ export const SwiperRoot = ({
 
 export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
   const { onSwiperChange, ...ctx } = useSwiperRootContext()
+  const { className, ...swiperProps } = props
 
   const updateEdgeState = React.useCallback(
     (swiper: SwiperInstance) => {
@@ -65,7 +66,8 @@ export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
       mousewheel={{ forceToAxis: true }}
       grabCursor={false}
       simulateTouch={false}
-      {...props}
+      className={`[&_.swiper-wrapper]:items-stretch [&_.swiper-slide]:h-auto ${className || ""}`}
+      {...swiperProps}
       onSwiper={callAll(props.onSwiper, updateEdgeState)}
       onSlideChange={callAll(props.onSlideChange as any, updateEdgeState)}
       onProgress={callAll(props.onProgress as any, updateEdgeState)}
