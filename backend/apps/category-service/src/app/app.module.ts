@@ -50,7 +50,7 @@ const envPaths = [
 
           entities: [CategoryEntity, TagEntity, CategoryPageEntity],
           autoLoadEntities: true,
-          synchronize: String(config.get('DATABASE_SYNCHRONIZE')).toLowerCase() === 'true',
+          synchronize: config.get('NODE_ENV') === 'development' && String(config.get('DATABASE_SYNCHRONIZE')).toLowerCase() === 'true',
 
           ssl: useSSL ? { rejectUnauthorized: false } : false,
           extra: useSSL ? { ssl: { rejectUnauthorized: false } } : undefined,
