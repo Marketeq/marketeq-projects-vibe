@@ -52,7 +52,7 @@ export function CheckoutNavigation({
   currentStep,
   firstStepLabel = "Project Details",
   showSteps = true,
-  logoHref,
+  logoHref = "/",
 }: CheckoutNavigationProps) {
   return (
     <div className="fixed inset-x-0 top-0 z-40 bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
