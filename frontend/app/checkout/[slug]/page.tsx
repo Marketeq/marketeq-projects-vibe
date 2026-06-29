@@ -408,7 +408,7 @@ export default function CheckoutPage() {
     "edit-scope" | "add-task" | null
   >(null)
   const [teamMemberDialog, setTeamMemberDialog] = React.useState<{
-    action: "profile" | "replace" | "remove"
+    action: "replace" | "remove"
     memberId: string
     memberName: string
     memberHandle: string
@@ -747,28 +747,25 @@ export default function CheckoutPage() {
           <MoreHorizontal className="size-[15px]" />
         </IconButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[240px]">
+      <DropdownMenuContent
+        align="end"
+        className="w-[165px] min-w-0 rounded-lg border border-gray-100 p-1 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]"
+      >
         <DropdownMenuItem
-          className="gap-x-3"
+          className="h-9 gap-x-2 px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500"
           onSelect={() =>
-            setTeamMemberDialog({
-              action: "profile",
-              memberId: member.id,
-              memberName: member.name,
-              memberHandle: member.handle,
-              memberRole: member.role,
-              memberExperience: member.experience,
-              memberLocation: member.location,
-              memberRate: member.rate,
-              memberAvatarSrc: member.avatarSrc,
-            })
+            router.push(
+              `${basePath}/${safeSlugSegment}/members/${encodeURIComponent(
+                member.id
+              )}`
+            )
           }
         >
-          <UserCircle className="size-5 text-gray-500" />
-          View profile
+          <UserCircle className="h-3 w-[10.67px] shrink-0 text-gray-500" />
+          <span className="whitespace-nowrap">View profile</span>
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="gap-x-3"
+          className="h-9 gap-x-2 px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500"
           onSelect={() =>
             setTeamMemberDialog({
               action: "replace",
@@ -783,12 +780,12 @@ export default function CheckoutPage() {
             })
           }
         >
-          <SwitchHorizontal01 className="size-5 text-gray-500" />
-          Replace Member
+          <SwitchHorizontal01 className="h-3 w-[10.67px] shrink-0 text-gray-500" />
+          <span className="whitespace-nowrap">Replace Member</span>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="my-0" />
         <DropdownMenuItem
-          className="gap-x-3"
+          className="h-9 gap-x-2 px-3 py-2.5 text-[13px] font-medium leading-[13.3px]"
           visual="destructive"
           onSelect={() =>
             setTeamMemberDialog({
@@ -804,8 +801,8 @@ export default function CheckoutPage() {
             })
           }
         >
-          <Trash03 className="size-5" />
-          Remove Member
+          <Trash03 className="h-3 w-[10.67px] shrink-0" />
+          <span className="whitespace-nowrap">Remove Member</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -2590,64 +2587,6 @@ export default function CheckoutPage() {
       ) : null}
       {!isTalentCheckout ? (
         <>
-          <Dialog
-            open={teamMemberDialog?.action === "profile"}
-            onOpenChange={(open) => {
-              if (!open) closeTeamMemberDialog()
-            }}
-          >
-            <DialogContent className="w-[420px]">
-              <DialogHeader>
-                <div className="flex items-center justify-between">
-                  <DialogTitle>Team Member Profile</DialogTitle>
-                  <DialogClose asChild>
-                    <IconButton variant="ghost" visual="gray">
-                      <X className="size-5" />
-                    </IconButton>
-                  </DialogClose>
-                </div>
-              </DialogHeader>
-
-              <div className="mt-5 flex items-start gap-x-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <Avatar size="lg">
-                  {teamMemberDialog?.memberAvatarSrc ? (
-                    <AvatarImage
-                      src={teamMemberDialog.memberAvatarSrc}
-                      alt={teamMemberDialog.memberName}
-                    />
-                  ) : null}
-                  <AvatarFallback>
-                    {(teamMemberDialog?.memberName ?? "T").slice(0, 1)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-auto">
-                  <h3 className="text-sm font-semibold leading-5 text-dark-blue-400">
-                    {teamMemberDialog?.memberName ?? "Team Member"}
-                  </h3>
-                  {teamMemberDialog?.memberHandle ? (
-                    <p className="text-sm leading-5 text-gray-500">
-                      {teamMemberDialog.memberHandle}
-                    </p>
-                  ) : null}
-                  <p className="mt-2 text-sm leading-5 text-dark-blue-400">
-                    {teamMemberDialog?.memberRole ?? "Project contributor"}
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge visual="gray">
-                      {teamMemberDialog?.memberExperience ?? "Junior"}
-                    </Badge>
-                    <Badge visual="gray">
-                      {teamMemberDialog?.memberLocation ?? "United States"}
-                    </Badge>
-                    <Badge visual="gray">
-                      {teamMemberDialog?.memberRate ?? "$30/hr"}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
           <Dialog
             open={teamMemberDialog?.action === "replace"}
             onOpenChange={(open) => {
