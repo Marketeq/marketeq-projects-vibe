@@ -11,8 +11,14 @@
 
 import Cookies from "js-cookie"
 
+// NEXT_PUBLIC_LEGAL_SERVICE_URL lets you override the target:
+//   simple local (start-legal-dev.sh): http://localhost:3015  (direct, no gateway)
+//   fullstack local / staging:         omit → falls through to NEXT_PUBLIC_API_URL
+//                                       (gateway routes /v1/nda/* to legal-service)
 const LEGAL_SERVICE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"
+  process.env.NEXT_PUBLIC_LEGAL_SERVICE_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:3000"
 
 /**
  * Dev seed user ID for local testing without a real login session.
@@ -157,6 +163,36 @@ export async function submitNdaSign(
   )
   if (!res.ok) throw await parseError(res)
   return res.json() as Promise<SignNdaResponse>
+}
+
+// ─── NDA Generate ────────────────────────────────────────────────────────────
+
+export interface GenerateNdaPayload {
+  jobListingId: string
+  listingTitle?: string
+}
+
+export interface GenerateNdaResponse {
+  documentId: string
+  status: string
+}
+
+/**
+ * POST /v1/nda/self-generate
+ * Creates an NDA document where the caller (JWT user) is the client.
+ * Returns the existing document if one already exists for this (user, jobListingId) pair.
+ */
+export async function generateNda(
+  payload: GenerateNdaPayload,
+): Promise<GenerateNdaResponse> {
+  const res = await fetch(`${LEGAL_SERVICE_URL}/v1/nda/self-generate`, {
+    method: "POST",
+    headers: authHeaders(),
+    credentials: "include",
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw await parseError(res)
+  return res.json() as Promise<GenerateNdaResponse>
 }
 
 // ─── NDA Audit Trail ─────────────────────────────────────────────────────────
