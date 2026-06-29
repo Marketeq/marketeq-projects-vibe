@@ -59,11 +59,12 @@ export class ProxyService {
       throw new BadGatewayException({ code: 'BAD_GATEWAY', message: `Unknown service: ${serviceName}` })
     }
 
-    // Time-tracking service uses a global /api prefix, so re-add it
-    const needsApiPrefix = serviceName === 'timeTracking' && !path.startsWith('/api')
+    // These services use a global /api prefix, so re-add it
+    const needsApiPrefix = (serviceName === 'timeTracking' || serviceName === 'categories') && !path.startsWith('/api')
     const url = `${baseUrl}${needsApiPrefix ? '/api' : ''}${path}`
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
+      ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
     }
 
     // Always forward auth headers so downstream services can validate JWT

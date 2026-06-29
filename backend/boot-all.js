@@ -32,42 +32,45 @@ const GATEWAY_PORT = process.env.PORT || '10000';
 
 // ── All 28 backend services ──────────────────────────────────────────────
 // Ports must match the gatewayEnv map below and proxy.service.ts defaults.
+// portKey: override the env var used to pass the port (default: PORT).
 const SERVICES = [
   // Tier 1 — Core (highest traffic)
-  { name: 'auth-service',              port: '3001', dir: 'apps/auth-service',              maxOldSpaceMb: 128 },
-  { name: 'user-service',              port: '3002', dir: 'apps/user-service',              maxOldSpaceMb: 224 },
-  { name: 'listings-service',          port: '3003', dir: 'apps/listings-service',          maxOldSpaceMb: 160 },
+  { name: 'auth-service',               port: '3001', dir: 'apps/auth-service',               maxOldSpaceMb: 128 },
+  { name: 'user-service',               port: '3002', dir: 'apps/user-service',               maxOldSpaceMb: 224 },
+  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 160 },
   // messaging-service disabled 2026-06-16: its tables were created in the
   // messaging_local schema instead of messaging, so every query fails and the
   // service crash-loops, pushing the container toward OOM.  Re-enable once
   // the schema migration is run (ALTER TABLE messaging_local.* SET SCHEMA messaging).
   // { name: 'messaging-service',         port: '3005', dir: 'apps/messaging-service',         maxOldSpaceMb: 128 },
   // Tier 2 — Active
-  { name: 'notification-service',      port: '3006', dir: 'apps/notification-service',      maxOldSpaceMb: 96 },
-  { name: 'search-service',            port: '3007', dir: 'apps/search-service',            maxOldSpaceMb: 96 },
-  { name: 'algolia-service',           port: '3008', dir: 'apps/algolia-service',           maxOldSpaceMb: 64 },
-  { name: 'checkout-service',          port: '3009', dir: 'apps/checkout-service',          maxOldSpaceMb: 64 },
-  { name: 'contracts-service',         port: '3010', dir: 'apps/contracts-service',         maxOldSpaceMb: 96 },
-  { name: 'offer-service',             port: '3011', dir: 'apps/offer-service',             maxOldSpaceMb: 96 },
-  { name: 'favorites-service',         port: '3012', dir: 'apps/favorites-service',         maxOldSpaceMb: 64 },
-  { name: 'invitations-service',       port: '3013', dir: 'apps/invitations-service',       maxOldSpaceMb: 64 },
+  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service',       maxOldSpaceMb: 96 },
+  { name: 'search-service',             port: '3007', dir: 'apps/search-service',             maxOldSpaceMb: 96 },
+  { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service',            maxOldSpaceMb: 64 },
+  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service',           maxOldSpaceMb: 64 },
+  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service',          maxOldSpaceMb: 96 },
+  { name: 'offer-service',              port: '3011', dir: 'apps/offer-service',              maxOldSpaceMb: 96 },
+  { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 64 },
+  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 64 },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 64 },
-  { name: 'portfolio-service',         port: '3015', dir: 'apps/portfolio-service',         maxOldSpaceMb: 96 },
-  { name: 'autocomplete-service',      port: '3016', dir: 'apps/autocomplete-service',      maxOldSpaceMb: 64 },
-  { name: 'time-tracking-service',     port: '3017', dir: 'apps/time-tracking-service',     maxOldSpaceMb: 96 },
-  { name: 'transaction-service',       port: '3018', dir: 'apps/transaction-service',       maxOldSpaceMb: 96 },
-  { name: 'suggestions-service',       port: '3020', dir: 'apps/suggestions-service',       maxOldSpaceMb: 64 },
-  { name: 'category-service',          port: '3023', dir: 'apps/category-service',          maxOldSpaceMb: 96 },
+  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 96 },
+  { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service',       maxOldSpaceMb: 64 },
+  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service',      maxOldSpaceMb: 96 },
+  { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service',        maxOldSpaceMb: 96 },
+  // cms-service reads CMS_PORT (not PORT) — assigned 3019 to avoid clashing with suggestions-service
+  { name: 'cms-service',                port: '3019', dir: 'apps/cms-service',                maxOldSpaceMb: 96, portKey: 'CMS_PORT' },
+  { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service',        maxOldSpaceMb: 64 },
+  { name: 'category-service',           port: '3023', dir: 'apps/category-service',           maxOldSpaceMb: 96 },
   // Tier 3 — Low-traffic / dormant
-  { name: 'admin-service',             port: '3024', dir: 'apps/admin-service',             maxOldSpaceMb: 64 },
+  { name: 'admin-service',              port: '3024', dir: 'apps/admin-service',              maxOldSpaceMb: 64 },
   { name: 'affiliate-referral-service', port: '3025', dir: 'apps/affiliate-referral-service', maxOldSpaceMb: 64 },
-  { name: 'billing-service',           port: '3026', dir: 'apps/billing-service',           maxOldSpaceMb: 64 },
-  { name: 'earnings-service',          port: '3027', dir: 'apps/earnings-service',          maxOldSpaceMb: 128 },
-  { name: 'payout-service',            port: '3028', dir: 'apps/payout-service',            maxOldSpaceMb: 160 },
-  { name: 'pricing-service',           port: '3029', dir: 'apps/pricing-service',           maxOldSpaceMb: 96 },
-  { name: 'wallet-service',            port: '3030', dir: 'apps/wallet-service',            maxOldSpaceMb: 96 },
-  { name: 'wire-review-service',       port: '3031', dir: 'apps/wire-review-service',       maxOldSpaceMb: 128 },
-  { name: 'legal-service',             port: '3032', dir: 'apps/legal-service',             maxOldSpaceMb: 96 },
+  { name: 'billing-service',            port: '3026', dir: 'apps/billing-service',            maxOldSpaceMb: 64 },
+  { name: 'earnings-service',           port: '3027', dir: 'apps/earnings-service',           maxOldSpaceMb: 128 },
+  { name: 'payout-service',             port: '3028', dir: 'apps/payout-service',             maxOldSpaceMb: 160 },
+  { name: 'pricing-service',            port: '3029', dir: 'apps/pricing-service',            maxOldSpaceMb: 96 },
+  { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service',             maxOldSpaceMb: 96 },
+  { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service',        maxOldSpaceMb: 128 },
+  { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 96 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 160 };
@@ -94,6 +97,7 @@ const gatewayEnv = {
   AUTOCOMPLETE_SERVICE_URL:       'http://localhost:3016',
   TIME_TRACKING_SERVICE_URL:      'http://localhost:3017',
   TRANSACTION_SERVICE_URL:        'http://localhost:3018',
+  CMS_SERVICE_URL:                'http://localhost:3019',
   SUGGESTIONS_SERVICE_URL:        'http://localhost:3020',
   CATEGORY_SERVICE_URL:           'http://localhost:3023',
   ADMIN_SERVICE_URL:              'http://localhost:3024',
@@ -107,13 +111,19 @@ const gatewayEnv = {
   LEGAL_SERVICE_URL:              'http://localhost:3032',
 };
 
-function buildInternalServiceEnv(port) {
-  return {
+// svc.portKey allows services that read a non-standard env var for their port
+// (e.g. cms-service reads CMS_PORT instead of PORT).
+function buildInternalServiceEnv(svc) {
+  const env = {
     ...process.env,
-    PORT: port,
+    PORT: svc.port,
     HOST: '127.0.0.1',
     RABBITMQ_REQUIRED: 'false',
   };
+  if (svc.portKey && svc.portKey !== 'PORT') {
+    env[svc.portKey] = svc.port;
+  }
+  return env;
 }
 
 const restartCounts = new Map();
@@ -239,7 +249,7 @@ async function bootstrapAll() {
     setTimeout(
       () => {
         console.log(`[boot] Launching ${svc.name} (staggered +${4 + i * 3}s)...`);
-        launchService(svc, buildInternalServiceEnv(svc.port), false);
+        launchService(svc, buildInternalServiceEnv(svc), false);
       },
       4000 + i * 3000,
     );

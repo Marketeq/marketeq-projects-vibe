@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
   ForbiddenException,
@@ -9,31 +10,39 @@ import { Not, Repository } from 'typeorm';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
+import { budgetFromScope } from '../shared/utils/pricing';
+import { toStringArray, normalizeN8nScope } from '../shared/utils/scope';
+import {
+  DELIVERABLES_ADAPTER,
+  DeliverablesAdapter,
+} from '../project-sync/deliverables/deliverables.adapter';
 
 @Injectable()
 export class ProjectsService {
   constructor(
     @InjectRepository(Project)
     private readonly repo: Repository<Project>,
+    @Inject(DELIVERABLES_ADAPTER)
+    private readonly deliverablesAdapter: DeliverablesAdapter,
   ) {}
 
   async findAll(status = ListingStatus.Published) {
     const items = await this.repo.find({
-      where: { status },
+      where: { status, listingType: 'project' },
       order: { featured: 'DESC', createdAt: 'DESC' },
     });
     return items.map((item) => this.shapeProject(item));
   }
 
   async findOne(id: string) {
-    const item = await this.repo.findOne({ where: { id } });
+    const item = await this.repo.findOne({ where: { id, listingType: 'project' } });
     if (!item) throw new NotFoundException('Project not found');
     return this.shapeProject(item);
   }
 
   async findOnePublished(id: string) {
     const item = await this.repo.findOne({
-      where: { id, status: ListingStatus.Published },
+      where: { id, status: ListingStatus.Published, listingType: 'project' },
     });
     if (!item) throw new NotFoundException('Project not found');
     return this.shapeProject(item);
@@ -41,7 +50,7 @@ export class ProjectsService {
 
   async findBySlug(slug: string) {
     const item = await this.repo.findOne({
-      where: { slug, status: ListingStatus.Published },
+      where: { slug, status: ListingStatus.Published, listingType: 'project' },
     });
     if (!item) throw new NotFoundException('Project not found');
 
@@ -60,6 +69,53 @@ export class ProjectsService {
     };
   }
 
+  async seedFromN8n(dto: Record<string, any>) {
+    const { randomUUID } = await import('crypto');
+    const title = String(dto.title ?? '').trim();
+    if (!title) throw new BadRequestException('title is required');
+    if (/undefined|null/i.test(title)) throw new BadRequestException(`Invalid title: "${title}" — category variable was not resolved in n8n`);
+    const description = String(dto.description ?? dto.fullDescription ?? '').trim();
+    if (!description) throw new BadRequestException('description or fullDescription is required');
+
+    const rawScope = dto.scope ?? dto.phases ?? dto.projectPhases ?? dto.project_phases
+      ?? dto.projectScope ?? dto.project_scope ?? dto.workPhases ?? dto.work_phases ?? [];
+    const scope = normalizeN8nScope(Array.isArray(rawScope) ? rawScope : []);
+    const { budget, totalHours } = budgetFromScope(scope);
+    const durationWeeks = totalHours > 0 ? Math.ceil(totalHours / 40) : null;
+    const duration = durationWeeks ? `${durationWeeks} week${durationWeeks !== 1 ? 's' : ''}` : undefined;
+    const deliverables = Array.isArray(dto.deliverables) && dto.deliverables.length
+      ? dto.deliverables
+      : scope.length
+      ? await this.deliverablesAdapter.deriveDeliverables(scope)
+      : [];
+
+    const item = this.repo.create({
+      listingType: 'project',
+      payloadId: `n8n-${randomUUID()}`,
+      title,
+      description,
+      shortDescription: dto.shortDescription ?? undefined,
+      skills: toStringArray(dto.skills),
+      tags: toStringArray(dto.tags),
+      categories: toStringArray(dto.categories ?? dto.category).filter(c => c !== 'null' && c !== 'undefined'),
+      category: toStringArray(dto.categories ?? dto.category).filter(c => c !== 'null' && c !== 'undefined')[0] ?? undefined,
+      subcategories: toStringArray(dto.subcategories).filter(c => c !== 'null' && c !== 'undefined'),
+      industry: toStringArray(dto.industry),
+      scope,
+      deliverables,
+      budget: dto.budget ?? budget ?? undefined,
+      estimatedHours: dto.estimatedHours ?? (totalHours > 0 ? totalHours : undefined),
+      duration,
+      mediaUrls: this.resolveMediaUrls(dto.mediaUrls, dto.categories ?? dto.category ?? []),
+      status: ListingStatus.Published,
+      createdBy: 'n8n-seed',
+      slug: await this.resolveUniqueSlug(title),
+    });
+
+    const saved = await this.repo.save(item);
+    return { ...this.shapeProject(saved), _contentType: 'project' };
+  }
+
   async create(dto: Partial<Project>, userId: string) {
     if (!userId) {
       throw new ForbiddenException('You do not have permission to create a project');
@@ -74,6 +130,7 @@ export class ProjectsService {
 
     const item = this.repo.create({
       ...writable,
+      listingType: 'project',
       title,
       description,
       status: ListingStatus.Draft,
@@ -166,6 +223,30 @@ export class ProjectsService {
     return writable;
   }
 
+  private resolveMediaUrls(mediaUrls: any, categories: any): string[] {
+    if (Array.isArray(mediaUrls) && mediaUrls.length > 0) return mediaUrls;
+    const cats: string[] = Array.isArray(categories)
+      ? categories
+      : typeof categories === 'string'
+      ? [categories]
+      : [];
+    const cat = cats.map((c) => c.toLowerCase()).join(' ');
+    const FALLBACKS: [RegExp, string][] = [
+      [/design|ui|ux/, 'https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?w=800&h=500&fit=crop&q=80'],
+      [/ai|ml|machine|data/, 'https://images.unsplash.com/photo-1677756119517-756a188d2d94?w=800&h=500&fit=crop&q=80'],
+      [/marketing|seo|growth/, 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=500&fit=crop&q=80'],
+      [/content|copy|writ/, 'https://images.unsplash.com/photo-1434626881859-194d67b2b86f?w=800&h=500&fit=crop&q=80'],
+      [/mobile|ios|android/, 'https://images.unsplash.com/photo-1563986768609-322da13575f2?w=800&h=500&fit=crop&q=80'],
+      [/cloud|devops|infra/, 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&h=500&fit=crop&q=80'],
+      [/ecommerce|shop|retail/, 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=500&fit=crop&q=80'],
+      [/health|medical|clinic/, 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=500&fit=crop&q=80'],
+    ];
+    for (const [pattern, url] of FALLBACKS) {
+      if (pattern.test(cat)) return [url];
+    }
+    return ['https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&h=500&fit=crop&q=80'];
+  }
+
   private async resolveUniqueSlug(title: string, excludeId?: string): Promise<string> {
     const baseSlug = slugify(title) || 'project';
     let candidate = baseSlug;
@@ -225,7 +306,7 @@ export class ProjectsService {
       priceMin: budget,
       estimatedHours: project.estimatedHours ?? null,
       duration: project.duration ?? null,
-      mediaUrls: project.mediaUrls ?? [],
+      mediaUrls: this.resolveMediaUrls(project.mediaUrls, project.categories ?? project.category),
       videoUrl: project.videoUrl ?? null,
       skills: project.skills ?? [],
       tags: project.tags ?? [],
@@ -277,7 +358,7 @@ export class ProjectsService {
 
   private async getSimilarProjects(project: Project) {
     const published = await this.repo.find({
-      where: { status: ListingStatus.Published },
+      where: { status: ListingStatus.Published, listingType: 'project' },
       order: { featured: 'DESC', createdAt: 'DESC' },
       take: 25,
     });
@@ -312,6 +393,7 @@ export class ProjectsService {
 
     const history = await this.repo.find({
       where: {
+        listingType: 'project',
         createdBy: project.createdBy,
         status: ListingStatus.Published,
       },
@@ -403,7 +485,7 @@ export class ProjectsService {
 
     // Fetch related published projects to expand the term pool
     const related = await this.repo.find({
-      where: { status: ListingStatus.Published },
+      where: { status: ListingStatus.Published, listingType: 'project' },
       select: ['skills', 'tags', 'programmingLanguages', 'developmentTech', 'subcategories'],
       take: 50,
     });
