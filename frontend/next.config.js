@@ -1,6 +1,23 @@
 /** @type {import('next').NextConfig} */
 const path = require("path")
 
+function normalizeProxyTarget(value) {
+  const target = (value || "").trim()
+  if (!/^https?:\/\//i.test(target)) return "http://localhost:4000"
+  return target
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "")
+    .replace(/\/+$/, "")
+}
+
+const apiProxyTarget = normalizeProxyTarget(
+  process.env.API_PROXY_TARGET ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_AUTH_URL ||
+    "http://localhost:4000"
+)
+
 const nextConfig = {
   typescript: {
     // Pre-existing type errors from merged PRs — tracked for cleanup separately.
@@ -46,6 +63,10 @@ const nextConfig = {
       },
       {
         protocol: "https",
+        hostname: "images.pexels.com",
+      },
+      {
+        protocol: "https",
         hostname: "picsum.photos",
       },
       {
@@ -69,8 +90,12 @@ const nextConfig = {
     //   /projects/:l1                    → /c/:l1/projects
     //   /projects/:l1/:l2                → /c/:l1/:l2/projects
     //   /projects/:l1/:l2/:l3            → /c/:l1/:l2/:l3/projects
-    const kinds = ["talent", "projects", "services", "teams"]
     const rewrites = []
+    rewrites.push({
+      source: "/api/:path*",
+      destination: `${apiProxyTarget}/:path*`,
+    })
+    const kinds = ["talent", "projects", "services", "teams"]
     for (const kind of kinds) {
       rewrites.push({ source: `/${kind}/:l1`, destination: `/c/:l1/${kind}` })
       rewrites.push({

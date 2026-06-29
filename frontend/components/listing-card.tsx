@@ -214,6 +214,7 @@ function ProjectListingCard({
         : kind === "service"
           ? serviceDetailsUrl(id)
           : projectDetailsUrl(id))
+  const badgeText = kind === "service" ? "Service" : badge?.trim()
 
   const getStableVariantIndex = (value: string, total: number) => {
     let hash = 0
@@ -238,7 +239,7 @@ function ProjectListingCard({
     const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
 
     return (
-      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
         <div className="flex items-start justify-between gap-4">
           <NextLink
             href={computedHref}
@@ -415,7 +416,7 @@ function ProjectListingCard({
     const jobSkills = ["Visual Design", "Tailwind CSS", "Next.js", "E-commerce"]
 
     return (
-      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
         <div className="p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 flex-1">
@@ -586,7 +587,7 @@ function ProjectListingCard({
   }
 
   return (
-    <article className="h-full flex flex-col p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
       <NextLink
         href={computedHref}
         className="block focus-visible:outline-none group/card"
@@ -605,15 +606,32 @@ function ProjectListingCard({
               <Briefcase className="size-10 text-gray-300" />
             </div>
           )}
-          {badge?.trim() && (
-            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-              {badge}
+          {badgeText && (
+            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+              {kind === "service" && (
+                <svg
+                  viewBox="0 0 24 24"
+                  className="size-3 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 0 1-15.5 6.3" />
+                  <path d="M3 12A9 9 0 0 1 18.5 5.7" />
+                  <path d="M7 18H5v-2" />
+                  <path d="M17 6h2v2" />
+                </svg>
+              )}
+              <span className="truncate">{badgeText}</span>
             </span>
           )}
         </div>
 
         <div className="mt-3 flex items-start gap-x-3">
-          <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 group-hover/card:underline">
+          <span className="line-clamp-2 flex-auto text-base font-bold leading-none text-dark-blue-400 group-hover/card:underline">
             {title}
           </span>
 
@@ -633,7 +651,7 @@ function ProjectListingCard({
           )}
 
           {typeof rating === "number" && (
-            <div className="inline-flex items-center gap-x-1">
+            <div className="inline-flex shrink-0 items-center gap-x-1">
               <Star className="size-[15px] text-primary-500 fill-primary-500" />
               <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
                 {rating.toFixed(1)}{" "}
@@ -734,7 +752,7 @@ function TeamListingCard({
     memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
   return (
-    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
       <div className="flex items-start justify-between">
         <AvatarGroup
           max={3}

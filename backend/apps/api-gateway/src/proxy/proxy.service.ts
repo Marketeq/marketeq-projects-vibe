@@ -42,6 +42,8 @@ export class ProxyService {
       pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
       wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
+      offers: config.get('OFFER_SERVICE_URL') || 'http://localhost:3011',
+      legal: config.get('LEGAL_SERVICE_URL') || 'http://localhost:3032',
     }
   }
 
@@ -57,11 +59,12 @@ export class ProxyService {
       throw new BadGatewayException({ code: 'BAD_GATEWAY', message: `Unknown service: ${serviceName}` })
     }
 
-    // Time-tracking service uses a global /api prefix, so re-add it
-    const needsApiPrefix = serviceName === 'timeTracking' && !path.startsWith('/api')
+    // These services use a global /api prefix, so re-add it
+    const needsApiPrefix = (serviceName === 'timeTracking' || serviceName === 'categories') && !path.startsWith('/api')
     const url = `${baseUrl}${needsApiPrefix ? '/api' : ''}${path}`
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
+      ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
     }
 
     // Always forward auth headers so downstream services can validate JWT

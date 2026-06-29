@@ -13,18 +13,28 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'affiliate_referral_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (rabbitmqUrl) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'affiliate_referral_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+  } else {
+    logger.warn('RABBITMQ_URI not set; RMQ consumer disabled');
+  }
 
-  await app.startAllMicroservices();
   const port = process.env.PORT || 3021;
   await app.listen(port);
   logger.log(`affiliate-referral-service running on port ${port}`);
+
+  if (rabbitmqUrl) {
+    app.startAllMicroservices().catch((err) => {
+      logger.error('Failed to start RMQ microservice', err);
+    });
+  }
 }
 bootstrap();

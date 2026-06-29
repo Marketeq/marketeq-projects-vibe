@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -80,11 +82,19 @@ const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
 const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
+const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
+  'Too many requests. Please try again later.';
+
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
 
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
   private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
+  private readonly passwordResetRateLimits = new Map<string, RateLimitBucket>();
   private retryTimer: NodeJS.Timeout | null = null;
   private readonly syncRetryTickMs = 5000;
   private readonly syncRetryBaseDelayMs = 5000;
@@ -175,6 +185,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         `register: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
       );
     }
+
+    await this.sendPasswordCreatedEmail(user.email, user.username, 'register');
 
     const sessionId = randomUUID();
     const tokens = await this.issueTokens({
@@ -342,6 +354,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Invalid user');
     }
 
+    const hadPassword = current.hasPassword;
     current.password = await bcrypt.hash(dto.password, 10);
     current.hasPassword = true;
     await this.userRepository.save(current);
@@ -352,6 +365,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `setPassword: user profile sync failed for ${current.email}; continuing with auth user. reason=${(error as Error)?.message}`,
       );
+    }
+
+    if (!hadPassword) {
+      await this.sendPasswordCreatedEmail(current.email, current.username, 'setPassword');
     }
 
     return {
@@ -459,10 +476,26 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async forgotPassword(dto: ForgotPasswordDto) {
+  async forgotPassword(dto: ForgotPasswordDto, ipAddress = '') {
+    const normalizedEmail = normalizeEmail(dto.email);
+    this.enforcePasswordResetRateLimit(
+      `forgot-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_FORGOT_PASSWORD_IP_LIMIT',
+      10,
+      'AUTH_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `forgot-password:email:${normalizedEmail}`,
+      'AUTH_FORGOT_PASSWORD_EMAIL_LIMIT',
+      3,
+      'AUTH_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
     const user = await this.userRepository.findOne({
-      where: { email: dto.email },
-      select: ['id', 'email', 'username'],
+      where: { email: normalizedEmail },
+      select: ['id', 'email', 'username', 'passwordResetVersion'],
     });
 
     const message =
@@ -471,6 +504,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!user) {
       return { message };
     }
+
+    user.passwordResetVersion = randomUUID();
+    await this.userRepository.save(user);
 
     const resetToken = await this.issuePasswordResetToken(user);
 
@@ -507,8 +543,21 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
-    let payload: { sub?: string; email?: string; type?: string };
+  async resetPassword(dto: ResetPasswordDto, ipAddress = '') {
+    this.enforcePasswordResetRateLimit(
+      `reset-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RESET_PASSWORD_IP_LIMIT',
+      20,
+      'AUTH_RESET_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    let payload: {
+      sub?: string;
+      email?: string;
+      type?: string;
+      resetVersion?: string;
+    };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.token, {
@@ -518,23 +567,41 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    if (!payload?.sub || payload.type !== 'reset') {
+    if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'passwordResetVersion'],
     });
 
-    if (!user) {
+    if (!user || user.passwordResetVersion !== payload.resetVersion) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    user.password = await bcrypt.hash(dto.password, 10);
+    const nextResetVersion = randomUUID();
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id, passwordResetVersion: payload.resetVersion },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Invalid or expired reset token');
+      }
+
+      await manager.getRepository(Session).delete({ userId: user.id });
+    });
+
     user.hasPassword = true;
-    await this.userRepository.save(user);
-    await this.sessionRepository.delete({ userId: user.id });
+    user.passwordResetVersion = nextResetVersion;
 
     await this.syncUserProfile(user);
 
@@ -1531,13 +1598,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async issuePasswordResetToken(user: {
     id: string;
     email: string;
+    passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
       this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
     );
 
     return this.jwtService.signAsync(
-      { sub: user.id, email: user.email, type: 'reset' },
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'reset',
+        resetVersion: user.passwordResetVersion,
+      },
       { expiresIn: resetExpires },
     );
   }
@@ -1577,6 +1650,59 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return fallbackBase;
+  }
+
+  private enforcePasswordResetRateLimit(
+    key: string,
+    limitEnvKey: string,
+    defaultLimit: number,
+    windowEnvKey: string,
+    defaultWindowMs: number,
+  ): void {
+    const now = Date.now();
+    const limit = this.getPositiveIntegerConfig(limitEnvKey, defaultLimit);
+    const windowMs = this.getPositiveIntegerConfig(
+      windowEnvKey,
+      defaultWindowMs,
+    );
+
+    this.cleanupExpiredPasswordResetRateLimits(now);
+
+    const bucket = this.passwordResetRateLimits.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      this.passwordResetRateLimits.set(key, {
+        count: 1,
+        resetAt: now + windowMs,
+      });
+      return;
+    }
+
+    if (bucket.count >= limit) {
+      throw new HttpException(
+        PASSWORD_RESET_RATE_LIMIT_MESSAGE,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    bucket.count += 1;
+  }
+
+  private cleanupExpiredPasswordResetRateLimits(now = Date.now()): void {
+    for (const [key, bucket] of this.passwordResetRateLimits.entries()) {
+      if (bucket.resetAt <= now) {
+        this.passwordResetRateLimits.delete(key);
+      }
+    }
+  }
+
+  private normalizeRateLimitIp(ipAddress: string): string {
+    return ipAddress.trim() || 'unknown';
+  }
+
+  private getPositiveIntegerConfig(key: string, fallback: number): number {
+    const raw = this.configService.get<string>(key);
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private getRefreshSecret(): string {
@@ -1775,5 +1901,27 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private generateRandomPassword(): string {
     return randomBytes(16).toString('hex');
+  }
+
+  private async sendPasswordCreatedEmail(
+    email: string,
+    firstName: string | undefined,
+    context: string,
+  ): Promise<void> {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '');
+    const signInUrl =
+      this.configService.get<string>('PASSWORD_CREATED_LOGIN_URL') ??
+      (frontendUrl ? `${frontendUrl}/login` : undefined);
+
+    try {
+      await this.brevoService.sendPasswordCreatedEmail(email, {
+        firstName,
+        signInUrl,
+      });
+    } catch (error) {
+      this.logger.error(
+        `${context}: Brevo password created email failed for ${email}: ${(error as Error)?.message}`,
+      );
+    }
   }
 }

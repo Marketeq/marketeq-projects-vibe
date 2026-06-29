@@ -18,6 +18,10 @@ import { type TalentUser, talentToCardProps } from "@/src/lib/api/talent-users"
 import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
 import { fromLength } from "@/utils/functions"
+import { projectSeeds } from "@/data/projects.seed"
+import { serviceSeeds } from "@/data/services.seed"
+import { talentSeeds } from "@/data/talent.seed"
+import { teamSeeds } from "@/data/teams.seed"
 import {
   ArrowRight,
   Check,
@@ -230,6 +234,196 @@ interface CategoryMeta {
   description: string
   heroImage: string
   subcategories: SubcategoryData[]
+}
+
+const marketplaceTabs = [
+  "Featured",
+  "Newest",
+  "Most Popular",
+  "Trending",
+  "Top-Rated",
+  "Best-Sellers",
+]
+
+const marketplaceTalentTabs = [
+  "Featured",
+  "Newest",
+  "Most Popular",
+  "Trending",
+  "Top-Rated",
+]
+
+const projectCardMocks = projectSeeds
+
+const serviceCardMocks = serviceSeeds
+
+function scopeSeedItems<T extends { categorySlugs?: string[] }>(
+  items: T[],
+  activeCategorySlugs: string[]
+) {
+  for (const slug of [...activeCategorySlugs].reverse()) {
+    const scoped = items.filter((item) => item.categorySlugs?.includes(slug))
+    if (scoped.length > 0) return scoped
+  }
+
+  return items
+}
+
+const narrowProjectSearch = {
+  industries: [
+    "Agriculture",
+    "Oil & Gas",
+    "Manufacturing",
+    "Construction",
+    "Utilities",
+    "Retail & Wholesale",
+    "Transportation",
+    "Finance & Banking",
+    "Real Estate",
+    "Healthcare",
+  ],
+  budgets: ["$500 - $1,000", "$1,000 - $5,000", "$5,000 - $10,000", "$10,000+"],
+  lengths: ["1-2 weeks", "2-4 weeks", "1-3 months", "3+ months"],
+  teamSizes: ["1 person", "2-5 people", "6-10 people", "10+ people"],
+}
+
+const browseSkillMocks = [
+  "Python",
+  "Android",
+  "Java",
+  "DevOps",
+  "C++",
+  "JavaScript",
+  "Blockchain",
+  "SQL",
+  "Data Structures",
+  "Algorithms",
+  "Market Research",
+  "Data Visualization",
+  "AWS",
+  "Azure",
+  "Infrastructure as Code",
+]
+
+const topTalentMock = talentSeeds
+
+function TopTalentCard({ talent }: { talent: (typeof topTalentMock)[number] }) {
+  const profileHref = `/talent-profile?username=${encodeURIComponent(talent.username)}`
+
+  return (
+    <article className="relative flex min-h-[448px] cursor-pointer flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-dark-blue-400 shadow-[0px_1px_2px_0px_rgba(16,24,40,.04)]">
+      <NextLink
+        href={profileHref}
+        aria-label={`View ${talent.username} profile`}
+        className="absolute inset-0 z-[1] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#306CFE]"
+      />
+      <div className="relative mx-5 mt-5 h-[150px] overflow-hidden rounded-md bg-gray-100">
+        <NextImage
+          src={talent.photo}
+          alt={`${talent.username} profile`}
+          fill
+          sizes="(min-width: 1280px) 25vw, (min-width: 768px) 50vw, 100vw"
+          className={`object-cover ${talent.status === "away" ? "grayscale" : ""}`}
+        />
+        <div className="absolute left-4 top-4 z-10 inline-flex h-7 items-center gap-1.5 rounded bg-black/55 px-2.5 text-xs font-bold text-white">
+          <Star className="size-3.5 fill-none text-white" />
+          All Stars
+        </div>
+        <FavoriteRoot>
+          {({ pressed }) => (
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="absolute right-4 top-4 z-20 inline-block">
+                    <Favorite
+                      className="size-7 text-white hover:text-white data-[state=on]:text-[#306CFE]"
+                      starClassName="size-7 stroke-[2]"
+                    />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {pressed ? (
+                    <span className="inline-flex items-center gap-x-1">
+                      <Check className="size-[15px] shrink-0 text-green-500" />
+                      Saved
+                    </span>
+                  ) : (
+                    "Save to favorites"
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </FavoriteRoot>
+      </div>
+
+      <div
+        className={`absolute left-5 top-[151px] z-20 flex size-9 items-center justify-center rounded-full border-4 border-white text-white ${
+          talent.status === "away" ? "bg-[#FDB022]" : "bg-[#12B76A]"
+        }`}
+      >
+        {talent.status === "away" ? (
+          <Clock className="size-4" />
+        ) : (
+          <Check className="size-4" />
+        )}
+      </div>
+
+      <div className="px-5 pb-5 pt-4">
+        <p className="text-lg font-bold leading-none text-dark-blue-400">
+          {talent.rate}
+          <span className="text-sm font-medium">/hr</span>
+        </p>
+        <div className="mt-5">
+          <h2 className="text-base font-bold leading-5 text-dark-blue-400">
+            {talent.username}{" "}
+            <span className="font-normal text-gray-400">{talent.handle}</span>
+          </h2>
+          <p className="text-base font-bold leading-5 text-dark-blue-400">
+            {talent.role}
+          </p>
+          <p className="mt-3 text-sm leading-5 text-[#66739A]">
+            {talent.experience}
+          </p>
+        </div>
+
+        <div className="mt-5 flex items-center gap-2 text-xs font-semibold leading-4 text-[#667085]">
+          <MarkerPin02 className="size-4 text-[#667085]" />
+          <span>{talent.location}</span>
+        </div>
+
+        <div className="mt-5 flex h-[30px] items-center">
+          <div className="flex h-full items-center gap-1 rounded-l bg-[#F8FAFF] px-2">
+            {fromLength(5).map((_, idx) => (
+              <Star
+                key={idx}
+                className="size-[15px] fill-[#306CFE] text-[#306CFE]"
+              />
+            ))}
+            <span className="ml-1 text-sm font-bold leading-none text-dark-blue-400">
+              {talent.rating}
+            </span>
+          </div>
+          <div className="flex h-full items-center bg-white px-4 text-sm font-bold leading-none text-dark-blue-400">
+            {talent.projects}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-auto border-t border-gray-200 bg-gray-50 px-4 py-4">
+        <div className="flex flex-wrap gap-x-3 gap-y-2 text-xs font-bold leading-5 text-gray-400">
+          {talent.skills.map((skill, idx) => (
+            <span
+              key={`${skill}-${idx}`}
+              className={skill === "More..." ? "ml-auto text-gray-600" : ""}
+            >
+              {skill}
+            </span>
+          ))}
+        </div>
+      </div>
+    </article>
+  )
 }
 
 const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
@@ -2608,6 +2802,8 @@ export default function Projects() {
   const [listingsProjects, setListingsProjects] = useState<any[]>([])
   const [listingsServices, setListingsServices] = useState<any[]>([])
   const [talentUsers, setTalentUsers] = useState<any[]>([])
+  const [activeTopProjectsTab, setActiveTopProjectsTab] = useState("Featured")
+  const [activeTopServicesTab, setActiveTopServicesTab] = useState("Featured")
 
   const subcategoryScrollRef = useRef<HTMLDivElement>(null)
   const [canScrollPrev, setCanScrollPrev] = useState(false)
@@ -2706,6 +2902,11 @@ export default function Projects() {
   const l1 = rootBrowseMode ? undefined : rawL1
   const l2 = categoryPath?.l2
   const l3 = categoryPath?.l3
+  const isAllPage = pageKind === "show-all"
+  const isL1AllPage = isAllPage && Boolean(l1) && !l2 && !l3
+  const isL2AllPage = isAllPage && Boolean(l1) && Boolean(l2) && !l3
+  const isL3AllPage = isAllPage && Boolean(l1) && Boolean(l2) && Boolean(l3)
+  const isL1OrL2AllPage = isL1AllPage || isL2AllPage
 
   // Resolve category metadata from the static taxonomy. In rootBrowseMode we
   // synthesize an l1Meta whose "subcategories" are the canonical top-level
@@ -2798,16 +2999,33 @@ export default function Projects() {
   const currentCategoryPath = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug]
     .filter(Boolean)
     .join("/")
+  const currentCategorySlugs = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug].filter(
+    (slug): slug is string => Boolean(slug)
+  )
+  const recommendedProjectSeeds = scopeSeedItems(
+    projectCardMocks,
+    currentCategorySlugs
+  )
+  const recommendedServiceSeeds = scopeSeedItems(
+    serviceCardMocks,
+    currentCategorySlugs
+  )
+  const recommendedTeamSeeds = scopeSeedItems(teamSeeds, currentCategorySlugs)
+  const recommendedTalentSeeds = scopeSeedItems(
+    topTalentMock,
+    currentCategorySlugs
+  )
 
   /** Build a link to the kind-specific listing page at the current depth.
-   *  When the user is already on a kind-filtered browse page, prefer the
-   *  kind-first URL so navigation stays consistent (e.g. /teams/development
-   *  rather than /c/development/teams). */
+   *  Category-scoped URLs stay canonical as /c/{path}/{kind}. The root
+   *  browse sentinel is not a real category path, so it keeps the top-level
+   *  entity URL.
+   */
   const listingHref = (
     kind: "projects" | "services" | "teams" | "talent" | "all"
   ) => {
+    if (rootBrowseMode) return kind === "all" ? "/c" : `/${kind}`
     if (kind === "all") return `/c/${currentCategoryPath}`
-    if (pageKind !== "show-all") return `/${kind}/${currentCategoryPath}`
     return `/c/${currentCategoryPath}/${kind}`
   }
 
@@ -2848,6 +3066,7 @@ export default function Projects() {
   //   L2 page → show L2's children (populated in the static taxonomy)
   //   L3 page → no subcategories section (intentionally empty)
   const subcategories = useMemo(() => {
+    if (l3) return []
     if (!l2 && !l3 && l1Meta.subcategories.length > 0) {
       return l1Meta.subcategories.map((s) => ({ ...s, uuid: s.slug }))
     }
@@ -2886,6 +3105,7 @@ export default function Projects() {
       setDisplayedProjects(allItems)
     }
   }, [pageData])
+
 
   // Sort projects by featured status
   useEffect(() => {
@@ -2977,6 +3197,7 @@ export default function Projects() {
     fetchListings()
   }, [l1])
 
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
@@ -3045,7 +3266,7 @@ export default function Projects() {
                     {/* Entity root — links to /projects, /services, etc. */}
                     {l2Meta || l3Meta ? (
                       <NextLink
-                        href={`/${pageKind}`}
+                        href={`/c/${l1Meta.slug}/${pageKind}`}
                         className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
                       >
                         {sectionLabel}
@@ -3062,7 +3283,7 @@ export default function Projects() {
                           /
                         </span>
                         <NextLink
-                          href={`/${pageKind}/${l1Meta.slug}`}
+                          href={`/c/${l1Meta.slug}/${pageKind}`}
                           className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
                         >
                           {l1Meta.name}
@@ -3076,7 +3297,7 @@ export default function Projects() {
                         </span>
                         {l3Meta ? (
                           <NextLink
-                            href={`/${pageKind}/${l1Meta.slug}/${l2Meta.slug}`}
+                            href={`/c/${l1Meta.slug}/${l2Meta.slug}/${pageKind}`}
                             className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
                           >
                             {l2Meta.name}
@@ -3109,33 +3330,37 @@ export default function Projects() {
               subcategories, so the Explore block is hidden entirely on L3
               pages and also hidden on any L1/L2 that has no populated
               children (prevents an empty "No subcategories available" block). */}
-          {!l3 && subcategories.length > 0 && (
+          {subcategories.length > 0 && (
             <div className="mt-[50px]">
               <div className="flex items-center justify-between">
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                  Explore {sectionLabel}
+                  {pageKind !== "show-all"
+                    ? `Browse ${sectionLabel} by Category`
+                    : `Explore ${sectionLabel}`}
                 </h1>
 
-                <div className="flex items-center gap-x-3">
-                  <IconButton
-                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                    visual="gray"
-                    variant="outlined"
-                    data-state={canScrollPrev ? "active" : "inactive"}
-                    onClick={() => scrollSubcategories("prev")}
-                  >
-                    <ChevronLeft className="size-[18px]" />
-                  </IconButton>
-                  <IconButton
-                    className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                    visual="gray"
-                    variant="outlined"
-                    data-state={canScrollNext ? "active" : "inactive"}
-                    onClick={() => scrollSubcategories("next")}
-                  >
-                    <ChevronRight className="size-[18px]" />
-                  </IconButton>
-                </div>
+                {subcategories.length > 0 && (
+                  <div className="flex items-center gap-x-3">
+                    <IconButton
+                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                      visual="gray"
+                      variant="outlined"
+                      data-state={canScrollPrev ? "active" : "inactive"}
+                      onClick={() => scrollSubcategories("prev")}
+                    >
+                      <ChevronLeft className="size-[18px]" />
+                    </IconButton>
+                    <IconButton
+                      className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                      visual="gray"
+                      variant="outlined"
+                      data-state={canScrollNext ? "active" : "inactive"}
+                      onClick={() => scrollSubcategories("next")}
+                    >
+                      <ChevronRight className="size-[18px]" />
+                    </IconButton>
+                  </div>
+                )}
               </div>
 
               <div
@@ -3160,10 +3385,12 @@ export default function Projects() {
                           key={subcat.uuid ?? subcat.slug}
                           href={
                             rootBrowseMode
-                              ? `/${pageKind}/${subcat.slug}`
+                              ? pageKind === "show-all"
+                                ? `/c/${subcat.slug}`
+                                : `/c/${subcat.slug}/${pageKind}`
                               : pageKind === "show-all"
                                 ? `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
-                                : `/${pageKind}/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}`
+                                : `/c/${[l1Meta.slug, l2Meta?.slug, subcat.slug].filter(Boolean).join("/")}/${pageKind}`
                           }
                           className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
                         >
@@ -3199,10 +3426,512 @@ export default function Projects() {
             </div>
           )}
 
+
+          {isL3AllPage && (
+            <>
+              <div className="mt-[50px]">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Top {currentName} Projects
+                </h1>
+
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-7">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {marketplaceTabs.map((tab) => (
+                      <Button
+                        key={tab}
+                        type="button"
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        aria-pressed={activeTopProjectsTab === tab}
+                        onClick={() => setActiveTopProjectsTab(tab)}
+                        className={`h-8 rounded-full bg-white px-3.5 text-sm font-medium shadow-none ${
+                          activeTopProjectsTab === tab
+                            ? "border-2 border-dark-blue-400 text-dark-blue-400"
+                            : "border-gray-300 text-gray-500 hover:border-dark-blue-400 hover:text-dark-blue-400"
+                        }`}
+                      >
+                        {tab}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <Button
+                    asChild
+                    variant="link"
+                    visual="gray"
+                    size="lg"
+                    className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                  >
+                    <NextLink href={listingHref("projects")}>
+                      Explore More Projects
+                    </NextLink>
+                  </Button>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                  {fromLength(8).map((idx) => {
+                    const project =
+                      listingsProjects.length > 0
+                        ? listingsProjects[idx % listingsProjects.length]
+                        : null
+                    const mock = projectCardMocks[idx % projectCardMocks.length]
+
+                    return (
+                      <ListingCard
+                        key={project?.id ?? `l3-top-project-${idx}`}
+                        kind="project"
+                        id={project?.id ?? `l3-top-project-${idx}`}
+                        title={project?.title || mock.title}
+                        description={
+                          project?.description?.slice(0, 120) ||
+                          mock.description
+                        }
+                        mediaUrl={
+                          project?.mediaUrls?.[0] ||
+                          project?.coverImage ||
+                          mock.mediaUrl
+                        }
+                        budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
+                        duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
+                        rating={4.9}
+                        reviewCount={5}
+                        href={
+                          project
+                            ? buildProjectUrl(
+                                currentCategoryPath,
+                                project.slug,
+                                project.id
+                              )
+                            : buildProjectUrl(
+                                currentCategoryPath,
+                                mock.slug,
+                                mock.id
+                              )
+                        }
+                        collaborators={(talentUsers.length > 0
+                          ? talentUsers.slice(0, 6)
+                          : Array(6).fill("/woman.jpg")
+                        ).map(
+                          (u: any) =>
+                            (typeof u === "string" ? u : u?.avatarUrl) ||
+                            "/woman.jpg"
+                        )}
+                        favoriteSlot={
+                          <FavoriteRoot>
+                            {({ pressed }) => (
+                              <TooltipProvider delayDuration={75}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-block">
+                                      <Favorite />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {pressed ? (
+                                      <span className="inline-flex items-center gap-x-1">
+                                        <Check className="size-[15px] shrink-0 text-green-500" />
+                                        Saved
+                                      </span>
+                                    ) : (
+                                      "Save to favorites"
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </FavoriteRoot>
+                        }
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-[50px]">
+                <Tabs defaultValue="Industry">
+                  <div className="flex items-center justify-between">
+                    <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      Narrow Your Project Search
+                    </h1>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      size="lg"
+                      className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                    >
+                      Advanced Filters
+                    </Button>
+                  </div>
+                  <TabsList className="mt-6 flex flex-wrap items-center gap-3">
+                    {["Industry", "Budget", "Project Length", "Team Size"].map(
+                      (tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      )
+                    )}
+                  </TabsList>
+                  <div className="mt-6">
+                    <TabsContent
+                      value="Industry"
+                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
+                    >
+                      {narrowProjectSearch.industries.map((item) => (
+                        <NextLink
+                          key={item}
+                          href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(item)}`}
+                        >
+                          <article className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300 hover:border-gray-300 hover:ring-1 hover:ring-gray-300">
+                            {item}
+                          </article>
+                        </NextLink>
+                      ))}
+                    </TabsContent>
+                    <TabsContent
+                      value="Budget"
+                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
+                    >
+                      {narrowProjectSearch.budgets.map((item) => (
+                        <article
+                          key={item}
+                          className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
+                        >
+                          {item}
+                        </article>
+                      ))}
+                    </TabsContent>
+                    <TabsContent
+                      value="Project Length"
+                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
+                    >
+                      {narrowProjectSearch.lengths.map((item) => (
+                          <article
+                            key={item}
+                            className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
+                          >
+                            {item}
+                          </article>
+                        )
+                      )}
+                    </TabsContent>
+                    <TabsContent
+                      value="Team Size"
+                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
+                    >
+                      {narrowProjectSearch.teamSizes.map((item) => (
+                          <article
+                            key={item}
+                            className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
+                          >
+                            {item}
+                          </article>
+                        )
+                      )}
+                    </TabsContent>
+                  </div>
+                </Tabs>
+              </div>
+
+              <div className="relative mt-[50px] h-[298px] overflow-hidden rounded-lg p-[50px]">
+                <NextImage
+                  className="object-cover"
+                  src="/vr-4.png"
+                  sizes="100vw"
+                  alt={`${currentName} hero`}
+                  fill
+                />
+                <div className="absolute inset-0 flex items-center justify-end bg-black/40 p-[50px]">
+                  <div className="max-w-[750px]">
+                    <h1 className="text-4xl font-bold leading-none text-white">
+                      Fueling the Future of Research
+                    </h1>
+                    <p className="mt-2 text-xl font-light leading-none text-white">
+                      Discover research experts and projects tailored to your goals.
+                    </p>
+                    <Button
+                      asChild
+                      className="mt-[50px] rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-dark-blue-400 hover:text-dark-blue-400"
+                      size="lg"
+                    >
+                      <NextLink href={listingHref("projects")}>
+                        Explore Research <ArrowRight className="size-[15px]" />
+                      </NextLink>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            {isL3AllPage && (
+              <div className="mt-[50px]">
+                <Tabs defaultValue="Featured">
+                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                    Top {currentName} Services
+                  </h1>
+                  <SwiperRoot>
+                    <div className="mt-6 flex items-center justify-between">
+                      <TabsList className="flex items-center gap-x-3">
+                        {marketplaceTabs.map((tab) => (
+                          <Badge
+                            key={tab}
+                            variant="circular"
+                            visual="gray"
+                            size="lg"
+                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            asChild
+                          >
+                            <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                          </Badge>
+                        ))}
+                      </TabsList>
+                      <Button
+                        asChild
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                      >
+                        <NextLink href={listingHref("services")}>
+                          Explore More Services
+                        </NextLink>
+                      </Button>
+                    </div>
+                    <div className="mt-6">
+                      {marketplaceTabs.map((tabValue) => (
+                        <TabsContent key={tabValue} value={tabValue}>
+                          <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                            {fromLength(8).map((idx) => {
+                              const service =
+                                listingsServices.length > 0
+                                  ? listingsServices[idx % listingsServices.length]
+                                  : null
+                              const mock =
+                                serviceCardMocks[idx % serviceCardMocks.length]
+                              return (
+                                <SwiperSlide
+                                  className="w-[355px]"
+                                  key={service?.id ?? `l3-service-${idx}`}
+                                >
+                                  <ListingCard
+                                    kind="service"
+                                    id={service?.id ?? `l3-service-${idx}`}
+                                    title={
+                                      service?.title ||
+                                      mock.title
+                                    }
+                                    description={
+                                      service?.description?.slice(0, 120) ||
+                                      mock.description
+                                    }
+                                    mediaUrl={
+                                      service?.mediaUrls?.[0] ||
+                                      service?.coverImage ||
+                                      mock.mediaUrl
+                                    }
+                                    budget={
+                                      service?.priceMin
+                                        ? `$${Number(service.priceMin).toLocaleString()}/month`
+                                        : mock.budget
+                                    }
+                                    rating={4.9}
+                                    reviewCount={5}
+                                    href={
+                                      service
+                                        ? buildServiceUrl(
+                                            currentCategoryPath,
+                                            service.slug,
+                                            service.id
+                                          )
+                                        : buildServiceUrl(
+                                            currentCategoryPath,
+                                            mock.slug,
+                                            mock.id
+                                          )
+                                    }
+                                    collaborators={Array(6).fill("/woman.jpg")}
+                                    favoriteSlot={
+                                      <FavoriteRoot>
+                                        {({ pressed }) => (
+                                          <TooltipProvider delayDuration={75}>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <span className="inline-block">
+                                                  <Favorite />
+                                                </span>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                {pressed ? "Saved" : "Save to favorites"}
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        )}
+                                      </FavoriteRoot>
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
+                          </SwiperContent>
+                        </TabsContent>
+                      ))}
+                    </div>
+                  </SwiperRoot>
+                </Tabs>
+              </div>
+              )}
+
+              <div className="mt-[50px]">
+                <Tabs defaultValue="Featured">
+                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                    {l3Meta ? `${l2Meta?.name ?? currentName} Teams` : `${currentName} Teams`}
+                  </h1>
+                  <SwiperRoot>
+                    <div className="mt-6 flex items-center justify-between">
+                      <TabsList className="flex items-center gap-x-3">
+                        {marketplaceTalentTabs.map(
+                          (tab) => (
+                            <Badge
+                              key={tab}
+                              variant="circular"
+                              visual="gray"
+                              size="lg"
+                              className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                              asChild
+                            >
+                              <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                            </Badge>
+                          )
+                        )}
+                      </TabsList>
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                      >
+                        Explore More Teams
+                      </Button>
+                    </div>
+                    <div className="mt-6">
+                      {marketplaceTalentTabs.map(
+                        (tabValue) => (
+                          <TabsContent key={tabValue} value={tabValue}>
+                            <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                              {teamSeeds.map((team) => (
+                                <SwiperSlide
+                                  className="w-[355px]"
+                                  key={`l3-team-${team.id}`}
+                                >
+                                  <ListingCard
+                                    kind="team"
+                                    id={team.id}
+                                    name={team.name}
+                                    handle={team.handle}
+                                    tagline={team.tagline}
+                                    experience={team.experience}
+                                    rate={team.rate}
+                                    locations={team.location}
+                                    rating={team.rating}
+                                    projectCount={team.completedProjects}
+                                    skills={team.skills}
+                                    memberAvatars={team.memberAvatars}
+                                    previousClientLogos={team.previousClientLogos}
+                                    favoriteSlot={<FavoriteRoot>{() => <Favorite />}</FavoriteRoot>}
+                                  />
+                                </SwiperSlide>
+                              ))}
+                            </SwiperContent>
+                          </TabsContent>
+                        )
+                      )}
+                    </div>
+                  </SwiperRoot>
+                </Tabs>
+              </div>
+
+              <div className="mt-[50px]">
+                <Tabs defaultValue="Featured">
+                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                    All Stars in {currentName}
+                  </h1>
+                  <SwiperRoot>
+                    <div className="mt-6 flex items-center justify-between">
+                      <TabsList className="flex items-center gap-x-3">
+                        {marketplaceTalentTabs.map((tab) => (
+                          <Badge
+                            key={tab}
+                            variant="circular"
+                            visual="gray"
+                            size="lg"
+                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            asChild
+                          >
+                            <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                          </Badge>
+                        ))}
+                      </TabsList>
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                      >
+                        Explore More Talent
+                      </Button>
+                    </div>
+                    <div className="mt-6">
+                      {marketplaceTalentTabs.map((tabValue) => (
+                        <TabsContent key={tabValue} value={tabValue}>
+                          <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                            {topTalentMock.map((talent) => (
+                              <SwiperSlide
+                                className="w-[355px]"
+                                key={`l3-star-${tabValue}-${talent.id}`}
+                              >
+                                <TopTalentCard talent={talent} />
+                              </SwiperSlide>
+                            ))}
+                          </SwiperContent>
+                        </TabsContent>
+                      ))}
+                    </div>
+                  </SwiperRoot>
+                </Tabs>
+              </div>
+
+              <div className="mt-[50px]">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Browse by Skills
+                </h1>
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  {browseSkillMocks.map((skill) => (
+                    <Badge
+                      key={skill}
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer"
+                    >
+                      {skill}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+
+
           {/* Recommended in {Category} — entity-tab carousel. Show-all only,
               because kind-filtered browse pages (/projects, /teams, etc.)
               should contain a single entity kind — no tabs that switch kinds. */}
-          {pageKind === "show-all" && (
+          {isL1OrL2AllPage && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Projects">
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -3218,7 +3947,7 @@ export default function Projects() {
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -3257,15 +3986,15 @@ export default function Projects() {
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         {(listingsProjects.length > 0
                           ? listingsProjects.slice(0, 8)
-                          : displayedProjects.length > 0
-                            ? displayedProjects.slice(0, 6)
-                            : fromLength(6)
+                          : recommendedProjectSeeds
                         ).map((item: any, idx: number) => {
-                          const project =
-                            listingsProjects.length > 0 ||
-                            displayedProjects.length > 0
-                              ? item
-                              : null
+                          const project = listingsProjects.length > 0 ? item : null
+                          const mock =
+                            listingsProjects.length > 0
+                              ? recommendedProjectSeeds[
+                                  idx % recommendedProjectSeeds.length
+                                ]
+                              : item
                           const key = project?.id ?? idx
                           return (
                             <SwiperSlide className="w-[355px]" key={key}>
@@ -3274,20 +4003,20 @@ export default function Projects() {
                                 id={project?.id ?? `mock-${idx}`}
                                 title={
                                   project?.title ||
-                                  "The Ultimate Mobile App Experience"
+                                  mock.title
                                 }
                                 description={
                                   project?.summary ||
                                   project?.description?.slice(0, 120) ||
-                                  "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                                  mock.description
                                 }
                                 mediaUrl={
                                   project?.mediaUrls?.[0] ||
                                   project?.coverImage ||
                                   project?.thumbnail ||
-                                  "/dashboard.png"
+                                  mock.mediaUrl
                                 }
-                                budget={`$${project?.budget ? Number(project.budget).toLocaleString() : project?.scopeTotal?.budget || "50,000"} budget`}
+                                budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : project?.scopeTotal?.budget ? `$${Number(project.scopeTotal.budget).toLocaleString()} budget` : mock.budget}
                                 rating={Number(project?.rating) || 4.9}
                                 reviewCount={project?.reviewCount || 5}
                                 href={
@@ -3297,7 +4026,11 @@ export default function Projects() {
                                         project.slug,
                                         project.id
                                       )
-                                    : listingHref("projects")
+                                    : buildProjectUrl(
+                                        currentCategoryPath,
+                                        mock.slug,
+                                        mock.id
+                                      )
                                 }
                                 avatarsSlot={
                                   <TooltipProvider>
@@ -3467,7 +4200,7 @@ export default function Projects() {
                             href={listingHref("projects")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Projects in {currentName}
                               </h1>
@@ -3487,28 +4220,33 @@ export default function Projects() {
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         {(listingsServices.length > 0
                           ? listingsServices.slice(0, 8)
-                          : fromLength(8)
+                          : recommendedServiceSeeds
                         ).map((item: any, idx: number) => {
                           const service =
                             listingsServices.length > 0 ? item : null
+                          const mock =
+                            listingsServices.length > 0
+                              ? recommendedServiceSeeds[
+                                  idx % recommendedServiceSeeds.length
+                                ]
+                              : item
                           const key = service?.id ?? idx
                           return (
                             <SwiperSlide className="w-[355px]" key={key}>
                               <ListingCard
                                 kind="service"
                                 id={service?.id ?? `mock-${idx}`}
-                                title={
-                                  service?.title ||
-                                  `Professional ${currentName} Service`
-                                }
+                                title={service?.title || mock.title}
                                 description={
                                   service?.description?.slice(0, 120) ||
-                                  `Professional service offering for ${currentName}. Expert team ready to deliver results.`
+                                  mock.description
                                 }
-                                mediaUrl={
-                                  service?.mediaUrls?.[0] || "/dashboard.png"
+                                mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
+                                budget={
+                                  service?.priceMin
+                                    ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
+                                    : mock.budget
                                 }
-                                budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
                                 rating={4.9}
                                 reviewCount={5}
                                 href={
@@ -3518,7 +4256,11 @@ export default function Projects() {
                                         service.slug,
                                         service.id
                                       )
-                                    : listingHref("services")
+                                    : buildServiceUrl(
+                                        currentCategoryPath,
+                                        mock.slug,
+                                        mock.id
+                                      )
                                 }
                                 collaborators={(talentUsers.length > 0
                                   ? talentUsers.slice(0, 4)
@@ -3571,7 +4313,7 @@ export default function Projects() {
                             href={listingHref("services")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Services in {currentName}
                               </h1>
@@ -3589,37 +4331,25 @@ export default function Projects() {
                       value="Teams"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {fromLength(8).map((key) => (
-                          <SwiperSlide className="w-[355px]" key={key}>
+                        {recommendedTeamSeeds.map((team) => (
+                          <SwiperSlide
+                            className="w-[355px]"
+                            key={`recommended-team-${team.id}`}
+                          >
                             <ListingCard
                               kind="team"
-                              id={`mock-${key}`}
-                              name="Team Name"
-                              handle="@Tech Sentinel"
-                              tagline={`${currentName} team`}
-                              experience="Average 10 years of experience"
-                              rate="$85 - $120/hr"
-                              locations="UK, USA, Brazil, Philippines, more..."
-                              rating={4.7}
-                              projectCount={2}
-                              skills={[
-                                "iOS",
-                                "E-commerce",
-                                "Mobile Application",
-                                "Small Business",
-                                "Software Development",
-                              ]}
-                              memberAvatars={Array.from(
-                                { length: 6 },
-                                () => "/woman.jpg"
-                              )}
-                              previousClientLogos={[
-                                "/google.png",
-                                "/microsoft.png",
-                                "/aws.png",
-                                "/instagram.png",
-                                "/spotify.png",
-                              ]}
+                              id={team.id}
+                              name={team.name}
+                              handle={team.handle}
+                              tagline={team.tagline}
+                              experience={team.experience}
+                              rate={team.rate}
+                              locations={team.location}
+                              rating={team.rating}
+                              projectCount={team.completedProjects}
+                              skills={team.skills}
+                              memberAvatars={team.memberAvatars}
+                              previousClientLogos={team.previousClientLogos}
                               favoriteSlot={
                                 <FavoriteRoot>
                                   {({ pressed }) => (
@@ -3653,7 +4383,7 @@ export default function Projects() {
                             href={listingHref("teams")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Teams in {currentName}
                               </h1>
@@ -3671,22 +4401,50 @@ export default function Projects() {
                       value="Talent"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {talentUsers
-                          .slice(0, 8)
-                          .map((u: TalentUser, idx: number) => (
+                        {talentUsers.length > 0
+                          ? talentUsers
+                              .slice(0, 8)
+                              .map((u: TalentUser, idx: number) => (
                             <SwiperSlide className="w-[355px]" key={u.id}>
                               <ListingCard
                                 kind="talent"
                                 {...talentToCardProps(u, idx)}
                               />
                             </SwiperSlide>
-                          ))}
+                              ))
+                          : recommendedTalentSeeds.map((talent) => (
+                              <SwiperSlide
+                                className="w-[355px]"
+                                key={`recommended-talent-${talent.id}`}
+                              >
+                                <ListingCard
+                                  kind="talent"
+                                  id={talent.id}
+                                  username={talent.username}
+                                  name={talent.username}
+                                  handle={talent.handle}
+                                  role={talent.role}
+                                  photo={talent.photo}
+                                  rate={talent.rate}
+                                  experience={talent.experience}
+                                  country={talent.location}
+                                  rating={Number(talent.rating)}
+                                  projects={Number.parseInt(
+                                    talent.projects,
+                                    10
+                                  )}
+                                  allStars
+                                  skills={talent.skills}
+                                  href={`/talent-profile?username=${encodeURIComponent(talent.username)}`}
+                                />
+                              </SwiperSlide>
+                            ))}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("talent")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Talent in {currentName}
                               </h1>
@@ -3708,11 +4466,11 @@ export default function Projects() {
               Show-all only: the kind-filtered /projects page already has the
               "Top Projects" section further down, so skipping this here
               avoids two identical "Top" rows on the same page. */}
-          {pageKind === "show-all" && (
+          {isL1OrL2AllPage && (
             <div className="mt-[50px]">
               <Tabs defaultValue={subcategories[0]?.name || "All"}>
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                  Top-Rated {sectionLabel}
+                  Top-Rated {sectionLabel} Projects
                 </h1>
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
@@ -3726,7 +4484,7 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
@@ -3788,13 +4546,18 @@ export default function Projects() {
                                     idx % listingsProjects.length
                                   ]
                                 : null
+                            const mock = projectCardMocks[idx % projectCardMocks.length]
                             const href = project
                               ? buildProjectUrl(
                                   currentCategoryPath,
                                   project.slug,
                                   project.id
                                 )
-                              : listingHref("projects")
+                              : buildProjectUrl(
+                                  currentCategoryPath,
+                                  mock.slug,
+                                  mock.id
+                                )
                             return (
                               <SwiperSlide
                                 key={project?.id ?? idx}
@@ -3810,9 +4573,9 @@ export default function Projects() {
                                         className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                                         src={
                                           project?.mediaUrls?.[0] ||
-                                          "/dashboard.png"
+                                          mock.mediaUrl
                                         }
-                                        alt={project?.title || "Dashboard"}
+                                        alt={project?.title || mock.title}
                                         fill
                                         sizes="33vw"
                                       />
@@ -3820,7 +4583,7 @@ export default function Projects() {
                                     <div className="mt-3 flex items-start gap-x-3">
                                       <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
                                         {project?.title ||
-                                          "The Ultimate Mobile App Experience"}
+                                          mock.title}
                                       </span>
                                       <div className="inline-flex items-center gap-x-1">
                                         <Star className="size-[15px] text-primary-500 fill-primary-500" />
@@ -3834,26 +4597,24 @@ export default function Projects() {
                                     </div>
                                     <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
                                       {project?.description?.slice(0, 140) ||
-                                        "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."}
+                                        mock.description}
                                     </p>
                                     <div className="mt-[14.5px] flex flex-col gap-y-3">
                                       <div className="flex items-center gap-x-[6.4px]">
                                         <Clock className="size-[18px] shrink-0 text-primary-500" />
                                         <span className="font-medium text-sm leading-none text-dark-blue-400">
                                           Starting from{" "}
-                                          {project?.duration || "12 weeks"}
+                                          {project?.duration || mock.duration.replace("Starting from ", "")}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-x-[6.4px]">
                                         <Money className="size-[18px] shrink-0 text-primary-500" />
                                         <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          $
                                           {project?.budget
-                                            ? Number(
+                                            ? `$${Number(
                                                 project.budget
-                                              ).toLocaleString()
-                                            : "50,000"}{" "}
-                                          budget
+                                              ).toLocaleString()} budget`
+                                            : mock.budget}
                                         </span>
                                       </div>
                                     </div>
@@ -3925,13 +4686,11 @@ export default function Projects() {
               and on the kind-filtered /teams page, where it serves as the
               primary "Top Software Development Teams" section from the L1
               Teams design. */}
-          {(pageKind === "show-all" || pageKind === "teams") && (
+          {isL1OrL2AllPage && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                  {pageKind === "show-all"
-                    ? `${currentName} Teams`
-                    : `Top ${currentName} Teams`}
+                  {currentName} Teams
                 </h1>
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
@@ -3948,7 +4707,7 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4077,41 +4836,474 @@ export default function Projects() {
           )}
 
           {/* Popular Searches */}
-          <div className="mt-[50px]">
-            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-              Popular Searches
-            </h1>
-            <div className="mt-6 flex items-center flex-wrap gap-3">
-              {[
-                "API Development",
-                "Cloud Migration",
-                "Data Pipeline",
-                "Machine Learning",
-                "Mobile App",
-                "Web Application",
-                "Microservices",
-                "DevOps",
-                "UI/UX Design",
-                "Database Optimization",
-              ].map((term) => (
-                <NextLink
-                  key={term}
-                  href={`/search?q=${encodeURIComponent(term)}&category=${l1Meta.slug}`}
-                  className="focus-visible:outline-none"
+          {isL1AllPage && (
+            <div className="mt-[50px]">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Popular Searches
+              </h1>
+              <div className="mt-6 flex items-center flex-wrap gap-3">
+                {[
+                  "API Development",
+                  "Cloud Migration",
+                  "Data Pipeline",
+                  "Machine Learning",
+                  "Mobile App",
+                  "Web Application",
+                  "Microservices",
+                  "DevOps",
+                  "UI/UX Design",
+                  "Database Optimization",
+                ].map((term) => (
+                  <NextLink
+                    key={term}
+                    href={`/search?q=${encodeURIComponent(term)}&category=${l1Meta.slug}`}
+                    className="focus-visible:outline-none"
+                  >
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-200 transition duration-300 cursor-pointer"
+                    >
+                      {term}
+                    </Badge>
+                  </NextLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+
+
+          {pageKind === "projects" && (
+            <div className="mt-[50px]">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Top {currentName} Projects
+              </h1>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-7">
+                <div className="flex flex-wrap items-center gap-3">
+                  {[
+                    "Featured",
+                    "Newest",
+                    "Most Popular",
+                    "Trending",
+                    "Top-Rated",
+                    "Bestsellers",
+                  ].map((tab) => (
+                    <Button
+                      key={tab}
+                      type="button"
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      aria-pressed={activeTopProjectsTab === tab}
+                      onClick={() => setActiveTopProjectsTab(tab)}
+                      className={`h-8 rounded-full bg-white px-3.5 text-sm font-medium shadow-none ${
+                        activeTopProjectsTab === tab
+                          ? "border-2 border-dark-blue-400 text-dark-blue-400"
+                          : "border-gray-300 text-gray-500 hover:border-dark-blue-400 hover:text-dark-blue-400"
+                      }`}
+                    >
+                      {tab}
+                    </Button>
+                  ))}
+                </div>
+
+                <Button
+                  asChild
+                  variant="link"
+                  visual="gray"
+                  size="lg"
+                  className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
                 >
-                  <Badge
-                    variant="circular"
+                  <NextLink href={listingHref("projects")}>
+                    Explore More Projects
+                  </NextLink>
+                </Button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {(() => {
+                  const baseItems =
+                    listingsProjects.length > 0
+                      ? listingsProjects.slice(0, 8)
+                      : fromLength(8)
+                  const tabShiftMap: Record<string, number> = {
+                    Featured: 0,
+                    Newest: 1,
+                    "Most Popular": 2,
+                    Trending: 3,
+                    "Top-Rated": 4,
+                    Bestsellers: 5,
+                  }
+                  const shift = tabShiftMap[activeTopProjectsTab] ?? 0
+                  const projectItems =
+                    baseItems.length > 0
+                      ? baseItems.slice(shift).concat(baseItems.slice(0, shift))
+                      : baseItems
+
+                  return projectItems.map((item: any, idx: number) => {
+                    const project = listingsProjects.length > 0 ? item : null
+                    const mock = projectCardMocks[idx % projectCardMocks.length]
+
+                    return (
+                      <ListingCard
+                        key={project?.id ?? `top-project-${idx}`}
+                        kind="project"
+                        id={project?.id ?? `top-project-${idx}`}
+                      title={project?.title || mock.title}
+                      description={
+                        project?.description?.slice(0, 120) ||
+                        mock.description
+                      }
+                        mediaUrl={
+                          project?.mediaUrls?.[0] ||
+                          project?.coverImage ||
+                          mock.mediaUrl
+                        }
+                      budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
+                      duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
+                        rating={4.9}
+                        reviewCount={5}
+                        href={
+                          project
+                            ? buildProjectUrl(
+                                currentCategoryPath,
+                                project.slug,
+                                project.id
+                              )
+                            : buildProjectUrl(
+                                currentCategoryPath,
+                                mock.slug,
+                                mock.id
+                              )
+                        }
+                        collaborators={(talentUsers.length > 0
+                          ? talentUsers.slice(0, 6)
+                          : Array(6).fill("/woman.jpg")
+                        ).map(
+                          (u: any) =>
+                            (typeof u === "string" ? u : u?.avatarUrl) ||
+                            "/woman.jpg"
+                        )}
+                        favoriteSlot={
+                          <FavoriteRoot
+                            value={
+                              project
+                                ? favoritedItems.has(String(project.id))
+                                : undefined
+                            }
+                            onValueChange={
+                              project
+                                ? (pressed) =>
+                                    handleFavoriteToggle(
+                                      String(project.id),
+                                      "project",
+                                      pressed
+                                    )
+                                : undefined
+                            }
+                          >
+                            {({ pressed }) => (
+                              <TooltipProvider delayDuration={75}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-block">
+                                      <Favorite />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {pressed ? (
+                                      <span className="inline-flex items-center gap-x-1">
+                                        <Check className="size-[15px] shrink-0 text-green-500" />
+                                        Saved
+                                      </span>
+                                    ) : (
+                                      "Save to favorites"
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </FavoriteRoot>
+                        }
+                      />
+                    )
+                  })
+                })()}
+              </div>
+            </div>
+          )}
+
+          {pageKind === "services" && (
+            <div className="mt-[50px]">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Top {currentName} Services
+              </h1>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-7">
+                <div className="flex flex-wrap items-center gap-3">
+                  {[
+                    "Featured",
+                    "Newest",
+                    "Most Popular",
+                    "Trending",
+                    "Top-Rated",
+                    "Bestsellers",
+                  ].map((tab) => (
+                    <Button
+                      key={tab}
+                      type="button"
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      aria-pressed={activeTopServicesTab === tab}
+                      onClick={() => setActiveTopServicesTab(tab)}
+                      className={`h-8 rounded-full bg-white px-3.5 text-sm font-medium shadow-none ${
+                        activeTopServicesTab === tab
+                          ? "border-2 border-dark-blue-400 text-dark-blue-400"
+                          : "border-gray-300 text-gray-500 hover:border-dark-blue-400 hover:text-dark-blue-400"
+                      }`}
+                    >
+                      {tab}
+                    </Button>
+                  ))}
+                </div>
+
+                <Button
+                  variant="link"
+                  visual="gray"
+                  size="lg"
+                  className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                >
+                  Explore More Services
+                </Button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {(() => {
+                  const baseItems =
+                    listingsServices.length > 0
+                      ? listingsServices.slice(0, 8)
+                      : fromLength(8)
+                  const tabShiftMap: Record<string, number> = {
+                    Featured: 0,
+                    Newest: 1,
+                    "Most Popular": 2,
+                    Trending: 3,
+                    "Top-Rated": 4,
+                    Bestsellers: 5,
+                  }
+                  const shift = tabShiftMap[activeTopServicesTab] ?? 0
+                  const serviceItems =
+                    baseItems.length > 0
+                      ? baseItems
+                          .slice(shift)
+                          .concat(baseItems.slice(0, shift))
+                      : baseItems
+
+                  return serviceItems.map((item: any, idx: number) => {
+                  const service = listingsServices.length > 0 ? item : null
+                  const mock = serviceCardMocks[idx % serviceCardMocks.length]
+
+                  return (
+                    <ListingCard
+                      key={service?.id ?? `top-service-${idx}`}
+                      kind="service"
+                      id={service?.id ?? `top-service-${idx}`}
+                      title={service?.title || mock.title}
+                      description={
+                        service?.description?.slice(0, 120) ||
+                        mock.description
+                      }
+                      mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
+                      budget={
+                        service?.priceMin
+                          ? `$${Number(service.priceMin).toLocaleString()}/month`
+                          : mock.budget
+                      }
+                      rating={4.9}
+                      reviewCount={5}
+                      href={
+                        service
+                          ? buildServiceUrl(
+                              currentCategoryPath,
+                              service.slug,
+                              service.id
+                            )
+                          : buildServiceUrl(
+                              currentCategoryPath,
+                              mock.slug,
+                              mock.id
+                            )
+                      }
+                      collaborators={(talentUsers.length > 0
+                        ? talentUsers.slice(0, 6)
+                        : Array(6).fill("/woman.jpg")
+                      ).map(
+                        (u: any) =>
+                          (typeof u === "string" ? u : u?.avatarUrl) ||
+                          "/woman.jpg"
+                      )}
+                      favoriteSlot={
+                        <FavoriteRoot
+                          value={
+                            service
+                              ? favoritedItems.has(String(service.id))
+                              : undefined
+                          }
+                          onValueChange={
+                            service
+                              ? (pressed) =>
+                                  handleFavoriteToggle(
+                                    String(service.id),
+                                    "service",
+                                    pressed
+                                  )
+                              : undefined
+                          }
+                        >
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
+                      }
+                    />
+                  )
+                  })
+                })()}
+              </div>
+            </div>
+          )}
+
+          {pageKind === "talent" && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <div className="flex items-start justify-between gap-6">
+                  <div>
+                    <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
+                      Top {currentName} Talent
+                    </h1>
+                    <TabsList className="mt-6 flex flex-wrap items-center gap-3">
+                      {marketplaceTalentTabs.map((tab) => (
+                        <TabsTrigger
+                          key={tab}
+                          value={tab}
+                          className="flex h-8 items-center rounded-full border border-gray-300 bg-white px-3.5 text-sm font-medium text-gray-500 transition-colors data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        >
+                          {tab}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
+
+                  <Button
+                    variant="link"
                     visual="gray"
                     size="lg"
-                    className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-200 transition duration-300 cursor-pointer"
+                    className="mt-[58px] h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
                   >
-                    {term}
-                  </Badge>
-                </NextLink>
+                    Explore More Talent
+                  </Button>
+                </div>
+
+                <div className="mt-7">
+                  {marketplaceTalentTabs.map((tabValue) => (
+                <TabsContent
+                  key={tabValue}
+                  value={tabValue}
+                  className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
+                >
+                  {Array.from({ length: 8 }, (_, idx) => topTalentMock[idx % topTalentMock.length]).map(
+                    (talent, idx) => (
+                      <TopTalentCard
+                        key={`${tabValue}-${talent.id}-${idx}`}
+                        talent={talent}
+                      />
+                    )
+                  )}
+                </TabsContent>                  
+              ))}
+                </div>
+              </Tabs>
+            </div>
+          )}
+
+
+          {isL2AllPage && (
+          <div className="mt-[50px]">
+            <div className="flex items-center justify-between">
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Browse by Skills
+              </h1>
+
+              <div className="flex items-center gap-x-3">
+                <IconButton
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  visual="gray"
+                  variant="outlined"
+                >
+                  <ChevronLeft className="size-[18px]" />
+                </IconButton>
+                <IconButton
+                  className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                  visual="gray"
+                  variant="outlined"
+                  data-state="active"
+                >
+                  <ChevronRight className="size-[18px]" />
+                </IconButton>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center flex-wrap gap-3">
+              {[
+                "JavaScript",
+                "Python",
+                "React",
+                "Node.js",
+                "TypeScript",
+                "AWS",
+                "Docker",
+                "Kubernetes",
+                "GraphQL",
+                "PostgreSQL",
+                "MongoDB",
+              ].map((skill) => (
+                <Badge
+                  key={skill}
+                  variant="circular"
+                  visual="gray"
+                  size="lg"
+                  className="h-auto px-[13.21px] py-[4.6px] border-[1.15px] bg-gray-100 border-gray-300 text-gray-700 hover:border-gray-400 transition duration-300 cursor-pointer"
+                >
+                  {skill}
+                </Badge>
               ))}
             </div>
           </div>
+          )}
 
+{isL1OrL2AllPage && (
           <div className="relative overflow-hidden h-[298px] mt-[50px] p-[50px] rounded-lg">
             <NextImage
               className="object-cover"
@@ -4131,7 +5323,7 @@ export default function Projects() {
                 </p>
 
                 <Button
-                  className="rounded-full bg-white text-dark-blue-400 mt-[50px]"
+                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-dark-blue-400 hover:text-dark-blue-400 mt-[50px]"
                   size="lg"
                 >
                   Explore more <ArrowRight className="size-[15px]" />
@@ -4139,8 +5331,10 @@ export default function Projects() {
               </div>
             </div>
           </div>
+)}
 
           {/* Browse by Type — grid with Projects/Services tabs */}
+          {isL1AllPage && (
           <div className="mt-[50px]">
             <Tabs defaultValue="Projects">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -4155,7 +5349,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4217,42 +5411,56 @@ export default function Projects() {
                             return chunks.map((chunk, page) => (
                               <SwiperSlide key={page}>
                                 <div className="grid grid-cols-4 gap-[15px]">
-                                  {chunk.map((name) => (
-                                    <article
-                                      key={name}
-                                      className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-                                    >
-                                      <SubcategoryIconTile
-                                        name={name}
-                                        icon={iconMap.get(name)}
-                                        className="!h-[35px] !w-[35px]"
-                                      />
-                                      <div className="mt-5">
-                                        <span className="text-[10px] leading-none font-medium text-dark-blue-400">
-                                          {tabValue === "Services"
-                                            ? "Service"
-                                            : "DevOps"}
-                                        </span>
-                                        <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">
-                                          {name}
-                                        </h1>
-                                      </div>
-                                      <div className="mt-3 flex flex-col gap-y-2">
-                                        <div className="flex items-center gap-x-[6.4px]">
-                                          <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                            Starting from 12 weeks
+                                  {chunk.map((name, idx) => {
+                                    const seedIndex = page * 8 + idx
+                                    const projectMock =
+                                      projectCardMocks[
+                                        seedIndex % projectCardMocks.length
+                                      ]
+                                    const serviceMock =
+                                      serviceCardMocks[
+                                        seedIndex % serviceCardMocks.length
+                                      ]
+                                    const isServiceTab = tabValue === "Services"
+                                    return (
+                                      <article
+                                        key={name}
+                                        className="group border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+                                      >
+                                        <SubcategoryIconTile
+                                          name={name}
+                                          icon={iconMap.get(name)}
+                                          className="!h-[35px] !w-[35px]"
+                                        />
+                                        <div className="mt-5">
+                                          <span className="text-[10px] leading-none font-medium text-dark-blue-400">
+                                            {isServiceTab ? "Service" : "DevOps"}
                                           </span>
+                                          <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">
+                                            {name}
+                                          </h1>
                                         </div>
-                                        <div className="flex items-center gap-x-[6.4px]">
-                                          <Money className="size-[18px] shrink-0 text-primary-500" />
-                                          <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                            $50,000 budget
-                                          </span>
+                                        <div className="mt-3 flex flex-col gap-y-2">
+                                          <div className="flex items-center gap-x-[6.4px]">
+                                            <Clock className="size-[18px] shrink-0 text-primary-500" />
+                                            <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                              {isServiceTab
+                                                ? `Starting from ${serviceMock.duration}`
+                                                : projectMock.duration}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-x-[6.4px]">
+                                            <Money className="size-[18px] shrink-0 text-primary-500" />
+                                            <span className="font-medium text-sm leading-none text-dark-blue-400">
+                                              {isServiceTab
+                                                ? serviceMock.budget
+                                                : projectMock.budget}
+                                            </span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    </article>
-                                  ))}
+                                      </article>
+                                    )
+                                  })}
                                 </div>
                               </SwiperSlide>
                             ))
@@ -4265,6 +5473,7 @@ export default function Projects() {
               </SwiperRoot>
             </Tabs>
           </div>
+          )}
 
           {/* <div className="mt-[50px]">
             <Tabs defaultValue="Back-End Development">
@@ -4277,7 +5486,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Back-End Development">
@@ -4288,7 +5497,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Blockchain">Blockchain</TabsTrigger>
@@ -4297,7 +5506,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Data Structure & Algorithms">
@@ -4308,7 +5517,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Cloud Computing">
@@ -4319,7 +5528,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Front-End Development">
@@ -4361,7 +5570,7 @@ export default function Projects() {
                       to launch.
                     </p>
                     <Button
-                      className="rounded-full bg-white text-warning-700 mt-8"
+                      className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white hover:text-warning-800 text-warning-700 mt-8"
                       size="lg"
                     >
                       Explore more <ArrowRight className="size-[15px]" />
@@ -4659,12 +5868,11 @@ export default function Projects() {
           </div> */}
 
           {/* Top {Category} Projects — Swiper with filter tabs */}
+          {isL1OrL2AllPage && (
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all"
-                  ? `Top ${currentName} Projects`
-                  : "Top Projects"}
+                Top {currentName} Projects
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -4681,7 +5889,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4735,6 +5943,7 @@ export default function Projects() {
                         ).map((item: any, idx: number) => {
                           const project =
                             listingsProjects.length > 0 ? item : null
+                          const mock = projectCardMocks[idx % projectCardMocks.length]
                           return (
                             <SwiperSlide
                               className="w-[355px]"
@@ -4745,17 +5954,17 @@ export default function Projects() {
                                 id={project?.id ?? `mock-${idx}`}
                                 title={
                                   project?.title ||
-                                  "The Ultimate Mobile App Experience"
+                                  mock.title
                                 }
                                 description={
                                   project?.description?.slice(0, 120) ||
-                                  "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+                                  mock.description
                                 }
                                 mediaUrl={
-                                  project?.mediaUrls?.[0] || "/dashboard.png"
+                                  project?.mediaUrls?.[0] || mock.mediaUrl
                                 }
-                                budget={`$${project?.budget ? Number(project.budget).toLocaleString() : "50,000"} budget`}
-                                duration={`Starting from ${project?.duration || "12 weeks"}`}
+                        budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
+                        duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
                                 rating={4.9}
                                 reviewCount={5}
                                 href={
@@ -4765,7 +5974,11 @@ export default function Projects() {
                                         project.slug,
                                         project.id
                                       )
-                                    : listingHref("projects")
+                                    : buildProjectUrl(
+                                        currentCategoryPath,
+                                        mock.slug,
+                                        mock.id
+                                      )
                                 }
                                 collaborators={(talentUsers.length > 0
                                   ? talentUsers.slice(0, 6)
@@ -4825,14 +6038,291 @@ export default function Projects() {
               </SwiperRoot>
             </Tabs>
           </div>
+          )}
 
           {/* Top {Category} Services — Swiper with filter tabs */}
+          {isL1AllPage && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Top {currentName} Services
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {[
+                        "Featured",
+                        "Newest",
+                        "Most Popular",
+                        "Trending",
+                        "Top-Rated",
+                        "Bestsellers",
+                      ].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button
+                        asChild
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="underline hover:text-dark-blue-400"
+                      >
+                        <NextLink href={listingHref("services")}>
+                          Explore More Services
+                        </NextLink>
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    {[
+                      "Featured",
+                      "Newest",
+                      "Most Popular",
+                      "Trending",
+                      "Top-Rated",
+                      "Bestsellers",
+                    ].map((tabValue) => (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          {(listingsServices.length > 0
+                            ? listingsServices.slice(0, 8)
+                            : fromLength(8)
+                          ).map((item: any, idx: number) => {
+                            const service =
+                              listingsServices.length > 0 ? item : null
+                            const mock =
+                              serviceCardMocks[idx % serviceCardMocks.length]
+
+                            return (
+                              <SwiperSlide
+                                className="w-[355px]"
+                                key={service?.id ?? `${tabValue}-${idx}`}
+                              >
+                                <ListingCard
+                                  kind="service"
+                                  id={service?.id ?? `top-service-${idx}`}
+                                  title={service?.title || mock.title}
+                                  description={
+                                    service?.description?.slice(0, 120) ||
+                                    mock.description
+                                  }
+                                  mediaUrl={
+                                    service?.mediaUrls?.[0] || mock.mediaUrl
+                                  }
+                                  budget={
+                                    service?.priceMin
+                                      ? `$${Number(service.priceMin).toLocaleString()}/month`
+                                      : mock.budget
+                                  }
+                                  rating={4.9}
+                                  reviewCount={5}
+                                  href={
+                                    service
+                                      ? buildServiceUrl(
+                                          currentCategoryPath,
+                                          service.slug,
+                                          service.id
+                                        )
+                                      : buildServiceUrl(
+                                          currentCategoryPath,
+                                          mock.slug,
+                                          mock.id
+                                        )
+                                  }
+                                  collaborators={(talentUsers.length > 0
+                                    ? talentUsers.slice(0, 6)
+                                    : Array(6).fill("/woman.jpg")
+                                  ).map(
+                                    (u: any) =>
+                                      (typeof u === "string"
+                                        ? u
+                                        : u?.avatarUrl) || "/woman.jpg"
+                                  )}
+                                  favoriteSlot={
+                                    <FavoriteRoot
+                                      value={
+                                        service
+                                          ? favoritedItems.has(
+                                              String(service.id)
+                                            )
+                                          : undefined
+                                      }
+                                      onValueChange={
+                                        service
+                                          ? (pressed) =>
+                                              handleFavoriteToggle(
+                                                String(service.id),
+                                                "service",
+                                                pressed
+                                              )
+                                          : undefined
+                                      }
+                                    >
+                                      {({ pressed }) => (
+                                        <TooltipProvider delayDuration={75}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="inline-block">
+                                                <Favorite />
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              {pressed ? (
+                                                <span className="inline-flex items-center gap-x-1">
+                                                  <Check className="size-[15px] shrink-0 text-green-500" />
+                                                  Saved
+                                                </span>
+                                              ) : (
+                                                "Save to favorites"
+                                              )}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                    </FavoriteRoot>
+                                  }
+                                />
+                              </SwiperSlide>
+                            )
+                          })}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+
+
+          {pageKind === "teams" && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <div className="flex flex-wrap items-start justify-between gap-6">
+                  <div>
+                    <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
+                      Top {currentName} Teams
+                    </h1>
+                    <TabsList className="mt-6 flex flex-wrap items-center gap-3">
+                      {marketplaceTalentTabs.map((tab) => (
+                        <TabsTrigger
+                          key={tab}
+                          value={tab}
+                          className="flex h-8 items-center rounded-full border border-gray-300 bg-white px-3.5 text-sm font-medium text-gray-500 transition-colors data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        >
+                          {tab}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
+
+                  <Button
+                    asChild
+                    variant="link"
+                    visual="gray"
+                    size="lg"
+                    className="mt-[58px] h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                  >
+                    <NextLink href={listingHref("teams")}>
+                      Explore More Teams
+                    </NextLink>
+                  </Button>
+                </div>
+
+                <div className="mt-7">
+                  {marketplaceTalentTabs.map((tabValue) => (
+                    <TabsContent
+                      key={tabValue}
+                      value={tabValue}
+                      className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
+                    >
+                      {teamSeeds.map((team) => (
+                        <ListingCard
+                          key={`${tabValue}-${team.id}`}
+                          kind="team"
+                          id={team.id}
+                          name={team.name}
+                          handle={team.handle}
+                          tagline={team.tagline}
+                          experience={team.experience}
+                          rate={team.rate}
+                          locations={team.location}
+                          rating={team.rating}
+                          projectCount={team.completedProjects}
+                          skills={team.skills}
+                          memberAvatars={team.memberAvatars}
+                          previousClientLogos={team.previousClientLogos}
+                          favoriteSlot={
+                            <FavoriteRoot>
+                              {({ pressed }) => (
+                                <TooltipProvider delayDuration={75}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-block">
+                                        <Favorite />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {pressed ? (
+                                        <span className="inline-flex items-center gap-x-1">
+                                          <Check className="size-[15px] shrink-0 text-green-500" />
+                                          Saved
+                                        </span>
+                                      ) : (
+                                        "Save to favorites"
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </FavoriteRoot>
+                          }
+                        />
+                      ))}
+                    </TabsContent>
+                  ))}
+                </div>
+              </Tabs>
+            </div>
+          )}
+
+          {pageKind === "services" && (
           <div className="mt-[50px]">
             <Tabs defaultValue="Featured">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all"
-                  ? `Top ${currentName} Services`
-                  : "Top Services"}
+                Top Services
               </h1>
               <SwiperRoot>
                 <div className="mt-6 flex justify-between items-center">
@@ -4849,7 +6339,7 @@ export default function Projects() {
                         variant="circular"
                         visual="gray"
                         size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                         asChild
                       >
                         <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4903,6 +6393,8 @@ export default function Projects() {
                         ).map((item: any, idx: number) => {
                           const service =
                             listingsServices.length > 0 ? item : null
+                          const mock =
+                            serviceCardMocks[idx % serviceCardMocks.length]
                           return (
                             <SwiperSlide
                               className="w-[355px]"
@@ -4911,18 +6403,17 @@ export default function Projects() {
                               <ListingCard
                                 kind="service"
                                 id={service?.id ?? `mock-${idx}`}
-                                title={
-                                  service?.title ||
-                                  `Professional ${currentName} Service`
-                                }
+                                title={service?.title || mock.title}
                                 description={
                                   service?.description?.slice(0, 120) ||
-                                  `Professional service offering for ${currentName}. Expert team ready to deliver results.`
+                                  mock.description
                                 }
-                                mediaUrl={
-                                  service?.mediaUrls?.[0] || "/dashboard.png"
+                                mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
+                                budget={
+                                  service?.priceMin
+                                    ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
+                                    : mock.budget
                                 }
-                                budget={`$${service?.priceMin ? `${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`}
                                 rating={4.9}
                                 reviewCount={5}
                                 href={
@@ -4932,7 +6423,11 @@ export default function Projects() {
                                         service.slug,
                                         service.id
                                       )
-                                    : listingHref("services")
+                                    : buildServiceUrl(
+                                        currentCategoryPath,
+                                        mock.slug,
+                                        mock.id
+                                      )
                                 }
                                 collaborators={(talentUsers.length > 0
                                   ? talentUsers.slice(0, 6)
@@ -4992,7 +6487,8 @@ export default function Projects() {
               </SwiperRoot>
             </Tabs>
           </div>
-
+          )}
+          {isL1OrL2AllPage && (
           <div className="mt-[50px]">
             <Tabs defaultValue="Project Type">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -5004,7 +6500,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Project Type">Project Type</TabsTrigger>
@@ -5013,7 +6509,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Industry">Industry</TabsTrigger>
@@ -5022,7 +6518,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Budget">Budget</TabsTrigger>
@@ -5031,7 +6527,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Project Length">
@@ -5042,7 +6538,7 @@ export default function Projects() {
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Team Size">Team Size</TabsTrigger>
@@ -5200,140 +6696,146 @@ export default function Projects() {
               </div>
             </Tabs>
           </div>
+          )}
 
           {/* {Category} All Stars — talent Swiper with filter tabs */}
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Featured">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                {pageKind === "show-all"
-                  ? `${currentName} All Stars`
-                  : "Top Talent"}
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
+          {isL1AllPage && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {isL2AllPage
+                    ? `All Stars in ${currentName}`
+                    : `${currentName} All Stars`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {[
+                        "Featured",
+                        "Newest",
+                        "Most Popular",
+                        "Trending",
+                        "Top-Rated",
+                      ].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="hover:underline hover:text-dark-blue-400"
+                      >
+                        Explore More All Stars
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
                     {[
                       "Featured",
                       "Newest",
                       "Most Popular",
                       "Trending",
                       "Top-Rated",
-                    ].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      size="lg"
-                      className="hover:underline hover:text-dark-blue-400"
-                    >
-                      Explore More All Stars
-                    </Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronLeft className="size-[18px]" />
-                        </IconButton>
-                      </SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronRight className="size-[18px]" />
-                        </IconButton>
-                      </SwiperNextTrigger>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  {[
-                    "Featured",
-                    "Newest",
-                    "Most Popular",
-                    "Trending",
-                    "Top-Rated",
-                  ].map((tabValue) => (
-                    <TabsContent key={tabValue} value={tabValue}>
-                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        <SwiperSlide className="w-[355px] h-auto">
-                          <article
-                            className="h-full min-h-[440px] rounded-lg bg-primary-700 p-10 flex flex-col items-start justify-between"
-                            style={{ backgroundColor: "#2459DB" }}
-                          >
-                            <div className="pt-6">
-                              <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
-                                {currentName} Talent
-                              </h1>
-                              <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
-                                Find {currentName.toLowerCase()} talent to bring
-                                your projects to life.
-                              </p>
-                            </div>
-                            <div className="flex flex-col gap-y-4">
-                              <Button
-                                asChild
-                                className="rounded-full bg-white text-[#2459DB] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300"
-                                size="lg"
-                              >
-                                <NextLink href={listingHref("talent")}>
-                                  Explore More{" "}
-                                  <ArrowRight className="size-[15px] ml-2" />
-                                </NextLink>
-                              </Button>
-                            </div>
-                          </article>
-                        </SwiperSlide>
-                        {(talentUsers.length > 0
-                          ? talentUsers.slice(0, 8)
-                          : fromLength(8)
-                        ).map((u: any, idx: number) => (
-                          <SwiperSlide className="w-[355px]" key={u?.id ?? idx}>
-                            {talentUsers.length > 0 ? (
-                              <ListingCard
-                                kind="talent"
-                                {...talentToCardProps(u, idx)}
-                              />
-                            ) : (
-                              <ListingCard
-                                kind="talent"
-                                id={`mock-${idx}`}
-                                username={`expert-${idx}`}
-                                name="Expert Freelancer"
-                                role={`${currentName} Specialist`}
-                                photo="/woman.jpg"
-                                rate="$75/hr"
-                                rating={4.9}
-                                projects={12}
-                                skills={["React", "TypeScript", "Node.js"]}
-                              />
-                            )}
+                    ].map((tabValue) => (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article
+                              className="h-full min-h-[440px] rounded-lg bg-primary-700 p-10 flex flex-col items-start justify-between"
+                              style={{ backgroundColor: "#2459DB" }}
+                            >
+                              <div className="pt-6">
+                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                  {currentName} Talent
+                                </h1>
+                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                  Find {currentName.toLowerCase()} talent to
+                                  bring your projects to life.
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-y-4">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
+                                  size="lg"
+                                >
+                                  <NextLink href={listingHref("talent")}>
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
                           </SwiperSlide>
-                        ))}
-                      </SwiperContent>
-                    </TabsContent>
-                  ))}
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
-
+                          {(talentUsers.length > 0
+                            ? talentUsers.slice(0, 8)
+                            : fromLength(8)
+                          ).map((u: any, idx: number) => (
+                            <SwiperSlide
+                              className="w-[355px]"
+                              key={u?.id ?? idx}
+                            >
+                              {talentUsers.length > 0 ? (
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(u, idx)}
+                                />
+                              ) : (
+                                <ListingCard
+                                  kind="talent"
+                                  id={`mock-${idx}`}
+                                  username={`expert-${idx}`}
+                                  name="Expert Freelancer"
+                                  role={`${currentName} Specialist`}
+                                  photo="/woman.jpg"
+                                  rate="$75/hr"
+                                  rating={4.9}
+                                  projects={12}
+                                  skills={["React", "TypeScript", "Node.js"]}
+                                />
+                              )}
+                            </SwiperSlide>
+                          ))}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+          {isL1AllPage && (
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -5385,12 +6887,43 @@ export default function Projects() {
               ))}
             </div>
           </div>
+          )}
 
-          {pageKind === "show-all" && (
+          {pageKind !== "show-all" && (
+          <div className="relative overflow-hidden h-[298px] mt-[50px] p-[50px] rounded-lg">
+            <NextImage
+              className="object-cover"
+              src="/vr-4.png"
+              sizes="100vw"
+              fill
+            />
+            <div className="absolute inset-0 bg-black/40 p-[50px]">
+              <div className="max-w-[595px]">
+                <h1 className="text-white text-4xl font-bold leading-none">
+                  The Future is Web3
+                </h1>
+
+                <p className="text-xl mt-2 font-light leading-none text-white">
+                  Find talented developers and exciting projects in the
+                  decentralized space.
+                </p>
+
+                <Button
+                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-dark-blue-400 hover:text-dark-blue-400 mt-[50px]"
+                  size="lg"
+                >
+                  Explore more <ArrowRight className="size-[15px]" />
+                </Button>
+              </div>
+            </div>
+          </div>
+)}
+
+            {pageKind !== "show-all" && l1 && !l2 && !l3 && (
             <div className="mt-[50px]">
               <Tabs defaultValue={subcategories[0]?.name || "All"}>
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                  {`Newest ${currentName} Talent`}
+                  Recommended {currentName} {sectionLabel}
                 </h1>
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
@@ -5404,7 +6937,327 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-3">
+                      <SwiperPrevTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronLeft className="size-[18px]" />
+                        </IconButton>
+                      </SwiperPrevTrigger>
+                      <SwiperNextTrigger asChild>
+                        <IconButton
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          visual="gray"
+                          variant="outlined"
+                        >
+                          <ChevronRight className="size-[18px]" />
+                        </IconButton>
+                      </SwiperNextTrigger>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    {(subcategories.length > 0
+                      ? subcategories.slice(0, 5)
+                      : [{ name: "All" }]
+                    ).map((sub: any) => (
+                      <TabsContent key={sub.name} value={sub.name}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                    <SwiperSlide className="w-[355px] h-auto">
+                      <article className="h-full min-h-[430px] rounded-lg bg-[#E86600] px-8 py-[50px] flex flex-col items-start justify-end text-white">
+                        <h2 className="text-[28px] font-bold leading-[1.2]">
+                          {currentName} {sectionLabel}
+                        </h2>
+                        <p className="mt-5 text-xl font-light leading-snug">
+                          Discover high-quality{" "}
+                          {currentName.toLowerCase()}{" "}
+                          {sectionLabel.toLowerCase()} ready to launch.
+                        </p>
+                        <Button
+                          asChild
+                          className="mt-12 rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white px-6 text-[#B54708] hover:bg-white/90 hover:text-[#B54708]"
+                          size="lg"
+                        >
+                          <NextLink href={listingHref(pageKind)}>
+                            Explore More <ArrowRight className="size-[15px]" />
+                          </NextLink>
+                        </Button>
+                      </article>
+                    </SwiperSlide>
+
+                    {pageKind === "projects" &&
+                      (listingsProjects.length > 0
+                        ? listingsProjects.slice(0, 8)
+                        : fromLength(8)
+                      ).map((item: any, idx: number) => {
+                        const project =
+                          listingsProjects.length > 0 ? item : null
+                        const mock =
+                          projectCardMocks[idx % projectCardMocks.length]
+                        return (
+                          <SwiperSlide
+                            className="w-[355px]"
+                            key={project?.id ?? idx}
+                          >
+                            <ListingCard
+                              kind="project"
+                              id={project?.id ?? `recommended-project-${idx}`}
+                              title={project?.title || mock.title}
+                              description={
+                                project?.description?.slice(0, 120) ||
+                                mock.description
+                              }
+                              mediaUrl={
+                                project?.mediaUrls?.[0] ||
+                                project?.coverImage ||
+                                mock.mediaUrl
+                              }
+                              budget={
+                                project?.budget
+                                  ? `$${Number(project.budget).toLocaleString()}/month`
+                                  : mock.budget
+                              }
+                              rating={4.9}
+                              reviewCount={5}
+                              href={
+                                project
+                                  ? buildProjectUrl(
+                                      currentCategoryPath,
+                                      project.slug,
+                                      project.id
+                                    )
+                                  : buildProjectUrl(
+                                      currentCategoryPath,
+                                      mock.slug,
+                                      mock.id
+                                    )
+                              }
+                              collaborators={(talentUsers.length > 0
+                                ? talentUsers.slice(0, 6)
+                                : Array(6).fill("/woman.jpg")
+                              ).map(
+                                (u: any) =>
+                                  (typeof u === "string"
+                                    ? u
+                                    : u?.avatarUrl) || "/woman.jpg"
+                              )}
+                              favoriteSlot={
+                                <FavoriteRoot>
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block">
+                                            <Favorite />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (
+                                            <span className="inline-flex items-center gap-x-1">
+                                              <Check className="size-[15px] shrink-0 text-green-500" />
+                                              Saved
+                                            </span>
+                                          ) : (
+                                            "Save to favorites"
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
+                              }
+                            />
+                          </SwiperSlide>
+                        )
+                      })}
+
+                    {pageKind === "services" &&
+                      (listingsServices.length > 0
+                        ? listingsServices.slice(0, 8)
+                        : fromLength(8)
+                      ).map((item: any, idx: number) => {
+                        const service =
+                          listingsServices.length > 0 ? item : null
+                        const mock =
+                          serviceCardMocks[idx % serviceCardMocks.length]
+                        return (
+                          <SwiperSlide
+                            className="w-[355px]"
+                            key={service?.id ?? idx}
+                          >
+                            <ListingCard
+                              kind="service"
+                              id={service?.id ?? `recommended-service-${idx}`}
+                              title={
+                                service?.title ||
+                                mock.title
+                              }
+                              description={
+                                service?.description?.slice(0, 120) ||
+                                mock.description
+                              }
+                              mediaUrl={
+                                service?.mediaUrls?.[0] ||
+                                service?.coverImage ||
+                                mock.mediaUrl
+                              }
+                              budget={
+                                service?.priceMin
+                                  ? `$${Number(service.priceMin).toLocaleString()}/month`
+                                  : mock.budget
+                              }
+                              rating={4.9}
+                              reviewCount={5}
+                              href={
+                                service
+                                  ? buildServiceUrl(
+                                      currentCategoryPath,
+                                      service.slug,
+                                      service.id
+                                    )
+                                  : buildServiceUrl(
+                                      currentCategoryPath,
+                                      mock.slug,
+                                      mock.id
+                                    )
+                              }
+                              collaborators={(talentUsers.length > 0
+                                ? talentUsers.slice(0, 6)
+                                : Array(6).fill("/woman.jpg")
+                              ).map(
+                                (u: any) =>
+                                  (typeof u === "string"
+                                    ? u
+                                    : u?.avatarUrl) || "/woman.jpg"
+                              )}
+                              favoriteSlot={
+                                <FavoriteRoot>
+                                  {({ pressed }) => (
+                                    <TooltipProvider delayDuration={75}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-block">
+                                            <Favorite />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pressed ? (
+                                            <span className="inline-flex items-center gap-x-1">
+                                              <Check className="size-[15px] shrink-0 text-green-500" />
+                                              Saved
+                                            </span>
+                                          ) : (
+                                            "Save to favorites"
+                                          )}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </FavoriteRoot>
+                              }
+                            />
+                          </SwiperSlide>
+                        )
+                      })}
+
+                    {pageKind === "teams" &&
+                      teamSeeds.map((team) => (
+                        <SwiperSlide
+                          className="w-[355px]"
+                          key={`recommended-team-${team.id}`}
+                        >
+                          <ListingCard
+                            kind="team"
+                            id={team.id}
+                            name={team.name}
+                            handle={team.handle}
+                            tagline={team.tagline}
+                            experience={team.experience}
+                            rate={team.rate}
+                            locations={team.location}
+                            rating={team.rating}
+                            projectCount={team.completedProjects}
+                            skills={team.skills}
+                            memberAvatars={team.memberAvatars}
+                            previousClientLogos={team.previousClientLogos}
+                            favoriteSlot={
+                              <FavoriteRoot>
+                                {({ pressed }) => (
+                                  <TooltipProvider delayDuration={75}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-block">
+                                          <Favorite />
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {pressed ? (
+                                          <span className="inline-flex items-center gap-x-1">
+                                            <Check className="size-[15px] shrink-0 text-green-500" />
+                                            Saved
+                                          </span>
+                                        ) : (
+                                          "Save to favorites"
+                                        )}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </FavoriteRoot>
+                            }
+                          />
+                        </SwiperSlide>
+                      ))}
+
+                    {pageKind === "talent" &&
+                      topTalentMock.map((talent) => (
+                        <SwiperSlide
+                          className="w-[355px]"
+                          key={`recommended-${talent.id}`}
+                        >
+                          <TopTalentCard talent={talent} />
+                        </SwiperSlide>
+                      ))}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+
+          {isL1AllPage && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue={subcategories[0]?.name || "All"}>
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {isL2AllPage
+                    ? `Newest Talent in ${currentName}`
+                    : `Newest ${currentName} Talent`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {(subcategories.length > 0
+                        ? subcategories.slice(0, 5)
+                        : [{ name: "All" }]
+                      ).map((sub: any) => (
+                        <Badge
+                          key={sub.name}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
@@ -5467,7 +7320,7 @@ export default function Projects() {
                               <div className="flex flex-col gap-y-4">
                                 <Button
                                   asChild
-                                  className="rounded-full bg-white text-[#027A48] hover:bg-white/90 px-6 h-12 text-base font-semibold transition-all duration-300"
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#027A48] hover:text-[#027A48] px-6 h-12 text-base font-semibold"
                                   size="lg"
                                 >
                                   <NextLink href={listingHref("talent")}>
@@ -5516,6 +7369,7 @@ export default function Projects() {
             </div>
           )}
 
+          {isL1OrL2AllPage && (
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -5562,7 +7416,147 @@ export default function Projects() {
               ))}
             </div>
           </div>
+          )}
 
+          {/* {Category} All Stars — talent Swiper with filter tabs */}
+          {isL2AllPage && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {isL2AllPage
+                    ? `All Stars in ${currentName}`
+                    : `${currentName} All Stars`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {[
+                        "Featured",
+                        "Newest",
+                        "Most Popular",
+                        "Trending",
+                        "Top-Rated",
+                      ].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="hover:underline hover:text-dark-blue-400"
+                      >
+                        Explore More All Stars
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
+                    {[
+                      "Featured",
+                      "Newest",
+                      "Most Popular",
+                      "Trending",
+                      "Top-Rated",
+                    ].map((tabValue) => (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article
+                              className="h-full min-h-[440px] rounded-lg bg-primary-700 p-10 flex flex-col items-start justify-between"
+                              style={{ backgroundColor: "#2459DB" }}
+                            >
+                              <div className="pt-6">
+                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                  {currentName} Talent
+                                </h1>
+                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                  Find {currentName.toLowerCase()} talent to
+                                  bring your projects to life.
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-y-4">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
+                                  size="lg"
+                                >
+                                  <NextLink href={listingHref("talent")}>
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
+                          </SwiperSlide>
+                          {(talentUsers.length > 0
+                            ? talentUsers.slice(0, 8)
+                            : fromLength(8)
+                          ).map((u: any, idx: number) => (
+                            <SwiperSlide
+                              className="w-[355px]"
+                              key={u?.id ?? idx}
+                            >
+                              {talentUsers.length > 0 ? (
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(u, idx)}
+                                />
+                              ) : (
+                                <ListingCard
+                                  kind="talent"
+                                  id={`mock-${idx}`}
+                                  username={`expert-${idx}`}
+                                  name="Expert Freelancer"
+                                  role={`${currentName} Specialist`}
+                                  photo="/woman.jpg"
+                                  rate="$75/hr"
+                                  rating={4.9}
+                                  projects={12}
+                                  skills={["React", "TypeScript", "Node.js"]}
+                                />
+                              )}
+                            </SwiperSlide>
+                          ))}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+
+          {isL1OrL2AllPage && (
           <div className="relative overflow-hidden h-[298px] mt-[50px] p-[50px] rounded-lg">
             <NextImage
               className="object-cover"
@@ -5584,7 +7578,7 @@ export default function Projects() {
 
                 <Button
                   asChild
-                  className="rounded-full bg-white text-dark-blue-400 mt-[50px]"
+                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-dark-blue-400 hover:text-dark-blue-400 mt-[50px]"
                   size="lg"
                 >
                   <NextLink href={listingHref("projects")}>
@@ -5595,12 +7589,15 @@ export default function Projects() {
               </div>
             </div>
           </div>
+          )}
 
-          {pageKind === "show-all" && (
+          {isL2AllPage && (
             <div className="mt-[50px]">
               <Tabs defaultValue={subcategories[0]?.name || "All"}>
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                  In-Demand Services in {sectionLabel}
+                  {isL2AllPage
+                    ? `Newest Talent in ${currentName}`
+                    : `Newest ${currentName} Talent`}
                 </h1>
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
@@ -5614,7 +7611,140 @@ export default function Projects() {
                           variant="circular"
                           visual="gray"
                           size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="underline hover:text-dark-blue-400"
+                      >
+                        Explore More Talent
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
+                    {(subcategories.length > 0
+                      ? subcategories.slice(0, 5)
+                      : [{ name: "All" }]
+                    ).map((sub: any) => (
+                      <TabsContent key={sub.name} value={sub.name}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article
+                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              style={{ backgroundColor: "#027A48" }}
+                            >
+                              <div className="pt-6">
+                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                  New {currentName} Talent
+                                </h1>
+                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                  Discover the newest{" "}
+                                  {currentName.toLowerCase()} experts joining
+                                  our community.
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-y-4">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#027A48] hover:text-[#027A48] px-6 h-12 text-base font-semibold"
+                                  size="lg"
+                                >
+                                  <NextLink href={listingHref("talent")}>
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
+                          </SwiperSlide>
+                          {(talentUsers.length > 0
+                            ? talentUsers.slice(0, 8)
+                            : fromLength(8)
+                          ).map((u: any, idx: number) => (
+                            <SwiperSlide
+                              className="w-[355px]"
+                              key={u?.id ?? idx}
+                            >
+                              {talentUsers.length > 0 ? (
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(u, idx)}
+                                />
+                              ) : (
+                                <ListingCard
+                                  kind="talent"
+                                  id={`mock-${idx}`}
+                                  username={`expert-${idx}`}
+                                  name="Expert Freelancer"
+                                  role={`${currentName} Specialist`}
+                                  photo="/woman.jpg"
+                                  rate="$75/hr"
+                                  rating={4.9}
+                                  projects={12}
+                                  skills={["React", "TypeScript", "Node.js"]}
+                                />
+                              )}
+                            </SwiperSlide>
+                          ))}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
+          )}
+
+
+          {isL1OrL2AllPage && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue={subcategories[0]?.name || "All"}>
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {isL2AllPage
+                    ? `Top Services in ${currentName}`
+                    : `In-Demand Services in ${sectionLabel}`}
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {(subcategories.length > 0
+                        ? subcategories.slice(0, 5)
+                        : [{ name: "All" }]
+                      ).map((sub: any) => (
+                        <Badge
+                          key={sub.name}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                           asChild
                         >
                           <TabsTrigger value={sub.name}>{sub.name}</TabsTrigger>
@@ -5676,13 +7806,19 @@ export default function Projects() {
                           ).map((item: any, idx: number) => {
                             const service =
                               listingsServices.length > 0 ? item : null
+                            const mock =
+                              serviceCardMocks[idx % serviceCardMocks.length]
                             const href = service
                               ? buildServiceUrl(
                                   currentCategoryPath,
                                   service.slug,
                                   service.id
                                 )
-                              : listingHref("services")
+                              : buildServiceUrl(
+                                  currentCategoryPath,
+                                  mock.slug,
+                                  mock.id
+                                )
                             return (
                               <SwiperSlide
                                 key={service?.id ?? idx}
@@ -5698,17 +7834,34 @@ export default function Projects() {
                                         className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                                         src={
                                           service?.mediaUrls?.[0] ||
-                                          "/dashboard.png"
+                                          mock.mediaUrl
                                         }
-                                        alt={service?.title || "Service"}
+                                        alt={service?.title || mock.title}
                                         fill
                                         sizes="33vw"
                                       />
+                                      <span className="absolute right-2 top-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          className="size-3 shrink-0"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2.5"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          aria-hidden="true"
+                                        >
+                                          <path d="M21 12a9 9 0 0 1-15.5 6.3" />
+                                          <path d="M3 12A9 9 0 0 1 18.5 5.7" />
+                                          <path d="M7 18H5v-2" />
+                                          <path d="M17 6h2v2" />
+                                        </svg>
+                                        <span className="truncate">Service</span>
+                                      </span>
                                     </div>
                                     <div className="mt-3 flex items-start gap-x-3">
                                       <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                        {service?.title ||
-                                          `Professional ${currentName} Service`}
+                                        {service?.title || mock.title}
                                       </span>
                                       <div className="inline-flex items-center gap-x-1">
                                         <Star className="size-[15px] text-primary-500 fill-primary-500" />
@@ -5722,14 +7875,14 @@ export default function Projects() {
                                     </div>
                                     <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
                                       {service?.description?.slice(0, 140) ||
-                                        `Brief overview of a high-impact ${currentName.toLowerCase()} service package.`}
+                                        mock.description}
                                     </p>
                                     <div className="mt-[14.5px] flex flex-col gap-y-3">
                                       <div className="flex items-center gap-x-[6.4px]">
                                         <Clock className="size-[18px] shrink-0 text-primary-500" />
                                         <span className="font-medium text-sm leading-none text-dark-blue-400">
                                           Starting from{" "}
-                                          {service?.duration || "12 weeks"}
+                                          {service?.duration || mock.duration}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-x-[6.4px]">
@@ -5737,7 +7890,7 @@ export default function Projects() {
                                         <span className="font-medium text-sm leading-none text-dark-blue-400">
                                           {service?.priceMin
                                             ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                            : "$5,000 - $15,000/month"}
+                                            : mock.budget}
                                         </span>
                                       </div>
                                     </div>
@@ -5805,6 +7958,138 @@ export default function Projects() {
             </div>
           )}
 
+          {isL1OrL2AllPage && (
+            <div className="mt-[50px]">
+              <div className="flex items-center justify-between">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Featured Project Collections
+                </h1>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="link"
+                  visual="gray"
+                  className="hover:text-dark-blue-400"
+                >
+                  <NextLink href={listingHref("projects")}>
+                    View All Collections <ArrowRight className="size-[15px]" />
+                  </NextLink>
+                </Button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-6">
+                {projectCardMocks.slice(0, 3).map((project, idx) => (
+                  <NextLink
+                    key={`featured-project-collection-${project.id}`}
+                    href={buildProjectUrl(
+                      currentCategoryPath,
+                      project.slug,
+                      project.id
+                    )}
+                    className="group block rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition hover:border-gray-300 hover:ring-1 hover:ring-gray-300"
+                  >
+                    <div className="relative h-[170px] overflow-hidden rounded-md bg-gray-100">
+                      <NextImage
+                        src={project.mediaUrl}
+                        alt={project.title}
+                        fill
+                        sizes="33vw"
+                        className="object-cover transition duration-700 group-hover:scale-105"
+                      />
+                    </div>
+                    <p className="mt-4 text-xs font-semibold uppercase leading-none text-primary-600">
+                      Collection {idx + 1}
+                    </p>
+                    <h2 className="mt-2 text-lg font-bold leading-6 text-dark-blue-400 group-hover:underline">
+                      {project.title}
+                    </h2>
+                    <p className="mt-2 line-clamp-2 text-sm font-light leading-5 text-dark-blue-400">
+                      {project.description}
+                    </p>
+                  </NextLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isL1OrL2AllPage && (
+            <div className="relative mt-[50px] overflow-hidden rounded-lg bg-dark-blue-400 p-[50px]">
+              <div className="max-w-[620px]">
+                <h1 className="text-4xl font-bold leading-none text-white">
+                  Take Your Projects Further
+                </h1>
+                <p className="mt-3 text-xl font-light leading-7 text-white">
+                  Find the right {currentName.toLowerCase()} teams, talent, and
+                  services for your next build.
+                </p>
+                <Button
+                  asChild
+                  className="mt-10 rounded-full bg-white text-dark-blue-400 transition-[column-gap] duration-300 hover:gap-x-3.5 hover:bg-white/90 hover:text-dark-blue-400"
+                  size="lg"
+                >
+                  <NextLink href={listingHref("projects")}>
+                    Explore Projects <ArrowRight className="size-[15px]" />
+                  </NextLink>
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {isL1OrL2AllPage && (
+            <div className="mt-[50px]">
+              <div className="flex items-center justify-between">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  {currentName} Courses
+                </h1>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="link"
+                  visual="gray"
+                  className="hover:text-dark-blue-400"
+                >
+                  <NextLink href="/courses">
+                    Explore Courses <ArrowRight className="size-[15px]" />
+                  </NextLink>
+                </Button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-6">
+                {[
+                  "Foundations",
+                  "Advanced Delivery",
+                  "Team Operations",
+                ].map((course, idx) => {
+                  const service = serviceCardMocks[idx % serviceCardMocks.length]
+                  return (
+                    <NextLink
+                      key={`course-${course}`}
+                      href="/courses"
+                      className="group block rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition hover:border-gray-300 hover:ring-1 hover:ring-gray-300"
+                    >
+                      <div className="relative h-[150px] overflow-hidden rounded-md bg-gray-100">
+                        <NextImage
+                          src={service.mediaUrl}
+                          alt={`${currentName} ${course}`}
+                          fill
+                          sizes="33vw"
+                          className="object-cover transition duration-700 group-hover:scale-105"
+                        />
+                      </div>
+                      <h2 className="mt-4 text-lg font-bold leading-6 text-dark-blue-400 group-hover:underline">
+                        {currentName} {course}
+                      </h2>
+                      <p className="mt-2 text-sm font-light leading-5 text-dark-blue-400">
+                        Practical lessons for planning, launching, and scaling{" "}
+                        {currentName.toLowerCase()} work.
+                      </p>
+                    </NextLink>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mt-[50px]">
             <div className="flex justify-between items-center">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -5823,7 +8108,7 @@ export default function Projects() {
 
             <div className="grid grid-cols-2 gap-x-8 mt-6">
               <div className="flex flex-col gap-y-8">
-                <article className="flex gap-x-6 group cursor-pointer">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -5836,7 +8121,7 @@ export default function Projects() {
                     <span className="text-xs font-medium leading-none text-dark-blue-400">
                       Software Testing
                     </span>
-                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400 group-hover:underline">
                       The Art of Software Testing: A Comprehensive Guide
                     </h1>
                     <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
@@ -5850,7 +8135,7 @@ export default function Projects() {
                     </p>
 
                     <Button
-                      className="text-dark-blue-400 mt-3"
+                      className="text-dark-blue-400 mt-3 group-hover:underline"
                       size="md"
                       variant="link"
                       visual="gray"
@@ -5859,7 +8144,7 @@ export default function Projects() {
                     </Button>
                   </div>
                 </article>
-                <article className="flex gap-x-6 group cursor-pointer">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -5872,7 +8157,7 @@ export default function Projects() {
                     <span className="text-xs font-medium leading-none text-dark-blue-400">
                       Software Testing
                     </span>
-                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400 group-hover:underline">
                       The Art of Software Testing: A Comprehensive Guide
                     </h1>
                     <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
@@ -5886,7 +8171,7 @@ export default function Projects() {
                     </p>
 
                     <Button
-                      className="text-dark-blue-400 mt-3"
+                      className="text-dark-blue-400 mt-3 group-hover:underline"
                       size="md"
                       variant="link"
                       visual="gray"
@@ -5896,9 +8181,9 @@ export default function Projects() {
                   </div>
                 </article>
               </div>
-              <div className="rounded-lg overflow-hidden relative group cursor-pointer">
+              <div className="rounded-lg overflow-hidden relative group cursor-pointer focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
                 <NextImage
-                  className="object-cover"
+                  className="object-cover group-hover:scale-105 motion-safe:transition-transform motion-safe:[transition-duration:3000ms]"
                   src="/artificial-hand.jpeg"
                   alt="Guide"
                   sizes="50vw"
@@ -5909,7 +8194,7 @@ export default function Projects() {
                     <span className="text-xs font-medium leading-none text-dark-blue-400">
                       Software Testing
                     </span>
-                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400">
+                    <h1 className="mt-2 text-lg font-bold leading-none text-dark-blue-400 group-hover:underline">
                       The Art of Software Testing: A Comprehensive Guide
                     </h1>
                     <p className="mt-2 text-sm leading-none font-light text-dark-blue-400">
@@ -5923,7 +8208,7 @@ export default function Projects() {
                     </p>
 
                     <Button
-                      className="text-dark-blue-400 mt-3"
+                      className="text-dark-blue-400 mt-3 group-hover:underline"
                       size="md"
                       variant="link"
                       visual="gray"
@@ -5947,21 +8232,21 @@ export default function Projects() {
             <TabsList className="flex flex-col items-start gap-y-3 bg-transparent h-auto min-w-[240px]">
               <TabsTrigger
                 value="general"
-                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 hover:bg-gray-50 hover:border-gray-200 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 General Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
               </TabsTrigger>
               <TabsTrigger
                 value="career"
-                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 hover:bg-gray-50 hover:border-gray-200 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 Career Related Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />
               </TabsTrigger>
               <TabsTrigger
                 value="technical"
-                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
+                className="w-full flex items-center justify-between px-6 py-3.5 rounded-[12px] border border-transparent text-base font-bold text-dark-blue-400 hover:bg-gray-50 hover:border-gray-200 data-[state=active]:!border-primary-600 data-[state=active]:text-primary-600 data-[state=active]:bg-white transition-all group"
               >
                 Technical Questions
                 <ArrowRight className="size-3.5 opacity-0 data-[state=active]:opacity-100 group-data-[state=active]:opacity-100 text-primary-600" />

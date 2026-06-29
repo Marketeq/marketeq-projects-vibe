@@ -1,15 +1,18 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('services_v2')
+@Entity({ name: 'project', schema: 'listings' })
 export class Service {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ default: 'service' })
+  listingType: string;
+
   @Column()
   title: string;
 
-  @Column('text')
+  @Column({ nullable: true, type: 'text' })
   description: string;
 
   @Column({ nullable: true })
@@ -27,7 +30,7 @@ export class Service {
   @Column('text', { array: true, default: [] })
   tags: string[];
 
-  @Column('text', { array: true, default: [] })
+  @Column('text', { name: 'industries', array: true, default: [] })
   industry: string[];
 
   @Column('text', { array: true, default: [] })
@@ -54,7 +57,7 @@ export class Service {
   @Column({ nullable: true, type: 'text' })
   videoUrl: string;
 
-  @Column('text', { array: true, default: [] })
+  @Column('jsonb', { default: [] })
   deliverables: string[];
 
   @Column('jsonb', { nullable: true, default: '[]' })
@@ -90,10 +93,10 @@ export class Service {
   @Column({ type: 'boolean', default: false })
   featured: boolean;
 
-  @Column()
+  @Column({ nullable: true })
   createdBy: string;
 
-  @Column({ type: 'varchar', nullable: true, unique: true })
+  @Column({ nullable: true, type: 'varchar' })
   payloadId: string | null;
 
   @Column({ type: 'varchar', nullable: true })

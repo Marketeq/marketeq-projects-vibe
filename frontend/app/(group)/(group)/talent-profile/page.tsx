@@ -4,6 +4,7 @@ import React, {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
@@ -11,10 +12,13 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
-import { getCertificationBrandFromUrl } from "@/src/lib/certification-brand"
+import {
+  getCertificationBrandFromUrl,
+  getCompanyBrandFromName,
+} from "@/src/lib/certification-brand"
 import { getCurrentUser } from "@/utils/auth"
 import { getComputedStyle } from "@/utils/dom-utils"
-import { cn, toPxIfNumber } from "@/utils/functions"
+import { capitalize, cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
   ArrowRight,
@@ -26,6 +30,7 @@ import {
   Clock,
   Edit03,
   Eye,
+  EyeOff,
   FileText,
   Heart,
   Image01,
@@ -69,9 +74,323 @@ import {
   WorkExperienceDialog,
 } from "@/components/edit-profile-modals"
 import { HireMeButton } from "@/components/hire-me-button"
+import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
+import dynamic from "next/dynamic"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+const CaseStudyBuilder = dynamic(
+  () => import("@/components/case-study-builder"),
+  { ssr: false }
+)
+
+const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
+
+const getInitials = (name?: string | null): string => {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return "?"
+  const first = parts[0].charAt(0)
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : ""
+  return (first + last).toUpperCase() || "?"
+}
+
+interface SimilarProfile {
+  id: string
+  name: string
+  username: string | null
+  avatarUrl: string | null
+  jobTitle: string | null
+  hourlyRate: number
+  rateMin: number | null
+  rateMax: number | null
+  rating: number
+}
+
+type PortfolioCardState = "filled" | "hidden" | "empty"
+interface PortfolioCardItem {
+  id: string
+  state: PortfolioCardState
+  img?: string
+}
+
+const SortablePortfolioCard = ({
+  card,
+  onOpenBuilder,
+  onToggleHide,
+  onDelete,
+}: {
+  card: PortfolioCardItem
+  onOpenBuilder: () => void
+  onToggleHide: () => void
+  onDelete: () => void
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: card.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+  const stop =
+    (fn: () => void) => (e: React.MouseEvent) => {
+      e.stopPropagation()
+      fn()
+    }
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "group relative h-[200px] select-none touch-none overflow-hidden rounded-lg border border-gray-200 bg-gray-100 cursor-grab active:cursor-grabbing",
+        isDragging && "z-10 opacity-70 shadow-lg"
+      )}
+    >
+      {card.state === "empty" ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+          <Image01 className="size-10 text-gray-300" />
+        </div>
+      ) : (
+        <img
+          src={card.img}
+          alt="Portfolio"
+          draggable={false}
+          className={cn(
+            "h-full w-full object-cover",
+            card.state === "hidden" && "opacity-40"
+          )}
+        />
+      )}
+
+      <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+        {card.state === "empty" ? (
+          <Button
+            type="button"
+            visual="gray"
+            className="bg-white"
+            onClick={stop(onOpenBuilder)}
+          >
+            <Upload className="size-[15px]" /> Add Case Study
+          </Button>
+        ) : (
+          <>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
+              onClick={stop(onOpenBuilder)}
+            >
+              <Edit03 className="size-4" />
+            </IconButton>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
+              onClick={stop(onToggleHide)}
+            >
+              {card.state === "hidden" ? (
+                <Eye className="size-4" />
+              ) : (
+                <EyeOff className="size-4" />
+              )}
+            </IconButton>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-error-500 hover:bg-white"
+              onClick={stop(onDelete)}
+            >
+              <Trash03 className="size-4" />
+            </IconButton>
+          </>
+        )}
+      </div>
+      {card.state !== "empty" && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <svg
+            viewBox="0 0 46 6"
+            className="w-11"
+            fill="#ffffff"
+            fillOpacity="0.65"
+            aria-hidden="true"
+          >
+            {[1, 5].map((cy) =>
+              Array.from({ length: 12 }, (_, i) => 1 + i * 4).map((cx) => (
+                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.3" />
+              ))
+            )}
+          </svg>
+        </div>
+      )}
+    </article>
+  )
+}
+
+const PortfolioAddCard = ({
+  onOpenBuilder,
+}: {
+  onOpenBuilder: () => void
+}) => (
+  <article className="group relative h-[200px] overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+      <Image01 className="size-10 text-gray-300" />
+    </div>
+    <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+      <Button
+        type="button"
+        visual="gray"
+        className="bg-white"
+        onClick={onOpenBuilder}
+      >
+        <Upload className="size-[15px]" /> Add Case Study
+      </Button>
+    </div>
+  </article>
+)
+
+const PortfolioCards = ({
+  portfolio,
+  onOpenBuilder,
+}: {
+  portfolio?: { id: string | number; imageUrl?: string | null }[]
+  onOpenBuilder: () => void
+}) => {
+  const [cards, setCards] = useState<PortfolioCardItem[]>(() =>
+    portfolio && portfolio.length > 0
+      ? portfolio.map((item) => ({
+          id: String(item.id),
+          state: "filled" as const,
+          img: item.imageUrl ?? PORTFOLIO_SAMPLE_IMG,
+        }))
+      : [
+          { id: "p1", state: "filled", img: PORTFOLIO_SAMPLE_IMG },
+          { id: "p2", state: "hidden", img: PORTFOLIO_SAMPLE_IMG },
+          { id: "p3", state: "empty" },
+        ]
+  )
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e
+    if (over && active.id !== over.id) {
+      setCards((prev) => {
+        const movable = prev.filter((c) => c.state !== "empty")
+        const fixed = prev.filter((c) => c.state === "empty")
+        const oldIndex = movable.findIndex((c) => c.id === active.id)
+        const newIndex = movable.findIndex((c) => c.id === over.id)
+        if (oldIndex === -1 || newIndex === -1) return prev
+        return [...arrayMove(movable, oldIndex, newIndex), ...fixed]
+      })
+    }
+  }
+
+  const sortableCards = cards.filter((c) => c.state !== "empty")
+  const emptyCards = cards.filter((c) => c.state === "empty")
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={sortableCards.map((c) => c.id)}
+        strategy={rectSortingStrategy}
+      >
+        <ShowMoreLessRoot>
+          {({ isShowing, setIsShowing, ref, scrollHeight }) => (
+            <>
+              <div
+                ref={ref}
+                className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
+                style={{
+                  height: isShowing
+                    ? "auto"
+                    : scrollHeight
+                      ? toPxIfNumber(scrollHeight)
+                      : "auto",
+                }}
+              >
+                <ShowMoreLess max={3}>
+                  {[
+                    ...sortableCards.map((card) => (
+                      <SortablePortfolioCard
+                        key={card.id}
+                        card={card}
+                        onOpenBuilder={onOpenBuilder}
+                        onToggleHide={() =>
+                          setCards((prev) =>
+                            prev.map((c) =>
+                              c.id === card.id
+                                ? {
+                                    ...c,
+                                    state:
+                                      c.state === "hidden"
+                                        ? "filled"
+                                        : "hidden",
+                                  }
+                                : c
+                            )
+                          )
+                        }
+                        onDelete={() =>
+                          setCards((prev) =>
+                            prev.filter((c) => c.id !== card.id)
+                          )
+                        }
+                      />
+                    )),
+                    ...emptyCards.map((card) => (
+                      <PortfolioAddCard
+                        key={card.id}
+                        onOpenBuilder={onOpenBuilder}
+                      />
+                    )),
+                  ]}
+                </ShowMoreLess>
+              </div>
+
+              {cards.length > 3 && (
+                <div className="my-6">
+                  <div className="flex items-center gap-x-1">
+                    <span className="flex-auto inline-block h-px bg-gray-200" />
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      onClick={() => setIsShowing((prev) => !prev)}
+                    >
+                      {isShowing ? "View Less" : "View More"}
+                    </Button>
+                    <span className="flex-auto inline-block h-px bg-gray-200" />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </ShowMoreLessRoot>
+      </SortableContext>
+    </DndContext>
+  )
+}
 import NextLink from "@/components/next-link"
 import {
   ReadMoreLess,
@@ -87,7 +406,6 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarFallbackIcon,
   AvatarGroup,
   AvatarImage,
   Badge,
@@ -366,7 +684,16 @@ export default function TalentProfilePage() {
 
 function Default() {
   const { user } = useAuth()
+  const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
+  const handleShareProfile = () => {
+    const base =
+      typeof window !== "undefined" ? window.location.origin : ""
+    const url = profile?.username
+      ? `${base}/talent-profile?username=${encodeURIComponent(profile.username)}`
+      : `${base}/talent-profile`
+    openInviteWindow(true, "Share Profile", url)
+  }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -470,6 +797,27 @@ function Default() {
     }
   }, [user?.id, usernameParam])
 
+  const [similarProfiles, setSimilarProfiles] = useState<SimilarProfile[]>([])
+
+  useEffect(() => {
+    let isActive = true
+    if (!profile?.id) {
+      setSimilarProfiles([])
+      return
+    }
+    UserAPI.getSimilarProfiles(profile.id)
+      .then((res) => {
+        const data = Array.isArray(res?.data) ? res.data : []
+        if (isActive) setSimilarProfiles(data)
+      })
+      .catch(() => {
+        if (isActive) setSimilarProfiles([])
+      })
+    return () => {
+      isActive = false
+    }
+  }, [profile?.id])
+
   const isOwnProfile = Boolean(
     user?.id && profile?.id && user.id === profile.id
   )
@@ -507,12 +855,14 @@ function Default() {
     label: string
   } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleDeleteWorkExperience = useCallback(
     (expId: string) => {
       const exp = profile?.experience?.find(
         (e: any) => String(e.id) === String(expId)
       )
+      setDeleteError(null)
       setDeleteConfirm({
         type: "experience",
         id: expId,
@@ -527,6 +877,7 @@ function Default() {
       const edu = profile?.education?.find(
         (e: any) => String(e.id) === String(eduId)
       )
+      setDeleteError(null)
       setDeleteConfirm({
         type: "education",
         id: eduId,
@@ -539,6 +890,7 @@ function Default() {
   const confirmDelete = useCallback(async () => {
     if (!profile?.id || !deleteConfirm) return
     setIsDeleting(true)
+    setDeleteError(null)
     try {
       if (deleteConfirm.type === "experience") {
         await UserAPI.removeExperience(deleteConfirm.id)
@@ -546,11 +898,12 @@ function Default() {
         await UserAPI.removeEducation(deleteConfirm.id)
       }
       refreshProfile()
+      setIsDeleting(false)
+      setDeleteConfirm(null)
     } catch {
-      /* noop */
+      setIsDeleting(false)
+      setDeleteError("Couldn't delete this entry. Please try again.")
     }
-    setIsDeleting(false)
-    setDeleteConfirm(null)
   }, [profile?.id, deleteConfirm, refreshProfile])
 
   const [isEditMode, setIsEditMode] = useState(true)
@@ -579,7 +932,24 @@ function Default() {
   const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
   const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
+  const [caseStudyOpen, setCaseStudyOpen] = useState(false)
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
+  const WORK_EXPERIENCE_LIMIT = 30
+  const atWorkExperienceLimit =
+    (profile?.experience?.length ?? 0) >= WORK_EXPERIENCE_LIMIT
+
+  // Deduplicate skills by name (case-insensitive) and drop blanks before display.
+  const dedupedSkills = useMemo(() => {
+    const seen = new Set<string>()
+    return (profile?.skills ?? [])
+      .map((s: any) => (typeof s === "string" ? { id: s, name: s } : s))
+      .filter((s: any) => {
+        const key = (s?.name ?? "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }, [profile?.skills])
 
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
@@ -788,6 +1158,53 @@ function Default() {
     }
   }, [])
 
+  const isClientView = !(isEditMode && isOwnProfile)
+
+  const hasPortfolio = (profile?.portfolio?.length ?? 0) > 0
+  const hasSkills = dedupedSkills.length > 0
+  const hasBio = Boolean(profile?.bio || profile?.overview)
+  const hasCertifications = (profile?.certifications?.length ?? 0) > 0
+  const hasIndustries = (profile?.industries?.length ?? 0) > 0
+  const hasWorkExperience = (profile?.experience?.length ?? 0) > 0
+  const hasEducation = (profile?.education?.length ?? 0) > 0
+  const hasLanguages = (profile?.languages?.length ?? 0) > 0
+  const hasTimezone = Boolean(profile?.timezone)
+
+  const showOverviewSection =
+    !isClientView || hasBio || hasCertifications || hasIndustries
+  const showOverviewBio = !isClientView || hasBio
+  const showOverviewFeatured =
+    !isClientView || hasCertifications || hasIndustries
+  const showBackgroundSection =
+    !isClientView || hasWorkExperience || hasEducation
+  const showLanguagesBox = !isClientView || hasLanguages || hasTimezone
+
+  const visibleFeaturedTabs = (
+    isClientView
+      ? [
+          hasCertifications && "Certifications",
+          hasIndustries && "Industry Expertise",
+        ]
+      : ["Featured Clients", "Certifications", "Industry Expertise"]
+  ).filter(Boolean) as string[]
+  const effectiveFeaturedTab = visibleFeaturedTabs.includes(featuredTab)
+    ? featuredTab
+    : visibleFeaturedTabs[0]
+
+  const visibleBackgroundTabs = (
+    isClientView
+      ? [
+          hasWorkExperience && "Work Experience",
+          hasEducation && "Education",
+        ]
+      : ["Work Experience", "Education"]
+  ).filter(Boolean) as string[]
+  const effectiveBackgroundTab = visibleBackgroundTabs.includes(
+    backgroundActiveTab
+  )
+    ? backgroundActiveTab
+    : visibleBackgroundTabs[0]
+
   return (
     <>
       <div className="py-[50px]">
@@ -917,7 +1334,7 @@ function Default() {
                     <div className="flex items-start">
                       <div className="flex-auto">
                         <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                          {profile?.firstName ?? "Talent"}
+                          {capitalize(profile?.firstName ?? "") || "Talent"}
                           {profile?.username && (
                             <span className="text-[26px] font-extralight">
                               {" "}
@@ -1000,7 +1417,7 @@ function Default() {
                             <p className="text-sm leading-none font-extralight text-dark-blue-400">
                               {isEditMode && isOwnProfile
                                 ? "You are"
-                                : `${profile?.firstName ?? "Talent"} is`}{" "}
+                                : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
                               currently{" "}
                               <span
                                 className={cn(
@@ -1066,16 +1483,17 @@ function Default() {
                           variant="outlined"
                           visual="gray"
                           size="md"
+                          onClick={handleShareProfile}
                         >
                           <Share06 className="size-[20px]" />
                         </IconButton>
                       </div>
                     </div>
 
-                    {((profile?.skills && profile.skills.length > 0) ||
+                    {(dedupedSkills.length > 0 ||
                       (isEditMode && isOwnProfile)) && (
                       <div className="mt-[54px]">
-                        {profile?.skills && profile.skills.length > 0 && (
+                        {dedupedSkills.length > 0 && (
                           <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                             What I do
                           </h1>
@@ -1083,7 +1501,7 @@ function Default() {
 
                         <div className="flex items-start mt-3 gap-x-3">
                           <div className="flex gap-3 flex-wrap">
-                            {profile?.skills && profile.skills.length > 0 ? (
+                            {dedupedSkills.length > 0 ? (
                               <ShowMoreLessRoot>
                                 <ShowMoreLess
                                   trigger={(extraChildrenCount) => (
@@ -1093,6 +1511,7 @@ function Default() {
                                       size="lg"
                                       onClick={() => {
                                         setActiveTab("Skills")
+                                        setAutoExpandSkills(true)
                                         setTimeout(() => {
                                           const el =
                                             document.getElementById("skills")
@@ -1110,7 +1529,7 @@ function Default() {
                                   )}
                                   max={5}
                                 >
-                                  {profile.skills.map((skill) => (
+                                  {dedupedSkills.map((skill) => (
                                     <Badge
                                       key={skill.id}
                                       className="text-gray-700"
@@ -1258,15 +1677,22 @@ function Default() {
                         src={profile?.avatarUrl ?? ""}
                         alt={profile?.firstName ?? "User"}
                       />
-                      <AvatarFallbackIcon />
+                      <AvatarFallback>
+                        {getInitials(
+                          `${profile?.firstName ?? ""} ${
+                            profile?.lastName ?? ""
+                          }`
+                        )}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-y-0.5">
                       <span className="text-lg leading-none font-bold text-dark-blue-400">
-                        {profile?.firstName ?? "User"}{" "}
+                        {capitalize(profile?.firstName ?? "") || "User"}{" "}
                         <span className="text-base font-extralight">
                           @{profile?.username ?? ""}
                         </span>
                       </span>
+
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
                         {(profile as any)?.jobTitles?.find(
                           (j: any) => j.saveAsDefault
@@ -1285,29 +1711,43 @@ function Default() {
                       })
                     )}
                   >
-                    <TabsTrigger value="Portfolio" asChild>
-                      <NextLink href="#portfolio">Portfolio</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Skills" asChild>
-                      <NextLink href="#skills">Skills</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Overview" asChild>
-                      <NextLink href="#overview">Overview</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Offers" asChild>
-                      <NextLink href="#offers">Offers</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Work Experience" asChild>
-                      <NextLink href="#background">Work Experience</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Education" asChild>
-                      <NextLink href="#education">Education</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Project History" asChild>
-                      <NextLink href="#project-history">
-                        Project History
-                      </NextLink>
-                    </TabsTrigger>
+                    {(!isClientView || hasPortfolio) && (
+                      <TabsTrigger value="Portfolio" asChild>
+                        <NextLink href="#portfolio">Portfolio</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasSkills) && (
+                      <TabsTrigger value="Skills" asChild>
+                        <NextLink href="#skills">Skills</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {showOverviewSection && (
+                      <TabsTrigger value="Overview" asChild>
+                        <NextLink href="#overview">Overview</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {!isClientView && (
+                      <TabsTrigger value="Offers" asChild>
+                        <NextLink href="#offers">Offers</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasWorkExperience) && (
+                      <TabsTrigger value="Work Experience" asChild>
+                        <NextLink href="#background">Work Experience</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasEducation) && (
+                      <TabsTrigger value="Education" asChild>
+                        <NextLink href="#education">Education</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {!isClientView && (
+                      <TabsTrigger value="Project History" asChild>
+                        <NextLink href="#project-history">
+                          Project History
+                        </NextLink>
+                      </TabsTrigger>
+                    )}
                   </div>
                 </div>
 
@@ -1350,6 +1790,7 @@ function Default() {
                       variant="outlined"
                       visual="gray"
                       size="md"
+                      onClick={handleShareProfile}
                     >
                       <Share06 className="size-[20px]" />
                     </IconButton>
@@ -1360,7 +1801,7 @@ function Default() {
                     <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
                       {isEditMode && isOwnProfile
                         ? "You are"
-                        : `${profile?.firstName ?? "Talent"} is`}{" "}
+                        : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
                       currently{" "}
                       <span
                         className={cn(
@@ -1464,6 +1905,14 @@ function Default() {
                               <Progress
                                 key={i}
                                 className="flex-auto first:rounded-l-full last:rounded-r-full [&:not(:first-child)]:rounded-l-none [&:not(:last-child)]:rounded-r-none"
+                                indicatorClassName={cn(
+                                  i === 0 && "rounded-l-full rounded-r-none",
+                                  i === steps.length - 1 &&
+                                    "rounded-r-full rounded-l-none",
+                                  i !== 0 &&
+                                    i !== steps.length - 1 &&
+                                    "rounded-none"
+                                )}
                                 value={i < completedCount ? 100 : 0}
                                 bubble={false}
                               />
@@ -1498,92 +1947,15 @@ function Default() {
                     )
                   })()}
 
-                <ShowMoreLessRoot
-                  value={autoExpandPortfolio}
-                  onValueChange={setAutoExpandPortfolio}
-                >
-                  {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                    <>
-                      <div
-                        className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
-                        ref={ref}
-                        style={{
-                          height: isShowing
-                            ? "auto"
-                            : scrollHeight
-                              ? toPxIfNumber(scrollHeight)
-                              : "auto",
-                        }}
-                      >
-                        <ShowMoreLess max={3}>
-                          {profile?.portfolio && profile.portfolio.length > 0 ? (
-                            profile.portfolio.map((item) => (
-                              <article
-                                key={item.id}
-                                className="group relative rounded-lg overflow-hidden h-[200px] cursor-pointer bg-gray-100"
-                              >
-                                {item.imageUrl ? (
-                                  <NextImage
-                                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                                    src={item.imageUrl}
-                                    alt={item.name}
-                                    fill
-                                    sizes="33vw"
-                                  />
-                                ) : null}
-                                <div className="p-[15px] inset-0 absolute flex justify-end items-start flex-col bg-black/0 group-hover:bg-black/50 transition-all duration-300">
-                                  <h1 className="text-sm leading-none font-medium text-white translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
-                                    {item.name}
-                                  </h1>
-                                  {Array.isArray(item.tags) &&
-                                    item.tags.length > 0 && (
-                                      <div className="mt-2 flex flex-wrap gap-[6.79px] translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-200">
-                                        {item.tags.map((tag, i) => (
-                                          <Badge
-                                            key={`${item.id}-${i}`}
-                                            className="text-white bg-white/20"
-                                            visual="gray"
-                                          >
-                                            {tag}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    )}
-                                </div>
-                              </article>
-                            ))
-                          ) : (
-                            [0, 1, 2].map((i) => (
-                              <div
-                                key={i}
-                                className="rounded-lg h-[200px] bg-gray-50 border border-gray-200 flex items-center justify-center"
-                              >
-                                <Image01 className="size-10 text-gray-300" />
-                              </div>
-                            ))
-                          )}
-                        </ShowMoreLess>
-                      </div>
+                {(!isClientView || hasPortfolio) && (
+                  <PortfolioCards
+                    key={profile?.portfolio?.length ? "real" : "demo"}
+                    portfolio={profile?.portfolio}
+                    onOpenBuilder={() => setCaseStudyOpen(true)}
+                  />
+                )}
 
-                      {profile?.portfolio && profile.portfolio.length > 3 && (
-                        <div className="my-6">
-                          <div className="flex items-center gap-x-1">
-                            <span className="flex-auto inline-block h-px bg-gray-200" />
-                            <Button
-                              variant="link"
-                              visual="gray"
-                              onClick={() => setIsShowing((prev) => !prev)}
-                            >
-                              {isShowing ? "View Less" : "View More"}
-                            </Button>
-                            <span className="flex-auto inline-block h-px bg-gray-200" />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </ShowMoreLessRoot>
-
+                {(!isClientView || hasSkills) && (
                 <LazySection minHeight={300}>
                   <div
                     className="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
@@ -1595,7 +1967,7 @@ function Default() {
                       </h1>
                       {isEditMode &&
                         isOwnProfile &&
-                        (profile?.skills && profile.skills.length > 0 ? (
+                        dedupedSkills.length > 0 && (
                           <IconButton
                             className="rounded-full text-gray-500 hover:text-gray-800"
                             variant="ghost"
@@ -1604,19 +1976,10 @@ function Default() {
                           >
                             <Edit03 className="size-4" />
                           </IconButton>
-                        ) : (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setSkillsOpen(true)}
-                          >
-                            <Plus className="size-[15px]" />
-                            Add Skills
-                          </Button>
-                        ))}
+                        )}
                     </div>
 
-                    {profile?.skills && profile.skills.length > 0 ? (
+                    {dedupedSkills.length > 0 ? (
                       <ShowMoreLessRoot
                         value={autoExpandSkills}
                         onValueChange={setAutoExpandSkills}
@@ -1635,7 +1998,7 @@ function Default() {
                               }}
                             >
                               <ShowMoreLess max={22}>
-                                {profile.skills.map((skill) => (
+                                {dedupedSkills.map((skill) => (
                                   <Badge
                                     key={skill.id}
                                     className="text-gray-700"
@@ -1648,7 +2011,7 @@ function Default() {
                               </ShowMoreLess>
                             </div>
 
-                            {profile.skills.length > 22 && (
+                            {dedupedSkills.length > 22 && (
                               <div className="mt-6 flex items-center justify-center">
                                 <Button
                                   variant="link"
@@ -1663,19 +2026,41 @@ function Default() {
                         )}
                       </ShowMoreLessRoot>
                     ) : (
-                      <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                        Showcase your expertise and the strengths that set you
-                        apart. Highlight the skills that define your work so the
-                        right clients can recognize your value and find you
-                        faster.
-                      </p>
+                      <div className="mt-2 flex items-start justify-between gap-x-4">
+                        <div className="flex-auto min-w-0">
+                          <p className="text-sm font-light text-gray-600 leading-relaxed">
+                            Showcase your expertise and the strengths that set
+                            you apart. Highlight the skills that define your work
+                            so the right clients can recognize your value and
+                            find you faster.
+                          </p>
+                        </div>
+                        {isEditMode && isOwnProfile && (
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            className="shrink-0 bg-white -mt-7"
+                            onClick={() => setSkillsOpen(true)}
+                          >
+                            <Plus className="size-[15px]" /> Add Skills
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </LazySection>
+                )}
 
+                {showOverviewSection && (
                 <LazySection minHeight={300}>
                   <div className="mt-6 scroll-mt-[137.5px]" id="overview">
-                    <div className="p-6 rounded-t-lg bg-white border border-gray-200 space-y-6">
+                    {showOverviewBio && (
+                    <div
+                      className={cn(
+                        "p-6 bg-white border border-gray-200 space-y-6",
+                        showOverviewFeatured ? "rounded-t-lg" : "rounded-lg"
+                      )}
+                    >
                       {(() => {
                         const bioText = profile?.bio || profile?.overview
                         const hasBio = Boolean(bioText)
@@ -1729,13 +2114,22 @@ function Default() {
                         )
                       })()}
                     </div>
+                    )}
 
+                    {showOverviewFeatured && (
                     <Tabs
-                      value={featuredTab}
+                      value={effectiveFeaturedTab}
                       onValueChange={setFeaturedTab}
-                      className="p-6 min-h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
+                      className={cn(
+                        "p-6 min-h-[134px] border-x border-b border-gray-200 bg-white",
+                        showOverviewBio
+                          ? "rounded-b-lg"
+                          : "rounded-lg border-t"
+                      )}
                     >
+                      {(!isClientView || visibleFeaturedTabs.length > 1) && (
                       <RadixTabs.List className="flex items-center gap-x-3">
+                        {!isClientView && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1744,6 +2138,8 @@ function Default() {
                         >
                           Featured Clients
                         </TabsTrigger>
+                        )}
+                        {(!isClientView || hasCertifications) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1752,6 +2148,8 @@ function Default() {
                         >
                           Certifications
                         </TabsTrigger>
+                        )}
+                        {(!isClientView || hasIndustries) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1760,6 +2158,7 @@ function Default() {
                         >
                           Industry Expertise
                         </TabsTrigger>
+                        )}
                         {isEditMode &&
                           isOwnProfile &&
                           featuredTab === "Industry Expertise" &&
@@ -1802,7 +2201,9 @@ function Default() {
                             </Button>
                           )}
                       </RadixTabs.List>
+                      )}
 
+                      {!isClientView && (
                       <TabsContent value="Featured Clients">
                         <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
                           <div className="flex items-start justify-between gap-x-4">
@@ -1825,6 +2226,12 @@ function Default() {
                                 visual="gray"
                                 className="shrink-0 bg-white"
                                 onClick={() => setWorkExperienceOpen(true)}
+                                disabled={atWorkExperienceLimit}
+                                title={
+                                  atWorkExperienceLimit
+                                    ? "You've reached the 30-entry limit for work experience."
+                                    : undefined
+                                }
                               >
                                 <Plus className="size-[15px]" /> Add Work History
                               </Button>
@@ -1832,6 +2239,7 @@ function Default() {
                           </div>
                         </div>
                       </TabsContent>
+                      )}
                       <TabsContent value="Certifications">
                         {profile?.certifications &&
                         profile.certifications.length > 0 ? (
@@ -1873,7 +2281,7 @@ function Default() {
                                   </span>
                                   {isEditMode && isOwnProfile && (
                                     <IconButton
-                                      className="text-gray-400 hover:text-gray-600"
+                                      className="rounded-full text-gray-400 hover:text-gray-600"
                                       variant="ghost"
                                       visual="gray"
                                       onClick={() => {
@@ -1956,9 +2364,12 @@ function Default() {
                         )}
                       </TabsContent>
                     </Tabs>
+                    )}
                   </div>
                 </LazySection>
+                )}
 
+                {!isClientView && (
                 <LazySection minHeight={400}>
                   <div
                     className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
@@ -2052,7 +2463,9 @@ function Default() {
                     </Tabs>
                   </div>
                 </LazySection>
+                )}
 
+                {showBackgroundSection && (
                 <LazySection minHeight={400}>
                   <div
                     className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
@@ -2079,11 +2492,13 @@ function Default() {
                     </div>
 
                     <Tabs
-                      value={backgroundActiveTab}
+                      value={effectiveBackgroundTab}
                       onValueChange={setBackgroundActiveTab}
                       className="mt-6"
                     >
+                      {(!isClientView || visibleBackgroundTabs.length > 1) && (
                       <RadixTabs.List className="inline-flex items-center gap-x-3">
+                        {(!isClientView || hasWorkExperience) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -2092,6 +2507,8 @@ function Default() {
                         >
                           Work Experience
                         </TabsTrigger>
+                        )}
+                        {(!isClientView || hasEducation) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -2100,7 +2517,9 @@ function Default() {
                         >
                           Education
                         </TabsTrigger>
+                        )}
                       </RadixTabs.List>
+                      )}
 
                       <TabsContent value="Work Experience">
                         <ShowMoreLessRoot
@@ -2123,12 +2542,18 @@ function Default() {
                                 <ShowMoreLessComp max={4}>
                                   {profile?.experience &&
                                   profile.experience.length > 0 ? (
-                                    profile.experience
-                                      .sort((a: any, b: any) =>
-                                        (b.startDate || "").localeCompare(
+                                    [...profile.experience]
+                                      .sort((a: any, b: any) => {
+                                        const aCurrent =
+                                          a.isCurrentRole || !a.endDate
+                                        const bCurrent =
+                                          b.isCurrentRole || !b.endDate
+                                        if (aCurrent !== bCurrent)
+                                          return aCurrent ? -1 : 1
+                                        return (b.startDate || "").localeCompare(
                                           a.startDate || ""
                                         )
-                                      )
+                                      })
                                       .map((exp: any, idx: number) => {
                                         const months = [
                                           "January",
@@ -2189,21 +2614,72 @@ function Default() {
                                             className="flex gap-x-6"
                                           >
                                             <div className="relative flex flex-col items-center">
-                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden">
-                                                {exp.companyLogoUrl ? (
-                                                  <NextImage
-                                                    src={exp.companyLogoUrl}
-                                                    alt={exp.company || ""}
-                                                    width={45}
-                                                    height={45}
-                                                    className="object-contain"
-                                                  />
-                                                ) : (
-                                                  <span className="text-lg font-bold text-gray-400">
-                                                    {exp.company?.charAt(0) ||
-                                                      "W"}
-                                                  </span>
-                                                )}
+                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden relative">
+                                                <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                  {exp.company?.charAt(0) ||
+                                                    "W"}
+                                                </span>
+                                                {(() => {
+                                                  if (exp.companyLogoUrl) {
+                                                    return (
+                                                      <NextImage
+                                                        key={exp.companyLogoUrl}
+                                                        src={exp.companyLogoUrl}
+                                                        alt={exp.company || ""}
+                                                        width={45}
+                                                        height={45}
+                                                        className="object-contain relative"
+                                                      />
+                                                    )
+                                                  }
+                                                  const brand =
+                                                    getCompanyBrandFromName(
+                                                      exp.company
+                                                    )
+                                                  if (
+                                                    brand?.type === "component"
+                                                  ) {
+                                                    return (
+                                                      <brand.Icon className="size-9 relative bg-gray-50" />
+                                                    )
+                                                  }
+                                                  if (
+                                                    brand?.type === "remote-svg"
+                                                  ) {
+                                                    return (
+                                                      <img
+                                                        key={brand.url}
+                                                        src={brand.url}
+                                                        alt={
+                                                          exp.company ||
+                                                          brand.name
+                                                        }
+                                                        width={36}
+                                                        height={36}
+                                                        className="object-contain size-9 relative bg-gray-50"
+                                                        loading="lazy"
+                                                        data-fallback="0"
+                                                        onError={(e) => {
+                                                          const el =
+                                                            e.currentTarget
+                                                          if (
+                                                            el.dataset
+                                                              .fallback === "0"
+                                                          ) {
+                                                            el.dataset.fallback =
+                                                              "1"
+                                                            el.src =
+                                                              brand.faviconUrl
+                                                          } else {
+                                                            el.style.display =
+                                                              "none"
+                                                          }
+                                                        }}
+                                                      />
+                                                    )
+                                                  }
+                                                  return null
+                                                })()}
                                               </div>
 
                                               {idx <
@@ -2325,7 +2801,7 @@ function Default() {
                                         )
                                       })
                                   ) : (
-                                    <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
                                       <div className="flex items-start justify-between gap-x-4">
                                         <div className="flex-auto min-w-0">
                                           <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
@@ -2346,6 +2822,12 @@ function Default() {
                                             className="shrink-0 bg-white"
                                             onClick={() =>
                                               setWorkExperienceOpen(true)
+                                            }
+                                            disabled={atWorkExperienceLimit}
+                                            title={
+                                              atWorkExperienceLimit
+                                                ? "You've reached the 30-entry limit for work experience."
+                                                : undefined
                                             }
                                           >
                                             <Plus className="size-[15px]" /> Add
@@ -2399,12 +2881,21 @@ function Default() {
                                 <ShowMoreLessComp max={4}>
                                   {profile?.education &&
                                   profile.education.length > 0 ? (
-                                    profile.education
-                                      .sort(
-                                        (a: any, b: any) =>
-                                          (b.startYear ?? 0) - (a.startYear ?? 0) ||
-                                          (b.startMonth ?? 0) - (a.startMonth ?? 0)
-                                      )
+                                    [...profile.education]
+                                      .sort((a: any, b: any) => {
+                                        const aCurrent =
+                                          a.currentlyStudying || !a.endYear
+                                        const bCurrent =
+                                          b.currentlyStudying || !b.endYear
+                                        if (aCurrent !== bCurrent)
+                                          return aCurrent ? -1 : 1
+                                        return (
+                                          (b.startYear ?? 0) -
+                                            (a.startYear ?? 0) ||
+                                          (b.startMonth ?? 0) -
+                                            (a.startMonth ?? 0)
+                                        )
+                                      })
                                       .map((edu: any, idx: number) => {
                                         const months = [
                                           "January",
@@ -2434,20 +2925,73 @@ function Default() {
                                             className="flex pb-5 items-start gap-x-6"
                                           >
                                             <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
-                                              {edu.institutionLogoUrl ? (
-                                                <NextImage
-                                                  src={edu.institutionLogoUrl}
-                                                  alt={edu.school || ""}
-                                                  fill
-                                                  sizes="55px"
-                                                  className="object-contain p-1"
-                                                />
-                                              ) : (
-                                                <span className="text-lg font-bold text-gray-400">
-                                                  {edu.school?.charAt(0) ||
-                                                    "E"}
-                                                </span>
-                                              )}
+                                              <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                {edu.school?.charAt(0) || "E"}
+                                              </span>
+                                              {(() => {
+                                                if (edu.institutionLogoUrl) {
+                                                  return (
+                                                    <NextImage
+                                                      key={edu.institutionLogoUrl}
+                                                      src={
+                                                        edu.institutionLogoUrl
+                                                      }
+                                                      alt={edu.school || ""}
+                                                      fill
+                                                      sizes="55px"
+                                                      className="object-contain p-1 relative"
+                                                    />
+                                                  )
+                                                }
+                                                const brand =
+                                                  getCompanyBrandFromName(
+                                                    edu.school,
+                                                    { faviconTld: "edu" }
+                                                  )
+                                                if (
+                                                  brand?.type === "component"
+                                                ) {
+                                                  return (
+                                                    <brand.Icon className="size-9 relative bg-gray-50" />
+                                                  )
+                                                }
+                                                if (
+                                                  brand?.type === "remote-svg"
+                                                ) {
+                                                  return (
+                                                    <img
+                                                      key={brand.url}
+                                                      src={brand.url}
+                                                      alt={
+                                                        edu.school ||
+                                                        brand.name
+                                                      }
+                                                      width={36}
+                                                      height={36}
+                                                      className="object-contain size-9 relative bg-gray-50"
+                                                      loading="lazy"
+                                                      data-fallback="0"
+                                                      onError={(e) => {
+                                                        const el =
+                                                          e.currentTarget
+                                                        if (
+                                                          el.dataset
+                                                            .fallback === "0"
+                                                        ) {
+                                                          el.dataset.fallback =
+                                                            "1"
+                                                          el.src =
+                                                            brand.faviconUrl
+                                                        } else {
+                                                          el.style.display =
+                                                            "none"
+                                                        }
+                                                      }}
+                                                    />
+                                                  )
+                                                }
+                                                return null
+                                              })()}
                                             </div>
 
                                             <div className="flex-auto">
@@ -2488,13 +3032,19 @@ function Default() {
                                                 )}
                                               </div>
                                               <div className="mt-1.5 flex items-center gap-x-2">
-                                                <span className="text-dark-blue-400 text-xs leading-none">
-                                                  {edu.degree}
-                                                </span>
-                                                <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                                <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                                  {edu.fieldOfStudy}
-                                                </span>
+                                                {edu.degree && (
+                                                  <span className="text-dark-blue-400 text-xs leading-none">
+                                                    {edu.degree}
+                                                  </span>
+                                                )}
+                                                {edu.degree && edu.fieldOfStudy && (
+                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                )}
+                                                {edu.fieldOfStudy && (
+                                                  <span className="text-dark-blue-400 font-semibold text-xs leading-none">
+                                                    {edu.fieldOfStudy}
+                                                  </span>
+                                                )}
                                               </div>
                                               <div className="mt-1.5">
                                                 <span className="text-dark-blue-400 text-xs leading-none">
@@ -2509,7 +3059,7 @@ function Default() {
                                         )
                                       })
                                   ) : (
-                                    <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
                                       <div className="flex items-start justify-between gap-x-4">
                                         <div className="flex-auto min-w-0">
                                           <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
@@ -2569,6 +3119,7 @@ function Default() {
                     </Tabs>
                   </div>
                 </LazySection>
+                )}
 
                 {/* Project History + Reviews — hidden until backed by real data */}
                 {false && (
@@ -3280,7 +3831,7 @@ function Default() {
                                             src="/man.jpg"
                                             alt="Man"
                                           />
-                                          <AvatarFallbackIcon />
+                                          <AvatarFallback>M</AvatarFallback>
                                         </Avatar>
 
                                         <div className="flex flex-col flex-1">
@@ -3990,7 +4541,12 @@ function Default() {
                   )}
                   ref={cardRef}
                 >
-                  <div className="p-6 rounded-t-lg relative bg-white border border-gray-200">
+                  <div
+                    className={cn(
+                      "p-6 rounded-t-lg relative bg-white border border-gray-200",
+                      !showLanguagesBox && "rounded-b-lg"
+                    )}
+                  >
                     <div className="flex items-center gap-x-1 justify-center">
                       <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
                         <span
@@ -4049,6 +4605,7 @@ function Default() {
                     </button>
                   </div>
 
+                  {showLanguagesBox && (
                   <div
                     className={`border-x rounded-b-lg border-b bg-white border-gray-200 transition-all duration-300 overflow-hidden ${
                       showLanguageSection
@@ -4058,65 +4615,78 @@ function Default() {
                   >
                     {showLanguageSection && (
                       <>
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                            <MessageTextSquare01 className="size-[15px]" />
-                            Languages
-                          </span>
+                        {(!isClientView || hasLanguages) && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                                <MessageTextSquare01 className="size-[15px]" />
+                                Languages
+                              </span>
 
-                          {isEditMode && isOwnProfile && (
-                            <IconButton
-                              className="rounded-full text-gray-500 hover:text-gray-800 size-5"
-                              variant="ghost"
-                              visual="gray"
-                              onClick={() => setLanguagesOpen(true)}
-                            >
-                              <Edit03 className="size-3" />
-                            </IconButton>
-                          )}
-                        </div>
+                              {isEditMode && isOwnProfile && (
+                                <IconButton
+                                  className="rounded-full text-gray-500 hover:text-gray-800 size-5"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setLanguagesOpen(true)}
+                                >
+                                  <Edit03 className="size-3" />
+                                </IconButton>
+                              )}
+                            </div>
 
-                        {profile?.languages &&
-                        profile.languages.length > 0 ? (
-                          <p className="mt-3 text-xs leading-relaxed font-bold text-dark-blue-400">
-                            {profile.languages
-                              .map((l: any) => l.name)
-                              .join(", ")}
-                          </p>
-                        ) : (
-                          <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
-                            <p className="text-xs font-light text-gray-500 leading-relaxed">
-                              Tell us what languages you speak, they&apos;ll
-                              show up here.
-                            </p>
-                            {isEditMode && isOwnProfile && (
-                              <Button
-                                className="mt-3 w-full bg-white"
-                                variant="outlined"
-                                visual="gray"
-                                onClick={() => setLanguagesOpen(true)}
-                              >
-                                <Plus className="size-[15px]" /> Add Languages
-                              </Button>
+                            {hasLanguages ? (
+                              <p className="mt-3 text-xs leading-relaxed font-bold text-dark-blue-400">
+                                {profile!.languages!
+                                  .map((l: any) => l.name)
+                                  .join(", ")}
+                              </p>
+                            ) : (
+                              <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
+                                <p className="text-xs font-light text-gray-500 leading-relaxed">
+                                  Tell us what languages you speak, they&apos;ll
+                                  show up here.
+                                </p>
+                                {isEditMode && isOwnProfile && (
+                                  <Button
+                                    className="mt-3 w-full bg-white"
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => setLanguagesOpen(true)}
+                                  >
+                                    <Plus className="size-[15px]" /> Add
+                                    Languages
+                                  </Button>
+                                )}
+                              </div>
                             )}
-                          </div>
+                          </>
                         )}
 
-                        <div className="flex mt-5 items-center justify-between">
-                          <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                            <Clock className="size-[15px]" />
-                            Time Zone
-                          </span>
+                        {(!isClientView || hasTimezone) && (
+                          <div
+                            className={cn(
+                              "flex items-center justify-between",
+                              !isClientView || hasLanguages ? "mt-5" : ""
+                            )}
+                          >
+                            <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                              <Clock className="size-[15px]" />
+                              Time Zone
+                            </span>
 
-                          <span className="text-xs leading-none font-bold text-dark-blue-400">
-                            {profile?.timezone ?? "\u2014"}
-                          </span>
-                        </div>
+                            <span className="text-xs leading-none font-bold text-dark-blue-400">
+                              {profile?.timezone ?? "\u2014"}
+                            </span>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
+                  )}
                 </div>
 
+                {(similarProfiles.length > 0 || !isClientView) && (
                 <div className="space-y-6 mt-6">
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
@@ -4124,42 +4694,129 @@ function Default() {
                         Similar profiles
                       </h1>
 
-                      <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
-                        <p className="text-xs font-light text-gray-600 leading-relaxed">
-                          Complete your profile to start seeing similar
-                          profiles here.
-                        </p>
-                        {isEditMode && isOwnProfile && (
-                          <Button
-                            className="mt-3 w-full"
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => router.push("/complete-profile")}
-                          >
-                            Complete My Profile
-                          </Button>
-                        )}
-                      </div>
+                      {similarProfiles.length > 0 ? (
+                        <>
+                          <div className="mt-3">
+                            {similarProfiles.slice(0, 5).map((sp) => {
+                              const rateMin =
+                                sp.rateMin != null ? Number(sp.rateMin) : null
+                              const rateMax =
+                                sp.rateMax != null ? Number(sp.rateMax) : null
+                              // Ratings hidden for MVP — reintroduce with the rating system
+                              // const rating = Number(sp.rating) || 0
+                              const rate =
+                                rateMin != null &&
+                                rateMax != null &&
+                                rateMin !== rateMax
+                                  ? `$${rateMin} - $${rateMax}`
+                                  : `$${rateMin ?? (Number(sp.hourlyRate) || 0)}`
+                              return (
+                                <div
+                                  key={sp.id}
+                                  onClick={() =>
+                                    sp.username &&
+                                    router.push(
+                                      `/talent-profile?username=${sp.username}`
+                                    )
+                                  }
+                                  className={cn(
+                                    "py-3 flex items-start gap-x-2 border-b border-gray-200",
+                                    sp.username && "cursor-pointer"
+                                  )}
+                                >
+                                  <Avatar
+                                    className="hover:ring-0 active:ring-primary-100"
+                                    size="md"
+                                  >
+                                    <AvatarImage
+                                      src={sp.avatarUrl ?? undefined}
+                                      alt={sp.name}
+                                    />
+                                    <AvatarFallback>
+                                      {getInitials(sp.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+
+                                  <div className="flex-1">
+                                    <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
+                                      {capitalize(sp.name.split(/\s+/)[0] || sp.name)}
+                                      {sp.username && (
+                                        <span className="text-xs font-extralight leading-none text-gray-500">
+                                          {" "}
+                                          @{sp.username}
+                                        </span>
+                                      )}
+                                    </h1>
+                                    {sp.jobTitle && (
+                                      <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
+                                        {sp.jobTitle}
+                                      </p>
+                                    )}
+                                    <div className="mt-1.5 flex items-center justify-between">
+                                      <span className="text-[13px] leading-none font-bold text-dark-blue-400">
+                                        {rate}
+                                        <span className="text-xs leading-none text-dark-blue-400 font-extralight">
+                                          /hr
+                                        </span>
+                                      </span>
+
+                                      {/* Ratings hidden for MVP — reintroduce with the rating system
+                                      {rating > 0 && (
+                                        <div className="inline-flex items-center gap-x-1">
+                                          <Star className="size-3 text-primary-500 fill-primary-500" />
+                                          <span className="font-medium leading-none text-xs text-dark-blue-400">
+                                            {rating.toFixed(1)}
+                                          </span>
+                                        </div>
+                                      )} */}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-center">
+                            <Button
+                              size="sm"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => router.push("/talent-search")}
+                            >
+                              View More
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
+                          <p className="text-xs font-light text-gray-600 leading-relaxed">
+                            Complete your profile to start seeing similar
+                            profiles here.
+                          </p>
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              className="mt-3 w-full"
+                              variant="outlined"
+                              visual="gray"
+                              onClick={() => router.push("/complete-profile")}
+                            >
+                              Complete My Profile
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
+                )}
 
+                {!isClientView && (
                 <div className="rounded-lg border border-gray-200 bg-white">
                   <div className="p-6">
                     <div className="flex items-center justify-between">
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                         Affiliated Teams
                       </h1>
-                      {isEditMode && isOwnProfile && (
-                        <IconButton
-                          className="rounded-full text-gray-500 hover:text-gray-800 size-6"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setAffiliatedTeamsOpen(true)}
-                        >
-                          <Edit03 className="size-3.5" />
-                        </IconButton>
-                      )}
                     </div>
 
                     <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
@@ -4180,6 +4837,7 @@ function Default() {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -4367,10 +5025,26 @@ function Default() {
             onOpenedChange={setAffiliatedTeamsOpen}
           />
 
+          <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+            <DialogContent
+              variant="unanimated"
+              className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
+            >
+              <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
+              <CaseStudyBuilder
+                onClose={() => setCaseStudyOpen(false)}
+                onSave={() => setCaseStudyOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+
           <Dialog
             open={!!deleteConfirm}
             onOpenChange={(open) => {
-              if (!open) setDeleteConfirm(null)
+              if (!open) {
+                setDeleteConfirm(null)
+                setDeleteError(null)
+              }
             }}
           >
             <DialogContent className="max-w-[409px] p-0">
@@ -4402,6 +5076,15 @@ function Default() {
                   )}{" "}
                   This cannot be undone.
                 </DialogDescription>
+
+                {deleteError && (
+                  <div
+                    role="alert"
+                    className="mt-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                  >
+                    {deleteError}
+                  </div>
+                )}
               </div>
 
               <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
@@ -4422,7 +5105,11 @@ function Default() {
                   onClick={confirmDelete}
                   disabled={isDeleting}
                 >
-                  {isDeleting ? "Deleting..." : "Yes, Delete"}
+                  {isDeleting
+                    ? "Deleting..."
+                    : deleteError
+                      ? "Try Again"
+                      : "Yes, Delete"}
                 </Button>
               </div>
             </DialogContent>

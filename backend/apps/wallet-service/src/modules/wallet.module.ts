@@ -20,11 +20,7 @@ import { WalletWebhookController } from '../controllers/wallet-webhook.controlle
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres' as const,
-        host: config.get<string>('DATABASE_HOST'),
-        port: Number(config.get('DATABASE_PORT') ?? 5432),
-        username: config.get<string>('DATABASE_USERNAME'),
-        password: config.get<string>('DATABASE_PASSWORD'),
-        database: config.get<string>('DATABASE_NAME'),
+        url: config.get<string>('DATABASE_URL'),
         entities: [GiftCard, WalletTransaction, UserWallet],
         autoLoadEntities: true,
         synchronize: false,

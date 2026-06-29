@@ -63,6 +63,7 @@ import { useToggle } from "react-use"
 import { z } from "zod"
 import { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
+import { getCompanyBrandFromName } from "@/src/lib/certification-brand"
 import {
   BecomeTopSeller,
   Carousel,
@@ -1004,8 +1005,14 @@ const moreInfoFormSchema = z
   .object({
     jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
     saveAsDefault: z.boolean(),
-    clientRate: z.number().optional(),
-    earning: z.number().optional(),
+    clientRate: z
+      .number()
+      .max(1000, "Rate cannot exceed $1,000/hr")
+      .optional(),
+    earning: z
+      .number()
+      .max(1000, "Rate cannot exceed $1,000/hr")
+      .optional(),
     fee: z.number().optional(),
   })
   .refine((data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0, {
@@ -1059,6 +1066,7 @@ const MoreInfoDialog = ({
   )
   const [editingIndex, setEditingIndex] = useState<number>()
   const [profileLoaded, setProfileLoaded] = useState(false)
+  const [duplicateError, setDuplicateError] = useState<string | null>(null)
   const [workExperiences, setWorkExperiences] = useUncontrolledState<
     MoreInfoFormValues[] | undefined
   >({
@@ -1119,6 +1127,17 @@ const MoreInfoDialog = ({
     }
   }, [profile, profileLoaded, setWorkExperiences])
   const onSubmit: SubmitHandler<MoreInfoFormValues> = (values) => {
+    const normalizedTitle = values.jobTitle.trim().toLowerCase()
+    const isDuplicate = (workExperiences ?? []).some(
+      (e, index) =>
+        index !== editingIndex &&
+        e.jobTitle.trim().toLowerCase() === normalizedTitle
+    )
+    if (isDuplicate) {
+      setDuplicateError("This job title already exists.")
+      return
+    }
+    setDuplicateError(null)
     let nextEntries: MoreInfoFormValues[]
     if (editingIndex !== undefined) {
       nextEntries = (workExperiences ?? []).map((workExperience, index) => {
@@ -1143,9 +1162,9 @@ const MoreInfoDialog = ({
         rateMax: values.clientRate ? Number(values.clientRate) : undefined,
         jobTitles: nextEntries.map((e) => ({
           jobTitle: e.jobTitle,
-          clientRate: e.clientRate,
-          earning: e.earning,
-          fee: e.fee,
+          clientRate: e.clientRate ?? 0,
+          earning: e.earning ?? 0,
+          fee: e.fee ?? 0,
           saveAsDefault: e.saveAsDefault,
         })),
         recentJobTitle: defaultEntry?.jobTitle,
@@ -1379,6 +1398,11 @@ const MoreInfoDialog = ({
                             <ErrorMessage size="sm">{message}</ErrorMessage>
                           )}
                         />
+                        {duplicateError && (
+                          <ErrorMessage size="sm">
+                            {duplicateError}
+                          </ErrorMessage>
+                        )}
                       </div>
 
                       <div className="mt-3 flex items-center gap-x-3">
@@ -2001,8 +2025,7 @@ const AboutMeDialog = ({
 const skillsFormSchema = z.object({
   skills: z
     .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
-    .min(1, "Please select at least 1 skill(s)")
-    .max(50, "You have reached the maximum limit of 50 skills"),
+    .max(100, "You have reached the maximum limit of 100 skills."),
 })
 
 type SkillsFormValues = z.infer<typeof skillsFormSchema>
@@ -2083,18 +2106,53 @@ const SkillsDialog = ({
     }
   }, [profile, setValue])
 
-  const onSubmit: SubmitHandler<SkillsFormValues> = ({ skills }) => {
-    next?.()
-    if (userId) {
-      // Only add skills that don't already exist in DB
-      const newSkills = skills.filter(
-        (s) => !existingSkillNamesRef.current.has(s.name)
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const onSubmit: SubmitHandler<SkillsFormValues> = async ({ skills }) => {
+    setServerError(null)
+    if (!userId) {
+      next?.()
+      return
+    }
+    const newSkills = skills.filter(
+      (s) => !existingSkillNamesRef.current.has(s.name)
+    )
+    if (!newSkills.length) {
+      next?.()
+      return
+    }
+    setIsSaving(true)
+    try {
+      await Promise.all(
+        newSkills.map((s) => UserAPI.addSkill({ name: s.name }))
       )
-      if (newSkills.length) {
-        Promise.all(
-          newSkills.map((s) => UserAPI.addSkill({ name: s.name }))
-        ).catch(() => {})
+      newSkills.forEach((s) => existingSkillNamesRef.current.add(s.name))
+      setIsSaving(false)
+      next?.()
+    } catch (err: any) {
+      setIsSaving(false)
+      const status = err?.response?.status
+      const isTimeout =
+        err?.code === "ECONNABORTED" ||
+        /timeout/i.test(err?.message ?? "")
+      if (status === 401) {
+        try {
+          sessionStorage.setItem(
+            "complete-profile.skills.pending",
+            JSON.stringify(skills.map((s) => s.name))
+          )
+        } catch {}
+        setServerError("Your session has expired. Please sign in again.")
+      } else if (isTimeout) {
+        setServerError(
+          "This is taking longer than usual. Please try again."
+        )
+      } else {
+        setServerError(
+          "We could not save your changes. Please try again."
+        )
       }
+      console.error("[skills wizard] save failed", err)
     }
   }
 
@@ -2149,60 +2207,85 @@ const SkillsDialog = ({
 
             {!profileError && !profileLoading && (
             <div className="mt-6">
+              {serverError && (
+                <div
+                  role="alert"
+                  className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                >
+                  {serverError}
+                </div>
+              )}
               <Controller
                 name="skills"
                 control={control}
-                render={({ field: { value, onChange } }) => (
-                  <Combobox
-                    className="w-full"
-                    value={value}
-                    onChange={(val: typeof value) => {
-                      const unique = val.filter((s, i, arr) =>
-                        arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
-                      )
-                      onChange(unique)
-                      setQuery("")
-                    }}
-                    multiple
-                  >
-                    <ComboboxTrigger>
-                      <ComboboxInput
-                        size="lg"
-                        displayValue={() => query}
-                        placeholder="Search for skills"
-                        onChange={(event) => setQuery(event.target.value)}
-                        invalid={hookFormHasError({ errors, name: "skills" })}
-                      />
-                      <ComboboxButton size="lg">
-                        <SearchMd className="h-5 w-5" />
-                      </ComboboxButton>
-                    </ComboboxTrigger>
-                    <ScaleOutIn afterLeave={() => setQuery("")}>
-                      <ComboboxOptions>
-                        <ScrollArea viewportClassName="max-h-[304px]">
-                          {filteredSkills
-                            .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                            .map((skill) => (
-                              <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
-                                {skill.name}
-                              </ComboboxOption>
-                            ))}
-                          {(() => {
-                            const q = query.trim().toLowerCase()
-                            const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
-                            const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                            if (!q || alreadySelected || visibleOptions.length > 0) return null
-                            return (
-                              <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
-                                Add &ldquo;{query.trim()}&rdquo;
-                              </ComboboxOption>
-                            )
-                          })()}
-                        </ScrollArea>
-                      </ComboboxOptions>
-                    </ScaleOutIn>
-                  </Combobox>
-                )}
+                render={({ field: { value, onChange } }) => {
+                  const atSkillsLimit = (value ?? []).length >= 100
+                  return (
+                    <>
+                      <Combobox
+                        className="w-full"
+                        value={value}
+                        onChange={(val: typeof value) => {
+                          const capped = val.slice(0, 100)
+                          const unique = capped.filter((s, i, arr) =>
+                            arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                          )
+                          onChange(unique)
+                          setQuery("")
+                        }}
+                        multiple
+                        disabled={atSkillsLimit}
+                      >
+                        <ComboboxTrigger>
+                          <ComboboxInput
+                            size="lg"
+                            displayValue={() => query}
+                            placeholder="Search for skills"
+                            onChange={(event) => setQuery(event.target.value)}
+                            invalid={hookFormHasError({ errors, name: "skills" })}
+                            disabled={atSkillsLimit}
+                          />
+                          <ComboboxButton size="lg">
+                            <SearchMd className="h-5 w-5" />
+                          </ComboboxButton>
+                        </ComboboxTrigger>
+                        <ScaleOutIn afterLeave={() => setQuery("")}>
+                          <ComboboxOptions>
+                            <ScrollArea viewportClassName="max-h-[304px]">
+                              {filteredSkills
+                                .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                .map((skill) => (
+                                  <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
+                                    {skill.name}
+                                  </ComboboxOption>
+                                ))}
+                              {(() => {
+                                const q = query.trim().toLowerCase()
+                                const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
+                                const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                if (!q || alreadySelected || visibleOptions.length > 0) return null
+                                return (
+                                  <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                                    Add &ldquo;{query.trim()}&rdquo;
+                                  </ComboboxOption>
+                                )
+                              })()}
+                            </ScrollArea>
+                          </ComboboxOptions>
+                        </ScaleOutIn>
+                      </Combobox>
+                      {atSkillsLimit && (
+                        <p
+                          role="status"
+                          aria-live="assertive"
+                          className="mt-1.5 text-sm font-medium text-error-700"
+                        >
+                          You have reached the maximum limit of 100 skills.
+                        </p>
+                      )}
+                    </>
+                  )
+                }}
               />
 
               <HookFormErrorMessage
@@ -2215,26 +2298,31 @@ const SkillsDialog = ({
                 )}
               />
 
-              <div className="mt-3 flex gap-3 flex-wrap">
-                {skills?.map((skill) => (
-                  <Badge key={skill.id} visual="primary">
-                    {skill.name}
-                    <button
-                      type="button"
-                      className="focus-visible:outline-none"
-                      onClick={() => {
-                        setValue(
-                          "skills",
-                          skills.filter((s) => s.id !== skill.id)
-                        )
-                        trigger()
-                      }}
-                    >
-                      <X2 className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+              <ScrollArea
+                viewportClassName="max-h-[200px]"
+                scrollBar={<ScrollBar className="w-4 p-1" />}
+              >
+                <div className="mt-3 flex gap-3 flex-wrap pr-1">
+                  {skills?.map((skill) => (
+                    <Badge key={skill.id} visual="primary">
+                      {skill.name}
+                      <button
+                        type="button"
+                        className="focus-visible:outline-none"
+                        onClick={() => {
+                          setValue(
+                            "skills",
+                            skills.filter((s) => s.id !== skill.id)
+                          )
+                          trigger()
+                        }}
+                      >
+                        <X2 className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </ScrollArea>
             </div>
             )}
           </div>
@@ -2257,11 +2345,15 @@ const SkillsDialog = ({
                 variant="ghost"
                 visual="gray"
                 onClick={next}
-                disabled={profileLoading || profileError}
+                disabled={profileLoading || profileError || isSaving}
               >
                 Skip
               </Button>
-              <Button size="md" disabled={!isValid || profileLoading || profileError}>
+              <Button
+                size="md"
+                disabled={!isValid || profileLoading || profileError || isSaving}
+                loading={isSaving}
+              >
                 Save & Continue
               </Button>
             </div>
@@ -2319,8 +2411,14 @@ const SkillsDialog = ({
 const workExperienceFormSchema = z
   .object({
     id: z.string().optional(),
-    employer: z.string().min(1, "Please enter at least 1 character(s)"),
-    jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
+    employer: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(200, "Employer must be 200 characters or fewer"),
+    jobTitle: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(120, "Job Title must be 120 characters or fewer"),
     startDate: z.object({
       month: z
         .number()
@@ -2346,9 +2444,19 @@ const workExperienceFormSchema = z
         .optional(),
     }),
     currentlyWorkHere: z.boolean(),
-    jobDescription: z.string().min(1, "Please enter at least 1 character(s)"),
+    jobDescription: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(1000, "Job Description must be 1000 characters or fewer"),
   })
   .merge(skillsFormSchema)
+  .extend({
+    skills: z
+      .array(
+        z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+      )
+      .max(10, "Maximum 10 skills per work experience entry."),
+  })
   .refine(
     (data) =>
       data.currentlyWorkHere
@@ -2410,6 +2518,11 @@ const months = [
   { name: "November", value: 11 },
   { name: "December", value: 12 },
 ]
+
+const workExperienceYears: number[] = (() => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({ length: 60 }, (_, i) => currentYear - i)
+})()
 
 const WorkExperienceDialog = ({
   onFinished,
@@ -2525,7 +2638,9 @@ const WorkExperienceDialog = ({
       employer: "",
     },
   })
-  const onSubmit: SubmitHandler<WorkExperienceFormValues> = (values) => {
+  const [serverError, setServerError] = useState<string | null>(null)
+  const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
+    setServerError(null)
     const payload: ExperiencePayload = {
       company: values.employer,
       title: values.jobTitle,
@@ -2539,46 +2654,41 @@ const WorkExperienceDialog = ({
       description: values.jobDescription,
       skills: values.skills.map((s) => s.name),
     }
-    if (editingIndex !== undefined) {
-      const editingExp = workExperiences?.[editingIndex]
-      setWorkExperiences(
-        workExperiences?.map((workExperience, index) =>
-          index === editingIndex ? { ...values, id: workExperience.id } : workExperience
+    try {
+      if (editingIndex !== undefined) {
+        const editingExp = workExperiences?.[editingIndex]
+        let savedId = editingExp?.id
+        if (editingExp?.id) {
+          await UserAPI.updateExperience(editingExp.id, payload)
+        } else if (userId) {
+          const res = await UserAPI.addExperience(payload)
+          savedId = res?.data?.id ?? undefined
+        }
+        setWorkExperiences(
+          workExperiences?.map((workExperience, index) =>
+            index === editingIndex
+              ? { ...values, id: savedId ?? workExperience.id }
+              : workExperience
+          )
         )
+        setEditingIndex(undefined)
+      } else {
+        let savedId: string | undefined
+        if (userId) {
+          const res = await UserAPI.addExperience(payload)
+          savedId = res?.data?.id ?? undefined
+        }
+        setWorkExperiences((prev) =>
+          prev ? [...prev, { ...values, id: savedId }] : [{ ...values, id: savedId }]
+        )
+      }
+      reset()
+      setState("preview")
+    } catch {
+      setServerError(
+        "We couldn't save your work experience. Please try again."
       )
-      if (editingExp?.id) {
-        UserAPI.updateExperience(editingExp.id, payload).catch(() => {})
-      } else if (userId) {
-        UserAPI.addExperience(payload).then((res) => {
-          const newId = res?.data?.id
-          if (newId) {
-            setWorkExperiences((prev) =>
-              prev?.map((w, i) => (i === editingIndex ? { ...w, id: newId } : w))
-            )
-          }
-        }).catch(() => {})
-      }
-      setEditingIndex(undefined)
-    } else {
-      const newIndex = workExperiences?.length ?? 0
-      setWorkExperiences((prev) => (prev ? [...prev, values] : [values]))
-      if (userId) {
-        UserAPI.addExperience(payload)
-          .then((res) => {
-            const newId = res?.data?.id
-            if (newId) {
-              setWorkExperiences((prev) =>
-                prev?.map((w, i) =>
-                  i === newIndex ? { ...w, id: newId } : w
-                )
-              )
-            }
-          })
-          .catch(() => {})
-      }
     }
-    reset()
-    setState("preview")
   }
 
   const skillsField = useWatch({ control, name: "skills" })
@@ -2586,6 +2696,18 @@ const WorkExperienceDialog = ({
     control,
     name: "currentlyWorkHere",
   })
+  useEffect(() => {
+    if (currentlyWorkHereField) {
+      setValue("endDate.month", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+      setValue("endDate.year", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+    }
+  }, [currentlyWorkHereField, setValue])
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -2714,7 +2836,25 @@ const WorkExperienceDialog = ({
 
                   {state === "preview" && (
                     <div className="space-y-3">
-                      {workExperiences?.map((workExperience, index) => (
+                      {workExperiences
+                        ?.map((workExperience, index) => ({
+                          workExperience,
+                          index,
+                        }))
+                        .sort((a, b) => {
+                          if (
+                            a.workExperience.currentlyWorkHere !==
+                            b.workExperience.currentlyWorkHere
+                          )
+                            return a.workExperience.currentlyWorkHere ? -1 : 1
+                          return (
+                            (b.workExperience.startDate?.year ?? 0) -
+                              (a.workExperience.startDate?.year ?? 0) ||
+                            (b.workExperience.startDate?.month ?? 0) -
+                              (a.workExperience.startDate?.month ?? 0)
+                          )
+                        })
+                        .map(({ workExperience, index }) => (
                         <WorkExperienceCard
                           onRemove={() => {
                             const updated = workExperiences?.filter(
@@ -2739,6 +2879,14 @@ const WorkExperienceDialog = ({
 
                   {state === "action" && (
                     <>
+                      {serverError && (
+                        <div
+                          role="alert"
+                          className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                        >
+                          {serverError}
+                        </div>
+                      )}
                       <div className="grid gap-4 grid-cols-2">
                         <div className="space-y-1.5">
                           <Label
@@ -2871,14 +3019,12 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {[
-                                          2020, 2021, 2022, 2023, 2024, 2025,
-                                        ].map((month) => (
+                                        {workExperienceYears.map((year) => (
                                           <ListboxOption
-                                            key={month}
-                                            value={month}
+                                            key={year}
+                                            value={year}
                                           >
-                                            {month}
+                                            {year}
                                           </ListboxOption>
                                         ))}
                                       </ScrollArea>
@@ -2920,7 +3066,11 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="endDate.month"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    key={`end-month-${currentlyWorkHereField}`}
+                                    value={value}
+                                    onChange={onChange}
+                                  >
                                     <ListboxButton
                                       placeholder="Month"
                                       displayValue={(value: number) =>
@@ -2965,7 +3115,11 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="endDate.year"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    key={`end-year-${currentlyWorkHereField}`}
+                                    value={value}
+                                    onChange={onChange}
+                                  >
                                     <ListboxButton
                                       placeholder="Year"
                                       displayValue={(value: number) => value}
@@ -2981,14 +3135,12 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {[
-                                          2020, 2021, 2022, 2023, 2024, 2025,
-                                        ].map((month) => (
+                                        {workExperienceYears.map((year) => (
                                           <ListboxOption
-                                            key={month}
-                                            value={month}
+                                            key={year}
+                                            value={year}
                                           >
-                                            {month}
+                                            {year}
                                           </ListboxOption>
                                         ))}
                                       </ScrollArea>
@@ -3065,7 +3217,10 @@ const WorkExperienceDialog = ({
                       <Controller
                         name="skills"
                         control={control}
-                        render={({ field: { value, onChange } }) => (
+                        render={({ field: { value, onChange } }) => {
+                          const atSkillsLimit = (value ?? []).length >= 10
+                          return (
+                          <>
                           <Combobox
                             className="w-full mt-[30px]"
                             value={value}
@@ -3073,7 +3228,7 @@ const WorkExperienceDialog = ({
                               const unique = val.filter((s, i, arr) =>
                                 arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
                               )
-                              onChange(unique)
+                              onChange(unique.slice(0, 10))
                               setQuery("")
                             }}
                             multiple
@@ -3123,7 +3278,18 @@ const WorkExperienceDialog = ({
                               </ComboboxOptions>
                             </ScaleOutIn>
                           </Combobox>
-                        )}
+                          {atSkillsLimit && (
+                            <p
+                              role="status"
+                              aria-live="assertive"
+                              className="mt-1.5 text-sm font-medium text-error-700"
+                            >
+                              Maximum 10 skills per work experience entry.
+                            </p>
+                          )}
+                          </>
+                          )
+                        }}
                       />
 
                       <HookFormErrorMessage
@@ -3333,7 +3499,7 @@ const educationFormSchema = z
       .string()
       .min(1, "Please enter at least 1 character(s)"),
     degree: z.string().min(1, "Please enter at least 1 character(s)"),
-    major: z.string().min(1, "Please enter at least 1 character(s)"),
+    major: z.string().optional(),
     startDate: z.object({
       month: z
         .number()
@@ -3400,7 +3566,7 @@ const educationFormSchema = z
       return end >= start
     },
     {
-      message: "End date must be on or after start date",
+      message: "End date must be on or after the start date.",
       path: ["endDate.year"],
     }
   )
@@ -3445,6 +3611,7 @@ const EducationDialog = ({
     formState: { errors, isValid, isDirty },
     register,
     reset,
+    setValue: setFormValue,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
     defaultValues: {
@@ -3491,7 +3658,25 @@ const EducationDialog = ({
     }
   }, [profile, profileLoaded, setEducationQualifications])
 
-  const onSubmit: SubmitHandler<EducationFormValues> = (values) => {
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSaveError = (err: any) => {
+    const status = err?.response?.status
+    const isTimeout =
+      err?.code === "ECONNABORTED" ||
+      /timeout/i.test(err?.message ?? "")
+    if (status === 401) {
+      setServerError("Your session has expired. Please sign in again.")
+    } else if (isTimeout) {
+      setServerError("This is taking longer than usual. Please try again.")
+    } else {
+      setServerError("We could not save your changes. Please try again.")
+    }
+  }
+
+  const onSubmit: SubmitHandler<EducationFormValues> = async (values) => {
+    setServerError(null)
     const payload: EducationPayload = {
       school: values.schoolOrUniversity,
       degree: values.degree,
@@ -3502,51 +3687,68 @@ const EducationDialog = ({
       endMonth: values.currentlyAttending ? undefined : values.endDate?.month,
       currentlyStudying: values.currentlyAttending,
     }
-    if (editingIndex !== undefined) {
-      const editingEdu = educationQualifications?.[editingIndex]
-      setEducationQualifications(
-        educationQualifications?.map((qualification, index) =>
-          index === editingIndex ? { ...values, id: qualification.id } : qualification
-        )
-      )
-      if (editingEdu?.id) {
-        UserAPI.updateEducation(editingEdu.id, payload).catch(() => {})
-      } else if (userId) {
-        UserAPI.addEducation(payload).then((res) => {
-          const newId = res?.data?.id
-          if (newId) {
-            setEducationQualifications((prev) =>
-              prev?.map((e, i) => (i === editingIndex ? { ...e, id: newId } : e))
+    setIsSaving(true)
+    try {
+      if (editingIndex !== undefined) {
+        const editingEdu = educationQualifications?.[editingIndex]
+        if (editingEdu?.id) {
+          await UserAPI.updateEducation(editingEdu.id, payload)
+          setEducationQualifications(
+            educationQualifications?.map((qualification, index) =>
+              index === editingIndex
+                ? { ...values, id: qualification.id }
+                : qualification
             )
-          }
-        }).catch(() => {})
+          )
+        } else if (userId) {
+          const res = await UserAPI.addEducation(payload)
+          const newId = res?.data?.id
+          setEducationQualifications(
+            educationQualifications?.map((qualification, index) =>
+              index === editingIndex
+                ? { ...values, id: newId ?? qualification.id }
+                : qualification
+            )
+          )
+        }
+        setEditingIndex(undefined)
+      } else if (userId) {
+        const res = await UserAPI.addEducation(payload)
+        const newId = res?.data?.id
+        setEducationQualifications((prev) =>
+          prev ? [...prev, { ...values, id: newId }] : [{ ...values, id: newId }]
+        )
+      } else {
+        setEducationQualifications((prev) =>
+          prev ? [...prev, values] : [values]
+        )
       }
-      setEditingIndex(undefined)
-    } else {
-      const newIndex = educationQualifications?.length ?? 0
-      setEducationQualifications((prev) =>
-        prev ? [...prev, values] : [values]
-      )
-      if (userId) {
-        UserAPI.addEducation(payload)
-          .then((res) => {
-            const newId = res?.data?.id
-            if (newId) {
-              setEducationQualifications((prev) =>
-                prev?.map((e, i) =>
-                  i === newIndex ? { ...e, id: newId } : e
-                )
-              )
-            }
-          })
-          .catch(() => {})
-      }
+      reset()
+      setState("preview")
+    } catch (err) {
+      handleSaveError(err)
+      console.error("[education wizard] save failed", err)
+    } finally {
+      setIsSaving(false)
     }
-    reset()
-    setState("preview")
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
+
+  useEffect(() => {
+    if (currentlyAttending) {
+      setFormValue("endDate.month", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true,
+      })
+      setFormValue("endDate.year", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true,
+      })
+    }
+  }, [currentlyAttending, setFormValue])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3665,7 +3867,25 @@ const EducationDialog = ({
 
                 {state === "preview" && (
                   <div className="space-y-3">
-                    {educationQualifications?.map((qualification, index) => (
+                    {educationQualifications
+                      ?.map((qualification, index) => ({
+                        qualification,
+                        index,
+                      }))
+                      .sort((a, b) => {
+                        if (
+                          a.qualification.currentlyAttending !==
+                          b.qualification.currentlyAttending
+                        )
+                          return a.qualification.currentlyAttending ? -1 : 1
+                        return (
+                          (b.qualification.startDate?.year ?? 0) -
+                            (a.qualification.startDate?.year ?? 0) ||
+                          (b.qualification.startDate?.month ?? 0) -
+                            (a.qualification.startDate?.month ?? 0)
+                        )
+                      })
+                      .map(({ qualification, index }) => (
                       <EducationCard
                         onRemove={() => {
                           const updated = educationQualifications?.filter(
@@ -3690,6 +3910,15 @@ const EducationDialog = ({
 
                 {state === "action" && (
                   <>
+                    {serverError && (
+                      <div
+                        role="alert"
+                        aria-live="assertive"
+                        className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                      >
+                        {serverError}
+                      </div>
+                    )}
                     <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-1.5 col-span-2">
                         <Label
@@ -3744,8 +3973,8 @@ const EducationDialog = ({
                                   "Bachelor's Degree",
                                   "Master's Degree",
                                   "Doctoral Degree (PhD)",
-                                  "Professional Degree",
-                                  "Certificate / Diploma",
+                                  "Professional Degree (MD, JD, etc.)",
+                                  "Certificate",
                                   "Other",
                                 ].map((degree) => (
                                   <ListboxOption key={degree} value={degree}>
@@ -3849,12 +4078,9 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {[
-                                      2020, 2021, 2022, 2023, 2024, 2025, 2026,
-                                      2027,
-                                    ].map((month) => (
-                                      <ListboxOption key={month} value={month}>
-                                        {month}
+                                    {workExperienceYears.map((year) => (
+                                      <ListboxOption key={year} value={year}>
+                                        {year}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -3892,7 +4118,11 @@ const EducationDialog = ({
                               name="endDate.month"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  key={`edu-wiz-end-month-${currentlyAttending}`}
+                                  value={value ?? null}
+                                  onChange={onChange}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) =>
                                       months.find((m) => m.value === value)
@@ -3928,7 +4158,11 @@ const EducationDialog = ({
                               name="endDate.year"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  key={`edu-wiz-end-year-${currentlyAttending}`}
+                                  value={value ?? null}
+                                  onChange={onChange}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
                                     placeholder="Year"
@@ -3938,12 +4172,9 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {[
-                                      2020, 2021, 2022, 2023, 2024, 2025, 2026,
-                                      2027,
-                                    ].map((month) => (
-                                      <ListboxOption key={month} value={month}>
-                                        {month}
+                                    {workExperienceYears.map((year) => (
+                                      <ListboxOption key={year} value={year}>
+                                        {year}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -4047,7 +4278,8 @@ const EducationDialog = ({
                 <Button
                   ref={submitTriggerRef}
                   type="submit"
-                  disabled={!isValid}
+                  disabled={!isValid || isSaving}
+                  loading={isSaving}
                 >
                   Save
                 </Button>
@@ -4212,8 +4444,12 @@ const Portfolio = ({
 
   return (
     <>
-      {caseStudyOpen && (
-        <div className="fixed inset-0 z-[100] bg-white">
+      <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+        <DialogContent
+          variant="unanimated"
+          className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
+        >
+          <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
           <CaseStudyBuilder
             onClose={() => setCaseStudyOpen(false)}
             onSave={() => {
@@ -4225,8 +4461,9 @@ const Portfolio = ({
               setCaseStudyOpen(false)
             }}
           />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[1090px] grid grid-cols-2 rounded-[24px] p-[30px]">
           <form>
@@ -4705,16 +4942,40 @@ const WorkExperienceCard = ({
 }: WorkExperienceCardProps) => {
   return (
     <article className="p-5 rounded-lg flex items-start gap-x-6 bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-        <div className="relative size-[45px] shrink-0">
-          <NextImage
-            className="object-cover"
-            src="/android-01.png"
-            alt="Android"
-            sizes="10vw"
-            fill
-          />
-        </div>
+      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden relative">
+        <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+          {employer?.charAt(0)?.toUpperCase() || "W"}
+        </span>
+        {(() => {
+          const brand = getCompanyBrandFromName(employer)
+          if (brand?.type === "component") {
+            return <brand.Icon className="size-9 relative bg-white" />
+          }
+          if (brand?.type === "remote-svg") {
+            return (
+              <img
+                key={brand.url}
+                src={brand.url}
+                alt={employer || brand.name}
+                width={36}
+                height={36}
+                className="object-contain size-9 relative bg-white"
+                loading="lazy"
+                data-fallback="0"
+                onError={(e) => {
+                  const el = e.currentTarget
+                  if (el.dataset.fallback === "0") {
+                    el.dataset.fallback = "1"
+                    el.src = brand.faviconUrl
+                  } else {
+                    el.style.display = "none"
+                  }
+                }}
+              />
+            )
+          }
+          return null
+        })()}
       </div>
       <div className="flex-auto min-w-0">
         <div className="flex items-start justify-between">
@@ -4804,9 +5065,9 @@ const WorkExperienceCard = ({
           </p>
         </div>
 
-        <div className="mt-3 flex items-center gap-x-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {skills?.map((skill) => (
-            <Badge key={skill.id} visual="gray">
+            <Badge key={skill.id} visual="gray" className="max-w-full break-all">
               {skill.name}
             </Badge>
           ))}
@@ -4833,16 +5094,42 @@ const EducationCard = ({
 }: EducationCardProps) => {
   return (
     <article className="p-5 rounded-lg flex items-start gap-x-6 bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-        <div className="relative size-[45px] shrink-0">
-          <NextImage
-            className="object-cover"
-            src="/cambridge.png"
-            alt="Android"
-            sizes="10vw"
-            fill
-          />
-        </div>
+      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden relative">
+        <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+          {schoolOrUniversity?.charAt(0)?.toUpperCase() || "E"}
+        </span>
+        {(() => {
+          const brand = getCompanyBrandFromName(schoolOrUniversity, {
+            faviconTld: "edu",
+          })
+          if (brand?.type === "component") {
+            return <brand.Icon className="size-9 relative bg-white" />
+          }
+          if (brand?.type === "remote-svg") {
+            return (
+              <img
+                key={brand.url}
+                src={brand.url}
+                alt={schoolOrUniversity || brand.name}
+                width={36}
+                height={36}
+                className="object-contain size-9 relative bg-white"
+                loading="lazy"
+                data-fallback="0"
+                onError={(e) => {
+                  const el = e.currentTarget
+                  if (el.dataset.fallback === "0") {
+                    el.dataset.fallback = "1"
+                    el.src = brand.faviconUrl
+                  } else {
+                    el.style.display = "none"
+                  }
+                }}
+              />
+            )
+          }
+          return null
+        })()}
       </div>
       <div className="flex-auto">
         <div className="flex items-start justify-between">

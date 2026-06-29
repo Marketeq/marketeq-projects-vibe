@@ -9,6 +9,7 @@ export interface DeliverableGroup {
   phaseLabel: string;
   phaseName: string;
   items: string[];
+
 }
 
 /**

@@ -33,6 +33,10 @@ export class EducationService {
     if (!education) throw new NotFoundException('Education not found');
 
     Object.assign(education, dto);
+    if (dto.currentlyStudying === true) {
+      education.endYear = null as any;
+      education.endMonth = null as any;
+    }
     return this.educationRepository.save(education);
   }
 
