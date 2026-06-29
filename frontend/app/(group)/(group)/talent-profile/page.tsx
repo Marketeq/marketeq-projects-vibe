@@ -4630,7 +4630,7 @@ function Default() {
                                   visual="gray"
                                   onClick={() => setLanguagesOpen(true)}
                                 >
-                                  <Edit03 className="size-3" />
+                                  <Edit03 className="size-4" />
                                 </IconButton>
                               )}
                             </div>
