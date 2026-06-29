@@ -194,6 +194,9 @@ type AppliedGiftCard = {
   amount: number
 }
 
+type CardField = "cardNumber" | "cardName" | "expirationDate" | "cvv"
+type BillingAddressMode = "summary" | "saved" | "new"
+
 type PaymentPageSnapshot = {
   pay: "AT_ONCE" | "IN_INSTALLMENTS"
   selectedTalentPaymentPlanId: string
@@ -339,7 +342,7 @@ const PAYMENT_METHODS = [
   {
     value: "item-0",
     title: "Credit / Debit Card",
-    desc: "Visa, Mastercard, AMEX",
+    desc: "3% per transaction",
     icons: [<MasterCard01 key="mc" />, <Visa01 key="visa" />],
   },
   {
@@ -353,32 +356,6 @@ const PAYMENT_METHODS = [
     title: "Wire Transfer",
     desc: "Domestic & International",
     icons: [<WireTransferIcon key="wire" />],
-  },
-]
-
-const EXISTING_INSTALLMENT_PAYMENT_METHODS: InstallmentPaymentMethod[] = [
-  {
-    id: "amex-1234",
-    method: "CREDIT_DEBIT_CARD",
-    title: "American Express",
-    subtitle: "Credit ****1234",
-    cardNumber: "3782123412341234",
-    saveDefaultPaymentMethod: true,
-  },
-  {
-    id: "visa-1234",
-    method: "CREDIT_DEBIT_CARD",
-    title: "Visa",
-    subtitle: "Credit ****1234",
-    cardNumber: "4111111111111234",
-  },
-  {
-    id: "bank-1234",
-    method: "BANK_ACCOUNT",
-    title: "Bank of America",
-    subtitle: "Checking ****1234",
-    accountType: "Checking",
-    accountNumber: "1234",
   },
 ]
 
@@ -445,6 +422,261 @@ const getInstallmentCardBrandIcon = (cardNumber?: string) => {
     </div>
   )
 }
+
+const getCardDigits = (value: string) => value.replace(/\D/g, "")
+
+const formatExpiryInput = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 6)
+
+  if (digits.length <= 2) return digits
+
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`
+}
+
+const isValidLuhn = (value: string) => {
+  const digits = getCardDigits(value)
+
+  if (digits.length < 13) return false
+
+  let sum = 0
+  let shouldDouble = false
+
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let digit = Number(digits[i])
+
+    if (shouldDouble) {
+      digit *= 2
+      if (digit > 9) digit -= 9
+    }
+
+    sum += digit
+    shouldDouble = !shouldDouble
+  }
+
+  return sum % 10 === 0
+}
+
+const getCardNumberError = (value: string) => {
+  const digits = getCardDigits(value)
+  const cardType = getCardType(digits)
+  const expectedLength = cardType === "amex" ? 15 : 16
+
+  if (digits.length === 0) return "Please enter your credit card number"
+  if (
+    cardType === "unknown" ||
+    digits.length !== expectedLength ||
+    !isValidLuhn(digits)
+  ) {
+    return "Please enter a valid card number."
+  }
+
+  return ""
+}
+
+const getCardNameError = (value: string) => {
+  const normalized = value.trim().replace(/\s+/g, " ")
+
+  if (normalized.length < 2 || !/^[A-Za-z ]+$/.test(normalized)) {
+    return "Please enter the full name as it appears on your card."
+  }
+
+  return ""
+}
+
+const getExpiryError = (value: string) => {
+  const match = value.match(/^(\d{2})\/(\d{2}|\d{4})$/)
+
+  if (!match) return "Please enter a valid expiry date in MM/YY format."
+
+  const month = Number(match[1])
+  const rawYear = Number(match[2])
+  const year = match[2].length === 2 ? 2000 + rawYear : rawYear
+
+  if (month < 1 || month > 12) {
+    return "Please enter a valid expiry date in MM/YY format."
+  }
+
+  const expiryDate = new Date(year, month, 0, 23, 59, 59)
+  if (expiryDate < new Date()) {
+    return "This card has expired. Please use a different card."
+  }
+
+  return ""
+}
+
+const getCvvError = (value: string, cardNumber: string) => {
+  const digits = value.replace(/\D/g, "")
+  const cardType = getCardType(getCardDigits(cardNumber))
+  const expectedLength = cardType === "amex" ? 4 : 3
+
+  if (digits.length !== expectedLength) return "Please enter a valid CVV."
+
+  return ""
+}
+
+const formatPreviewCardNumber = (value: string) => {
+  const digits = getCardDigits(value || "5375441145400954").slice(0, 16)
+  const paddedDigits = digits.padEnd(16, "0")
+
+  return paddedDigits.replace(/(.{4})(?=.)/g, "$1 ")
+}
+
+const ContactlessMark = ({ className }: { className?: string }) => (
+  <NextImage
+    alt=""
+    aria-hidden="true"
+    className={cn("object-contain", className)}
+    data-testid="credit-card-contactless-icon"
+    height={50}
+    src="/checkout/contactless-icon.png"
+    width={40}
+  />
+)
+
+const CardChip = () => (
+  <div
+    className="absolute left-[20px] top-[60.65px] h-[29.01px] w-[40.67px] overflow-hidden rounded-[3.8px] border-[0.95px] border-[#667085]"
+    aria-hidden="true"
+  >
+    <span className="absolute left-[-1px] top-[8.9px] h-[0.95px] w-[42px] bg-[#667085]" />
+    <span className="absolute left-[-1px] top-[20.1px] h-[0.95px] w-[42px] bg-[#667085]" />
+    <span className="absolute left-[10px] top-[-1px] h-[31px] w-[0.95px] bg-[#667085]" />
+    <span className="absolute right-[9.8px] top-[-1px] h-[31px] w-[0.95px] bg-[#667085]" />
+    <span className="absolute left-[13.7px] top-[11.2px] h-[8.6px] w-[13.2px] rounded-[1.6px] border-[0.95px] border-[#667085] border-l-0" />
+  </div>
+)
+
+const MastercardMark = () => (
+  <div
+    className="absolute left-[223.67px] top-[125.29px] h-[36.27px] w-[61px]"
+    aria-hidden="true"
+  >
+    <span className="absolute left-0 top-0 h-[36.27px] w-[36.27px] rounded-full bg-[#98A2B3]" />
+    <span className="absolute left-[24.73px] top-0 h-[36.27px] w-[36.27px] rounded-full bg-[#EAECF0]" />
+    <span className="absolute left-[24.73px] top-0 h-[36.27px] w-[11.54px] rounded-full bg-[#D0D5DD]" />
+  </div>
+)
+
+const CreditCardPreview = ({
+  cardNumber,
+  cardName,
+  expiry,
+  cvv,
+  isBack,
+}: {
+  cardNumber: string
+  cardName: string
+  expiry: string
+  cvv: string
+  isBack: boolean
+}) => {
+  const displayCardNumber = formatPreviewCardNumber(cardNumber)
+  const displayCardName =
+    cardName.trim().toUpperCase() || "DONALD FLINCH CORTEZ"
+  const cardNameFontSize =
+    displayCardName.length > 22 ? 9 : displayCardName.length > 18 ? 10 : 11.5
+  const displayExpiry = expiry || "06/24"
+  const displayCvv = cvv.replace(/\D/g, "").slice(0, 3) || "537"
+
+  return (
+    <div
+      data-testid={
+        isBack ? "credit-card-preview-back" : "credit-card-preview-front"
+      }
+      className="relative h-[181.95px] w-[305px] overflow-hidden rounded-[11.4px] border-2 border-[#EAECF0] bg-white shadow-[3.8px_4.75px_7.6px_0px_rgba(0,0,0,0.05)]"
+    >
+      {isBack ? (
+        <>
+          <div className="absolute left-0 top-[17.1px] h-[29.45px] w-[305px] bg-[#F3F3F3]" />
+          <div className="absolute left-[20.43px] top-[60.81px] h-[33.26px] w-[189.08px] bg-[#F6F6F6]" />
+          <div className="absolute left-[217.11px] top-[66.99px] flex h-[20.9px] w-[47.03px] items-center justify-center bg-transparent px-[4.75px] font-mono text-[18px] font-bold leading-none tracking-[0.16em] text-[#334155]">
+            {displayCvv}
+          </div>
+          <div className="absolute left-[34.77px] top-[103.17px] flex h-[11.6px] w-[234.71px] rotate-180 items-center justify-center overflow-visible bg-gradient-to-b from-[#475569] to-[#334155] bg-clip-text font-mono text-[15px] leading-[11.6px] tracking-[0.18em] text-transparent opacity-10 shadow-[0px_0.24px_0px_0px_#0F172A] whitespace-nowrap">
+            {displayCardNumber}
+          </div>
+          <ContactlessMark className="absolute left-[264.14px] top-[133.97px] h-[24.82px] w-[19.35px]" />
+        </>
+      ) : (
+        <>
+          <div
+            className="absolute left-[20px] top-[25.58px] h-[13px] w-[56px] text-[20px] font-bold leading-[26.68px] tracking-[-0.02em] text-[#667085]"
+            style={{ fontFamily: "Sen, Inter, sans-serif" }}
+          >
+            credit
+          </div>
+          <div className="absolute left-[117.5px] top-[27px] h-[24px] w-px bg-[#D0D5DD]" />
+          <div
+            className="absolute left-[137px] top-[27.58px] h-[9px] w-[72px] text-[13.15px] font-medium leading-[17.54px] tracking-[-0.02em] text-[#667085]"
+            style={{ fontFamily: "Sen, Inter, sans-serif" }}
+          >
+            Credit Bank
+          </div>
+          <ContactlessMark className="absolute left-[264.14px] top-[25.58px] h-[24.82px] w-[19.35px]" />
+          <CardChip />
+          <div className="absolute left-[30.02px] top-[98.42px] flex h-[21.11px] w-[244.21px] items-center justify-center overflow-hidden bg-transparent px-[4.75px] font-mono text-[17px] leading-[21.11px] tracking-[0.12em] text-[#667085] whitespace-nowrap">
+            {displayCardNumber}
+          </div>
+          <div className="absolute left-[128px] top-[133.33px] flex h-[9.87px] w-[72px] items-center justify-end gap-[4px] text-[#667085]">
+            <span className="text-[6px] font-bold leading-[5.5px]">
+              VALID
+              <br />
+              THRU
+            </span>
+            <span className="font-mono text-[13px] font-bold leading-[9.87px] tracking-[0.1em]">
+              {displayExpiry}
+            </span>
+          </div>
+          <div
+            className="absolute left-[16.11px] top-[149.03px] flex h-[17.6px] w-[176.37px] items-center overflow-visible rounded-[2.38px] bg-transparent font-mono font-bold leading-none tracking-[0.12em] text-[#667085] whitespace-nowrap"
+            style={{
+              fontSize: `${cardNameFontSize}px`,
+              textShadow: "0px 0.24px 0px #0F172A",
+            }}
+          >
+            {displayCardName}
+          </div>
+          <MastercardMark />
+        </>
+      )}
+    </div>
+  )
+}
+
+const savedBillingAddresses = [
+  {
+    id: "jarvis-1",
+    fullName: "Jarvis Batman",
+    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
+    addressLine1: "2614 Rio Grande St, Apt 211",
+    cityStateZip: "Austin, TX 78705-4017",
+    phoneNumber: "+1 (737) 436-4562",
+  },
+  {
+    id: "jarvis-2",
+    fullName: "Jarvis Batman",
+    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
+    addressLine1: "2614 Rio Grande St, Apt 211",
+    cityStateZip: "Austin, TX 78705-4017",
+    phoneNumber: "+1 (737) 436-4562",
+  },
+  {
+    id: "jarvis-3",
+    fullName: "Jarvis Batman",
+    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
+    addressLine1: "2614 Rio Grande St, Apt 211",
+    cityStateZip: "Austin, TX 78705-4017",
+    phoneNumber: "+1 (737) 436-4562",
+  },
+  {
+    id: "jarvis-4",
+    fullName: "Jarvis Batman",
+    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
+    addressLine1: "2614 Rio Grande St, Apt 211",
+    cityStateZip: "Austin, TX 78705-4017",
+    phoneNumber: "+1 (737) 436-4562",
+  },
+]
 
 export default function PaymentPage() {
   const params = useParams()
@@ -646,7 +878,7 @@ export default function PaymentPage() {
     isOngoingTalentContract ? "IN_INSTALLMENTS" : "AT_ONCE"
   )
   const [savedInstallmentPaymentMethods, setSavedInstallmentPaymentMethods] =
-    React.useState(EXISTING_INSTALLMENT_PAYMENT_METHODS)
+    React.useState<InstallmentPaymentMethod[]>([])
   const [fullPaymentMethods, setFullPaymentMethods] = React.useState<
     InstallmentPaymentMethod[]
   >([])
@@ -699,7 +931,7 @@ export default function PaymentPage() {
   const [giftCardError, setGiftCardError] = React.useState("")
   const [showAllGiftCards, setShowAllGiftCards] = React.useState(false)
   const [showGiftCardSuccess, setShowGiftCardSuccess] = React.useState(false)
-  const [paymentMethod, setPaymentMethod] = React.useState("")
+  const [paymentMethod, setPaymentMethod] = React.useState("item-0")
   const [isWireTransfer, setIsWireTransfer] = React.useState(false)
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [hasHydratedPaymentState, setHasHydratedPaymentState] =
@@ -710,7 +942,20 @@ export default function PaymentPage() {
   const [cardName, setCardName] = React.useState("")
   const [expirationDate, setExpirationDate] = React.useState("")
   const [cvv, setCvv] = React.useState("")
+  const [activeCardField, setActiveCardField] =
+    React.useState<CardField | null>(null)
   const [saveCard, setSaveCard] = React.useState(false)
+  const [cardFieldTouched, setCardFieldTouched] = React.useState<
+    Record<CardField, boolean>
+  >({
+    cardNumber: false,
+    cardName: false,
+    expirationDate: false,
+    cvv: false,
+  })
+  const [hasAttemptedCardSubmit, setHasAttemptedCardSubmit] =
+    React.useState(false)
+  const [savedCardNotification, setSavedCardNotification] = React.useState("")
 
   // Billing address
   const [fullName, setFullName] = React.useState("")
@@ -720,6 +965,12 @@ export default function PaymentPage() {
   const [billingState, setBillingState] = React.useState("")
   const [zipcode, setZipcode] = React.useState("")
   const [phoneNumber, setPhoneNumber] = React.useState("")
+  const [billingAddressMode, setBillingAddressMode] =
+    React.useState<BillingAddressMode>("summary")
+  const [selectedBillingAddressId, setSelectedBillingAddressId] =
+    React.useState(savedBillingAddresses[0].id)
+  const [isConfirmAddressDialogOpen, setIsConfirmAddressDialogOpen] =
+    React.useState(false)
 
   // Bank account
   const [accountType, setAccountType] = React.useState("")
@@ -804,8 +1055,7 @@ export default function PaymentPage() {
         setGiftCards(
           snapshot.giftCards.filter(
             (card): card is AppliedGiftCard =>
-              typeof card?.code === "string" &&
-              typeof card?.amount === "number"
+              typeof card?.code === "string" && typeof card?.amount === "number"
           )
         )
         if (snapshot.giftCards.length > 0) {
@@ -904,6 +1154,9 @@ export default function PaymentPage() {
   )
   const normalizedGiftCardInput = normalizeGiftCardCode(giftCardInput)
   const isGiftCardApplyDisabled = normalizedGiftCardInput.length !== 16
+  const isRedeemedGiftCardError = giftCardError.includes(
+    "already been redeemed"
+  )
 
   React.useEffect(() => {
     const nextMonth = new Date()
@@ -936,10 +1189,13 @@ export default function PaymentPage() {
 
     setShowGiftCardSuccess(false)
 
-    if (giftCards.some((giftCard) => giftCard.code === normalizedGiftCardCode)) {
+    if (
+      giftCards.some((giftCard) => giftCard.code === normalizedGiftCardCode)
+    ) {
       setGiftCardError(
         `Gift Card "${formatGiftCardCode(normalizedGiftCardCode)}" has already been redeemed.`
       )
+      setGiftCardInput("")
       return
     }
 
@@ -983,15 +1239,46 @@ export default function PaymentPage() {
     setIsBalanceCustom(false)
   }
 
+  const selectedBillingAddress =
+    savedBillingAddresses.find(
+      (address) => address.id === selectedBillingAddressId
+    ) ?? savedBillingAddresses[0]
   const billingAddressSummary = {
-    fullName: fullName || "Jarvis Batman",
-    addressLine1: addressLine1 || "2614 Rio Grande St, Apt 211",
+    fullName: fullName || selectedBillingAddress.fullName,
+    addressLine1: addressLine1 || selectedBillingAddress.addressLine1,
     cityStateZip:
       city && billingState && zipcode
         ? `${city}, ${billingState} ${zipcode}`
-        : "Austin, TX 78705-4017",
-    phoneNumber: phoneNumber || "+1 (737) 436-4562",
+        : selectedBillingAddress.cityStateZip,
+    phoneNumber: phoneNumber || selectedBillingAddress.phoneNumber,
   }
+  const cardNumberError = getCardNumberError(cardNumber)
+  const cardNameError = getCardNameError(cardName)
+  const expirationDateError = getExpiryError(expirationDate)
+  const cvvError = getCvvError(cvv, cardNumber)
+  const cardFieldErrors: Record<CardField, string> = {
+    cardNumber: cardNumberError,
+    cardName: cardNameError,
+    expirationDate: expirationDateError,
+    cvv: cvvError,
+  }
+  const shouldShowCardFieldError = (field: CardField) =>
+    (hasAttemptedCardSubmit || cardFieldTouched[field]) &&
+    Boolean(cardFieldErrors[field])
+  const isBillingAddressValid =
+    billingAddressMode !== "new" ||
+    (fullName.trim().length >= 2 &&
+      addressLine1.trim().length > 0 &&
+      city.trim().length > 0 &&
+      billingState.trim().length > 0 &&
+      /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()))
+  const isFullPaymentCardFormValid =
+    !cardNumberError &&
+    !cardNameError &&
+    !expirationDateError &&
+    !cvvError &&
+    isBillingAddressValid
+  const showCardBackPreview = activeCardField === "cvv"
   const recurringPaymentFrequencyMeasureRef =
     React.useRef<HTMLSpanElement>(null)
   const [recurringPaymentFrequencyWidth, setRecurringPaymentFrequencyWidth] =
@@ -1009,10 +1296,7 @@ export default function PaymentPage() {
   }, [paymentFrequency])
 
   const isInstallmentCardFormValid =
-    Boolean(cardNumber) &&
-    Boolean(cardName) &&
-    Boolean(expirationDate) &&
-    Boolean(cvv)
+    !cardNumberError && !cardNameError && !expirationDateError && !cvvError
 
   const isInstallmentBankFormValid =
     Boolean(accountType) &&
@@ -1060,6 +1344,13 @@ export default function PaymentPage() {
     setExpirationDate("")
     setCvv("")
     setSaveCard(false)
+    setCardFieldTouched({
+      cardNumber: false,
+      cardName: false,
+      expirationDate: false,
+      cvv: false,
+    })
+    setHasAttemptedCardSubmit(false)
   }
 
   const resetInstallmentBankForm = () => {
@@ -1187,14 +1478,16 @@ export default function PaymentPage() {
   }
 
   const handleSaveInstallmentCard = () => {
+    setHasAttemptedCardSubmit(true)
     if (!isInstallmentCardFormValid) return
 
+    const normalizedCardNumber = getCardDigits(cardNumber)
     const method: InstallmentPaymentMethod = {
       id: `card-${Date.now()}`,
       method: "CREDIT_DEBIT_CARD",
-      title: getInstallmentCardBrandName(cardNumber),
-      subtitle: `Credit ****${cardNumber.slice(-4)}`,
-      cardNumber,
+      title: getInstallmentCardBrandName(normalizedCardNumber),
+      subtitle: `Credit ****${normalizedCardNumber.slice(-4)}`,
+      cardNumber: normalizedCardNumber,
       saveDefaultPaymentMethod: saveCard,
     }
 
@@ -1232,6 +1525,7 @@ export default function PaymentPage() {
     setBillingState("")
     setZipcode("")
     setPhoneNumber("")
+    setBillingAddressMode("summary")
   }
 
   const resetFullPaymentBankForm = () => {
@@ -1253,18 +1547,24 @@ export default function PaymentPage() {
   }
 
   const handleSaveFullPaymentCard = () => {
-    if (!isInstallmentCardFormValid) return
+    setHasAttemptedCardSubmit(true)
+    if (!isFullPaymentCardFormValid) return
 
+    const normalizedCardNumber = getCardDigits(cardNumber)
     const method: InstallmentPaymentMethod = {
       id: `full-card-${Date.now()}`,
       method: "CREDIT_DEBIT_CARD",
-      title: getInstallmentCardBrandName(cardNumber),
-      subtitle: `Credit ****${cardNumber.slice(-4)}`,
-      cardNumber,
+      title: getInstallmentCardBrandName(normalizedCardNumber),
+      subtitle: `Credit ****${normalizedCardNumber.slice(-4)}`,
+      cardNumber: normalizedCardNumber,
       saveDefaultPaymentMethod: saveCard,
     }
 
     saveFullPaymentMethod(method)
+    setSavedCardNotification(
+      `${method.title === "American Express" ? "AMEX" : method.title} ending in *${normalizedCardNumber.slice(-4)} is saved and applied to this order.`
+    )
+    window.setTimeout(() => setSavedCardNotification(""), 5000)
     resetFullPaymentCardForm()
   }
 
@@ -1369,6 +1669,7 @@ export default function PaymentPage() {
 
     if (nextMethods.length === 0) {
       setHasSplitFullPayment(false)
+      setPaymentMethod("item-0")
     }
   }
 
@@ -1527,6 +1828,8 @@ export default function PaymentPage() {
           cardNumber={method.cardNumber}
           saveDefaultPaymentMethod={method.saveDefaultPaymentMethod}
           onChange={options?.onEdit}
+          onEdit={options?.onEdit}
+          onRemove={options?.onRemove}
         />
       )
     }
@@ -1752,6 +2055,13 @@ export default function PaymentPage() {
         }
       />
 
+      {savedCardNotification ? (
+        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-x-3 rounded-md bg-black px-4 py-3 text-sm font-semibold text-white shadow-lg">
+          <CheckCircle className="size-5 text-success-500" />
+          {savedCardNotification}
+        </div>
+      ) : null}
+
       {/* Content */}
       <div className="px-[150px] py-[50px]">
         <div className="max-w-[1140px] mx-auto">
@@ -1827,8 +2137,8 @@ export default function PaymentPage() {
                       Please Note:{" "}
                       <AlertDescription className="inline mt-0 font-normal">
                         To confirm this {installmentSubjectLabel}, an initial
-                        one-time payment is required. Your installment plan
-                        will begin after this payment is successfully processed.
+                        one-time payment is required. Your installment plan will
+                        begin after this payment is successfully processed.
                       </AlertDescription>
                     </AlertTitle>
                   </AlertContent>
@@ -2032,31 +2342,49 @@ export default function PaymentPage() {
                       )}
                     </div>
 
-                    <form
-                      className="mt-3 flex items-center gap-x-3"
-                      onSubmit={handleGiftCardSubmit}
-                    >
-                      <Input
-                        className="flex-auto"
-                        placeholder="Enter gift card number"
-                        value={giftCardInput}
-                        aria-invalid={giftCardError ? true : false}
-                        onChange={(e) => {
-                          setGiftCardInput(formatGiftCardCode(e.target.value))
-                          setGiftCardError("")
-                          setShowGiftCardSuccess(false)
-                        }}
-                      />
-                      <Button
-                        className="w-[64px]"
-                        size="lg"
-                        disabled={isGiftCardApplyDisabled}
-                      >
-                        Apply
-                      </Button>
+                    <form className="mt-3" onSubmit={handleGiftCardSubmit}>
+                      <div className="flex items-center gap-x-3">
+                        <InputGroup className="flex-auto">
+                          <Input
+                            className={cn(
+                              "pr-11",
+                              giftCardError &&
+                                !isRedeemedGiftCardError &&
+                                "border-error-300 text-gray-950 focus:border-error-300 focus:ring-error-100"
+                            )}
+                            placeholder="Enter gift card number"
+                            value={giftCardInput}
+                            aria-invalid={giftCardError ? true : false}
+                            onChange={(e) => {
+                              setGiftCardInput(
+                                formatGiftCardCode(e.target.value)
+                              )
+                              setGiftCardError("")
+                              setShowGiftCardSuccess(false)
+                            }}
+                          />
+                          {giftCardError && !isRedeemedGiftCardError ? (
+                            <InputRightElement>
+                              <AlertCircle className="size-5 text-error-500" />
+                            </InputRightElement>
+                          ) : null}
+                        </InputGroup>
+                        <Button
+                          className="w-[64px]"
+                          size="lg"
+                          disabled={isGiftCardApplyDisabled}
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                      {giftCardError && !isRedeemedGiftCardError ? (
+                        <p className="mt-2 text-sm font-normal leading-5 text-error-500">
+                          {giftCardError}
+                        </p>
+                      ) : null}
                     </form>
 
-                    {giftCardError ? (
+                    {giftCardError && isRedeemedGiftCardError ? (
                       <Alert
                         variant="error"
                         className="mt-3 max-w-[420px] items-center p-3"
@@ -2290,7 +2618,12 @@ export default function PaymentPage() {
 
                     <div className="mt-5">
                       {renderFullPaymentMethodRow(fullPaymentMethods[0], {
-                        onEdit: () => openFullPaymentMethodFlow(false),
+                        onEdit: () =>
+                          handleEditPrimaryFullPaymentMethod("item-0"),
+                        onRemove: () =>
+                          handleRemoveFullPaymentMethod(
+                            fullPaymentMethods[0].id
+                          ),
                       })}
                     </div>
                   </div>
@@ -2308,7 +2641,12 @@ export default function PaymentPage() {
 
                     <div className="mt-5">
                       {renderFullPaymentMethodRow(fullPaymentMethods[0], {
-                        onEdit: () => openFullPaymentMethodFlow(true),
+                        onEdit: () =>
+                          handleEditPrimaryFullPaymentMethod("item-0"),
+                        onRemove: () =>
+                          handleRemoveFullPaymentMethod(
+                            fullPaymentMethods[0].id
+                          ),
                       })}
                     </div>
                   </div>
@@ -2691,7 +3029,7 @@ export default function PaymentPage() {
               {paymentMethod === "item-0" && (
                 <div className="mt-[50px]">
                   <h1 className="text-lg leading-none font-bold text-dark-blue-400">
-                    Add your credit / debit card
+                    Add Your Credit / Debit Card
                   </h1>
                   <p className="mt-3 text-gray-500 text-xs leading-none flex items-center gap-x-1">
                     <Lock className="size-4" /> Your payment is secure. Your
@@ -2701,27 +3039,64 @@ export default function PaymentPage() {
                   <div className="mt-6 space-y-3">
                     <div className="space-y-1.5">
                       <Label size="sm" htmlFor="card-number">
-                        Card number
+                        Card Number
                       </Label>
-                      <Input
+                      <CreditCardInput
                         id="card-number"
-                        placeholder="0000 0000 0000 0000"
                         value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
+                        onValueChange={setCardNumber}
+                        onFocus={() => setActiveCardField("cardNumber")}
+                        onBlur={() =>
+                          setCardFieldTouched((current) => ({
+                            ...current,
+                            cardNumber: true,
+                          }))
+                        }
+                        aria-invalid={shouldShowCardFieldError("cardNumber")}
+                        className={cn(
+                          "h-[43px]",
+                          shouldShowCardFieldError("cardNumber") &&
+                            "border-error-300 focus:border-error-300 focus:ring-error-100"
+                        )}
                       />
+                      {shouldShowCardFieldError("cardNumber") ? (
+                        <span className="block text-xs leading-5 text-error-500">
+                          {cardNumberError}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="space-y-1.5">
                       <Label size="sm" htmlFor="name-on-card">
-                        Name on card
+                        Name On Card
                       </Label>
                       <Input
                         id="name-on-card"
                         type="text"
                         placeholder="John Doe"
                         value={cardName}
-                        onChange={(e) => setCardName(e.target.value)}
+                        onFocus={() => setActiveCardField("cardName")}
+                        onChange={(e) =>
+                          setCardName(e.target.value.replace(/[^A-Za-z ]/g, ""))
+                        }
+                        onBlur={() =>
+                          setCardFieldTouched((current) => ({
+                            ...current,
+                            cardName: true,
+                          }))
+                        }
+                        aria-invalid={shouldShowCardFieldError("cardName")}
+                        className={cn(
+                          "h-[43px]",
+                          shouldShowCardFieldError("cardName") &&
+                            "border-error-300 focus:border-error-300 focus:ring-error-100"
+                        )}
                       />
+                      {shouldShowCardFieldError("cardName") ? (
+                        <span className="block text-xs leading-5 text-error-500">
+                          {cardNameError}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="grid grid-cols-2 gap-x-3">
@@ -2732,22 +3107,32 @@ export default function PaymentPage() {
                         <Input
                           id="expiration-date"
                           type="text"
-                          placeholder="MM/YY"
+                          placeholder="MM/YYYY"
                           value={expirationDate}
-                          onChange={(e) => {
-                            const sanitized = e.target.value.replace(
-                              /[^\d]/g,
-                              ""
-                            )
-                            if (sanitized.length >= 2) {
-                              setExpirationDate(
-                                `${sanitized.slice(0, 2)}/${sanitized.slice(2, 4)}`
-                              )
-                            } else {
-                              setExpirationDate(sanitized)
-                            }
-                          }}
+                          onFocus={() => setActiveCardField("expirationDate")}
+                          onChange={(e) =>
+                            setExpirationDate(formatExpiryInput(e.target.value))
+                          }
+                          onBlur={() =>
+                            setCardFieldTouched((current) => ({
+                              ...current,
+                              expirationDate: true,
+                            }))
+                          }
+                          aria-invalid={shouldShowCardFieldError(
+                            "expirationDate"
+                          )}
+                          className={cn(
+                            "h-[43px]",
+                            shouldShowCardFieldError("expirationDate") &&
+                              "border-error-300 focus:border-error-300 focus:ring-error-100"
+                          )}
                         />
+                        {shouldShowCardFieldError("expirationDate") ? (
+                          <span className="block text-xs leading-5 text-error-500">
+                            {expirationDateError}
+                          </span>
+                        ) : null}
                       </div>
 
                       <div className="space-y-1.5">
@@ -2760,10 +3145,24 @@ export default function PaymentPage() {
                             type="text"
                             placeholder="3 or 4 digits"
                             value={cvv}
+                            onFocus={() => setActiveCardField("cvv")}
                             onChange={(e) => {
-                              if (e.target.value.length <= 4)
-                                setCvv(e.target.value)
+                              setCvv(
+                                e.target.value.replace(/\D/g, "").slice(0, 4)
+                              )
                             }}
+                            onBlur={() => {
+                              setCardFieldTouched((current) => ({
+                                ...current,
+                                cvv: true,
+                              }))
+                            }}
+                            aria-invalid={shouldShowCardFieldError("cvv")}
+                            className={cn(
+                              "h-[43px]",
+                              shouldShowCardFieldError("cvv") &&
+                                "border-error-300 focus:border-error-300 focus:ring-error-100"
+                            )}
                           />
                           <InputRightElement>
                             <TooltipProvider delayDuration={75}>
@@ -2781,6 +3180,11 @@ export default function PaymentPage() {
                             </TooltipProvider>
                           </InputRightElement>
                         </InputGroup>
+                        {shouldShowCardFieldError("cvv") ? (
+                          <span className="block text-xs leading-5 text-error-500">
+                            {cvvError}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -2799,113 +3203,321 @@ export default function PaymentPage() {
 
                   {/* Billing Address */}
                   <div className="mt-[50px]">
-                    <h3 className="text-lg leading-none font-bold text-dark-blue-400">
-                      Billing Address
-                    </h3>
-
-                    <div className="mt-6 space-y-3">
-                      <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="full-name">
-                          Full Name
-                        </Label>
-                        <Input
-                          placeholder="John Doe"
-                          id="full-name"
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="address-line-1">
-                          Address Line 1
-                        </Label>
-                        <Input
-                          placeholder="Street Address or P.O. Box"
-                          id="address-line-1"
-                          value={addressLine1}
-                          onChange={(e) => setAddressLine1(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="address-line-2">
-                          Address Line 2
-                        </Label>
-                        <Input
-                          placeholder="Apt, Suite, Unit, or Building #"
-                          id="address-line-2"
-                          value={addressLine2}
-                          onChange={(e) => setAddressLine2(e.target.value)}
-                        />
-                      </div>
-                      <div className="gap-x-3 grid grid-cols-3">
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="city">
-                            City
-                          </Label>
-                          <Input
-                            placeholder="Marketown"
-                            id="city"
-                            value={city}
-                            onChange={(e) => setCity(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="state">
-                            State
-                          </Label>
-                          <Listbox
-                            value={billingState}
-                            onChange={setBillingState}
-                          >
-                            <ListboxButton placeholder="Select" />
-                            <ListboxOptions>
-                              {[
-                                "New York",
-                                "Florida",
-                                "Alaska",
-                                "Arizona",
-                                "Georgia",
-                                "Hawaii",
-                                "California",
-                              ].map((s) => (
-                                <ListboxOption key={s} value={s}>
-                                  {s}
-                                </ListboxOption>
-                              ))}
-                            </ListboxOptions>
-                          </Listbox>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="zipcode">
-                            Zipcode
-                          </Label>
-                          <Input
-                            placeholder="12345"
-                            id="zipcode"
-                            value={zipcode}
-                            onChange={(e) => setZipcode(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="phone-number">
-                          Phone number
-                        </Label>
-                        <Input
-                          placeholder="+1 (555) 000-0000"
-                          id="phone-number"
-                          value={phoneNumber}
-                          onChange={(e) => setPhoneNumber(e.target.value)}
-                        />
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg leading-none font-bold text-dark-blue-400">
+                        Billing Address
+                      </h3>
+                      {billingAddressMode === "new" ? (
+                        <Button
+                          className="underline"
+                          variant="link"
+                          onClick={() => setBillingAddressMode("saved")}
+                        >
+                          Use a Saved Address
+                        </Button>
+                      ) : null}
                     </div>
+
+                    {billingAddressMode === "summary" ? (
+                      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                        <div className="flex items-center justify-between gap-x-6">
+                          <div className="text-base leading-6 text-dark-blue-400">
+                            <p className="font-bold">
+                              {billingAddressSummary.fullName}
+                            </p>
+                            <p>{billingAddressSummary.addressLine1}</p>
+                            <p>{billingAddressSummary.cityStateZip}</p>
+                            <p>United States</p>
+                            <p>{billingAddressSummary.phoneNumber}</p>
+                          </div>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setBillingAddressMode("saved")}
+                          >
+                            Change Address
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {billingAddressMode === "saved" ? (
+                      <div className="mt-6">
+                        <p className="text-sm text-gray-500">
+                          Please choose a billing address from your address book
+                          below, or{" "}
+                          <button
+                            type="button"
+                            className="font-semibold text-primary-500 underline"
+                            onClick={() => setBillingAddressMode("new")}
+                          >
+                            add a new billing address
+                          </button>
+                        </p>
+                        <RadioGroup
+                          className="mt-6 space-y-3"
+                          value={selectedBillingAddressId}
+                          onValueChange={setSelectedBillingAddressId}
+                        >
+                          {savedBillingAddresses.map((address) => (
+                            <HeadlessRadioGroupItem
+                              key={address.id}
+                              value={address.id}
+                              className="group flex h-10 items-center gap-x-4 rounded-lg border border-transparent px-3 text-sm text-gray-500 focus-visible:outline-none data-[state=checked]:border-primary-500 data-[state=checked]:ring-1 data-[state=checked]:ring-primary-500"
+                            >
+                              <span className="inline-flex size-5 items-center justify-center rounded-full border border-gray-300 group-data-[state=checked]:border-primary-500 group-data-[state=checked]:ring-4 group-data-[state=checked]:ring-primary-50">
+                                <span className="hidden size-2.5 rounded-full bg-primary-500 group-data-[state=checked]:block" />
+                              </span>
+                              <span>
+                                <span className="font-bold text-dark-blue-400">
+                                  {address.fullName},
+                                </span>{" "}
+                                {address.line}
+                              </span>
+                            </HeadlessRadioGroupItem>
+                          ))}
+                        </RadioGroup>
+                        <div className="mt-6 flex items-center gap-x-3">
+                          <Button
+                            variant="light"
+                            onClick={() => setIsConfirmAddressDialogOpen(true)}
+                          >
+                            Use This Address
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setBillingAddressMode("new")}
+                          >
+                            <Plus className="size-[15px]" />
+                            New Address
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {billingAddressMode === "new" ? (
+                      <div className="mt-6 space-y-3">
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="full-name">
+                            Full Name
+                          </Label>
+                          <Input
+                            placeholder="John Doe"
+                            id="full-name"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="address-line-1">
+                            Address Line 1
+                          </Label>
+                          <Input
+                            placeholder="Street Address or P.O. Box"
+                            id="address-line-1"
+                            value={addressLine1}
+                            onChange={(e) => setAddressLine1(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="address-line-2">
+                            Address Line 2
+                          </Label>
+                          <Input
+                            placeholder="Apt, Suite, Unit, or Building #"
+                            id="address-line-2"
+                            value={addressLine2}
+                            onChange={(e) => setAddressLine2(e.target.value)}
+                          />
+                        </div>
+                        <div className="gap-x-3 grid grid-cols-3">
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="city">
+                              City
+                            </Label>
+                            <Input
+                              placeholder="Marketown"
+                              id="city"
+                              value={city}
+                              onChange={(e) => setCity(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="state">
+                              State
+                            </Label>
+                            <Listbox
+                              value={billingState}
+                              onChange={setBillingState}
+                            >
+                              <ListboxButton placeholder="Select" />
+                              <ListboxOptions>
+                                {[
+                                  "New York",
+                                  "Florida",
+                                  "Alaska",
+                                  "Arizona",
+                                  "Georgia",
+                                  "Hawaii",
+                                  "California",
+                                ].map((s) => (
+                                  <ListboxOption key={s} value={s}>
+                                    {s}
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </Listbox>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="zipcode">
+                              Zipcode
+                            </Label>
+                            <Input
+                              placeholder="12345"
+                              id="zipcode"
+                              value={zipcode}
+                              onChange={(e) =>
+                                setZipcode(
+                                  e.target.value.replace(/[^\d-]/g, "")
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label size="sm" htmlFor="phone-number">
+                            Phone Number
+                          </Label>
+                          <InputGroup>
+                            <Input
+                              className="pl-[68px]"
+                              placeholder="(555) 000-0000"
+                              id="phone-number"
+                              value={phoneNumber}
+                              onChange={(e) => setPhoneNumber(e.target.value)}
+                            />
+                            <div className="absolute inset-y-0 left-0 my-auto flex w-[58px] items-center justify-center gap-x-1 rounded-l-[5px] border-r border-gray-200 text-sm text-dark-blue-400">
+                              🇺🇸 +1
+                            </div>
+                          </InputGroup>
+                        </div>
+                        {hasAttemptedCardSubmit && !isBillingAddressValid ? (
+                          <span className="block text-xs leading-5 text-error-500">
+                            {!/^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
+                            zipcode.trim()
+                              ? "Please enter a valid zip code."
+                              : "Please complete all required billing address fields."}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     <div className="flex mt-[50px] justify-end">
-                      <Button onClick={handleSaveFullPaymentCard}>
-                        Save Card
-                      </Button>
+                      <TooltipProvider delayDuration={75}>
+                        <Tooltip
+                          open={!isFullPaymentCardFormValid ? undefined : false}
+                        >
+                          <TooltipTrigger asChild>
+                            <span
+                              onClick={() => {
+                                if (!isFullPaymentCardFormValid) {
+                                  setHasAttemptedCardSubmit(true)
+                                }
+                              }}
+                            >
+                              <Button
+                                className={cn(
+                                  !isFullPaymentCardFormValid &&
+                                    "pointer-events-none"
+                                )}
+                                disabled={!isFullPaymentCardFormValid}
+                                onClick={handleSaveFullPaymentCard}
+                              >
+                                Save Card
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent visual="gray">
+                            Please fill in the required fields
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </div>
+
+                  <Dialog
+                    open={isConfirmAddressDialogOpen}
+                    onOpenChange={setIsConfirmAddressDialogOpen}
+                  >
+                    <DialogContent className="max-w-[640px] p-6">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h2 className="text-lg font-semibold text-dark-blue-400">
+                            Confirm Address
+                          </h2>
+                          <p className="mt-2 max-w-[386px] text-sm leading-5 text-gray-500">
+                            The address you provided doesn&apos;t match official
+                            postal records. Here&apos;s a suggested alternative.
+                          </p>
+                        </div>
+                        <DialogClose asChild>
+                          <IconButton variant="ghost" visual="gray">
+                            <X className="size-5" />
+                          </IconButton>
+                        </DialogClose>
+                      </div>
+
+                      <div className="mt-8 grid grid-cols-2 gap-x-12">
+                        {["We Recommend", "You Provided"].map(
+                          (title, index) => (
+                            <button
+                              key={title}
+                              type="button"
+                              className="flex items-start gap-x-4 text-left"
+                            >
+                              <span
+                                className={cn(
+                                  "mt-0.5 inline-flex size-5 items-center justify-center rounded-full border",
+                                  index === 0
+                                    ? "border-primary-500 ring-4 ring-primary-50"
+                                    : "border-gray-300"
+                                )}
+                              >
+                                {index === 0 ? (
+                                  <span className="size-2.5 rounded-full bg-primary-500" />
+                                ) : null}
+                              </span>
+                              <span className="text-sm leading-5 text-dark-blue-400">
+                                <span className="block font-bold">{title}</span>
+                                <span className="block">Jarvis Batman</span>
+                                <span className="block font-bold">
+                                  2614 Rio Grande St, Apt 211
+                                </span>
+                                <span className="block">
+                                  Austin, TX 78705-4017
+                                </span>
+                                <span className="block">United States</span>
+                                <span className="block">+1 (737) 436-4562</span>
+                              </span>
+                            </button>
+                          )
+                        )}
+                      </div>
+
+                      <div className="mt-8 flex justify-end">
+                        <Button
+                          size="lg"
+                          onClick={() => {
+                            setIsConfirmAddressDialogOpen(false)
+                            setBillingAddressMode("summary")
+                          }}
+                        >
+                          Use this address
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               )}
 
@@ -3562,6 +4174,7 @@ export default function PaymentPage() {
                               id="installment-card-number"
                               value={cardNumber}
                               onValueChange={setCardNumber}
+                              onFocus={() => setActiveCardField("cardNumber")}
                             />
                           </div>
 
@@ -3574,6 +4187,7 @@ export default function PaymentPage() {
                               type="text"
                               placeholder="John Doe"
                               value={cardName}
+                              onFocus={() => setActiveCardField("cardName")}
                               onChange={(event) =>
                                 setCardName(event.target.value)
                               }
@@ -3593,6 +4207,9 @@ export default function PaymentPage() {
                                 type="text"
                                 placeholder="MM/YYYY"
                                 value={expirationDate}
+                                onFocus={() =>
+                                  setActiveCardField("expirationDate")
+                                }
                                 onChange={(event) => {
                                   const sanitized = event.target.value.replace(
                                     /[^\d]/g,
@@ -3619,10 +4236,13 @@ export default function PaymentPage() {
                                   type="text"
                                   placeholder="3 or 4 digits"
                                   value={cvv}
+                                  onFocus={() => setActiveCardField("cvv")}
                                   onChange={(event) => {
-                                    if (event.target.value.length <= 4) {
-                                      setCvv(event.target.value)
-                                    }
+                                    setCvv(
+                                      event.target.value
+                                        .replace(/\D/g, "")
+                                        .slice(0, 4)
+                                    )
                                   }}
                                 />
                                 <InputRightElement>
@@ -4325,6 +4945,19 @@ export default function PaymentPage() {
                   </>
                 )}
               </div>
+              {!isTalentCheckout &&
+              paymentMethod === "item-0" &&
+              fullPaymentMethods.length < 1 ? (
+                <div className="mt-8 flex justify-center">
+                  <CreditCardPreview
+                    cardNumber={cardNumber}
+                    cardName={cardName}
+                    expiry={expirationDate}
+                    cvv={cvv}
+                    isBack={showCardBackPreview}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
