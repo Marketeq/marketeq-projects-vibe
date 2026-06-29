@@ -102,7 +102,7 @@ const readMetadataString = (metadata: NotificationMetadata, key: string) => {
 }
 
 const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value
   )
 
@@ -303,7 +303,7 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
     offerType: readMetadataString(metadata, "offerType") || "Project",
     receivedLabel,
     offerTitle,
-   viewJobHref: withOfferView(getOfferJobHref(metadata, item.href)),
+    viewJobHref: withOfferView(getOfferJobHref(metadata, item.href)),
     messageHref: readMetadataString(metadata, "messageHref") || "/inbox",
     offerRate: readMetadataString(metadata, "offerRate") || "$45/hr",
     role: readMetadataString(metadata, "role") || "UX Designer",
@@ -519,17 +519,17 @@ const Notifications = () => {
       resetOfferDialogState()
       if (accepted) {
         router.push(
-            getOfferAcceptedMessageHref(
-              metadata,
-              details.messageHref,
-              response.clientId ?? offerContract?.clientId,
-              inboxThreads,
-              details.senderUsername,
-              details.senderDisplayName
+          getOfferAcceptedMessageHref(
+            metadata,
+            details.messageHref,
+            response.clientId ?? offerContract?.clientId,
+            inboxThreads,
+            details.senderUsername,
+            details.senderDisplayName
           )
         )
       }
-     await loadNotifications(false)
+      await loadNotifications(false)
     } finally {
       setOfferActionLoading(null)
     }
