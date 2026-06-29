@@ -96,6 +96,8 @@ export const UserAPI = {
     // Returns the user plus loaded skills/experiences for the talent
     // profile card view.
     AxiosRequest.get(`${USER_BASE}/talent/users/${username}`),
+  getSimilarProfiles: (userId: string) =>
+    AxiosRequest.get(`${USER_BASE}/users/${userId}/similar-profiles`),
   updateProfile: (userId: string, data: UserProfilePayload) =>
     AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}`, data),
   dismissOnboarding: (userId: string) =>

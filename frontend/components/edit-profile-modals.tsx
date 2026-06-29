@@ -2045,10 +2045,16 @@ export const WorkExperienceDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; label: string }[] = Array.isArray(data)
-        ? data
-        : (data.entries ?? data.results ?? [])
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
+      const entries: { id?: string; label?: string; name?: string }[] =
+        Array.isArray(data) ? data : (data.entries ?? data.results ?? [])
+      setFilteredSkills(
+        entries
+          .map((e) => {
+            const name = e.label ?? e.name ?? ""
+            return { id: e.id ?? name, name }
+          })
+          .filter((e) => e.name)
+      )
     } catch {}
   }, [])
 
@@ -3648,10 +3654,16 @@ export const SkillsDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; label: string }[] = Array.isArray(data)
-        ? data
-        : (data.entries ?? data.results ?? [])
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
+      const entries: { id?: string; label?: string; name?: string }[] =
+        Array.isArray(data) ? data : (data.entries ?? data.results ?? [])
+      setFilteredSkills(
+        entries
+          .map((e) => {
+            const name = e.label ?? e.name ?? ""
+            return { id: e.id ?? name, name }
+          })
+          .filter((e) => e.name)
+      )
     } catch {}
   }, [])
 
@@ -3896,7 +3908,7 @@ export const SkillsDialog = ({
 
             <div className="mt-3 flex gap-3 flex-wrap">
               {selected?.map((skill, index) => (
-                <Badge visual="primary" key={skill.id}>
+                <Badge visual="primary" key={skill.id ?? skill.name}>
                   {skill.name}
                   <button
                     className="focus-visible:outline-none"
