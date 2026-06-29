@@ -38,8 +38,9 @@ class CmsScopeTask {
   roleName: string;
 
   @IsOptional()
-  @IsString()
-  location?: string;
+  @IsArray()
+  @IsString({ each: true })
+  location?: string[];
 
   @IsIn(["Student", "Junior", "Medior", "Senior", "Guru"])
   experienceLevel: string;
@@ -269,4 +270,5 @@ export class ProjectSyncDto {
   @IsOptional()
   @IsString()
   videoUrl?: string;
+
 }

@@ -14,6 +14,15 @@ export class ServicesInternalController {
     if (!expected || token !== expected) throw new ForbiddenException('Invalid internal token');
   }
 
+  @Post('seed')
+  async seed(
+    @Headers('x-internal-token') token: string | undefined,
+    @Body() dto: Record<string, any>,
+  ) {
+    this.validateToken(token);
+    return this.services.seedFromN8n(dto);
+  }
+
   @Post(':id/cms-sync')
   async syncFromCms(
     @Headers('x-internal-token') token: string | undefined,

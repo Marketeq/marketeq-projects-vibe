@@ -29,6 +29,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   client: 'users',              // client onboarding profile lives in user-service
   talent: 'users',              // talent profiles live in user-service
   publish: 'listings',          // project publish workflow lives in listings-service
+  internal: 'listings',          // internal seed/sync endpoints live in listings-service
   teams: 'users',               // team management lives in user-service
   'affiliated-teams': 'users',  // affiliated teams lives in user-service
   categories: 'categories',      // category taxonomy service
@@ -53,7 +54,6 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   wallet: 'wallet',
   'wire-transfer': 'wireReview',
   'wire-review': 'wireReview',
-  internal: 'listings',            // internal/projects/seed, internal/services/seed
   offers: 'offers',                // offer-service offer management
   'counter-offers': 'offers',     // offer-service counter-offer endpoints
   legal: 'legal',                  // legal-service NDA, documents, acceptance

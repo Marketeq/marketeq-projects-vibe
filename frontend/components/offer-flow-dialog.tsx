@@ -6,7 +6,7 @@ import {
   Briefcase,
   Info,
   Repeat,
-  User,
+  MessageSquare,
   X,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
@@ -337,7 +337,7 @@ export function OfferFlowDialog({
                   ) : null}
 
                   <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
-                    {data.senderDisplayName}{" "}
+                    Offer from{" "}
                     <span className="text-primary-500">
                       {data.senderUsername}
                     </span>
@@ -387,7 +387,7 @@ export function OfferFlowDialog({
                     <Button
                       variant="outlined"
                       visual="gray"
-                      leftIcon={<User className="size-4" />}
+                      leftIcon={<MessageSquare className="size-4" />}
                       onClick={onMessage}
                     >
                       Message

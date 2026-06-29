@@ -9,6 +9,7 @@ import {
   DeliverablesAdapter,
 } from "./deliverables/deliverables.adapter";
 import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
+import { budgetFromScope } from "../shared/utils/pricing";
 
 /**
  * ProjectSyncService — receives Payload CMS project documents and
@@ -26,119 +27,6 @@ import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
 @Injectable()
 export class ProjectSyncService {
   private readonly logger = new Logger(ProjectSyncService.name);
-
-  private hourlyRateForTask(input: {
-    roleName: string;
-    experienceLevel: string;
-    location?: string;
-  }): number {
-    const role = (input.roleName || "").toLowerCase();
-    const exp = (input.experienceLevel || "Medior").toLowerCase();
-    const loc = (input.location || "").toLowerCase();
-
-    // Base rates (USD/hr) — heuristic defaults used when no assignee rate exists.
-    // Mirrors docs guidance: “use a default rate based on job title and region.”
-    let base = 85;
-    if (role.includes("architect")) base = 140;
-    else if (role.includes("machine learning") || role.includes("data scientist"))
-      base = 135;
-    else if (role.includes("devops") || role.includes("site reliability"))
-      base = 120;
-    else if (role.includes("security")) base = 125;
-    else if (role.includes("backend")) base = 105;
-    else if (role.includes("full stack") || role.includes("fullstack"))
-      base = 110;
-    else if (role.includes("frontend")) base = 100;
-    else if (role.includes("mobile")) base = 105;
-    else if (role.includes("qa")) base = 70;
-    else if (role.includes("ui/ux") || role.includes("designer") || role.includes("design"))
-      base = 90;
-    else if (role.includes("research")) base = 85;
-
-    const expMult =
-      exp === "student"
-        ? 0.5
-        : exp === "junior"
-          ? 0.75
-          : exp === "senior"
-            ? 1.25
-            : exp === "guru"
-              ? 1.5
-              : 1.0; // Medior/default
-
-    // Very rough location multipliers. We can refine once a rates table is introduced.
-    let locMult = 0.85;
-    if (
-      loc.includes("united states") ||
-      loc.includes("canada") ||
-      loc.includes("united kingdom") ||
-      loc.includes("australia")
-    ) {
-      locMult = 1.0;
-    } else if (
-      loc.includes("germany") ||
-      loc.includes("netherlands") ||
-      loc.includes("france") ||
-      loc.includes("sweden") ||
-      loc.includes("norway") ||
-      loc.includes("denmark")
-    ) {
-      locMult = 0.95;
-    } else if (
-      loc.includes("poland") ||
-      loc.includes("romania") ||
-      loc.includes("ukraine") ||
-      loc.includes("bulgaria")
-    ) {
-      locMult = 0.7;
-    } else if (
-      loc.includes("india") ||
-      loc.includes("pakistan") ||
-      loc.includes("bangladesh") ||
-      loc.includes("sri lanka")
-    ) {
-      locMult = 0.5;
-    } else if (
-      loc.includes("brazil") ||
-      loc.includes("mexico") ||
-      loc.includes("argentina") ||
-      loc.includes("colombia")
-    ) {
-      locMult = 0.65;
-    }
-
-    return Math.round(base * expMult * locMult);
-  }
-
-  private budgetFromScope(scope: Array<{
-    phaseName: string;
-    order: number;
-    tasks: Array<{
-      title: string;
-      roleName: string;
-      location?: string;
-      experienceLevel: string;
-      estimatedHours: number;
-    }>;
-  }>): { budget: number | null; totalHours: number } {
-    const tasks = scope.flatMap((p) => p.tasks);
-    const totalHours = tasks.reduce(
-      (acc, t) => acc + (Number.isFinite(t.estimatedHours) ? Number(t.estimatedHours) : 0),
-      0,
-    );
-    if (tasks.length === 0 || totalHours <= 0) return { budget: null, totalHours: 0 };
-    const totalCost = tasks.reduce((acc, t) => {
-      const hours = Number.isFinite(t.estimatedHours) ? Number(t.estimatedHours) : 0;
-      if (hours <= 0) return acc;
-      const rate = this.hourlyRateForTask({
-        roleName: t.roleName,
-        experienceLevel: t.experienceLevel,
-        location: t.location,
-      });
-      return acc + hours * rate;
-    }, 0);
-    return { budget: Math.round(totalCost * 100) / 100, totalHours };
-  }
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -305,7 +193,7 @@ export class ProjectSyncService {
       dto.projectDurationLabel ??
       null;
     // Budget — prefer CMS computed total (startingPriceTotal), otherwise derive from scope.
-    const scopeBudget = this.budgetFromScope(scope);
+    const scopeBudget = budgetFromScope(scope);
     const budget = dto.startingPriceTotal ?? scopeBudget.budget ?? null;
 
     const recentQuestions = (dto.recentQuestions ?? [])
@@ -415,7 +303,7 @@ export class ProjectSyncService {
     tasks: Array<{
       title: string;
       roleName: string;
-      location?: string;
+      location?: string[];
       experienceLevel: string;
       estimatedHours: number;
       assigneeEmail?: string;
@@ -432,8 +320,11 @@ export class ProjectSyncService {
           : typeof (t as any).role_name === "string"
           ? ((t as any).role_name as string)
           : "";
-      const location =
-        typeof t.location === "string" ? (t.location as string) : undefined;
+      const location: string[] | undefined = Array.isArray(t.location)
+        ? (t.location as string[])
+        : typeof t.location === "string" && t.location
+        ? [t.location]
+        : undefined;
       const experienceLevel =
         typeof t.experienceLevel === "string"
           ? t.experienceLevel
