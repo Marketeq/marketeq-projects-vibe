@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNumber, IsArray, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsArray,
+  IsUUID,
+  IsOptional,
+} from 'class-validator';
 
 export class SimilarProfilesDto {
   @ApiProperty({ example: 'uuid-123' })
@@ -9,6 +15,21 @@ export class SimilarProfilesDto {
   @ApiProperty({ example: 'John Doe' })
   @IsString()
   name: string;
+
+  @ApiProperty({ example: 'johndoe', nullable: true })
+  @IsOptional()
+  @IsString()
+  username: string | null;
+
+  @ApiProperty({ example: 'https://cdn.example.com/avatar.png', nullable: true })
+  @IsOptional()
+  @IsString()
+  avatarUrl: string | null;
+
+  @ApiProperty({ example: 'Full Stack Developer', nullable: true })
+  @IsOptional()
+  @IsString()
+  jobTitle: string | null;
 
   @ApiProperty({ example: ['React', 'TypeScript', 'Node.js'] })
   @IsArray()
@@ -22,6 +43,16 @@ export class SimilarProfilesDto {
   @ApiProperty({ example: 75 })
   @IsNumber()
   hourlyRate: number;
+
+  @ApiProperty({ example: 34, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  rateMin: number | null;
+
+  @ApiProperty({ example: 45, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  rateMax: number | null;
 
   @ApiProperty({ example: 'New York, NY' })
   @IsString()

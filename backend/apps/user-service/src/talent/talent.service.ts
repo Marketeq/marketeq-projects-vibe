@@ -12,6 +12,10 @@ import { CreateTalentDto } from './dto/create-talent.dto';
 import { R2Service } from '../storage/r2.service';
 import { Skill } from '../skills/skills.entity';
 import { Experience } from '../experience/experience.entity';
+import { Education } from '../education/education.entity';
+import { Certification } from '../certifications/certifications.entity';
+import { Industry } from '../industries/industries.entity';
+import { Language } from '../languages/languages.entity';
 import { UserService } from '../user/user.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { TalentProfile } from '../talent-profile/entities/talent-profile.entity';
@@ -27,6 +31,14 @@ export class TalentService {
     private readonly skillRepository: Repository<Skill>,
     @InjectRepository(Experience)
     private readonly experienceRepository: Repository<Experience>,
+    @InjectRepository(Education)
+    private readonly educationRepository: Repository<Education>,
+    @InjectRepository(Certification)
+    private readonly certificationRepository: Repository<Certification>,
+    @InjectRepository(Industry)
+    private readonly industryRepository: Repository<Industry>,
+    @InjectRepository(Language)
+    private readonly languageRepository: Repository<Language>,
     @InjectRepository(Portfolio)
     private readonly portfolioRepository: Repository<Portfolio>,
     @InjectRepository(TalentProfile)
@@ -331,6 +343,60 @@ export class TalentService {
         return [] as any[];
       });
 
+    const educations = await this.educationRepository
+      .find({
+        where: { userId: user.id },
+        order: { startYear: 'ASC' },
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `educations fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
+
+    const certifications = await this.certificationRepository
+      .find({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `certifications fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
+
+    const industries = await this.industryRepository
+      .find({
+        where: { userId: user.id },
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `industries fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
+
+    const languages = await this.languageRepository
+      .find({
+        where: { userId: user.id },
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `languages fetch failed for user ${user.id}: ${
+            err instanceof Error ? err.message : 'unknown'
+          }`,
+        );
+        return [] as any[];
+      });
+
     // Flatten skills to simple string names for the frontend card
     const skillNames = skills
       .map((s) => s.name)
@@ -354,7 +420,12 @@ export class TalentService {
     return {
       ...user,
       skills: skillNames,
-      experiences,
+      experience: experiences,
+      education: educations,
+      certifications,
+      industries,
+      languages,
+      portfolio: portfolioItems,
       projects,
       yearsOfExperience,
     } as unknown as User;
