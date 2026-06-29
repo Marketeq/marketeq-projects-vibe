@@ -4625,7 +4625,7 @@ function Default() {
 
                               {isEditMode && isOwnProfile && (
                                 <IconButton
-                                  className="rounded-full text-gray-500 hover:text-gray-800 size-5"
+                                  className="rounded-full text-gray-500 hover:text-gray-800"
                                   variant="ghost"
                                   visual="gray"
                                   onClick={() => setLanguagesOpen(true)}
@@ -4636,11 +4636,18 @@ function Default() {
                             </div>
 
                             {hasLanguages ? (
-                              <p className="mt-3 text-xs leading-relaxed font-bold text-dark-blue-400">
-                                {profile!.languages!
-                                  .map((l: any) => l.name)
-                                  .join(", ")}
-                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {profile!.languages!.map((l: any) => (
+                                  <Badge
+                                    key={l.id ?? l.name}
+                                    className="text-gray-700"
+                                    visual="gray"
+                                    size="lg"
+                                  >
+                                    {l.name}
+                                  </Badge>
+                                ))}
+                              </div>
                             ) : (
                               <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
                                 <p className="text-xs font-light text-gray-500 leading-relaxed">
