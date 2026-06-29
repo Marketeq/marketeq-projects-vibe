@@ -20,17 +20,37 @@ export class SimilarProfileMapper {
     }, 0);
   }
 
+  private static resolveJobTitle(user: User): string | null {
+    if (user.recentJobTitle) return user.recentJobTitle;
+    if (Array.isArray(user.jobTitles)) {
+      const preferred = user.jobTitles.find((j: any) => j?.saveAsDefault);
+      return preferred?.jobTitle ?? user.jobTitles[0]?.jobTitle ?? null;
+    }
+    return null;
+  }
+
+  private static toNumber(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
   static fromUser(user: User): SimilarProfilesDto {
     return {
       id: user.id,
       name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      username: user.username ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      jobTitle: SimilarProfileMapper.resolveJobTitle(user),
       skills: user.skills?.map((s) => s.name) ?? [],
       role: user.role ?? '',
-      hourlyRate: user.rate ?? 0,
+      hourlyRate: SimilarProfileMapper.toNumber(user.rate) ?? 0,
+      rateMin: SimilarProfileMapper.toNumber(user.rateMin),
+      rateMax: SimilarProfileMapper.toNumber(user.rateMax),
       location: user.location ?? '',
       experience: SimilarProfileMapper.calculateExperience(user.experiences),
       timezone: user.timezone ?? '',
-      rating: user.clientSuccessRating ?? 0,
+      rating: SimilarProfileMapper.toNumber(user.clientSuccessRating) ?? 0,
     };
   }
 }

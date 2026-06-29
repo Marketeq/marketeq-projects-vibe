@@ -2137,8 +2137,8 @@ export default function PaymentPage() {
                       Please Note:{" "}
                       <AlertDescription className="inline mt-0 font-normal">
                         To confirm this {installmentSubjectLabel}, an initial
-                        one-time payment is required. Your installment plan will
-                        begin after this payment is successfully processed.
+                        one-time payment is required. Your installment plan
+                        will begin after this payment is successfully processed.
                       </AlertDescription>
                     </AlertTitle>
                   </AlertContent>

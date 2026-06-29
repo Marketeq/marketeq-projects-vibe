@@ -18,7 +18,7 @@ import {
 } from "@/src/lib/certification-brand"
 import { getCurrentUser } from "@/utils/auth"
 import { getComputedStyle } from "@/utils/dom-utils"
-import { cn, toPxIfNumber } from "@/utils/functions"
+import { capitalize, cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
   ArrowRight,
@@ -74,6 +74,7 @@ import {
   WorkExperienceDialog,
 } from "@/components/edit-profile-modals"
 import { HireMeButton } from "@/components/hire-me-button"
+import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
@@ -100,6 +101,26 @@ const CaseStudyBuilder = dynamic(
 )
 
 const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
+
+const getInitials = (name?: string | null): string => {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return "?"
+  const first = parts[0].charAt(0)
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : ""
+  return (first + last).toUpperCase() || "?"
+}
+
+interface SimilarProfile {
+  id: string
+  name: string
+  username: string | null
+  avatarUrl: string | null
+  jobTitle: string | null
+  hourlyRate: number
+  rateMin: number | null
+  rateMax: number | null
+  rating: number
+}
 
 type PortfolioCardState = "filled" | "hidden" | "empty"
 interface PortfolioCardItem {
@@ -203,9 +224,48 @@ const SortablePortfolioCard = ({
           </>
         )}
       </div>
+      {card.state !== "empty" && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <svg
+            viewBox="0 0 46 6"
+            className="w-11"
+            fill="#ffffff"
+            fillOpacity="0.65"
+            aria-hidden="true"
+          >
+            {[1, 5].map((cy) =>
+              Array.from({ length: 12 }, (_, i) => 1 + i * 4).map((cx) => (
+                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.3" />
+              ))
+            )}
+          </svg>
+        </div>
+      )}
     </article>
   )
 }
+
+const PortfolioAddCard = ({
+  onOpenBuilder,
+}: {
+  onOpenBuilder: () => void
+}) => (
+  <article className="group relative h-[200px] overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+      <Image01 className="size-10 text-gray-300" />
+    </div>
+    <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+      <Button
+        type="button"
+        visual="gray"
+        className="bg-white"
+        onClick={onOpenBuilder}
+      >
+        <Upload className="size-[15px]" /> Add Case Study
+      </Button>
+    </div>
+  </article>
+)
 
 const PortfolioCards = ({
   portfolio,
@@ -234,12 +294,18 @@ const PortfolioCards = ({
     const { active, over } = e
     if (over && active.id !== over.id) {
       setCards((prev) => {
-        const oldIndex = prev.findIndex((c) => c.id === active.id)
-        const newIndex = prev.findIndex((c) => c.id === over.id)
-        return arrayMove(prev, oldIndex, newIndex)
+        const movable = prev.filter((c) => c.state !== "empty")
+        const fixed = prev.filter((c) => c.state === "empty")
+        const oldIndex = movable.findIndex((c) => c.id === active.id)
+        const newIndex = movable.findIndex((c) => c.id === over.id)
+        if (oldIndex === -1 || newIndex === -1) return prev
+        return [...arrayMove(movable, oldIndex, newIndex), ...fixed]
       })
     }
   }
+
+  const sortableCards = cards.filter((c) => c.state !== "empty")
+  const emptyCards = cards.filter((c) => c.state === "empty")
   return (
     <DndContext
       sensors={sensors}
@@ -247,7 +313,7 @@ const PortfolioCards = ({
       onDragEnd={onDragEnd}
     >
       <SortableContext
-        items={cards.map((c) => c.id)}
+        items={sortableCards.map((c) => c.id)}
         strategy={rectSortingStrategy}
       >
         <ShowMoreLessRoot>
@@ -265,31 +331,41 @@ const PortfolioCards = ({
                 }}
               >
                 <ShowMoreLess max={3}>
-                  {cards.map((card) => (
-                    <SortablePortfolioCard
-                      key={card.id}
-                      card={card}
-                      onOpenBuilder={onOpenBuilder}
-                      onToggleHide={() =>
-                        setCards((prev) =>
-                          prev.map((c) =>
-                            c.id === card.id
-                              ? {
-                                  ...c,
-                                  state:
-                                    c.state === "hidden" ? "filled" : "hidden",
-                                }
-                              : c
+                  {[
+                    ...sortableCards.map((card) => (
+                      <SortablePortfolioCard
+                        key={card.id}
+                        card={card}
+                        onOpenBuilder={onOpenBuilder}
+                        onToggleHide={() =>
+                          setCards((prev) =>
+                            prev.map((c) =>
+                              c.id === card.id
+                                ? {
+                                    ...c,
+                                    state:
+                                      c.state === "hidden"
+                                        ? "filled"
+                                        : "hidden",
+                                  }
+                                : c
+                            )
                           )
-                        )
-                      }
-                      onDelete={() =>
-                        setCards((prev) =>
-                          prev.filter((c) => c.id !== card.id)
-                        )
-                      }
-                    />
-                  ))}
+                        }
+                        onDelete={() =>
+                          setCards((prev) =>
+                            prev.filter((c) => c.id !== card.id)
+                          )
+                        }
+                      />
+                    )),
+                    ...emptyCards.map((card) => (
+                      <PortfolioAddCard
+                        key={card.id}
+                        onOpenBuilder={onOpenBuilder}
+                      />
+                    )),
+                  ]}
                 </ShowMoreLess>
               </div>
 
@@ -330,7 +406,6 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarFallbackIcon,
   AvatarGroup,
   AvatarImage,
   Badge,
@@ -609,7 +684,16 @@ export default function TalentProfilePage() {
 
 function Default() {
   const { user } = useAuth()
+  const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
+  const handleShareProfile = () => {
+    const base =
+      typeof window !== "undefined" ? window.location.origin : ""
+    const url = profile?.username
+      ? `${base}/talent-profile?username=${encodeURIComponent(profile.username)}`
+      : `${base}/talent-profile`
+    openInviteWindow(true, "Share Profile", url)
+  }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -712,6 +796,27 @@ function Default() {
       isActive = false
     }
   }, [user?.id, usernameParam])
+
+  const [similarProfiles, setSimilarProfiles] = useState<SimilarProfile[]>([])
+
+  useEffect(() => {
+    let isActive = true
+    if (!profile?.id) {
+      setSimilarProfiles([])
+      return
+    }
+    UserAPI.getSimilarProfiles(profile.id)
+      .then((res) => {
+        const data = Array.isArray(res?.data) ? res.data : []
+        if (isActive) setSimilarProfiles(data)
+      })
+      .catch(() => {
+        if (isActive) setSimilarProfiles([])
+      })
+    return () => {
+      isActive = false
+    }
+  }, [profile?.id])
 
   const isOwnProfile = Boolean(
     user?.id && profile?.id && user.id === profile.id
@@ -836,12 +941,14 @@ function Default() {
   // Deduplicate skills by name (case-insensitive) and drop blanks before display.
   const dedupedSkills = useMemo(() => {
     const seen = new Set<string>()
-    return (profile?.skills ?? []).filter((s: any) => {
-      const key = (s?.name ?? "").trim().toLowerCase()
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+    return (profile?.skills ?? [])
+      .map((s: any) => (typeof s === "string" ? { id: s, name: s } : s))
+      .filter((s: any) => {
+        const key = (s?.name ?? "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
   }, [profile?.skills])
 
   const cardRef = useRef<HTMLDivElement>(null)
@@ -1051,6 +1158,53 @@ function Default() {
     }
   }, [])
 
+  const isClientView = !(isEditMode && isOwnProfile)
+
+  const hasPortfolio = (profile?.portfolio?.length ?? 0) > 0
+  const hasSkills = dedupedSkills.length > 0
+  const hasBio = Boolean(profile?.bio || profile?.overview)
+  const hasCertifications = (profile?.certifications?.length ?? 0) > 0
+  const hasIndustries = (profile?.industries?.length ?? 0) > 0
+  const hasWorkExperience = (profile?.experience?.length ?? 0) > 0
+  const hasEducation = (profile?.education?.length ?? 0) > 0
+  const hasLanguages = (profile?.languages?.length ?? 0) > 0
+  const hasTimezone = Boolean(profile?.timezone)
+
+  const showOverviewSection =
+    !isClientView || hasBio || hasCertifications || hasIndustries
+  const showOverviewBio = !isClientView || hasBio
+  const showOverviewFeatured =
+    !isClientView || hasCertifications || hasIndustries
+  const showBackgroundSection =
+    !isClientView || hasWorkExperience || hasEducation
+  const showLanguagesBox = !isClientView || hasLanguages || hasTimezone
+
+  const visibleFeaturedTabs = (
+    isClientView
+      ? [
+          hasCertifications && "Certifications",
+          hasIndustries && "Industry Expertise",
+        ]
+      : ["Featured Clients", "Certifications", "Industry Expertise"]
+  ).filter(Boolean) as string[]
+  const effectiveFeaturedTab = visibleFeaturedTabs.includes(featuredTab)
+    ? featuredTab
+    : visibleFeaturedTabs[0]
+
+  const visibleBackgroundTabs = (
+    isClientView
+      ? [
+          hasWorkExperience && "Work Experience",
+          hasEducation && "Education",
+        ]
+      : ["Work Experience", "Education"]
+  ).filter(Boolean) as string[]
+  const effectiveBackgroundTab = visibleBackgroundTabs.includes(
+    backgroundActiveTab
+  )
+    ? backgroundActiveTab
+    : visibleBackgroundTabs[0]
+
   return (
     <>
       <div className="py-[50px]">
@@ -1180,7 +1334,7 @@ function Default() {
                     <div className="flex items-start">
                       <div className="flex-auto">
                         <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                          {profile?.firstName ?? "Talent"}
+                          {capitalize(profile?.firstName ?? "") || "Talent"}
                           {profile?.username && (
                             <span className="text-[26px] font-extralight">
                               {" "}
@@ -1263,7 +1417,7 @@ function Default() {
                             <p className="text-sm leading-none font-extralight text-dark-blue-400">
                               {isEditMode && isOwnProfile
                                 ? "You are"
-                                : `${profile?.firstName ?? "Talent"} is`}{" "}
+                                : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
                               currently{" "}
                               <span
                                 className={cn(
@@ -1329,6 +1483,7 @@ function Default() {
                           variant="outlined"
                           visual="gray"
                           size="md"
+                          onClick={handleShareProfile}
                         >
                           <Share06 className="size-[20px]" />
                         </IconButton>
@@ -1522,11 +1677,17 @@ function Default() {
                         src={profile?.avatarUrl ?? ""}
                         alt={profile?.firstName ?? "User"}
                       />
-                      <AvatarFallbackIcon />
+                      <AvatarFallback>
+                        {getInitials(
+                          `${profile?.firstName ?? ""} ${
+                            profile?.lastName ?? ""
+                          }`
+                        )}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-y-0.5">
                       <span className="text-lg leading-none font-bold text-dark-blue-400">
-                        {profile?.firstName ?? "User"}{" "}
+                        {capitalize(profile?.firstName ?? "") || "User"}{" "}
                         <span className="text-base font-extralight">
                           @{profile?.username ?? ""}
                         </span>
@@ -1550,29 +1711,43 @@ function Default() {
                       })
                     )}
                   >
-                    <TabsTrigger value="Portfolio" asChild>
-                      <NextLink href="#portfolio">Portfolio</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Skills" asChild>
-                      <NextLink href="#skills">Skills</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Overview" asChild>
-                      <NextLink href="#overview">Overview</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Offers" asChild>
-                      <NextLink href="#offers">Offers</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Work Experience" asChild>
-                      <NextLink href="#background">Work Experience</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Education" asChild>
-                      <NextLink href="#education">Education</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Project History" asChild>
-                      <NextLink href="#project-history">
-                        Project History
-                      </NextLink>
-                    </TabsTrigger>
+                    {(!isClientView || hasPortfolio) && (
+                      <TabsTrigger value="Portfolio" asChild>
+                        <NextLink href="#portfolio">Portfolio</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasSkills) && (
+                      <TabsTrigger value="Skills" asChild>
+                        <NextLink href="#skills">Skills</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {showOverviewSection && (
+                      <TabsTrigger value="Overview" asChild>
+                        <NextLink href="#overview">Overview</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {!isClientView && (
+                      <TabsTrigger value="Offers" asChild>
+                        <NextLink href="#offers">Offers</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasWorkExperience) && (
+                      <TabsTrigger value="Work Experience" asChild>
+                        <NextLink href="#background">Work Experience</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasEducation) && (
+                      <TabsTrigger value="Education" asChild>
+                        <NextLink href="#education">Education</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {!isClientView && (
+                      <TabsTrigger value="Project History" asChild>
+                        <NextLink href="#project-history">
+                          Project History
+                        </NextLink>
+                      </TabsTrigger>
+                    )}
                   </div>
                 </div>
 
@@ -1615,6 +1790,7 @@ function Default() {
                       variant="outlined"
                       visual="gray"
                       size="md"
+                      onClick={handleShareProfile}
                     >
                       <Share06 className="size-[20px]" />
                     </IconButton>
@@ -1625,7 +1801,7 @@ function Default() {
                     <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
                       {isEditMode && isOwnProfile
                         ? "You are"
-                        : `${profile?.firstName ?? "Talent"} is`}{" "}
+                        : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
                       currently{" "}
                       <span
                         className={cn(
@@ -1771,12 +1947,15 @@ function Default() {
                     )
                   })()}
 
-                <PortfolioCards
-                  key={profile?.portfolio?.length ? "real" : "demo"}
-                  portfolio={profile?.portfolio}
-                  onOpenBuilder={() => setCaseStudyOpen(true)}
-                />
+                {(!isClientView || hasPortfolio) && (
+                  <PortfolioCards
+                    key={profile?.portfolio?.length ? "real" : "demo"}
+                    portfolio={profile?.portfolio}
+                    onOpenBuilder={() => setCaseStudyOpen(true)}
+                  />
+                )}
 
+                {(!isClientView || hasSkills) && (
                 <LazySection minHeight={300}>
                   <div
                     className="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
@@ -1870,10 +2049,18 @@ function Default() {
                     )}
                   </div>
                 </LazySection>
+                )}
 
+                {showOverviewSection && (
                 <LazySection minHeight={300}>
                   <div className="mt-6 scroll-mt-[137.5px]" id="overview">
-                    <div className="p-6 rounded-t-lg bg-white border border-gray-200 space-y-6">
+                    {showOverviewBio && (
+                    <div
+                      className={cn(
+                        "p-6 bg-white border border-gray-200 space-y-6",
+                        showOverviewFeatured ? "rounded-t-lg" : "rounded-lg"
+                      )}
+                    >
                       {(() => {
                         const bioText = profile?.bio || profile?.overview
                         const hasBio = Boolean(bioText)
@@ -1927,13 +2114,22 @@ function Default() {
                         )
                       })()}
                     </div>
+                    )}
 
+                    {showOverviewFeatured && (
                     <Tabs
-                      value={featuredTab}
+                      value={effectiveFeaturedTab}
                       onValueChange={setFeaturedTab}
-                      className="p-6 min-h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
+                      className={cn(
+                        "p-6 min-h-[134px] border-x border-b border-gray-200 bg-white",
+                        showOverviewBio
+                          ? "rounded-b-lg"
+                          : "rounded-lg border-t"
+                      )}
                     >
+                      {(!isClientView || visibleFeaturedTabs.length > 1) && (
                       <RadixTabs.List className="flex items-center gap-x-3">
+                        {!isClientView && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1942,6 +2138,8 @@ function Default() {
                         >
                           Featured Clients
                         </TabsTrigger>
+                        )}
+                        {(!isClientView || hasCertifications) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1950,6 +2148,8 @@ function Default() {
                         >
                           Certifications
                         </TabsTrigger>
+                        )}
+                        {(!isClientView || hasIndustries) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -1958,6 +2158,7 @@ function Default() {
                         >
                           Industry Expertise
                         </TabsTrigger>
+                        )}
                         {isEditMode &&
                           isOwnProfile &&
                           featuredTab === "Industry Expertise" &&
@@ -2000,7 +2201,9 @@ function Default() {
                             </Button>
                           )}
                       </RadixTabs.List>
+                      )}
 
+                      {!isClientView && (
                       <TabsContent value="Featured Clients">
                         <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
                           <div className="flex items-start justify-between gap-x-4">
@@ -2036,6 +2239,7 @@ function Default() {
                           </div>
                         </div>
                       </TabsContent>
+                      )}
                       <TabsContent value="Certifications">
                         {profile?.certifications &&
                         profile.certifications.length > 0 ? (
@@ -2160,9 +2364,12 @@ function Default() {
                         )}
                       </TabsContent>
                     </Tabs>
+                    )}
                   </div>
                 </LazySection>
+                )}
 
+                {!isClientView && (
                 <LazySection minHeight={400}>
                   <div
                     className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
@@ -2256,7 +2463,9 @@ function Default() {
                     </Tabs>
                   </div>
                 </LazySection>
+                )}
 
+                {showBackgroundSection && (
                 <LazySection minHeight={400}>
                   <div
                     className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
@@ -2283,11 +2492,13 @@ function Default() {
                     </div>
 
                     <Tabs
-                      value={backgroundActiveTab}
+                      value={effectiveBackgroundTab}
                       onValueChange={setBackgroundActiveTab}
                       className="mt-6"
                     >
+                      {(!isClientView || visibleBackgroundTabs.length > 1) && (
                       <RadixTabs.List className="inline-flex items-center gap-x-3">
+                        {(!isClientView || hasWorkExperience) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -2296,6 +2507,8 @@ function Default() {
                         >
                           Work Experience
                         </TabsTrigger>
+                        )}
+                        {(!isClientView || hasEducation) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
@@ -2304,7 +2517,9 @@ function Default() {
                         >
                           Education
                         </TabsTrigger>
+                        )}
                       </RadixTabs.List>
+                      )}
 
                       <TabsContent value="Work Experience">
                         <ShowMoreLessRoot
@@ -2586,7 +2801,7 @@ function Default() {
                                         )
                                       })
                                   ) : (
-                                    <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
                                       <div className="flex items-start justify-between gap-x-4">
                                         <div className="flex-auto min-w-0">
                                           <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
@@ -2844,7 +3059,7 @@ function Default() {
                                         )
                                       })
                                   ) : (
-                                    <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
                                       <div className="flex items-start justify-between gap-x-4">
                                         <div className="flex-auto min-w-0">
                                           <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
@@ -2904,6 +3119,7 @@ function Default() {
                     </Tabs>
                   </div>
                 </LazySection>
+                )}
 
                 {/* Project History + Reviews — hidden until backed by real data */}
                 {false && (
@@ -3615,7 +3831,7 @@ function Default() {
                                             src="/man.jpg"
                                             alt="Man"
                                           />
-                                          <AvatarFallbackIcon />
+                                          <AvatarFallback>M</AvatarFallback>
                                         </Avatar>
 
                                         <div className="flex flex-col flex-1">
@@ -4325,7 +4541,12 @@ function Default() {
                   )}
                   ref={cardRef}
                 >
-                  <div className="p-6 rounded-t-lg relative bg-white border border-gray-200">
+                  <div
+                    className={cn(
+                      "p-6 rounded-t-lg relative bg-white border border-gray-200",
+                      !showLanguagesBox && "rounded-b-lg"
+                    )}
+                  >
                     <div className="flex items-center gap-x-1 justify-center">
                       <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
                         <span
@@ -4384,6 +4605,7 @@ function Default() {
                     </button>
                   </div>
 
+                  {showLanguagesBox && (
                   <div
                     className={`border-x rounded-b-lg border-b bg-white border-gray-200 transition-all duration-300 overflow-hidden ${
                       showLanguageSection
@@ -4393,65 +4615,78 @@ function Default() {
                   >
                     {showLanguageSection && (
                       <>
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                            <MessageTextSquare01 className="size-[15px]" />
-                            Languages
-                          </span>
+                        {(!isClientView || hasLanguages) && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                                <MessageTextSquare01 className="size-[15px]" />
+                                Languages
+                              </span>
 
-                          {isEditMode && isOwnProfile && (
-                            <IconButton
-                              className="rounded-full text-gray-500 hover:text-gray-800 size-5"
-                              variant="ghost"
-                              visual="gray"
-                              onClick={() => setLanguagesOpen(true)}
-                            >
-                              <Edit03 className="size-3" />
-                            </IconButton>
-                          )}
-                        </div>
+                              {isEditMode && isOwnProfile && (
+                                <IconButton
+                                  className="rounded-full text-gray-500 hover:text-gray-800 size-5"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setLanguagesOpen(true)}
+                                >
+                                  <Edit03 className="size-3" />
+                                </IconButton>
+                              )}
+                            </div>
 
-                        {profile?.languages &&
-                        profile.languages.length > 0 ? (
-                          <p className="mt-3 text-xs leading-relaxed font-bold text-dark-blue-400">
-                            {profile.languages
-                              .map((l: any) => l.name)
-                              .join(", ")}
-                          </p>
-                        ) : (
-                          <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
-                            <p className="text-xs font-light text-gray-500 leading-relaxed">
-                              Tell us what languages you speak, they&apos;ll
-                              show up here.
-                            </p>
-                            {isEditMode && isOwnProfile && (
-                              <Button
-                                className="mt-3 w-full bg-white"
-                                variant="outlined"
-                                visual="gray"
-                                onClick={() => setLanguagesOpen(true)}
-                              >
-                                <Plus className="size-[15px]" /> Add Languages
-                              </Button>
+                            {hasLanguages ? (
+                              <p className="mt-3 text-xs leading-relaxed font-bold text-dark-blue-400">
+                                {profile!.languages!
+                                  .map((l: any) => l.name)
+                                  .join(", ")}
+                              </p>
+                            ) : (
+                              <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
+                                <p className="text-xs font-light text-gray-500 leading-relaxed">
+                                  Tell us what languages you speak, they&apos;ll
+                                  show up here.
+                                </p>
+                                {isEditMode && isOwnProfile && (
+                                  <Button
+                                    className="mt-3 w-full bg-white"
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => setLanguagesOpen(true)}
+                                  >
+                                    <Plus className="size-[15px]" /> Add
+                                    Languages
+                                  </Button>
+                                )}
+                              </div>
                             )}
-                          </div>
+                          </>
                         )}
 
-                        <div className="flex mt-5 items-center justify-between">
-                          <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                            <Clock className="size-[15px]" />
-                            Time Zone
-                          </span>
+                        {(!isClientView || hasTimezone) && (
+                          <div
+                            className={cn(
+                              "flex items-center justify-between",
+                              !isClientView || hasLanguages ? "mt-5" : ""
+                            )}
+                          >
+                            <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                              <Clock className="size-[15px]" />
+                              Time Zone
+                            </span>
 
-                          <span className="text-xs leading-none font-bold text-dark-blue-400">
-                            {profile?.timezone ?? "\u2014"}
-                          </span>
-                        </div>
+                            <span className="text-xs leading-none font-bold text-dark-blue-400">
+                              {profile?.timezone ?? "\u2014"}
+                            </span>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
+                  )}
                 </div>
 
+                {(similarProfiles.length > 0 || !isClientView) && (
                 <div className="space-y-6 mt-6">
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
@@ -4459,26 +4694,123 @@ function Default() {
                         Similar profiles
                       </h1>
 
-                      <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
-                        <p className="text-xs font-light text-gray-600 leading-relaxed">
-                          Complete your profile to start seeing similar
-                          profiles here.
-                        </p>
-                        {isEditMode && isOwnProfile && (
-                          <Button
-                            className="mt-3 w-full"
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => router.push("/complete-profile")}
-                          >
-                            Complete My Profile
-                          </Button>
-                        )}
-                      </div>
+                      {similarProfiles.length > 0 ? (
+                        <>
+                          <div className="mt-3">
+                            {similarProfiles.slice(0, 5).map((sp) => {
+                              const rateMin =
+                                sp.rateMin != null ? Number(sp.rateMin) : null
+                              const rateMax =
+                                sp.rateMax != null ? Number(sp.rateMax) : null
+                              // Ratings hidden for MVP — reintroduce with the rating system
+                              // const rating = Number(sp.rating) || 0
+                              const rate =
+                                rateMin != null &&
+                                rateMax != null &&
+                                rateMin !== rateMax
+                                  ? `$${rateMin} - $${rateMax}`
+                                  : `$${rateMin ?? (Number(sp.hourlyRate) || 0)}`
+                              return (
+                                <div
+                                  key={sp.id}
+                                  onClick={() =>
+                                    sp.username &&
+                                    router.push(
+                                      `/talent-profile?username=${sp.username}`
+                                    )
+                                  }
+                                  className={cn(
+                                    "py-3 flex items-start gap-x-2 border-b border-gray-200",
+                                    sp.username && "cursor-pointer"
+                                  )}
+                                >
+                                  <Avatar
+                                    className="hover:ring-0 active:ring-primary-100"
+                                    size="md"
+                                  >
+                                    <AvatarImage
+                                      src={sp.avatarUrl ?? undefined}
+                                      alt={sp.name}
+                                    />
+                                    <AvatarFallback>
+                                      {getInitials(sp.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+
+                                  <div className="flex-1">
+                                    <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
+                                      {capitalize(sp.name.split(/\s+/)[0] || sp.name)}
+                                      {sp.username && (
+                                        <span className="text-xs font-extralight leading-none text-gray-500">
+                                          {" "}
+                                          @{sp.username}
+                                        </span>
+                                      )}
+                                    </h1>
+                                    {sp.jobTitle && (
+                                      <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
+                                        {sp.jobTitle}
+                                      </p>
+                                    )}
+                                    <div className="mt-1.5 flex items-center justify-between">
+                                      <span className="text-[13px] leading-none font-bold text-dark-blue-400">
+                                        {rate}
+                                        <span className="text-xs leading-none text-dark-blue-400 font-extralight">
+                                          /hr
+                                        </span>
+                                      </span>
+
+                                      {/* Ratings hidden for MVP — reintroduce with the rating system
+                                      {rating > 0 && (
+                                        <div className="inline-flex items-center gap-x-1">
+                                          <Star className="size-3 text-primary-500 fill-primary-500" />
+                                          <span className="font-medium leading-none text-xs text-dark-blue-400">
+                                            {rating.toFixed(1)}
+                                          </span>
+                                        </div>
+                                      )} */}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-center">
+                            <Button
+                              size="sm"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => router.push("/talent-search")}
+                            >
+                              View More
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
+                          <p className="text-xs font-light text-gray-600 leading-relaxed">
+                            Complete your profile to start seeing similar
+                            profiles here.
+                          </p>
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              className="mt-3 w-full"
+                              variant="outlined"
+                              visual="gray"
+                              onClick={() => router.push("/complete-profile")}
+                            >
+                              Complete My Profile
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
+                )}
 
+                {!isClientView && (
                 <div className="rounded-lg border border-gray-200 bg-white">
                   <div className="p-6">
                     <div className="flex items-center justify-between">
@@ -4505,6 +4837,7 @@ function Default() {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             </div>
           </div>

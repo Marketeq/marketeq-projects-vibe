@@ -180,7 +180,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Update the username' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Put('username')
   @HttpCode(HttpStatus.OK)
   updateUsername(@Req() req: Request, @Body() dto: UpdateUsernameDto) {
@@ -189,7 +189,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Set password' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Patch('set-password')
   @HttpCode(HttpStatus.OK)
   setPassword(@Req() req: Request, @Body() dto: SetPasswordDto) {
@@ -221,15 +221,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Forgot Password' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
+  forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    return this.authService.forgotPassword(dto, ipAddress);
   }
 
   @ApiOperation({ summary: 'Reset password' })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    return this.authService.resetPassword(dto, ipAddress);
   }
 
   @ApiOperation({ summary: 'Login using Google' })
@@ -280,7 +282,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Get the current user' })
   @ApiBearerAuth('access_token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Get('me')
   getProfile(@Req() req: Request) {
     return req.user ?? null;
@@ -317,7 +319,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Heartbeat — keeps session alive and validates it' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Post('sessions/heartbeat')
   @HttpCode(HttpStatus.OK)
   heartbeat(@Req() req: Request) {
@@ -328,7 +330,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Generate 2FA secret and QR code' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Post('2fa/generate')
   @HttpCode(HttpStatus.OK)
   generateTwoFactor(@Req() req: Request) {
@@ -338,7 +340,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Enable 2FA after verifying code' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Post('2fa/enable')
   @HttpCode(HttpStatus.OK)
   enableTwoFactor(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
@@ -348,7 +350,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Disable 2FA' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Post('2fa/disable')
   @HttpCode(HttpStatus.OK)
   disableTwoFactor(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
@@ -358,7 +360,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Generate and send SMS 2FA code during setup' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Post('2fa/generate-sms')
   @HttpCode(HttpStatus.OK)
   generateSmsTwoFactor(@Req() req: Request, @Body() dto: GenerateSmsTwoFactorDto) {
@@ -392,7 +394,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Regenerate backup codes' })
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
   @Post('2fa/backup-codes')
   @HttpCode(HttpStatus.OK)
   regenerateBackupCodes(@Req() req: Request, @Body() dto: VerifyTwoFactorDto) {
