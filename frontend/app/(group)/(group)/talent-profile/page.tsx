@@ -4625,12 +4625,12 @@ function Default() {
 
                               {isEditMode && isOwnProfile && (
                                 <IconButton
-                                  className="rounded-full text-gray-500 hover:text-gray-800 size-5"
+                                  className="rounded-full text-gray-500 hover:text-gray-800"
                                   variant="ghost"
                                   visual="gray"
                                   onClick={() => setLanguagesOpen(true)}
                                 >
-                                  <Edit03 className="size-3" />
+                                  <Edit03 className="size-4" />
                                 </IconButton>
                               )}
                             </div>
