@@ -27,7 +27,7 @@ async function bootstrap() {
     new Logger('BillingService').warn('RABBITMQ_URI not set; RMQ consumer disabled');
   }
 
-  const port = process.env.PORT || 3004;
+  const port = process.env.PORT || 3027;
   await app.listen(port);
   console.log(`billing-service running on port ${port}`);
 
