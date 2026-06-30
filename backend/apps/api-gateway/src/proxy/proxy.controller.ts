@@ -116,7 +116,7 @@ export class ProxyController {
       'admin-service': process.env.ADMIN_SERVICE_URL || 'http://localhost:3024',
       'affiliate-referral-service': process.env.AFFILIATE_REFERRAL_SERVICE_URL || 'http://localhost:3025',
       'billing-service': process.env.BILLING_SERVICE_URL || 'http://localhost:3026',
-      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3027',
+      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3026',
       'payout-service': process.env.PAYOUT_SERVICE_URL || 'http://localhost:3028',
       'pricing-service': process.env.PRICING_SERVICE_URL || 'http://localhost:3029',
       'wallet-service': process.env.WALLET_SERVICE_URL || 'http://localhost:3030',
