@@ -10,6 +10,7 @@ import { QuickBooksCustomerMap } from '../entities/quickbooks-customer-map.entit
 import { WireTransfer } from '../entities/wire-transfer.entity'
 
 import { AdminReviewController } from '../controllers/admin-review.controller'
+import { HealthController } from '../controllers/health.controller'
 import { QuickBooksWebhookController } from '../controllers/quickbooks-webhook.controller'
 import { WireTransferController } from '../controllers/wire-transfer.controller'
 
@@ -56,6 +57,7 @@ import { UnmatchedWireAuditJob } from '../jobs/unmatched-wire-audit.job'
   ],
   controllers: [
     AdminReviewController,
+    HealthController,
     QuickBooksWebhookController,
     WireTransferController,
   ],

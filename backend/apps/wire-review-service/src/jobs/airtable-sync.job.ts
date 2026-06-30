@@ -6,11 +6,13 @@ import { AirtableSyncService } from '../services/airtable-sync.service';
 export class AirtableSyncJob {
   constructor(private readonly airtableSyncService: AirtableSyncService) {}
 
-  // Run every 10 minutes
-  @Cron(CronExpression.EVERY_5_SECONDS)
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async handle() {
-    //console.log('Running Airtable sync job...');
-    await this.airtableSyncService.pushPendingReviewsToAirtable();
+    try {
+      await this.airtableSyncService.pushPendingReviewsToAirtable();
+    } catch (err: any) {
+      // Survive missing tables — don't crash the service
+    }
   }
 }
 

@@ -32,10 +32,15 @@ export class VerifyWireTransferJob {
     private readonly syncLogRepo: Repository<SyncLog>
   ) {}
 
-  // Run every 30 minutes
   @Cron(CronExpression.EVERY_12_HOURS)
   async handle() {
-    const invoices = await this.quickBooksService.fetchPaidInvoices();
+    let invoices: any[];
+    try {
+      invoices = await this.quickBooksService.fetchPaidInvoices();
+    } catch (err: any) {
+      this.logger.warn(`Wire verification skipped: ${err.message}`);
+      return;
+    }
 
     for (const qbInvoice of invoices) {
       const wire = await this.wireTransferRepo.findOne({
@@ -98,16 +103,20 @@ export class VerifyWireTransferJob {
     }
 
     // Auto-expire logic for pending wires older than 5 business days
-    const fiveDaysAgo = new Date();
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    try {
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    const expired = await this.wireTransferRepo.find({
-      where: { status: 'pending', createdAt: LessThan(fiveDaysAgo) },
-    });
+      const expired = await this.wireTransferRepo.find({
+        where: { status: 'pending', createdAt: LessThan(fiveDaysAgo) },
+      });
 
-    for (const wire of expired) {
-      await this.wireTransferRepo.update(wire.id, { status: 'failed' });
-      this.logger.warn(`Wire transfer expired for invoice ${wire.invoiceId}`);
+      for (const wire of expired) {
+        await this.wireTransferRepo.update(wire.id, { status: 'failed' });
+        this.logger.warn(`Wire transfer expired for invoice ${wire.invoiceId}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Wire expiry check skipped: ${err.message}`);
     }
   }
 }

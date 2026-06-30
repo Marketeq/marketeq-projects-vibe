@@ -15,25 +15,29 @@ export class UnmatchedWireAuditJob {
 
   @Cron(CronExpression.EVERY_WEEK)
   async handle() {
-    this.logger.debug('Running audit for unmatched wires older than 7 days...');
+    try {
+      this.logger.debug('Running audit for unmatched wires older than 7 days...');
 
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 7);
 
-    const unmatched = await this.wireRepo.find({
-      where: {
-        status: 'pending_review',
-        resolvedProjectId: IsNull(),
-        receivedAt: LessThan(cutoffDate),
-      },
-    });
+      const unmatched = await this.wireRepo.find({
+        where: {
+          status: 'pending_review',
+          resolvedProjectId: IsNull(),
+          receivedAt: LessThan(cutoffDate),
+        },
+      });
 
-    for (const wire of unmatched) {
-      wire.status = 'flagged';
-      await this.wireRepo.save(wire);
-      this.logger.warn(`🚩 Stale unmatched wire flagged: ${wire.transactionId}`);
+      for (const wire of unmatched) {
+        wire.status = 'flagged';
+        await this.wireRepo.save(wire);
+        this.logger.warn(`Stale unmatched wire flagged: ${wire.transactionId}`);
+      }
+
+      this.logger.log(`Audit complete. ${unmatched.length} wires flagged.`);
+    } catch (err: any) {
+      this.logger.warn(`Wire audit skipped: ${err.message}`);
     }
-
-    this.logger.log(`✅ Audit complete. ${unmatched.length} wires flagged.`);
   }
 }
