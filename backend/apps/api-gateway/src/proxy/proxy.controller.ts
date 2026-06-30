@@ -265,6 +265,9 @@ export class ProxyController {
     ) {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
+    if (serviceName === 'checkout' && segments[0] === 'checkout') {
+      downstreamPath = '/' + segments.slice(1).join('/')
+    }
     if (serviceName === 'categories') {
       downstreamPath = `/api${downstreamPath}`
     }
