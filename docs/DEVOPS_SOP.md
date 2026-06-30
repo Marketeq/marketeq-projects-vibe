@@ -68,6 +68,15 @@ There must be **exactly one** active (non-suspended) Render web service at any t
 - The staging orchestrator (`marketeq_orchestrator_node.js`) blocks all deploys if rogue services are detected.
 - If a rogue service is found, delete it immediately via the Render API or dashboard before proceeding.
 
+### 3.0.2 Zero-downtime service rule
+
+**No service may ever be down on staging or production.** All services listed in the `boot-all.js` `SERVICES` array must be running and healthy at all times. If a service is crash-looping, it is a P0 incident — fix immediately, do not disable and move on. The `staging-services-monitor` Jenkins pipeline checks every 5 minutes and auto-remediates (restart → redeploy → alert).
+
+**Enforcement:**
+- Every service in `boot-all.js SERVICES` must also be in `Dockerfile.all` (compiled) and in `proxy.controller.ts` health check map
+- Services must not be commented out, disabled, or removed from `boot-all.js` without CTO approval
+- The staging-services-monitor pipeline marks the build as UNSTABLE if any service is down, triggering investigation
+
 ### 3.1 How the shared backend deploys
 
 All three Vercel projects point to the same Render backend. The Jenkins `staging-orchestrator` pipeline triggers Render API deploys with the specific commit SHA whenever backend files change on `dev-main` or `staging`. This keeps the shared backend current for all frontends without waiting for a `live-mvp` promotion.
@@ -288,6 +297,7 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | Render deploy fails after `live-mvp` promotion | Build error, migration error, env var missing | Script exits non-zero with the Render deploy log URL; investigate there. Do **not** revert `live-mvp` until the root cause is understood — the commit may be fine and the cause may be Render infra |
 | Post-merge audit auto-reverts a promotion | Required checks failed on the promoted commits | CTO reviews the revert PR; developer fixes the failing checks; re-promote |
 | Someone force-pushes `dev-main`, `staging`, or `live-mvp` | Mistake or deliberate bypass | GitHub Actions `post-merge-audit` workflow (+ Jenkins safety net) opens an urgent issue within ~60 seconds; CTO investigates and, if needed, restores the previous SHA from the reflog |
+| Backend service is DOWN on staging | Service crash-loop (missing env var, DB schema mismatch, import error, OOM) | **P0 — fix immediately.** Check Render logs, identify the crash cause, fix and redeploy. Never disable/comment-out a service as a workaround. All services must be running at all times (§3.0.2). |
 
 ---
 
@@ -311,3 +321,4 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 |---|---|
 | 2026-04-11 | Initial document. Split from `docs/CODE_REVIEW_SOP.md` at CTO request — devops concerns belong here, code review concerns stay in the review SOP. Branch names locked to `dev-main` / `staging` / `live-mvp` (real names on origin). §3 CTO call: Render on `live-mvp` with auto-deploy on, one service, all three Vercel projects hit it. §1.11 "dev-main not on Vercel" rule from the review SOP is deleted — dev-main legitimately deploys to `marketeq-projects-dev`, the bug was hardcoded login values not the Vercel coupling itself. |
 | 2026-05-22 | CI/CD split: PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`) run on **GitHub Actions**. Post-merge enforcement (`post-merge-audit`, `login-violation-alert`) runs on **both** GitHub Actions and Jenkins. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). n8n DevOps workflows deactivated. Old docs archived to `docs/md/Deployment (CI-CD)/old devops docs/`. |
+| 2026-06-30 | Added §3.0.2 Zero-downtime service rule: no service may ever be down on staging or production. Added P0 failure mode for services down. Wired `sync-dev-main-to-staging` into Jenkins webhook dispatcher. Re-enabled messaging-service in `boot-all.js`. Added `offer-service` and `cms-service` to `Dockerfile.all` build list. |

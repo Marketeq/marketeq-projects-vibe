@@ -38,11 +38,7 @@ const SERVICES = [
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service',               maxOldSpaceMb: 128 },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service',               maxOldSpaceMb: 224 },
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 160 },
-  // messaging-service disabled 2026-06-16: its tables were created in the
-  // messaging_local schema instead of messaging, so every query fails and the
-  // service crash-loops, pushing the container toward OOM.  Re-enable once
-  // the schema migration is run (ALTER TABLE messaging_local.* SET SCHEMA messaging).
-  // { name: 'messaging-service',         port: '3005', dir: 'apps/messaging-service',         maxOldSpaceMb: 128 },
+  { name: 'messaging-service',         port: '3005', dir: 'apps/messaging-service',         maxOldSpaceMb: 128 },
   // Tier 2 — Active
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service',       maxOldSpaceMb: 96 },
   { name: 'search-service',             port: '3007', dir: 'apps/search-service',             maxOldSpaceMb: 96 },
@@ -57,8 +53,7 @@ const SERVICES = [
   { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service',       maxOldSpaceMb: 64 },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service',      maxOldSpaceMb: 96 },
   { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service',        maxOldSpaceMb: 96 },
-  // cms-service reads CMS_PORT (not PORT) — assigned 3019 to avoid clashing with suggestions-service
-  { name: 'cms-service',                port: '3019', dir: 'apps/cms-service',                maxOldSpaceMb: 96, portKey: 'CMS_PORT' },
+  // cms-service is a standalone Next.js app, not a NestJS service — runs separately, not in boot-all
   { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service',        maxOldSpaceMb: 64 },
   { name: 'category-service',           port: '3023', dir: 'apps/category-service',           maxOldSpaceMb: 96 },
   // Tier 3 — Low-traffic / dormant
@@ -90,6 +85,7 @@ const gatewayEnv = {
   ALGOLIA_SERVICE_URL:            'http://localhost:3008',
   CHECKOUT_SERVICE_URL:           'http://localhost:3009',
   CONTRACTS_SERVICE_URL:          'http://localhost:3010',
+  OFFER_SERVICE_URL:              'http://localhost:3011',
   FAVORITES_SERVICE_URL:          'http://localhost:3012',
   INVITATIONS_SERVICE_URL:        'http://localhost:3013',
   MODERATION_SERVICE_URL:         'http://localhost:3014',

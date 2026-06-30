@@ -43,9 +43,10 @@ import { PauseModule } from './pause/pause.module';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true'
-        ? { rejectUnauthorized: false }
-        : false,
+      ssl:
+        (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
       entities: [
         PayoutRequest,
         DepositMethod,
@@ -60,13 +61,15 @@ import { PauseModule } from './pause/pause.module';
       logging: false,
     }),
 
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        url: config.get('REDIS_URL', 'redis://localhost:6379'),
-      }),
-    }),
+    ...(process.env.REDIS_URL
+      ? [BullModule.forRootAsync({
+          imports: [ConfigModule],
+          inject: [ConfigService],
+          useFactory: (config: ConfigService) => ({
+            url: config.get('REDIS_URL'),
+          }),
+        })]
+      : []),
 
     ScheduleModule.forRoot(),
 
