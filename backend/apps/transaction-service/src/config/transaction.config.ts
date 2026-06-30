@@ -8,8 +8,9 @@ class EnvironmentVariables {
   @IsNumber()
   PORT!: number;
 
+  @IsOptional()
   @IsString()
-  JWT_SECRET!: string;
+  JWT_SECRET?: string;
 
   @IsOptional()
   @IsString()

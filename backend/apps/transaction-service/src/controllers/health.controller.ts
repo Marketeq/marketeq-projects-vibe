@@ -1,5 +1,5 @@
 import {
-    Controller, Get, Res, Inject,
+    Controller, Get, Res, Inject, Optional,
     ServiceUnavailableException,
   } from '@nestjs/common';
   import { InjectDataSource } from '@nestjs/typeorm';
@@ -8,17 +8,17 @@ import {
   import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
   import * as prom from 'prom-client';
   import { Response } from 'express';
-  
+
   import { REDIS_CLIENT } from '../constants';
-  
+
   @Controller()
   export class HealthController {
     private readonly startTime = Date.now();
-  
+
     constructor(
       @InjectDataSource()   private readonly dataSource: DataSource,
-      @Inject(REDIS_CLIENT) private readonly redis: Redis,
-      private readonly amqp: AmqpConnection,
+      @Inject(REDIS_CLIENT) @Optional() private readonly redis: Redis | null,
+      @Optional() private readonly amqp: AmqpConnection | null,
     ) {}
   
     @Get('health')
@@ -71,12 +71,14 @@ import {
     }
   
     private async checkRedis(): Promise<{ ok: boolean; latencyMs?: number }> {
+      if (!this.redis) return { ok: true };
       const start = Date.now();
       await this.redis.ping();
       return { ok: true, latencyMs: Date.now() - start };
     }
-  
+
     private async checkRabbitMQ(): Promise<{ ok: boolean }> {
+      if (!this.amqp) return { ok: true };
       const connected = this.amqp.managedConnection.isConnected();
       if (!connected) throw new Error('RabbitMQ channel not connected');
       return { ok: true };

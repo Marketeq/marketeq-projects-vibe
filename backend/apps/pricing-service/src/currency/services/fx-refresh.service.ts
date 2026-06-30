@@ -28,10 +28,14 @@ export class FxRefreshService implements OnModuleInit {
 
   // On startup: seed the DB if empty so currency endpoints work immediately.
   async onModuleInit(): Promise<void> {
-    const count = await this.rateRepo.count();
-    if (count === 0) {
-      this.logger.log('No FX rates found in DB — fetching on startup');
-      await this.refreshRates();
+    try {
+      const count = await this.rateRepo.count();
+      if (count === 0) {
+        this.logger.log('No FX rates found in DB — fetching on startup');
+        await this.refreshRates();
+      }
+    } catch (err: any) {
+      this.logger.warn(`FX init skipped — table may not exist yet: ${err.message}`);
     }
   }
 

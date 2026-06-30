@@ -15,7 +15,7 @@ export class CheckoutSession {
   @Column({ nullable: true })
   projectId: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   contractId: string | null;
 
   @Column({ nullable: true })

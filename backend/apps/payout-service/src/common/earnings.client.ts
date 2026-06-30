@@ -27,8 +27,8 @@ export class EarningsClient {
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {
-    this.baseUrl = this.config.getOrThrow('EARNINGS_SERVICE_URL');
-    this.serviceToken = this.config.getOrThrow('INTERNAL_SERVICE_TOKEN');
+    this.baseUrl = this.config.get('EARNINGS_SERVICE_URL') ?? 'http://localhost:3027';
+    this.serviceToken = this.config.get('INTERNAL_SERVICE_TOKEN') ?? '';
   }
 
   /**

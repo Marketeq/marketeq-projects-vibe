@@ -38,17 +38,19 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       WalletTransaction, PaymentFailure, InstallmentPayment,
       SavedBankAccount, WireTransfer, StripeMetadata,
     ]),
-    ClientsModule.register([
-      {
-        name: 'RABBITMQ_CLIENT',
-        transport: Transport.RMQ,
-        options: {
-          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
-          queue: 'checkout_events',
-          queueOptions: { durable: true },
-        },
-      },
-    ]),
+    ...(process.env.RABBITMQ_URL
+      ? [ClientsModule.register([
+          {
+            name: 'RABBITMQ_CLIENT',
+            transport: Transport.RMQ,
+            options: {
+              urls: [process.env.RABBITMQ_URL],
+              queue: 'checkout_events',
+              queueOptions: { durable: true },
+            },
+          },
+        ])]
+      : []),
   ],
   controllers: [CheckoutController],
   providers: [CheckoutService, StripeService, JwtAuthGuard],
