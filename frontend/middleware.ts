@@ -65,22 +65,17 @@ export function middleware(req: NextRequest) {
     })
   }
 
-  const { pathname } = req.nextUrl
-  const authenticated = hasAuthCookie(req)
-
-  if (matchesPrefix(pathname, PROTECTED_PREFIXES) && !authenticated) {
-    const url = req.nextUrl.clone()
-    url.pathname = "/sign-in"
-    url.searchParams.set("next", `${pathname}${req.nextUrl.search}`)
-    return NextResponse.redirect(url)
-  }
-
-  if (AUTH_PAGES.includes(pathname) && authenticated) {
-    const url = req.nextUrl.clone()
-    url.pathname = "/"
-    url.search = ""
-    return NextResponse.redirect(url)
-  }
+  // Cookie-based auth redirects are disabled: auth cookies are set by the
+  // backend (Render, different domain) and are not visible to Next.js
+  // middleware on Vercel. AuthenticatedRoute / UnauthenticatedRoute HOCs
+  // handle auth redirects on the client side instead.
+  //
+  // Keeping AUTH_COOKIES, PROTECTED_PREFIXES, AUTH_PAGES, hasAuthCookie,
+  // and matchesPrefix for future use if we add a same-domain API proxy.
+  void hasAuthCookie
+  void matchesPrefix
+  void AUTH_PAGES
+  void PROTECTED_PREFIXES
 
   return NextResponse.next()
 }
