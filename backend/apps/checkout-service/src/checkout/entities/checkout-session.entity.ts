@@ -16,7 +16,7 @@ export class CheckoutSession {
   projectId: string;
 
   @Column({ nullable: true })
-  contractId: string;
+  contractId: string | null;
 
   @Column({ nullable: true })
   stripeSessionId: string;

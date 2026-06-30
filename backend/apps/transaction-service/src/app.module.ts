@@ -41,7 +41,7 @@ class RabbitMQCoreModule {
     return {
       module: RabbitMQCoreModule,
       imports: [
-        RabbitMQModule.forRoot({
+        (RabbitMQModule as any).forRoot(RabbitMQModule, {
           exchanges: [
             { name: 'marketeq.billing',      type: 'topic' },
             { name: 'marketeq.timetracking', type: 'topic' },
