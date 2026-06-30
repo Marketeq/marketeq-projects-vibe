@@ -167,6 +167,34 @@ type CheckoutConfirmPaymentIntentResponse = {
   } | null
 }
 
+type WireTransferDetails = {
+  wireTransferId: string
+  referenceCode: string
+  amount: number
+  status: string
+  confirmedAt?: string | null
+  reminderAt: string
+  expiresAt: string
+  processingTimeline: string
+  expiryWindowDays: number
+  wireInstructions: {
+    accountNumber: string
+    routingNumber: string
+    swiftCode: string
+    accountName: string
+    bankName: string
+    bankAddress: string
+    reference: string
+  }
+}
+
+type WireTransferField =
+  | "accountNumber"
+  | "routingNumber"
+  | "swiftCode"
+  | "reference"
+  | "all"
+
 const parseCurrencyAmount = (value?: string | null) => {
   if (!value) return undefined
 
@@ -312,6 +340,7 @@ type PaymentPageSnapshot = {
   firstInstallmentMethods: InstallmentPaymentMethod[]
   secondInstallmentMethods: InstallmentPaymentMethod[]
   isWireTransfer: boolean
+  wireTransferDetails: WireTransferDetails | null
   giftCards: AppliedGiftCard[]
 }
 
@@ -1141,6 +1170,20 @@ export default function PaymentPage() {
   const [showGiftCardSuccess, setShowGiftCardSuccess] = React.useState(false)
   const [paymentMethod, setPaymentMethod] = React.useState("item-0")
   const [isWireTransfer, setIsWireTransfer] = React.useState(false)
+  const [wireTransferDetails, setWireTransferDetails] =
+    React.useState<WireTransferDetails | null>(null)
+  const [wireTransferConfirmed, setWireTransferConfirmed] =
+    React.useState(false)
+  const [isWireTransferLoading, setIsWireTransferLoading] =
+    React.useState(false)
+  const [isWireTransferSubmitting, setIsWireTransferSubmitting] =
+    React.useState(false)
+  const [wireTransferError, setWireTransferError] = React.useState("")
+  const [wireCopiedField, setWireCopiedField] =
+    React.useState<WireTransferField | null>(null)
+  const [wireTransferType, setWireTransferType] = React.useState<
+    "Domestic Transfer" | "International Transfer"
+  >("Domestic Transfer")
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [hasHydratedPaymentState, setHasHydratedPaymentState] =
     React.useState(false)
@@ -1338,6 +1381,10 @@ export default function PaymentPage() {
         setIsWireTransfer(snapshot.isWireTransfer)
       }
 
+      if (snapshot.wireTransferDetails) {
+        setWireTransferDetails(snapshot.wireTransferDetails)
+      }
+
       if (Array.isArray(snapshot.giftCards)) {
         setGiftCards(
           snapshot.giftCards.filter(
@@ -1371,6 +1418,7 @@ export default function PaymentPage() {
       firstInstallmentMethods,
       secondInstallmentMethods,
       isWireTransfer,
+      wireTransferDetails,
       giftCards,
     }
 
@@ -1391,6 +1439,7 @@ export default function PaymentPage() {
     secondInstallmentMethods,
     selectedTalentPaymentPlanId,
     showFullPaymentMethods,
+    wireTransferDetails,
   ])
 
   const projectCost = 94_000
@@ -1452,8 +1501,15 @@ export default function PaymentPage() {
     pay === "AT_ONCE" &&
     (paymentMethod === "item-0" ||
       fullPaymentMethods.some((method) => method.method === "CREDIT_DEBIT_CARD"))
+  const isWireTransferSelectedWithoutSavedMethod =
+    pay === "AT_ONCE" &&
+    paymentMethod === "item-2" &&
+    !isWireTransfer &&
+    fullPaymentMethods.every((method) => method.method !== "WIRE_TRANSFER")
   const isSubmitOrderDisabled =
-    isProcessing || isBankAccountSelectedWithoutSavedMethod
+    isProcessing ||
+    isBankAccountSelectedWithoutSavedMethod ||
+    isWireTransferSelectedWithoutSavedMethod
 
   React.useEffect(() => {
     const nextMonth = new Date()
@@ -1474,6 +1530,150 @@ export default function PaymentPage() {
       : `${basePath}/${safeSlugSegment}/confirmation`
     router.push(nextUrl)
   }
+
+  const getCheckoutProjectId = () => searchParams.get("projectId") || decodedSlug
+
+  const formatWireDate = (value?: string | null) =>
+    value
+      ? new Date(value).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "Pending"
+
+  const getWireTransferCopyText = (details: WireTransferDetails) => {
+    const instructions = details.wireInstructions
+
+    return [
+      "Marketeq Wire Transfer Instructions",
+      `Amount due: ${currencyWithCentsFormatter.format(details.amount)}`,
+      `Account name: ${instructions.accountName}`,
+      `Bank name: ${instructions.bankName}`,
+      `Bank address: ${instructions.bankAddress}`,
+      `Account number: ${instructions.accountNumber}`,
+      `Routing number: ${instructions.routingNumber}`,
+      `SWIFT code: ${instructions.swiftCode}`,
+      `Reference number: ${details.referenceCode}`,
+      `Processing timeline: ${details.processingTimeline}`,
+      `Expires: ${formatWireDate(details.expiresAt)}`,
+    ].join("\n")
+  }
+
+  const copyTextToClipboard = async (
+    text: string,
+    field: WireTransferField
+  ) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const textarea = document.createElement("textarea")
+        textarea.value = text
+        textarea.setAttribute("readonly", "")
+        textarea.style.position = "fixed"
+        textarea.style.opacity = "0"
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand("copy")
+        document.body.removeChild(textarea)
+      }
+
+      setWireCopiedField(field)
+      window.setTimeout(() => setWireCopiedField(null), 2500)
+    } catch {
+      setWireTransferError(
+        "Unable to copy to clipboard. Please copy the details manually."
+      )
+    }
+  }
+
+  const downloadWireTransferFile = (
+    filename: string,
+    details: WireTransferDetails
+  ) => {
+    const blob = new Blob([getWireTransferCopyText(details)], {
+      type: "text/plain;charset=utf-8",
+    })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const loadWireTransferDetails = async () => {
+    if (isWireTransferLoading) return wireTransferDetails
+
+    setIsWireTransferLoading(true)
+    setWireTransferError("")
+
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        window.setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Connection timed out. Please check your internet connection and try again."
+              )
+            ),
+          10_000
+        )
+      })
+
+      const details = await Promise.race([
+        apiFetch<WireTransferDetails>("/checkout/v1/checkout/wire-transfer", {
+          method: "POST",
+          body: {
+            projectId: getCheckoutProjectId(),
+            contractId: searchParams.get("contractId") || undefined,
+            amount: totalAmountToBePaid,
+          },
+        }),
+        timeout,
+      ])
+
+      setWireTransferDetails(details)
+      setWireTransferConfirmed(Boolean(details.confirmedAt))
+      return details
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "We were unable to load your wire transfer details. Please try again or contact support."
+
+      if (message.includes("API error 401")) {
+        setIsSessionExpiredDialogOpen(true)
+        return
+      }
+
+      setWireTransferError(message)
+      return null
+    } finally {
+      setIsWireTransferLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    if (
+      hasHydratedPaymentState &&
+      paymentMethod === "item-2" &&
+      !isWireTransfer &&
+      (!wireTransferDetails ||
+        wireTransferDetails.amount !== totalAmountToBePaid) &&
+      !isWireTransferLoading
+    ) {
+      void loadWireTransferDetails()
+    }
+  }, [
+    hasHydratedPaymentState,
+    isWireTransfer,
+    isWireTransferLoading,
+    paymentMethod,
+    totalAmountToBePaid,
+    wireTransferDetails,
+  ])
 
   const handleSubmitOrder = async () => {
     setPaymentError("")
@@ -2563,16 +2763,63 @@ export default function PaymentPage() {
     setStripeLinkStep("success")
   }
 
-  const handleSaveFullPaymentWire = () => {
+  const handleSaveFullPaymentWire = async () => {
+    setWireTransferError("")
+
+    const details = wireTransferDetails || (await loadWireTransferDetails())
+    if (!details) return
+
+    if (!wireTransferConfirmed) {
+      setWireTransferError(
+        "Please confirm you have initiated the wire transfer before continuing."
+      )
+      return
+    }
+
+    setIsWireTransferSubmitting(true)
+
+    try {
+      await apiFetch<{ success: boolean; status: string }>(
+        "/checkout/v1/checkout/confirm-wire-initiation",
+        {
+          method: "POST",
+          body: { wireTransferId: details.wireTransferId },
+        }
+      )
+      setWireTransferDetails({
+        ...details,
+        confirmedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "We were unable to record your confirmation. Please try again or contact support."
+
+      if (message.includes("API error 401")) {
+        setIsSessionExpiredDialogOpen(true)
+        return
+      }
+
+      setWireTransferError(message)
+      return
+    } finally {
+      setIsWireTransferSubmitting(false)
+    }
+
     const method: InstallmentPaymentMethod = {
-      id: `full-wire-${Date.now()}`,
+      id: details.wireTransferId,
       method: "WIRE_TRANSFER",
-      title: "Domestic Wire Transfer",
-      subtitle: "Wire details will appear after you submit the order",
+      title: wireTransferType,
+      subtitle: `Reference ${details.referenceCode}`,
     }
 
     saveFullPaymentMethod(method)
     setIsWireTransfer(true)
+    setSavedCardNotification(
+      `Wire transfer ${details.referenceCode} is saved for this order`
+    )
+    window.setTimeout(() => setSavedCardNotification(""), 5000)
   }
 
   const handleStartFullPaymentSplit = () => {
@@ -2636,10 +2883,18 @@ export default function PaymentPage() {
   }
 
   const handleRemoveFullPaymentMethod = (methodId: string) => {
+    const removedMethod = fullPaymentMethods.find(
+      (method) => method.id === methodId
+    )
     const nextMethods = fullPaymentMethods.filter(
       (method) => method.id !== methodId
     )
     setFullPaymentMethods(nextMethods)
+
+    if (removedMethod?.method === "WIRE_TRANSFER") {
+      setIsWireTransfer(false)
+      setWireTransferConfirmed(false)
+    }
 
     if (nextMethods.length <= 1) {
       setShowFullPaymentMethods(false)
@@ -3879,6 +4134,9 @@ export default function PaymentPage() {
                           handleEditPrimaryFullPaymentMethod(
                             fullPaymentMethods[0].method === "BANK_ACCOUNT"
                               ? "item-1"
+                              : fullPaymentMethods[0].method ===
+                                  "WIRE_TRANSFER"
+                                ? "item-2"
                               : "item-0"
                           ),
                         onRemove: () =>
@@ -3906,6 +4164,9 @@ export default function PaymentPage() {
                           handleEditPrimaryFullPaymentMethod(
                             fullPaymentMethods[0].method === "BANK_ACCOUNT"
                               ? "item-1"
+                              : fullPaymentMethods[0].method ===
+                                  "WIRE_TRANSFER"
+                                ? "item-2"
                               : "item-0"
                           ),
                         onRemove: () =>
@@ -4057,92 +4318,237 @@ export default function PaymentPage() {
                           complete your wire transfer
                         </p>
                       </div>
-                      <Button variant="outlined" visual="gray">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        disabled={!wireTransferDetails}
+                        onClick={() =>
+                          wireTransferDetails &&
+                          downloadWireTransferFile(
+                            `marketeq-wire-invoice-${wireTransferDetails.referenceCode}.txt`,
+                            wireTransferDetails
+                          )
+                        }
+                      >
                         <Download02 className="size-[15px]" /> Download Invoice
                       </Button>
                     </div>
 
-                    <div className="mt-6 border border-gray-200 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-white rounded-lg">
-                      <Tabs defaultValue="Domestic Transfer">
-                        <TabsList className="justify-start w-full">
-                          <TabsTrigger value="Domestic Transfer">
-                            Domestic Transfer
-                          </TabsTrigger>
-                          <TabsTrigger value="International Transfer">
-                            International Transfer
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
-
-                      <div className="py-4 px-6 border-b border-gray-200">
-                        <span className="text-gray-950 text-sm">
-                          Domestic wire transfers will take 24 - 48 hours to
-                          receive.
-                        </span>
+                    {isWireTransferLoading ? (
+                      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                        <div className="h-5 w-48 rounded bg-gray-100" />
+                        <div className="mt-6 space-y-3">
+                          {[0, 1, 2, 3, 4, 5].map((item) => (
+                            <div
+                              key={item}
+                              className="h-12 rounded bg-gray-50"
+                            />
+                          ))}
+                        </div>
                       </div>
+                    ) : wireTransferError && !wireTransferDetails ? (
+                      <Alert className="mt-6 border-error-200 bg-error-50">
+                        <AlertIcon>
+                          <AlertCircle className="size-5" />
+                        </AlertIcon>
+                        <AlertContent>
+                          <AlertTitle>
+                            We were unable to load your wire transfer details
+                          </AlertTitle>
+                          <AlertDescription>
+                            {wireTransferError}
+                            <Button
+                              className="ml-2"
+                              variant="link"
+                              onClick={() => void loadWireTransferDetails()}
+                            >
+                              Try again
+                            </Button>
+                          </AlertDescription>
+                        </AlertContent>
+                      </Alert>
+                    ) : wireTransferDetails ? (
+                      <>
+                        <div className="mt-6 grid grid-cols-3 gap-3">
+                          <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
+                            <span className="block text-xs text-gray-500">
+                              Amount due
+                            </span>
+                            <span className="mt-1 block text-lg font-bold text-dark-blue-400">
+                              {currencyWithCentsFormatter.format(
+                                wireTransferDetails.amount
+                              )}
+                            </span>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white p-4">
+                            <span className="block text-xs text-gray-500">
+                              Processing timeline
+                            </span>
+                            <span className="mt-1 block text-sm font-semibold text-dark-blue-400">
+                              {wireTransferDetails.processingTimeline}
+                            </span>
+                          </div>
+                          <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
+                            <span className="block text-xs text-gray-500">
+                              Auto-cancels after 14 days
+                            </span>
+                            <span className="mt-1 block text-sm font-semibold text-dark-blue-400">
+                              Expires {formatWireDate(wireTransferDetails.expiresAt)}
+                            </span>
+                          </div>
+                        </div>
 
-                      <Table>
-                        <TableBody className="[&_tr:last-child]:rounded-b-lg [&_td]:[&_tr:last-child]:rounded-b-lg">
-                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
-                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                              Account Number:
-                            </TableCell>
-                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
-                              712000528
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
-                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                              Routing Number:
-                            </TableCell>
-                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
-                              111000523
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
-                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                              Account Name:
-                            </TableCell>
-                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
-                              Marketeq Digital Inc.
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
-                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                              Bank Name:
-                            </TableCell>
-                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
-                              JP Morgan Chase & Co.
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
-                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                              Bank Address:
-                            </TableCell>
-                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
-                              111 Wall Street New York, New York 10043, United
-                              States
-                            </TableCell>
-                          </TableRow>
-                          <TableRow className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200">
-                            <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
-                              Remark:
-                            </TableCell>
-                            <TableCell className="font-semibold py-4 px-6 whitespace-nowrap text-gray-950">
-                              <div className="flex items-center gap-x-6">
-                                #22602731500102292
-                                <div className="inline-flex flex-auto items-center gap-x-2">
-                                  <ArrowLeft className="size-4 text-gray-500" />
-                                  <span className="text-sm font-normal whitespace-nowrap text-gray-500">
-                                    Please attach this order number
-                                  </span>
-                                </div>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </div>
+                        <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+                          <span className="text-sm leading-5 text-dark-blue-400">
+                            We will send a reminder on{" "}
+                            <span className="font-semibold">
+                              {formatWireDate(wireTransferDetails.reminderAt)}
+                            </span>{" "}
+                            if the wire has not been received.
+                          </span>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() =>
+                              copyTextToClipboard(
+                                getWireTransferCopyText(wireTransferDetails),
+                                "all"
+                              )
+                            }
+                          >
+                            {wireCopiedField === "all"
+                              ? "Copied"
+                              : "Copy All Details"}
+                          </Button>
+                        </div>
+
+                        <div className="mt-6 border border-gray-200 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-white rounded-lg">
+                          <Tabs
+                            value={wireTransferType}
+                            onValueChange={(value) =>
+                              setWireTransferType(
+                                value as
+                                  | "Domestic Transfer"
+                                  | "International Transfer"
+                              )
+                            }
+                          >
+                            <TabsList className="justify-start w-full">
+                              <TabsTrigger value="Domestic Transfer">
+                                Domestic Transfer
+                              </TabsTrigger>
+                              <TabsTrigger value="International Transfer">
+                                International Transfer
+                              </TabsTrigger>
+                            </TabsList>
+                          </Tabs>
+
+                          <div className="py-4 px-6 border-b border-gray-200">
+                            <span className="text-gray-950 text-sm">
+                              {wireTransferType === "Domestic Transfer"
+                                ? "Domestic wire transfers typically take 1 to 2 business days to receive."
+                                : "International wire transfers can take up to 5 business days to receive."}
+                            </span>
+                          </div>
+
+                          <Table>
+                            <TableBody className="[&_tr:last-child]:rounded-b-lg [&_td]:[&_tr:last-child]:rounded-b-lg">
+                              {[
+                                {
+                                  label: "Account Number:",
+                                  value:
+                                    wireTransferDetails.wireInstructions
+                                      .accountNumber,
+                                  field: "accountNumber" as const,
+                                },
+                                ...(wireTransferType === "Domestic Transfer"
+                                  ? [
+                                      {
+                                        label: "Routing Number:",
+                                        value:
+                                          wireTransferDetails.wireInstructions
+                                            .routingNumber,
+                                        field: "routingNumber" as const,
+                                      },
+                                    ]
+                                  : [
+                                      {
+                                        label: "SWIFT Code:",
+                                        value:
+                                          wireTransferDetails.wireInstructions
+                                            .swiftCode,
+                                        field: "swiftCode" as const,
+                                      },
+                                    ]),
+                                {
+                                  label: "Account Name:",
+                                  value:
+                                    wireTransferDetails.wireInstructions
+                                      .accountName,
+                                },
+                                {
+                                  label: "Bank Name:",
+                                  value:
+                                    wireTransferDetails.wireInstructions.bankName,
+                                },
+                                {
+                                  label: "Bank Address:",
+                                  value:
+                                    wireTransferDetails.wireInstructions
+                                      .bankAddress,
+                                },
+                                {
+                                  label: "Remark:",
+                                  value: wireTransferDetails.referenceCode,
+                                  field: "reference" as const,
+                                },
+                              ].map((row) => (
+                                <TableRow
+                                  key={row.label}
+                                  className="odd:bg-gray-25 even:bg-white hover:even:bg-white hover:odd:bg-gray-25 border-gray-200"
+                                >
+                                  <TableCell className="py-4 border-r border-gray-200 px-6 whitespace-nowrap">
+                                    {row.label}
+                                  </TableCell>
+                                  <TableCell className="font-semibold py-4 px-6 text-gray-950">
+                                    <div className="flex items-center justify-between gap-x-4">
+                                      <span className="min-w-0 break-words">
+                                        {row.label === "Remark:"
+                                          ? `#${row.value}`
+                                          : row.value}
+                                      </span>
+                                      {"field" in row ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outlined"
+                                          visual="gray"
+                                          onClick={() =>
+                                            copyTextToClipboard(
+                                              row.value,
+                                              row.field as WireTransferField
+                                            )
+                                          }
+                                        >
+                                          {wireCopiedField === row.field
+                                            ? "Copied"
+                                            : "Copy"}
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                    {row.label === "Remark:" ? (
+                                      <div className="mt-2 inline-flex items-center gap-x-2 text-sm font-normal text-gray-500">
+                                        <ArrowLeft className="size-4" />
+                                        Please attach this order number
+                                      </div>
+                                    ) : null}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
 
                   {/* Steps to complete wire transfer */}
@@ -4151,7 +4557,18 @@ export default function PaymentPage() {
                       <h1 className="text-lg font-bold text-dark-blue-400 leading-none">
                         Steps to complete your wire transfer
                       </h1>
-                      <Button variant="outlined" visual="gray">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        disabled={!wireTransferDetails}
+                        onClick={() =>
+                          wireTransferDetails &&
+                          downloadWireTransferFile(
+                            `marketeq-wire-instructions-${wireTransferDetails.referenceCode}.txt`,
+                            wireTransferDetails
+                          )
+                        }
+                      >
                         <Download02 className="size-[15px]" /> Download
                         Instructions
                       </Button>
@@ -4228,6 +4645,35 @@ export default function PaymentPage() {
                     </div>
                   </div>
 
+                  {wireTransferError && wireTransferDetails ? (
+                    <Alert className="mt-5 border-error-200 bg-error-50">
+                      <AlertIcon>
+                        <AlertCircle className="size-5" />
+                      </AlertIcon>
+                      <AlertContent>
+                        <AlertTitle>Wire transfer action failed</AlertTitle>
+                        <AlertDescription>{wireTransferError}</AlertDescription>
+                      </AlertContent>
+                    </Alert>
+                  ) : null}
+
+                  <div className="mt-6 flex items-start gap-x-3 rounded-lg border border-gray-200 bg-white p-4">
+                    <Checkbox
+                      id="wire-transfer-confirmed"
+                      checked={wireTransferConfirmed}
+                      onCheckedChange={(value) =>
+                        setWireTransferConfirmed(value === true)
+                      }
+                    />
+                    <Label
+                      htmlFor="wire-transfer-confirmed"
+                      className="text-sm font-normal leading-5 text-dark-blue-400"
+                    >
+                      I have initiated this wire transfer through my bank and
+                      included the reference number shown above.
+                    </Label>
+                  </div>
+
                   <div className="mt-[26px]">
                     <div className="flex items-center gap-x-2">
                       <Button
@@ -4239,9 +4685,16 @@ export default function PaymentPage() {
                       </Button>
                       <Button
                         onClick={handleSaveFullPaymentWire}
-                        className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
+                        disabled={
+                          !wireTransferDetails ||
+                          !wireTransferConfirmed ||
+                          isWireTransferSubmitting
+                        }
+                        className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white disabled:text-primary-300"
                       >
-                        Save Payment Method
+                        {isWireTransferSubmitting
+                          ? "Saving..."
+                          : "Save Payment Method"}
                       </Button>
                     </div>
                     <div className="mt-3.5">
@@ -4271,10 +4724,12 @@ export default function PaymentPage() {
                         </div>
                         <div className="inline-flex flex-col gap-y-1">
                           <span className="inline-block text-sm text-dark-blue-400">
-                            Domestic Wire Transfer
+                            {wireTransferType}
                           </span>
                           <span className="inline-block text-xs text-[#858585] leading-none">
-                            Wire details will appear after you submit the order
+                            {wireTransferDetails
+                              ? `Reference ${wireTransferDetails.referenceCode}`
+                              : "Wire transfer pending confirmation"}
                           </span>
                         </div>
                       </div>
