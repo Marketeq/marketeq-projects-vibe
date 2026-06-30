@@ -44,6 +44,7 @@ module.exports = {
     svcNested('invitations-service', 3013),
     svc('category-service', 3023),
     svc('autocomplete-service', 3016),
+    svc('payout-service', 3022),
     {
       name: 'cms-service',
       script: 'npm',

@@ -38,7 +38,7 @@ export class ProxyService {
       affiliateReferral: config.get('AFFILIATE_REFERRAL_SERVICE_URL') || 'http://localhost:3025',
       billing: config.get('BILLING_SERVICE_URL') || 'http://localhost:3099',
       earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3026',
-      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3028',
+      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3022',
       pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
       wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
