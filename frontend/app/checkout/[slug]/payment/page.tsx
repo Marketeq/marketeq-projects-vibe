@@ -188,13 +188,6 @@ type WireTransferDetails = {
   }
 }
 
-type WireTransferField =
-  | "accountNumber"
-  | "routingNumber"
-  | "swiftCode"
-  | "reference"
-  | "all"
-
 const parseCurrencyAmount = (value?: string | null) => {
   if (!value) return undefined
 
@@ -1179,8 +1172,6 @@ export default function PaymentPage() {
   const [isWireTransferSubmitting, setIsWireTransferSubmitting] =
     React.useState(false)
   const [wireTransferError, setWireTransferError] = React.useState("")
-  const [wireCopiedField, setWireCopiedField] =
-    React.useState<WireTransferField | null>(null)
   const [wireTransferType, setWireTransferType] = React.useState<
     "Domestic Transfer" | "International Transfer"
   >("Domestic Transfer")
@@ -1542,7 +1533,7 @@ export default function PaymentPage() {
         })
       : "Pending"
 
-  const getWireTransferCopyText = (details: WireTransferDetails) => {
+  const getWireTransferDownloadText = (details: WireTransferDetails) => {
     const instructions = details.wireInstructions
 
     return [
@@ -1560,39 +1551,11 @@ export default function PaymentPage() {
     ].join("\n")
   }
 
-  const copyTextToClipboard = async (
-    text: string,
-    field: WireTransferField
-  ) => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text)
-      } else {
-        const textarea = document.createElement("textarea")
-        textarea.value = text
-        textarea.setAttribute("readonly", "")
-        textarea.style.position = "fixed"
-        textarea.style.opacity = "0"
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textarea)
-      }
-
-      setWireCopiedField(field)
-      window.setTimeout(() => setWireCopiedField(null), 2500)
-    } catch {
-      setWireTransferError(
-        "Unable to copy to clipboard. Please copy the details manually."
-      )
-    }
-  }
-
   const downloadWireTransferFile = (
     filename: string,
     details: WireTransferDetails
   ) => {
-    const blob = new Blob([getWireTransferCopyText(details)], {
+    const blob = new Blob([getWireTransferDownloadText(details)], {
       type: "text/plain;charset=utf-8",
     })
     const url = URL.createObjectURL(blob)
@@ -4369,59 +4332,6 @@ export default function PaymentPage() {
                       </Alert>
                     ) : wireTransferDetails ? (
                       <>
-                        <div className="mt-6 grid grid-cols-3 gap-3">
-                          <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
-                            <span className="block text-xs text-gray-500">
-                              Amount due
-                            </span>
-                            <span className="mt-1 block text-lg font-bold text-dark-blue-400">
-                              {currencyWithCentsFormatter.format(
-                                wireTransferDetails.amount
-                              )}
-                            </span>
-                          </div>
-                          <div className="rounded-lg border border-gray-200 bg-white p-4">
-                            <span className="block text-xs text-gray-500">
-                              Processing timeline
-                            </span>
-                            <span className="mt-1 block text-sm font-semibold text-dark-blue-400">
-                              {wireTransferDetails.processingTimeline}
-                            </span>
-                          </div>
-                          <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
-                            <span className="block text-xs text-gray-500">
-                              Auto-cancels after 14 days
-                            </span>
-                            <span className="mt-1 block text-sm font-semibold text-dark-blue-400">
-                              Expires {formatWireDate(wireTransferDetails.expiresAt)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
-                          <span className="text-sm leading-5 text-dark-blue-400">
-                            We will send a reminder on{" "}
-                            <span className="font-semibold">
-                              {formatWireDate(wireTransferDetails.reminderAt)}
-                            </span>{" "}
-                            if the wire has not been received.
-                          </span>
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() =>
-                              copyTextToClipboard(
-                                getWireTransferCopyText(wireTransferDetails),
-                                "all"
-                              )
-                            }
-                          >
-                            {wireCopiedField === "all"
-                              ? "Copied"
-                              : "Copy All Details"}
-                          </Button>
-                        </div>
-
                         <div className="mt-6 border border-gray-200 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-white rounded-lg">
                           <Tabs
                             value={wireTransferType}
@@ -4459,7 +4369,6 @@ export default function PaymentPage() {
                                   value:
                                     wireTransferDetails.wireInstructions
                                       .accountNumber,
-                                  field: "accountNumber" as const,
                                 },
                                 ...(wireTransferType === "Domestic Transfer"
                                   ? [
@@ -4468,7 +4377,6 @@ export default function PaymentPage() {
                                         value:
                                           wireTransferDetails.wireInstructions
                                             .routingNumber,
-                                        field: "routingNumber" as const,
                                       },
                                     ]
                                   : [
@@ -4477,7 +4385,6 @@ export default function PaymentPage() {
                                         value:
                                           wireTransferDetails.wireInstructions
                                             .swiftCode,
-                                        field: "swiftCode" as const,
                                       },
                                     ]),
                                 {
@@ -4500,7 +4407,6 @@ export default function PaymentPage() {
                                 {
                                   label: "Remark:",
                                   value: wireTransferDetails.referenceCode,
-                                  field: "reference" as const,
                                 },
                               ].map((row) => (
                                 <TableRow
@@ -4511,36 +4417,19 @@ export default function PaymentPage() {
                                     {row.label}
                                   </TableCell>
                                   <TableCell className="font-semibold py-4 px-6 text-gray-950">
-                                    <div className="flex items-center justify-between gap-x-4">
-                                      <span className="min-w-0 break-words">
-                                        {row.label === "Remark:"
-                                          ? `#${row.value}`
-                                          : row.value}
-                                      </span>
-                                      {"field" in row ? (
-                                        <Button
-                                          size="sm"
-                                          variant="outlined"
-                                          visual="gray"
-                                          onClick={() =>
-                                            copyTextToClipboard(
-                                              row.value,
-                                              row.field as WireTransferField
-                                            )
-                                          }
-                                        >
-                                          {wireCopiedField === row.field
-                                            ? "Copied"
-                                            : "Copy"}
-                                        </Button>
-                                      ) : null}
-                                    </div>
                                     {row.label === "Remark:" ? (
-                                      <div className="mt-2 inline-flex items-center gap-x-2 text-sm font-normal text-gray-500">
-                                        <ArrowLeft className="size-4" />
-                                        Please attach this order number
+                                      <div className="flex items-center gap-x-6">
+                                        #{row.value}
+                                        <div className="inline-flex flex-auto items-center gap-x-2">
+                                          <ArrowLeft className="size-4 text-gray-500" />
+                                          <span className="text-sm font-normal whitespace-nowrap text-gray-500">
+                                            Please attach this order number
+                                          </span>
+                                        </div>
                                       </div>
-                                    ) : null}
+                                    ) : (
+                                      row.value
+                                    )}
                                   </TableCell>
                                 </TableRow>
                               ))}
