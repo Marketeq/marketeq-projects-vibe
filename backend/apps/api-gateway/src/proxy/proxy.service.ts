@@ -42,7 +42,7 @@ export class ProxyService {
       pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
       wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
-      offers: config.get('OFFER_SERVICE_URL') || 'http://localhost:3011',
+      offers: config.get('OFFER_SERVICE_URL') || 'http://localhost:3025',
       legal: config.get('LEGAL_SERVICE_URL') || 'http://localhost:3032',
     }
   }

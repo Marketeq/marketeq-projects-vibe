@@ -103,7 +103,7 @@ export class ProxyController {
       'algolia-service': process.env.ALGOLIA_SERVICE_URL || 'http://localhost:3008',
       'checkout-service': process.env.CHECKOUT_SERVICE_URL || 'http://localhost:3009',
       'contracts-service': process.env.CONTRACTS_SERVICE_URL || 'http://localhost:3010',
-      'offer-service': process.env.OFFER_SERVICE_URL || 'http://localhost:3011',
+      'offer-service': process.env.OFFER_SERVICE_URL || 'http://localhost:3025',
       'favorites-service': process.env.FAVORITES_SERVICE_URL || 'http://localhost:3012',
       'invitations-service': process.env.INVITATIONS_SERVICE_URL || 'http://localhost:3013',
       'content-moderation-service': process.env.MODERATION_SERVICE_URL || 'http://localhost:3014',

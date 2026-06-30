@@ -15,6 +15,7 @@
 - notification-service – Ably push, SendGrid email, event handlers, preferences
 - contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
 - time-tracking-service – complete service, code review fixes, QA tested all endpoints
+- offer-service – full offer/counter-offer lifecycle, state machine (CAS), outbox pattern, Ably real-time, TTL/expiry cron, idempotency (Redis), user deletion handler, 2 migrations, 13 indexes
 
 ## In Progress
 - homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
