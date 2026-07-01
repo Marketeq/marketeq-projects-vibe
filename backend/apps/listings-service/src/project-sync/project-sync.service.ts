@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
+import { HttpService } from "@nestjs/axios";
 import { ProjectSyncDto } from "./dto/project-sync.dto";
 import { Project } from "../projects/entities/project.entity";
 import { ListingStatus } from "../shared/enums/listing.enum";
@@ -10,6 +11,7 @@ import {
 } from "./deliverables/deliverables.adapter";
 import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
 import { budgetFromScope } from "../shared/utils/pricing";
+import { CloudflareStorageService } from "../publish/cloudflare-storage.service";
 
 /**
  * ProjectSyncService — receives Payload CMS project documents and
@@ -34,6 +36,8 @@ export class ProjectSyncService {
     private readonly deliverablesAdapter: DeliverablesAdapter,
     @Inject(SKILLS_ADAPTER)
     private readonly skillsAdapter: SkillsAdapter,
+    private readonly cloudflareStorageService: CloudflareStorageService,
+    private readonly httpService: HttpService,
   ) {}
 
   async syncFromCms(
@@ -90,6 +94,15 @@ export class ProjectSyncService {
 
     const saved = await repo.save(project);
     const action: "created" | "updated" = existing ? "updated" : "created";
+
+    // Re-upload external media URLs to Cloudflare R2
+    if (saved.mediaUrls?.length) {
+      const r2Urls = await this.reuploadMediaToR2(saved.id, saved.mediaUrls);
+      if (r2Urls.some((url, i) => url !== saved.mediaUrls[i])) {
+        saved.mediaUrls = r2Urls;
+        await repo.save(saved);
+      }
+    }
 
     this.logger.log(
       `Project ${action} from CMS: id=${saved.id} payloadId=${payloadId} slug=${row.slug}`,
@@ -257,6 +270,62 @@ export class ProjectSyncService {
       shareButtonEnabled: dto.shareButtonEnabled ?? true,
       helpButtonEnabled: dto.helpButtonEnabled ?? false,
     };
+  }
+
+  /**
+   * Downloads external image URLs and re-uploads them to Cloudflare R2.
+   * URLs already pointing to R2 are left as-is.
+   */
+  private async reuploadMediaToR2(
+    projectId: string,
+    urls: string[],
+  ): Promise<string[]> {
+    const r2PublicUrl =
+      process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.CLOUDFLARE_R2_ENDPOINT || "";
+
+    return Promise.all(
+      urls.map(async (url) => {
+        // Skip URLs already on R2
+        if (r2PublicUrl && url.startsWith(r2PublicUrl)) return url;
+        // Skip non-HTTP URLs (relative paths, R2 keys, etc.)
+        if (!/^https?:\/\//i.test(url)) return url;
+
+        try {
+          const response = await this.httpService.axiosRef.get(url, {
+            responseType: "arraybuffer",
+            timeout: 15_000,
+          });
+
+          const contentType =
+            (response.headers["content-type"] as string) || "image/jpeg";
+          const ext = contentType.split("/")[1]?.split(";")[0] || "jpg";
+          const filename = `cms-sync.${ext}`;
+
+          const file = {
+            buffer: Buffer.from(response.data),
+            originalname: filename,
+            mimetype: contentType,
+          } as Express.Multer.File;
+
+          const upload =
+            await this.cloudflareStorageService.uploadProjectMedia(
+              projectId,
+              file,
+            );
+          this.logger.log(
+            `Re-uploaded external media to R2: ${url} → ${upload.url}`,
+          );
+          return upload.url;
+        } catch (err) {
+          this.logger.warn(
+            `Failed to re-upload media to R2 (keeping original URL): ${url} — ${
+              (err as Error).message
+            }`,
+          );
+          return url;
+        }
+      }),
+    );
   }
 
   private resolveStatus(

@@ -215,6 +215,10 @@ export class EncryptionService {
     await convKeyRepo.save(conversationKeys);
   }
 
+  async deleteConversationKeyForUser(threadId: string, userId: string): Promise<void> {
+    await this.convKeyRepo.delete({ threadId, userId });
+  }
+
   private encryptServerSide(data: Buffer): string {
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv("aes-256-gcm", this.serverKey, iv);

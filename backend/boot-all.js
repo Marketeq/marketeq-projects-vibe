@@ -45,8 +45,7 @@ const SERVICES = [
   { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service',            maxOldSpaceMb: 64 },
   { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service',           maxOldSpaceMb: 64 },
   { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service',          maxOldSpaceMb: 96 },
-  // offer-service source not yet committed — uncomment when apps/offer-service/ is in git
-  // { name: 'offer-service',              port: '3011', dir: 'apps/offer-service',              maxOldSpaceMb: 96 },
+  { name: 'offer-service',              port: '3011', dir: 'apps/offer-service',              maxOldSpaceMb: 96 },
   { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 64 },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 64 },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 64 },
