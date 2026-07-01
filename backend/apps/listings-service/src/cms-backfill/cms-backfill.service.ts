@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
 import { Project } from '../projects/entities/project.entity';
 import { Testimonial } from '../testimonials/entities/testimonial.entity';
 import { Team } from '../teams/entities/team.entity';
@@ -13,6 +14,7 @@ import { TeamMemberRow } from '../job-listing/entities/job-listing-role-row.enti
 import { RoleDescription } from '../job-listing/entities/job-listing-role-description.entity';
 import { ProjectEventPublisher } from '../projects/project-event.publisher';
 import { TestimonialsEventPublisher } from '../testimonials/testimonials-event.publisher';
+import { CloudflareStorageService } from '../publish/cloudflare-storage.service';
 
 const PAGE_SIZE = 50;
 const BOOT_DELAY_MS = 5_000;
@@ -35,6 +37,8 @@ export class CmsBackfillService implements OnApplicationBootstrap {
     private readonly projectPublisher: ProjectEventPublisher,
     private readonly testimonialPublisher: TestimonialsEventPublisher,
     private readonly config: ConfigService,
+    private readonly cloudflareStorageService: CloudflareStorageService,
+    private readonly httpService: HttpService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -43,6 +47,7 @@ export class CmsBackfillService implements OnApplicationBootstrap {
     try {
     await Promise.all([
       this.backfillProjects(),
+      this.backfillMediaToR2(),
       this.backfillTestimonials(),
       this.backfillJobListings(),
       this.backfillToCms('team-listings', this.teamRepo, (t: Team) => ({
@@ -295,6 +300,96 @@ export class CmsBackfillService implements OnApplicationBootstrap {
     }
 
     this.logger.log(`[CmsBackfill:job-listings] Done — created: ${created}, skipped: ${skipped}, failed: ${failed}`);
+  }
+
+  private async backfillMediaToR2(): Promise<void> {
+    const r2PublicUrl =
+      this.config.get<string>('CLOUDFLARE_R2_PUBLIC_URL') ||
+      this.config.get<string>('CLOUDFLARE_R2_ENDPOINT') || '';
+
+    if (!r2PublicUrl) {
+      this.logger.warn('[CmsBackfill:media-r2] No R2 URL configured — skipping');
+      return;
+    }
+
+    let projects: Project[];
+    try {
+      projects = await this.projectRepo.find({
+        select: ['id', 'mediaUrls'],
+      });
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:media-r2] Table not ready — skipping: ${err.message}`);
+      return;
+    }
+
+    // Filter to projects that have external (non-R2) media URLs
+    const needsBackfill = projects.filter(
+      (p) =>
+        p.mediaUrls?.length > 0 &&
+        p.mediaUrls.some(
+          (url) => /^https?:\/\//i.test(url) && !url.startsWith(r2PublicUrl),
+        ),
+    );
+
+    this.logger.log(
+      `[CmsBackfill:media-r2] ${needsBackfill.length} projects with external media URLs`,
+    );
+
+    let migrated = 0;
+    let failed = 0;
+
+    for (const project of needsBackfill) {
+      try {
+        const newUrls = await Promise.all(
+          project.mediaUrls.map(async (url) => {
+            if (!url || !(/^https?:\/\//i.test(url)) || url.startsWith(r2PublicUrl)) {
+              return url;
+            }
+
+            try {
+              const response = await this.httpService.axiosRef.get(url, {
+                responseType: 'arraybuffer',
+                timeout: 15_000,
+              });
+
+              const contentType =
+                (response.headers['content-type'] as string) || 'image/jpeg';
+              const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
+
+              const file = {
+                buffer: Buffer.from(response.data),
+                originalname: `cms-media.${ext}`,
+                mimetype: contentType,
+              } as Express.Multer.File;
+
+              const upload =
+                await this.cloudflareStorageService.uploadProjectMedia(
+                  project.id,
+                  file,
+                );
+              return upload.url;
+            } catch {
+              // Keep original URL if download fails
+              return url;
+            }
+          }),
+        );
+
+        await this.projectRepo.update(project.id, { mediaUrls: newUrls });
+        migrated++;
+      } catch (err: any) {
+        failed++;
+        this.logger.error(
+          `[CmsBackfill:media-r2] Failed for project ${project.id}: ${err.message}`,
+        );
+      }
+
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    this.logger.log(
+      `[CmsBackfill:media-r2] Done — migrated: ${migrated}, failed: ${failed}`,
+    );
   }
 
   private async backfillTestimonials(): Promise<void> {

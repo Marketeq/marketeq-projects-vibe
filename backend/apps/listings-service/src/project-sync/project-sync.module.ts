@@ -5,6 +5,7 @@ import {
   RequestMethod,
 } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { HttpModule } from "@nestjs/axios";
 import { ProjectSyncController } from "./project-sync.controller";
 import { ProjectDeliverablesController } from "./project-deliverables.controller";
 import { ProjectSyncService } from "./project-sync.service";
@@ -15,9 +16,10 @@ import { DeliverablesAdapterHuggingFace } from "./deliverables/deliverables.adap
 import { SKILLS_ADAPTER } from "./skills/skills.adapter";
 import { SkillsAdapterHeuristic } from "./skills/skills.adapter.heuristic";
 import { SkillsAdapterHuggingFace } from "./skills/skills.adapter.huggingface";
+import { PublishModule } from "../publish/publish.module";
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, HttpModule, PublishModule],
   controllers: [ProjectSyncController, ProjectDeliverablesController],
   providers: [
     ProjectSyncService,
