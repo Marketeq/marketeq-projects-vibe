@@ -91,6 +91,18 @@ export class ProxyController {
     return { status: 'ready' }
   }
 
+  @Get('services/debug')
+  async servicesDebug() {
+    try {
+      const resp = await firstValueFrom(
+        this.http.get('http://127.0.0.1:9999/services/debug', { timeout: 5000 }),
+      )
+      return resp.data
+    } catch {
+      return { error: 'boot-all debug endpoint not available' }
+    }
+  }
+
   @Get('services/health')
   async servicesHealth() {
     const serviceUrls: Record<string, string> = {
