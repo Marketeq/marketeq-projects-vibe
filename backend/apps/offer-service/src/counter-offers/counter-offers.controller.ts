@@ -52,6 +52,7 @@ export class CounterOffersController {
 
   // POST /v1/offers/:offerId/counter-offers/:id/accept
   @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
   @UseInterceptors(IdempotencyInterceptor)
   async acceptCounterOffer(
     @Param('offerId', ParseUUIDPipe) offerId: string,
@@ -63,6 +64,7 @@ export class CounterOffersController {
 
   // POST /v1/offers/:offerId/counter-offers/:id/decline
   @Post(':id/decline')
+  @HttpCode(HttpStatus.OK)
   @UseInterceptors(IdempotencyInterceptor)
   async declineCounterOffer(
     @Param('offerId', ParseUUIDPipe) offerId: string,
@@ -74,6 +76,7 @@ export class CounterOffersController {
 
   // POST /v1/offers/:offerId/counter-offers/:id/withdraw
   @Post(':id/withdraw')
+  @HttpCode(HttpStatus.OK)
   @UseInterceptors(IdempotencyInterceptor)
   async withdrawCounterOffer(
     @Param('offerId', ParseUUIDPipe) offerId: string,

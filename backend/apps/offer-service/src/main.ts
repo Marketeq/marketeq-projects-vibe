@@ -31,7 +31,7 @@ async function bootstrap() {
   );
   app.enableCors();
 
-  const port = process.env.PORT || 3023;
+  const port = process.env.PORT || 3025;
   await app.listen(port);
 
   app.get(OfferLoggerService).logWithData(

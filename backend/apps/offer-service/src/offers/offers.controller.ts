@@ -64,6 +64,7 @@ export class OffersController {
  
   // POST /v1/offers/:id/accept — TALENT only
   @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard, OfferPartyGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
@@ -77,6 +78,7 @@ export class OffersController {
  
   // POST /v1/offers/:id/decline — TALENT only
   @Post(':id/decline')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard, OfferPartyGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
@@ -90,6 +92,7 @@ export class OffersController {
  
   // POST /v1/offers/:id/withdraw — CLIENT only
   @Post(':id/withdraw')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard, OfferPartyGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
@@ -103,6 +106,7 @@ export class OffersController {
  
   // POST /v1/offers/:id/resend — CLIENT only
   @Post(':id/resend')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard, OfferPartyGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)

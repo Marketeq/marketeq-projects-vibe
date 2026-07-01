@@ -16,12 +16,16 @@ import { OFFER_EVENTS } from '../messaging/events/offer-events';
 import { OFFER_EXCHANGE } from '../messaging/constants/rabbitmq.constants';
 import {
   buildOfferCreatedPayload,
+  buildOfferEditedPayload,
   buildOfferAcceptedPayload,
   buildOfferDeclinedPayload,
   buildOfferWithdrawnPayload,
   buildOfferExpiredPayload,
   buildOfferResentPayload,
 } from '../messaging/events/offer-payload-builders';
+import { OfferHistoryService } from '../offer-history/offer-history.service';
+import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
+import { OFFER_CONSTANTS } from '../common/constants/offer.constants';
 
 // Re-export for counter-offers service
 export { OfferConcurrentModificationException };
@@ -37,6 +41,7 @@ export class OffersService {
     private readonly outboxService: OutboxService,
     private readonly ablyService: AblyService,
     private readonly listingsClient: ListingsClient,
+    private readonly offerHistoryService: OfferHistoryService,
   ) {}
 
   // ============================================================
@@ -131,6 +136,12 @@ export class OffersService {
         payload: buildOfferAcceptedPayload(accepted) as any,
       }, em);
 
+      await this.offerHistoryService.append({
+        offerId, eventType: OFFER_EVENTS.ACCEPTED,
+        actor: 'TALENT', actorId: requesterId,
+        terms: this.termsFromOffer(accepted),
+      }, em);
+
       return accepted;
     });
 
@@ -172,6 +183,12 @@ export class OffersService {
         routingKey: OFFER_EVENTS.DECLINED,
         exchange: OFFER_EXCHANGE,
         payload: buildOfferDeclinedPayload(declined) as any,
+      }, em);
+
+      await this.offerHistoryService.append({
+        offerId, eventType: OFFER_EVENTS.DECLINED,
+        actor: 'TALENT', actorId: requesterId,
+        terms: this.termsFromOffer(declined),
       }, em);
 
       return declined;
@@ -223,6 +240,12 @@ export class OffersService {
         routingKey: OFFER_EVENTS.WITHDRAWN,
         exchange: OFFER_EXCHANGE,
         payload: buildOfferWithdrawnPayload(withdrawn) as any,
+      }, em);
+
+      await this.offerHistoryService.append({
+        offerId, eventType: OFFER_EVENTS.WITHDRAWN,
+        actor: 'CLIENT', actorId: requesterId,
+        terms: this.termsFromOffer(withdrawn),
       }, em);
 
       return withdrawn;
@@ -330,6 +353,12 @@ export class OffersService {
         payload: buildOfferCreatedPayload(saved) as any,
       }, em);
 
+      await this.offerHistoryService.append({
+        offerId: saved.id, eventType: OFFER_EVENTS.CREATED,
+        actor: 'CLIENT', actorId: userId,
+        terms: this.termsFromOffer(saved),
+      }, em);
+
       return saved;
     });
 
@@ -338,12 +367,77 @@ export class OffersService {
   }
 
   // ============================================================
-  // edit() — CLIENT edits a PENDING offer (stub — future spec doc)
+  // edit() — CLIENT edits a PENDING offer
+  // Resets TTL to fresh 14 days, clears warningSentAt
   // ============================================================
 
-  async edit(id: string, userId: string, dto: any) {
-    this.logger.log(`[STUB] edit offer ${id} by ${userId}`);
-    return { stub: true, action: 'edit', id, userId, payload: dto };
+  async edit(id: string, userId: string, dto: any): Promise<Offer> {
+    const offer = await this.findByIdOrThrow(id);
+
+    OfferStateMachine.assertIsClient(offer, userId);
+    OfferStateMachine.assertCanTransition(offer.status, OfferStatus.PENDING); // must be PENDING
+
+    const previousTerms = this.termsFromOffer(offer);
+    const newExpiresAt = calculateExpiresAt();
+
+    const setParts: string[] = ['updated_at = NOW()', 'expires_at = $2', 'warning_sent_at = NULL'];
+    const values: unknown[] = [id, newExpiresAt.toISOString()];
+    let paramIdx = 3;
+
+    const editableFields: Record<string, string> = {
+      rate: 'rate', currencyCode: 'currency_code', durationMonths: 'duration_months',
+      contractTitle: 'contract_title', message: 'message', startDate: 'start_date',
+    };
+
+    for (const [dtoKey, col] of Object.entries(editableFields)) {
+      if (dto[dtoKey] !== undefined) {
+        setParts.push(`${col} = $${paramIdx}`);
+        values.push(dto[dtoKey]);
+        paramIdx++;
+      }
+    }
+
+    if (dto.workSchedule !== undefined) {
+      setParts.push(`work_schedule = $${paramIdx}`);
+      values.push(JSON.stringify(dto.workSchedule));
+      paramIdx++;
+    }
+
+    const updatedOffer = await this.dataSource.transaction(async (em) => {
+      const result = await em.query(`
+        UPDATE offer_service.offers
+        SET    ${setParts.join(', ')}
+        WHERE  id = $1 AND status = 'PENDING'
+        RETURNING *
+      `, values);
+
+      const rows = Array.isArray(result[0]) ? result[0] : result;
+      const count = typeof result[1] === 'number' ? result[1] : rows.length;
+      if (count === 0) throw new OfferConcurrentModificationException(id);
+
+      const edited = this.mapRawToOffer(rows[0]);
+
+      await this.outboxService.write({
+        aggregateId: id,
+        eventType: OFFER_EVENTS.EDITED,
+        routingKey: OFFER_EVENTS.EDITED,
+        exchange: OFFER_EXCHANGE,
+        payload: buildOfferEditedPayload(edited, previousTerms as any) as any,
+      }, em);
+
+      await this.offerHistoryService.append({
+        offerId: id,
+        eventType: OFFER_EVENTS.EDITED,
+        actor: 'CLIENT',
+        actorId: userId,
+        terms: this.termsFromOffer(edited),
+      }, em);
+
+      return edited;
+    });
+
+    this.ablyService.publish(id, updatedOffer, null, false);
+    return updatedOffer;
   }
 
   // ============================================================
@@ -402,6 +496,12 @@ export class OffersService {
         payload: buildOfferResentPayload(saved) as any,
       }, em);
 
+      await this.offerHistoryService.append({
+        offerId: saved.id, eventType: OFFER_EVENTS.RESENT,
+        actor: 'CLIENT', actorId: userId,
+        terms: this.termsFromOffer(saved),
+      }, em);
+
       return saved;
     });
 
@@ -410,12 +510,59 @@ export class OffersService {
   }
 
   // ============================================================
-  // getHistory() — stub for future spec doc
+  // getHistory() — cursor-based paginated history
   // ============================================================
 
   async getHistory(id: string, query: any) {
-    this.logger.log(`[STUB] getHistory for offer ${id}`);
-    return { stub: true, action: 'getHistory', id, cursor: query?.cursor, limit: query?.limit, items: [] };
+    const limit = Math.min(query?.limit ?? OFFER_CONSTANTS.HISTORY_PAGE_SIZE, OFFER_CONSTANTS.HISTORY_PAGE_SIZE);
+    const cursor = query?.cursor;
+
+    const qb = this.dataSource
+      .getRepository('OfferHistoryEvent')
+      .createQueryBuilder('h')
+      .where('h.offer_id = :offerId', { offerId: id })
+      .orderBy('h.created_at', 'DESC')
+      .addOrderBy('h.id', 'DESC')
+      .take(limit + 1);
+
+    if (cursor) {
+      const decoded = Buffer.from(cursor, 'base64').toString('utf-8');
+      const [cursorDate, cursorId] = decoded.split('|');
+      qb.andWhere('(h.created_at < :cursorDate OR (h.created_at = :cursorDate AND h.id < :cursorId))', {
+        cursorDate, cursorId,
+      });
+    }
+
+    const rows = await qb.getMany();
+
+    const total = await this.dataSource
+      .getRepository('OfferHistoryEvent')
+      .count({ where: { offerId: id } });
+
+    let nextCursor: string | null = null;
+    if (rows.length > limit) {
+      rows.pop();
+      const last = rows[rows.length - 1];
+      const raw = `${(last as any).createdAt.toISOString()}|${(last as any).id}`;
+      nextCursor = Buffer.from(raw).toString('base64');
+    }
+
+    return { data: rows, nextCursor, total };
+  }
+
+  // ============================================================
+  // Private: build terms snapshot for history
+  // ============================================================
+
+  private termsFromOffer(offer: Offer): OfferTermsSnapshot {
+    return {
+      rate: offer.rate,
+      currencyCode: offer.currencyCode,
+      durationMonths: offer.durationMonths,
+      workSchedule: offer.workSchedule as { type: string; hoursPerWeek?: number },
+      startDate: offer.startDate,
+      message: offer.message ?? null,
+    };
   }
 
   // ============================================================

@@ -12,11 +12,13 @@ import { OfferPartyGuard } from '../guards/offer-party.guard';
 import { OfferActionGuard } from './guards/offer-action.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { OutboxModule } from '../outbox/outbox.module';
+import { OfferHistoryModule } from '../offer-history/offer-history.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Offer]),
     OutboxModule,
+    OfferHistoryModule,
   ],
   controllers: [OffersController],
   providers: [

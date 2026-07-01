@@ -21,11 +21,14 @@ import { OFFER_EVENTS } from '../messaging/events/offer-events';
 import { OFFER_EXCHANGE } from '../messaging/constants/rabbitmq.constants';
 import {
   buildOfferCounteredPayload,
+  buildOfferCounterEditedPayload,
   buildOfferCounterAcceptedPayload,
   buildOfferCounterDeclinedPayload,
   buildOfferCounterWithdrawnPayload,
   buildOfferCounterExpiredPayload,
 } from '../messaging/events/offer-payload-builders';
+import { OfferHistoryService } from '../offer-history/offer-history.service';
+import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 
 @Injectable()
 export class CounterOffersService {
@@ -38,6 +41,7 @@ export class CounterOffersService {
     private readonly offersService: OffersService,
     private readonly outboxService: OutboxService,
     private readonly ablyService: AblyService,
+    private readonly offerHistoryService: OfferHistoryService,
   ) {}
 
   // ============================================================
@@ -358,17 +362,91 @@ export class CounterOffersService {
   }
 
   // ============================================================
-  // Stubs for endpoints not yet fully implemented
+  // editCO() — SUBMITTER edits their own PENDING CO (in-place, no TTL reset)
   // ============================================================
 
-  async edit(offerId: string, id: string, userId: string, dto: any) {
-    this.logger.log(`[STUB] edit CO=${id} by ${userId}`);
-    return { stub: true, action: 'edit-co', offerId, id, userId, payload: dto };
+  async edit(offerId: string, id: string, userId: string, dto: any): Promise<CounterOffer> {
+    const offer = await this.offersService.findByIdOrThrow(offerId);
+    const co = await this.findCOByIdOrThrow(id, offerId);
+
+    OfferStateMachine.assertIsSubmitter(co, userId);
+    OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.PENDING); // must be PENDING
+
+    const previousTerms = this.termsFromCO(co);
+
+    const setParts: string[] = ['updated_at = NOW()'];
+    const values: unknown[] = [id];
+    let paramIdx = 2;
+
+    const editableFields: Record<string, string> = {
+      rate: 'rate', currencyCode: 'currency_code', durationMonths: 'duration_months',
+      message: 'message', startDate: 'start_date',
+    };
+
+    for (const [dtoKey, col] of Object.entries(editableFields)) {
+      if (dto[dtoKey] !== undefined) {
+        setParts.push(`${col} = $${paramIdx}`);
+        values.push(dto[dtoKey]);
+        paramIdx++;
+      }
+    }
+
+    if (dto.workSchedule !== undefined) {
+      setParts.push(`work_schedule = $${paramIdx}`);
+      values.push(JSON.stringify(dto.workSchedule));
+      paramIdx++;
+    }
+
+    const editedCO = await this.dataSource.transaction(async (em) => {
+      const result = await em.query(`
+        UPDATE offer_service.counter_offers
+        SET    ${setParts.join(', ')}
+        WHERE  id = $1 AND status = 'PENDING'
+        RETURNING *
+      `, values);
+
+      const rows = Array.isArray(result[0]) ? result[0] : result;
+      const count = typeof result[1] === 'number' ? result[1] : rows.length;
+      if (count === 0) throw new OfferConcurrentModificationException(id);
+
+      const edited = this.mapRawToCO(rows[0]);
+
+      await this.outboxService.write({
+        aggregateId: offerId,
+        eventType: OFFER_EVENTS.COUNTER_EDITED,
+        routingKey: OFFER_EVENTS.COUNTER_EDITED,
+        exchange: OFFER_EXCHANGE,
+        payload: buildOfferCounterEditedPayload(offer, edited, previousTerms as any) as any,
+      }, em);
+
+      await this.offerHistoryService.append({
+        offerId, counterOfferId: id,
+        eventType: OFFER_EVENTS.COUNTER_EDITED,
+        actor: co.submittedBy, actorId: userId,
+        terms: this.termsFromCO(edited),
+      }, em);
+
+      return edited;
+    });
+
+    this.ablyService.publish(offerId, offer as any, editedCO, false);
+    return editedCO;
   }
 
   // ============================================================
   // Private helpers
   // ============================================================
+
+  private termsFromCO(co: CounterOffer): OfferTermsSnapshot {
+    return {
+      rate: co.rate,
+      currencyCode: co.currencyCode,
+      durationMonths: co.durationMonths,
+      workSchedule: co.workSchedule as { type: string; hoursPerWeek?: number },
+      startDate: co.startDate,
+      message: co.message ?? null,
+    };
+  }
 
   private async findCOByIdOrThrow(coId: string, offerId: string): Promise<CounterOffer> {
     const co = await this.coRepo.findOne({ where: { id: coId, offerId } });

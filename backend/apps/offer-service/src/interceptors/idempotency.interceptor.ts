@@ -62,8 +62,21 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // keyPrefix "offer:" is applied by ioredis — full key: offer:idempotency:{userId}:{key}
     const redisKey = `idempotency:${userId}:${idempotencyKey}`;
 
-    // 3. Process with idempotency semantics
-    return from(this.processWithIdempotency(redisKey, next));
+    // 3. Process with idempotency semantics (graceful degradation if Redis is unavailable)
+    return from(this.processWithIdempotency(redisKey, next).catch((err) => {
+      if (this.isRedisConnectionError(err)) {
+        this.logger.warn('Redis unavailable — skipping idempotency check, proceeding with request.');
+        return new Promise<unknown>((resolve, reject) => {
+          next.handle().subscribe({ next: resolve, error: reject });
+        });
+      }
+      throw err;
+    }));
+  }
+
+  private isRedisConnectionError(err: unknown): boolean {
+    const msg = (err as Error)?.message ?? '';
+    return msg.includes('Connection is closed') || msg.includes('ECONNREFUSED') || msg.includes('Stream isn\'t writeable');
   }
 
   private async processWithIdempotency(

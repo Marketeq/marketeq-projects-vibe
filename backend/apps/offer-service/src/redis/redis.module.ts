@@ -16,6 +16,12 @@ import { OfferConfig } from '../config/offer.config';
       useFactory: (config: ConfigService) => {
         const logger = new Logger('RedisModule');
         const cfg = config.get<OfferConfig>('offer')!.redis;
+        const redisUrl = config.get<string>('REDIS_URL');
+
+        if (!redisUrl && cfg.host === 'localhost') {
+          logger.warn('REDIS_URL not set — Redis disabled, using null client');
+          return null;
+        }
 
         const client = new Redis({
           host: cfg.host,
@@ -26,7 +32,8 @@ import { OfferConfig } from '../config/offer.config';
             if (times > 10) return null;
             return Math.min(times * 100, 3000);
           },
-          lazyConnect: false,
+          lazyConnect: true,
+          enableReadyCheck: false,
         });
 
         client.on('error', (err) => {
