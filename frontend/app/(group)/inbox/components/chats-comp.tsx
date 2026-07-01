@@ -411,32 +411,53 @@ export function Chats({
     const ac = new AbortController()
     const convId = selectedConversation.id
     ;(async () => {
-      try {
+      const isGroupParam = selectedConversation.isGroup
+      const fetchAndUnwrap = async () => {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
+          `/api/messaging/conversations/${convId}/key?isGroup=${isGroupParam}`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
             signal: ac.signal,
           }
         )
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted) return false
 
         const privatePem = await exportPrivateKey(privateKey)
         const rawBuf = await decryptWithPrivateKey(encryptedKey, privatePem)
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted) return false
 
         const arr = new Uint8Array(rawBuf)
         const b64 = btoa(String.fromCharCode(...arr))
         saveKey(convId, b64)
         setKeyReady(true)
-      } catch (err: any) {
-        if (err?.name === "AbortError") return
-        console.error("Failed to unwrap conversation key", err)
-        if (!ac.signal.aborted) {
-          setKeyReady(false)
-          setKeyError(
-            "Could not decrypt this conversation key. Refresh and try again."
+        return true
+      }
+
+      try {
+        await fetchAndUnwrap()
+      } catch (firstErr: any) {
+        if (firstErr?.name === "AbortError") return
+        // Key mismatch — delete the stale wrapped key and let the server re-wrap
+        try {
+          await apiFetch(
+            `/api/messaging/conversations/${convId}/key`,
+            {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${jwtToken}` },
+              signal: ac.signal,
+            }
           )
+          if (ac.signal.aborted) return
+          await fetchAndUnwrap()
+        } catch (retryErr: any) {
+          if (retryErr?.name === "AbortError") return
+          console.error("Failed to unwrap conversation key after retry", retryErr)
+          if (!ac.signal.aborted) {
+            setKeyReady(false)
+            setKeyError(
+              "Could not decrypt this conversation key. Refresh and try again."
+            )
+          }
         }
       }
     })()
