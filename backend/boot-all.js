@@ -65,7 +65,7 @@ const SERVICES = [
   { name: 'pricing-service',            port: '3029', dir: 'apps/pricing-service',            maxOldSpaceMb: 48 },
   { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service',             maxOldSpaceMb: 48 },
   { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service',        maxOldSpaceMb: 48 },
-  { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 48 },
+  { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 96 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
