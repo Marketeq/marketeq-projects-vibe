@@ -59,7 +59,7 @@ export const validationSchema = Joi.object({
   ABLY_TOKEN_TTL_SECONDS: Joi.number().integer().min(60).max(86400).default(3600),
 
   // ---- Auth / JWT (RS256 — platform standard via @libs/auth) ----
-  AUTH_JWT_PUBLIC_KEY: Joi.string().required(),
+  AUTH_JWT_PUBLIC_KEY: Joi.string().allow('').default(''),
   JWT_SECRET: Joi.string().default('asdasdasd'),
   JWT_ALGORITHM: Joi.string().valid('HS256', 'RS256', 'RS384', 'RS512').default('RS256'),
 

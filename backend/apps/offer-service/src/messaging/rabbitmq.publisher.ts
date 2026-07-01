@@ -20,7 +20,7 @@ export interface RabbitMQMessage {
 @Injectable()
 export class RabbitMQPublisher implements OnModuleInit {
   private readonly logger = new Logger(RabbitMQPublisher.name);
-  private channel: amqp.ConfirmChannel;
+  private channel: amqp.ConfirmChannel | null = null;
 
   constructor(
     @Inject(RABBITMQ_CLIENT)
@@ -28,8 +28,12 @@ export class RabbitMQPublisher implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (!this.connection) {
+      this.logger.warn('RabbitMQ not available — publisher disabled');
+      return;
+    }
     this.channel = await this.connection.createConfirmChannel();
-    this.channel.on('error', (err: Error) => {
+    this.channel!.on('error', (err: Error) => {
       this.logger.error('Channel error:', err.message);
     });
     await this.declareTopology();
@@ -37,6 +41,7 @@ export class RabbitMQPublisher implements OnModuleInit {
   }
 
   private async declareTopology(): Promise<void> {
+    if (!this.channel) return;
     await this.channel.assertExchange(OFFER_EXCHANGE, 'topic', { durable: true, autoDelete: false });
     await this.channel.assertExchange(OFFER_DLX, 'direct', { durable: true, autoDelete: false });
 
@@ -76,6 +81,10 @@ export class RabbitMQPublisher implements OnModuleInit {
   }
 
   async publish(message: RabbitMQMessage): Promise<void> {
+    if (!this.channel) {
+      this.logger.debug(`[STUB] RabbitMQ publish skipped: ${message.routingKey}`);
+      return;
+    }
     const { routingKey, payload } = message;
     return new Promise((resolve, reject) => {
       const content = Buffer.from(JSON.stringify(payload));
@@ -90,7 +99,7 @@ export class RabbitMQPublisher implements OnModuleInit {
         },
       };
 
-      this.channel.publish(OFFER_EXCHANGE, routingKey, content, options, (err) => {
+      this.channel!.publish(OFFER_EXCHANGE, routingKey, content, options, (err) => {
         if (err) {
           this.logger.error(`Publish nacked for ${routingKey}:`, err.message);
           reject(err);

@@ -18,6 +18,12 @@ import { RabbitMQPublisher } from './rabbitmq.publisher';
         const cfg = config.get<OfferConfig>('offer')!.rabbitmq;
         const url = cfg.url;
 
+        // Graceful degradation: RabbitMQ is optional on Render
+        if (process.env.RABBITMQ_REQUIRED === 'false') {
+          logger.warn('RABBITMQ_REQUIRED=false — RabbitMQ disabled, using null client');
+          return null;
+        }
+
         try {
           const connection = await amqp.connect(url, { heartbeat: 60 } as any);
 
@@ -32,8 +38,8 @@ import { RabbitMQPublisher } from './rabbitmq.publisher';
           logger.log('Connected to RabbitMQ broker.');
           return connection;
         } catch (err) {
-          logger.error(`Failed to connect to RabbitMQ: ${(err as Error).message}`);
-          throw err;
+          logger.warn(`RabbitMQ unavailable — running without messaging: ${(err as Error).message}`);
+          return null;
         }
       },
     },

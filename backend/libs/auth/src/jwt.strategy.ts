@@ -13,16 +13,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       configService.get<string>('AUTH_JWT_PUBLIC_KEY'),
     );
 
-    if (!publicKey) {
-      throw new Error('AUTH_JWT_PUBLIC_KEY is required for RS256 validation');
+    if (publicKey) {
+      super({
+        jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+        ignoreExpiration: false,
+        secretOrKey: publicKey,
+        algorithms: ['RS256'],
+      });
+    } else {
+      // Fallback to HS256 with JWT_SECRET when public key is not configured
+      const secret = configService.get<string>('JWT_SECRET') || 'asdasdasd';
+      super({
+        jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+        ignoreExpiration: false,
+        secretOrKey: secret,
+        algorithms: ['HS256'],
+      });
     }
-
-    super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: publicKey,
-      algorithms: ['RS256'],
-    });
   }
 
   async validate(payload: any) {
