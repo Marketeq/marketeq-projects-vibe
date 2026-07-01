@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Req, Query, Param, UseGuards } from '@nestjs/common';
 import { EncryptionService } from './encryption.service';
 import { StorePublicKeyDto } from './dtos/store-public-key.dto';
 import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
@@ -32,5 +32,15 @@ export class EncryptionController {
     const isGroupBool = isGroup === 'true';
     const encryptedKey = await this.encryptionService.getConversationKey(convId, userId, isGroupBool);
     return { encryptedKey };
+  }
+
+  @Delete('conversations/:convId/key')
+  async deleteConversationKey(
+    @Req() req: any,
+    @Param('convId') convId: string,
+  ) {
+    const userId = req.user.id;
+    await this.encryptionService.deleteConversationKeyForUser(convId, userId);
+    return { success: true };
   }
 }
