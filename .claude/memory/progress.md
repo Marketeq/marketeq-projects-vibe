@@ -23,6 +23,7 @@
 - search-service – Algolia indexing, filter config, autocomplete, 8 .ts files
 - suggestions-service – dynamic job title suggestions, RabbitMQ, 9 .ts files
 - earnings-service – balance tracking, RabbitMQ consumers (6 events), currency conversion (4-tier fallback), CSV/PDF export, Redis caching, service-to-service auth, 5 migrations
+- payout-service – withdrawals, deposit methods (Stripe/PayPal/Wise/Payoneer/Crypto), schedule engine, magic link, KYC gating, pause system, 22 modules, 97 .ts files
 
 ## In Progress
 - homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending

@@ -52,6 +52,7 @@ module.exports = {
     svc('content-moderation-service', 3014),
     svc('search-service', 3007),
     svc('earnings-service', 3026),
+    svc('payout-service', 3022),
     {
       name: 'cms-service',
       script: 'npm',
