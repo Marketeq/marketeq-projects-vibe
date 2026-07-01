@@ -43,6 +43,26 @@ export class WebhooksController {
         );
         break;
 
+      case 'invoice.created': {
+        // Stripe creates invoices for recurring subscriptions automatically
+        // We log it — the actual record is created when payment_succeeded fires
+        const inv = event.data.object;
+        this.logger.log(`Stripe invoice created: ${inv.id} for subscription ${inv.subscription}`);
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object;
+        this.logger.log(`Stripe subscription deleted: ${sub.id}`);
+        break;
+      }
+
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        this.logger.log(`Stripe charge refunded: ${charge.id}, amount: ${charge.amount_refunded}`);
+        break;
+      }
+
       default:
         this.logger.log(`Unhandled Stripe event type: ${event.type}`);
     }

@@ -90,6 +90,25 @@ export class StripeSubscriptionService {
     this.logger.log(`Resumed Stripe subscription ${stripeSubscriptionId}`);
   }
 
+  async retrieveInvoice(stripeInvoiceId: string): Promise<Stripe.Invoice> {
+    return this.stripe.invoices.retrieve(stripeInvoiceId);
+  }
+
+  async refundInvoice(stripeInvoiceId: string, amountCents?: number): Promise<Stripe.Refund> {
+    const invoice = await this.stripe.invoices.retrieve(stripeInvoiceId);
+    const chargeId = typeof invoice.charge === 'string' ? invoice.charge : invoice.charge?.id;
+    if (!chargeId) {
+      throw new BadRequestException('No charge found on this invoice');
+    }
+
+    const params: Stripe.RefundCreateParams = { charge: chargeId };
+    if (amountCents) params.amount = amountCents;
+
+    const refund = await this.stripe.refunds.create(params);
+    this.logger.log(`Refund ${refund.id} created for invoice ${stripeInvoiceId}`);
+    return refund;
+  }
+
   constructWebhookEvent(payload: Buffer, signature: string): Stripe.Event {
     return this.stripe.webhooks.constructEvent(
       payload,
