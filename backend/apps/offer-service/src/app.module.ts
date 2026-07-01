@@ -69,8 +69,11 @@ import { AlertModule } from './common/alert/alert.module';
           schema: 'offer_service',
           synchronize: false,
           logging: cfg.app.isDevelopment,
+          retryAttempts: 3,
+          retryDelay: 2000,
           extra: {
             max: cfg.db.maxConnections,
+            connectionTimeoutMillis: 5000,
           },
         };
       },
