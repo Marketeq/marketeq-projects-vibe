@@ -16,10 +16,10 @@
  *
  * Memory budget: Render Pro plan (4 GB). Tiered allocation:
  *   Tier 1 (core):    96–128 MB heap  (auth, user, listings, messaging)
- *   Tier 2 (active):   32 MB heap      (notification, search, contracts, etc.)
- *   Tier 3 (dormant):  32 MB heap      (admin, billing, wallet, etc.)
+ *   Tier 2 (active):   48 MB heap      (notification, search, contracts, etc.)
+ *   Tier 3 (dormant):  48 MB heap      (admin, billing, wallet, etc.)
  *   Gateway:           96 MB heap
- *   Total heap: ~1.2 GB, actual RSS ~3.2 GB with Node overhead (29 processes)
+ *   Total heap: ~1.6 GB, actual RSS ~3.2 GB with Node overhead (29 processes)
  */
 
 const { spawn } = require('child_process');
@@ -40,32 +40,32 @@ const SERVICES = [
   { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 96 },
   { name: 'messaging-service',         port: '3005', dir: 'apps/messaging-service',         maxOldSpaceMb: 96 },
   // Tier 2 — Active
-  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service',       maxOldSpaceMb: 32 },
-  { name: 'search-service',             port: '3007', dir: 'apps/search-service',             maxOldSpaceMb: 32 },
-  { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service',            maxOldSpaceMb: 32 },
-  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service',           maxOldSpaceMb: 32 },
-  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service',          maxOldSpaceMb: 32 },
+  { name: 'notification-service',       port: '3006', dir: 'apps/notification-service',       maxOldSpaceMb: 48 },
+  { name: 'search-service',             port: '3007', dir: 'apps/search-service',             maxOldSpaceMb: 48 },
+  { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service',            maxOldSpaceMb: 48 },
+  { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service',           maxOldSpaceMb: 48 },
+  { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service',          maxOldSpaceMb: 48 },
   { name: 'offer-service',              port: '3011', dir: 'apps/offer-service',              maxOldSpaceMb: 48 },
-  { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 32 },
-  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 32 },
-  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 32 },
-  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 32 },
-  { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service',       maxOldSpaceMb: 32 },
-  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service',      maxOldSpaceMb: 32 },
-  { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service',        maxOldSpaceMb: 32 },
+  { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 48 },
+  { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 48 },
+  { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 48 },
+  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 48 },
+  { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service',       maxOldSpaceMb: 48 },
+  { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service',      maxOldSpaceMb: 48 },
+  { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service',        maxOldSpaceMb: 48 },
   // cms-service is a standalone Next.js app, not a NestJS service — runs separately, not in boot-all
-  { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service',        maxOldSpaceMb: 32 },
-  { name: 'category-service',           port: '3023', dir: 'apps/category-service',           maxOldSpaceMb: 32 },
+  { name: 'suggestions-service',        port: '3020', dir: 'apps/suggestions-service',        maxOldSpaceMb: 48 },
+  { name: 'category-service',           port: '3023', dir: 'apps/category-service',           maxOldSpaceMb: 48 },
   // Tier 3 — Low-traffic / dormant
-  { name: 'admin-service',              port: '3024', dir: 'apps/admin-service',              maxOldSpaceMb: 32 },
-  { name: 'affiliate-referral-service', port: '3025', dir: 'apps/affiliate-referral-service', maxOldSpaceMb: 32 },
-  { name: 'billing-service',            port: '3026', dir: 'apps/billing-service',            maxOldSpaceMb: 32 },
-  { name: 'earnings-service',           port: '3027', dir: 'apps/earnings-service',           maxOldSpaceMb: 32 },
+  { name: 'admin-service',              port: '3024', dir: 'apps/admin-service',              maxOldSpaceMb: 48 },
+  { name: 'affiliate-referral-service', port: '3025', dir: 'apps/affiliate-referral-service', maxOldSpaceMb: 48 },
+  { name: 'billing-service',            port: '3026', dir: 'apps/billing-service',            maxOldSpaceMb: 48 },
+  { name: 'earnings-service',           port: '3027', dir: 'apps/earnings-service',           maxOldSpaceMb: 48 },
   { name: 'payout-service',             port: '3028', dir: 'apps/payout-service',             maxOldSpaceMb: 64 },
-  { name: 'pricing-service',            port: '3029', dir: 'apps/pricing-service',            maxOldSpaceMb: 32 },
-  { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service',             maxOldSpaceMb: 32 },
-  { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service',        maxOldSpaceMb: 32 },
-  { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 32 },
+  { name: 'pricing-service',            port: '3029', dir: 'apps/pricing-service',            maxOldSpaceMb: 48 },
+  { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service',             maxOldSpaceMb: 48 },
+  { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service',        maxOldSpaceMb: 48 },
+  { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 48 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
@@ -159,7 +159,7 @@ function launchService(svc, env, isGateway = false) {
     return null;
   }
 
-  const child = spawn('node', [`--max-old-space-size=${svc.maxOldSpaceMb || 32}`, '--max-semi-space-size=2', distMain], {
+  const child = spawn('node', [`--max-old-space-size=${svc.maxOldSpaceMb || 48}`, '--max-semi-space-size=2', distMain], {
     env: svcEnv,
     stdio: ['inherit', 'inherit', 'pipe'],
   });
