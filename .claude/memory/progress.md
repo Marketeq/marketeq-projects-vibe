@@ -22,6 +22,7 @@
 - content-moderation-service – text/media filters, profanity detection, approval flow, 48 .ts files
 - search-service – Algolia indexing, filter config, autocomplete, 8 .ts files
 - suggestions-service – dynamic job title suggestions, RabbitMQ, 9 .ts files
+- earnings-service – balance tracking, RabbitMQ consumers (6 events), currency conversion (4-tier fallback), CSV/PDF export, Redis caching, service-to-service auth, 5 migrations
 
 ## In Progress
 - homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
