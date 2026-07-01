@@ -35,6 +35,6 @@ import { DeliverablesAdapterHuggingFace } from '../project-sync/deliverables/del
       },
     },
   ],
-  exports: [PublishService, RelationalProjectPersistenceModule],
+  exports: [PublishService, CloudflareStorageService, RelationalProjectPersistenceModule],
 })
 export class PublishModule {}
