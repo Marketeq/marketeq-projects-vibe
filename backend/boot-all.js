@@ -45,7 +45,7 @@ const SERVICES = [
   { name: 'algolia-service',            port: '3008', dir: 'apps/algolia-service',            maxOldSpaceMb: 32 },
   { name: 'checkout-service',           port: '3009', dir: 'apps/checkout-service',           maxOldSpaceMb: 32 },
   { name: 'contracts-service',          port: '3010', dir: 'apps/contracts-service',          maxOldSpaceMb: 32 },
-  { name: 'offer-service',              port: '3011', dir: 'apps/offer-service',              maxOldSpaceMb: 32 },
+  { name: 'offer-service',              port: '3011', dir: 'apps/offer-service',              maxOldSpaceMb: 48 },
   { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 32 },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 32 },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 32 },
@@ -127,10 +127,15 @@ const serviceProcesses = new Map();
 const lastExitInfo = new Map(); // name -> { code, time, stderr }
 
 function launchService(svc, env, isGateway = false) {
+  const svcName = path.basename(svc.dir);
   const mainCandidates = [
     path.join(__dirname, 'dist', svc.dir, 'main.js'),
     path.join(__dirname, 'dist', svc.dir, 'src', 'main.js'),
     path.join(__dirname, 'dist', svc.dir, svc.dir, 'src', 'main.js'),
+    // Some NestJS builds nest as dist/apps/<name>/<name>/src/main.js
+    path.join(__dirname, 'dist', svc.dir, svcName, 'src', 'main.js'),
+    // Or dist/apps/<name>/src/<name>/main.js
+    path.join(__dirname, 'dist', svc.dir, 'src', svcName, 'main.js'),
   ];
   const distMain = mainCandidates.find((candidate) => fs.existsSync(candidate));
   const svcEnv = env || { ...process.env, PORT: svc.port };
@@ -138,10 +143,14 @@ function launchService(svc, env, isGateway = false) {
   console.log(`[boot] Starting ${svc.name} on port ${svcEnv.PORT}...`);
 
   if (!distMain) {
+    // Log what we can see in the dist dir for debugging
+    const distDir = path.join(__dirname, 'dist', svc.dir);
+    let dirContents = 'DIR_NOT_FOUND';
+    try { dirContents = fs.readdirSync(distDir).join(', '); } catch { /* ok */ }
     console.error(
-      `[boot] Could not find compiled entrypoint for ${svc.name}. Tried:\n${mainCandidates
-        .map((candidate) => ` - ${candidate}`)
-        .join('\n')}`,
+      `[boot] Could not find compiled entrypoint for ${svc.name}.\n` +
+      `  dist dir (${distDir}): [${dirContents}]\n` +
+      mainCandidates.map((c) => `  - ${c} (${fs.existsSync(c) ? 'YES' : 'no'})`).join('\n'),
     );
     if (isGateway) {
       process.exit(1);
@@ -192,6 +201,25 @@ function launchService(svc, env, isGateway = false) {
 function startHealthServer() {
   const HEALTH_PORT = 9999;
   const server = http.createServer(async (req, res) => {
+    if (req.url === '/services/debug') {
+      const debug = SERVICES.map((svc) => {
+        const proc = serviceProcesses.get(svc.name);
+        const exitInfo = lastExitInfo.get(svc.name);
+        return {
+          name: svc.name,
+          port: svc.port,
+          pid: proc ? proc.process.pid : null,
+          running: proc ? !proc.process.killed : false,
+          startedAt: proc ? new Date(proc.startedAt).toISOString() : null,
+          restarts: restartCounts.get(svc.name) || 0,
+          lastExit: exitInfo || null,
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ services: debug, memoryMB: Math.round(process.memoryUsage.rss ? process.memoryUsage.rss() / 1048576 : process.memoryUsage().rss / 1048576) }, null, 2));
+      return;
+    }
+
     if (req.url !== '/services/health') {
       res.writeHead(404);
       res.end('Not Found');
