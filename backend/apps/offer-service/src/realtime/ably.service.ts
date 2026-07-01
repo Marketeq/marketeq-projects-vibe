@@ -49,13 +49,21 @@ export class AblyService {
       // The default (no environment) connects to rest.ably.io which is correct for
       // standard Ably accounts. Setting environment: 'production' causes Ably to use
       // production.rest.ably.io which may not resolve in all network environments.
-      const ablyOpts: Ably.ClientOptions = { key: apiKey };
-      const env = cfg.ably.environment;
-      if (env && env !== 'production') {
-        ablyOpts.environment = env;
+      try {
+        const ablyOpts: Ably.ClientOptions = { key: apiKey };
+        const env = cfg.ably.environment;
+        if (env && env !== 'production') {
+          ablyOpts.environment = env;
+        }
+        this.client = new Ably.Rest(ablyOpts);
+        this.logger.log('Ably REST client initialized');
+      } catch (err) {
+        this.client = null;
+        this.enabled = false;
+        this.logger.warn(
+          `Ably client initialization failed — real-time disabled: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-      this.client = new Ably.Rest(ablyOpts);
-      this.logger.log('Ably REST client initialized');
     } else {
       this.client = null;
       this.logger.warn('ABLY_API_KEY not set — real-time events disabled (dev mode)');
