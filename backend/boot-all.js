@@ -124,6 +124,7 @@ function buildInternalServiceEnv(svc) {
 
 const restartCounts = new Map();
 const serviceProcesses = new Map();
+const lastExitInfo = new Map(); // name -> { code, time, stderr }
 
 function launchService(svc, env, isGateway = false) {
   const mainCandidates = [
@@ -151,13 +152,25 @@ function launchService(svc, env, isGateway = false) {
 
   const child = spawn('node', [`--max-old-space-size=${svc.maxOldSpaceMb || 64}`, distMain], {
     env: svcEnv,
-    stdio: 'inherit',
+    stdio: ['inherit', 'inherit', 'pipe'],
   });
+
+  // Capture last 20 lines of stderr for diagnostics
+  const stderrLines = [];
+  if (child.stderr) {
+    child.stderr.on('data', (data) => {
+      process.stderr.write(data); // still output to parent stderr
+      const lines = data.toString().split('\n').filter(Boolean);
+      stderrLines.push(...lines);
+      while (stderrLines.length > 20) stderrLines.shift();
+    });
+  }
 
   serviceProcesses.set(svc.name, { process: child, port: svc.port, startedAt: Date.now() });
 
   child.on('exit', (code) => {
     console.error(`[boot] ${svc.name} exited with code ${code}`);
+    lastExitInfo.set(svc.name, { code, time: new Date().toISOString(), stderr: stderrLines.slice(-5).join('\n') });
     serviceProcesses.delete(svc.name);
     if (isGateway) {
       console.error('[boot] Gateway crashed — exiting.');
@@ -196,12 +209,14 @@ function startHealthServer() {
           });
           request.on('error', () => {
             // Any response (even 404) means the process is alive; only connection errors mean it's down
-            results[svc.name] = { status: 'down', code: 0, port: parseInt(svc.port) };
+            const exitInfo = lastExitInfo.get(svc.name);
+            results[svc.name] = { status: 'down', code: 0, port: parseInt(svc.port), restarts: restartCounts.get(svc.name) || 0, lastExit: exitInfo || null };
             resolve();
           });
           request.on('timeout', () => {
             request.destroy();
-            results[svc.name] = { status: 'down', code: 0, port: parseInt(svc.port) };
+            const exitInfo = lastExitInfo.get(svc.name);
+            results[svc.name] = { status: 'down', code: 0, port: parseInt(svc.port), restarts: restartCounts.get(svc.name) || 0, lastExit: exitInfo || null };
             resolve();
           });
         }),
