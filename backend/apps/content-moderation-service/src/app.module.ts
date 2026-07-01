@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ModerationLog } from './entities/moderation-log.entity';
+import { BannedKeyword } from './entities/banned-keyword.entity';
 import { ContentValidationService } from './filters/content-validation.service';
 import { ProfanityFilterService } from './filters/profanity-filter.service';
 import { BannedKeywordsService } from './filters/banned-keywords.service';
@@ -49,7 +51,10 @@ import { ConfigModule } from '@nestjs/config';
         : {}),
       autoLoadEntities: true,
       synchronize: false,
+      migrationsRun: true,
+      migrations: [__dirname + '/migrations/*{.ts,.js}'],
     }),
+    TypeOrmModule.forFeature([ModerationLog, BannedKeyword]),
   ],
 
   controllers: [
