@@ -30,6 +30,7 @@ export class ProjectMapper {
     project.updatedAt = raw.updatedAt;
     project.deletedAt = raw.deletedAt;
     project.deliverables = raw.deliverables ?? null;
+    project.mediaUrls = raw.mediaUrls ?? [];
     if (raw.media) {
       project.media = raw.media;
     }
@@ -63,6 +64,7 @@ export class ProjectMapper {
     projectEntity.subCategories = project.subCategories!;
     projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.deliverables = project.deliverables ?? null;
+    projectEntity.mediaUrls = project.mediaUrls ?? [];
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;

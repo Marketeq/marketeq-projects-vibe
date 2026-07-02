@@ -18,6 +18,15 @@ export class CreateMediaDto {
   featuredImage?: string;
 
   @ApiProperty({
+    description:
+      "Upload target: 'featured' sets the cover, 'additional' appends to the gallery without touching the cover",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  target?: 'featured' | 'additional';
+
+  @ApiProperty({
     description: 'Additional image URLs (max 8)',
     type: [String],
     required: false,

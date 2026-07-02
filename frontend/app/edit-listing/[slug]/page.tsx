@@ -998,10 +998,14 @@ const Header = ({
   onClose,
   slug,
   lastSavedAt,
+  onPublish,
+  publishing,
 }: {
   onClose?: () => void
   slug?: string
   lastSavedAt?: Date | null
+  onPublish?: () => void
+  publishing?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1040,7 +1044,9 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button>Publish</Button>
+        <Button onClick={onPublish} disabled={publishing}>
+          {publishing ? "Publishing…" : "Publish"}
+        </Button>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -7179,6 +7185,21 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isPublishing, setIsPublishing] = useState(false)
+
+  const handlePublish = async () => {
+    if (!draftProjectId || isPublishing) return
+    setIsPublishing(true)
+    try {
+      await ProjectAPI.PublishProject(draftProjectId)
+      setIsProjectSubmitted(true)
+      router.push("/my-listings")
+    } catch (error) {
+      console.error("Failed to publish project", error)
+    } finally {
+      setIsPublishing(false)
+    }
+  }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const persistedMediaRef = useRef<{
@@ -7200,7 +7221,14 @@ function PublishProject({
     const hydrateDraft = async () => {
       try {
         // Edit mode: fetch existing project by slug
-        let response = slug ? await ProjectAPI.GetProjectBySlug(slug) : null
+        let response: any = null
+        if (slug) {
+          try {
+            response = await ProjectAPI.GetProjectBySlug(slug)
+          } catch {
+            response = null
+          }
+        }
 
         // If no project found by slug, try draftId from query params as fallback
         if (!response?.data) {
@@ -7211,12 +7239,21 @@ function PublishProject({
           }
         }
 
+        // Path param is itself a draft id (editor reached as /edit-listing/{draftId})
+        if (!response?.data && slug && UUID_PATTERN.test(slug)) {
+          try {
+            response = await ProjectAPI.GetProjectDraft(slug)
+          } catch {
+            // fall through to create a fresh draft below
+          }
+        }
+
         if (cancelled) return
 
         // If no project found by slug, create a new draft so edits still save
         //    If the slug matches a seed listing, use its title/description
         if (!response?.data) {
-          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === params.slug)
+          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === slug)
           response = await ProjectAPI.CreateProjectDraft({
             title: seedListing?.title || "",
             shortDescription: seedListing?.description || "",
@@ -7668,6 +7705,8 @@ function PublishProject({
                     onClose={() => router.back()}
                     slug={slug}
                     lastSavedAt={lastSavedAt}
+                    onPublish={handlePublish}
+                    publishing={isPublishing}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}

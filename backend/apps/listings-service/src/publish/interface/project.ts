@@ -34,6 +34,7 @@ export class Project {
 
   deliverables?: any[] | null;
   media?: any[];
+  mediaUrls?: string[];
 
   createdAt?: Date;
   updatedAt?: Date;

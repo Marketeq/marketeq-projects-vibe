@@ -35,13 +35,13 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: String, nullable: true })
   shortDescription: string;
 
-  @Column({ type: String, nullable: true })
+  @Column({ name: 'description', type: String, nullable: true })
   fullDescription: string;
 
   @Column({ type: String, array: true, default: [] })
   categories: string[];
 
-  @Column({ type: String, array: true, default: [] })
+  @Column({ name: 'subcategories', type: String, array: true, default: [] })
   subCategories: string[];
 
   categorySelections: {
@@ -90,6 +90,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @OneToMany(() => MediaEntity, (media) => media.project, { cascade: true })
   media: MediaEntity[];
+
+  @Column({ name: 'mediaUrls', type: 'text', array: true, default: [] })
+  mediaUrls: string[];
 
   @Column('uuid')
   userId: string;

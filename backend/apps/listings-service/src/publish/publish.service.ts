@@ -584,7 +584,10 @@ export class PublishService {
 
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
-      if (!media?.featuredImage) {
+      const hasCover =
+        !!media?.featuredImage ||
+        (Array.isArray(project.mediaUrls) && project.mediaUrls.length > 0);
+      if (!hasCover) {
         throw new BadRequestException(
           'Featured image is required before publishing.',
         );
@@ -918,10 +921,18 @@ export class PublishService {
       // Upsert: update existing media record if one exists, otherwise create
       const existingMedia = await this.mediaRepository.find({ projectId: dto.projectId });
       let media: Media;
+      const isGalleryUpload = dto.target === 'additional';
       const mediaPayload = {
-        featuredImage: featuredImageUpload.url,
-        additionalImages: additionalImageUploads.map((image) => image.url),
-        featuredVideo: persistedVideoUrl ?? undefined,
+        featuredImage: isGalleryUpload
+          ? (existingMedia?.featuredImage ?? '')
+          : featuredImageUpload.url,
+        additionalImages: isGalleryUpload
+          ? [...(existingMedia?.additionalImages ?? []), featuredImageUpload.url]
+          : additionalImageUploads.length > 0
+            ? additionalImageUploads.map((image) => image.url)
+            : (existingMedia?.additionalImages ?? []),
+        featuredVideo:
+          persistedVideoUrl ?? existingMedia?.featuredVideo ?? undefined,
         projectId: dto.projectId,
       };
       if (existingMedia?.id) {
@@ -932,7 +943,7 @@ export class PublishService {
         media = await this.mediaRepository.create(mediaPayload);
       }
 
-      return media;
+      return { ...media, url: featuredImageUpload.url } as Media;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);
