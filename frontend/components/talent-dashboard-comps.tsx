@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
 import { UserAPI } from "@/service/http/user"
+import { ProjectAPI } from "@/service/http/project"
 import {
   type MyListing,
   formatActivityDate,
@@ -41,6 +42,7 @@ import {
   Trash01,
   Trash02,
   UserCircle,
+  Users03,
   X,
 } from "@blend-metrics/icons"
 import { GridVertical2 } from "@blend-metrics/icons/special"
@@ -1333,81 +1335,114 @@ export const CreateYourOwnProject = () => {
   )
 }
 
-export const RecommendedForYouCard = () => {
+type RecommendedProject = {
+  id: string
+  slug: string
+  title: string
+  memberCount: number
+  memberAvatars: string[]
+  score: number
+}
+
+export const RecommendedForYouCard = ({
+  project,
+  onDismiss,
+}: {
+  project: RecommendedProject
+  onDismiss: (id: string) => void
+}) => {
   return (
     <article className="relative rounded-lg p-5 border border-[#122A4B]/[.15] shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-      <button className="focus-visible:outline-none absolute top-3 right-3 text-dark-blue-400/50 hover:text-dark-blue-400">
+      <button
+        className="focus-visible:outline-none absolute top-3 right-3 text-dark-blue-400/50 hover:text-dark-blue-400"
+        onClick={() => onDismiss(project.id)}
+      >
         <X className="size-[18px]" />
       </button>
       <div className="pt-[18px] pb-[54px]">
         <div className="flex items-center justify-center">
-          <AvatarGroup size="md" max={3} excess>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-          </AvatarGroup>
+          {project.memberCount > 0 ? (
+            <AvatarGroup size="md" max={3} excess>
+              {Array.from({ length: Math.min(project.memberCount, 6) }).map(
+                (_, i) => (
+                  <Avatar
+                    key={i}
+                    className="border-2 border-white hover:ring-0 active:ring-0"
+                    size="md"
+                  >
+                    {project.memberAvatars[i] && (
+                      <AvatarImage src={project.memberAvatars[i]} alt="" />
+                    )}
+                    <AvatarFallback>
+                      {project.title.charAt(i % project.title.length).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ),
+              )}
+            </AvatarGroup>
+          ) : (
+            <div className="flex items-center -space-x-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="size-10 rounded-full border-2 border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
+                >
+                  <Users03 className="size-4 text-gray-400" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <h1 className="text-sm leading-[16.94px] line-clamp-1 text-center text-dark-blue-400 mt-2.5 font-semibold">
-          Full E-commerce Website Setup for your store
+          {project.title}
         </h1>
         <p className="text-sm leading-[16.94px] mt-1 text-center text-gray-500">
-          5 people are working on this project
+          {project.memberCount > 0
+            ? `${project.memberCount} ${project.memberCount === 1 ? "person is" : "people are"} working on this project`
+            : "Be the first to claim this project"}
         </p>
       </div>
 
-      <Button
-        visual="gray"
-        variant="outlined"
-        className="w-full text-dark-blue-400"
-      >
-        <Send className="size-[15px]" /> Request to Join
-      </Button>
+      <NextLink href={`/project-details/${project.slug}`}>
+        <Button
+          visual="gray"
+          variant="outlined"
+          className="w-full text-dark-blue-400"
+        >
+          <Send className="size-[15px]" />{" "}
+          {project.memberCount > 0 ? "Request to Join" : "Claim this Project"}
+        </Button>
+      </NextLink>
     </article>
   )
 }
 
 export const RecommendedForYou = () => {
   const [carousel, setCarousel] = React.useState<Swiper>()
+  const [projects, setProjects] = React.useState<RecommendedProject[]>([])
+  const [dismissed, setDismissed] = React.useState<Set<string>>(new Set())
+  const { user } = useAuth()
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const profileRes = await UserAPI.getProfile(user?.id ?? "")
+        const skills: string[] = (profileRes?.data?.skills ?? []).map(
+          (s: { name: string }) => s.name,
+        )
+        const res = await ProjectAPI.getRecommended(skills, 10)
+        setProjects(res?.data ?? [])
+      } catch {
+        // silently fail
+      }
+    }
+    if (user?.id) load()
+  }, [user?.id])
+
+  const visible = projects.filter((p) => !dismissed.has(p.id))
+  const hasSkills = user?.id && projects.length > 0
+
   return (
     <div className="mt-3 md:mt-5">
       <div className="p-5 border bg-white border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
@@ -1416,21 +1451,25 @@ export const RecommendedForYou = () => {
             <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
               Recommended for you
             </h1>
-            <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
-              Improve your recommendations by{" "}
-              <NextLink
-                className="focus-visible:outline-none underline hover:text-primary-500"
-                href="/complete-profile"
-              >
-                adding skills
-              </NextLink>{" "}
-              to your profile.
-            </p>
+            {!hasSkills && (
+              <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
+                Improve your recommendations by{" "}
+                <NextLink
+                  className="focus-visible:outline-none underline hover:text-primary-500"
+                  href="/complete-profile"
+                >
+                  adding skills
+                </NextLink>{" "}
+                to your profile.
+              </p>
+            )}
           </div>
 
-          <Button variant="outlined" visual="gray">
-            View All
-          </Button>
+          <NextLink href="/c/research">
+            <Button variant="outlined" visual="gray">
+              View All
+            </Button>
+          </NextLink>
         </div>
 
         <Tabs defaultValue="Projects">
@@ -1446,21 +1485,16 @@ export const RecommendedForYou = () => {
                 onInit={setCarousel}
                 className="avatar-carousel"
               >
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
+                {visible.map((project) => (
+                  <SwiperSlide key={project.id}>
+                    <RecommendedForYouCard
+                      project={project}
+                      onDismiss={(id) =>
+                        setDismissed((prev) => new Set([...prev, id]))
+                      }
+                    />
+                  </SwiperSlide>
+                ))}
               </SwiperRoot>
 
               {carousel?.allowSlideNext && (

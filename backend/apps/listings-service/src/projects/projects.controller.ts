@@ -27,6 +27,15 @@ export class ProjectsController {
     return this.service.findAll();
   }
 
+  @Get('recommended')
+  getRecommended(
+    @Query('skills') skills: string,
+    @Query('limit') limit?: string,
+  ) {
+    const skillList = skills ? skills.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    return this.service.getRecommendedBySkills(skillList, limit ? parseInt(limit, 10) : 10);
+  }
+
   @Get('slug/:slug')
   findBySlug(@Param('slug') slug: string) {
     return this.service.findBySlug(slug);

@@ -1533,6 +1533,7 @@ export default function ProjectDetails() {
                               location: string | null
                               languages: string[]
                               skills: string[]
+                              role: string
                               isLead: boolean
                               isOnline: boolean
                             }
@@ -1555,7 +1556,7 @@ export default function ProjectDetails() {
                             const visibleSkills = allSkills.slice(0, 5)
                             const extraSkillCount =
                               allSkills.length - visibleSkills.length
-                            const headerLabel = "Current Team"
+                            const headerLabel = "About the Team"
                             return (
                               <div className="p-6">
                                 <h3 className="text-base leading-none font-semibold text-dark-blue-400">
@@ -1593,11 +1594,9 @@ export default function ProjectDetails() {
                                           </span>{" "}
                                           @{lead.username}
                                         </NextLink>
-                                        {lead.skills[0] ? (
+                                        {lead.role ? (
                                           <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                            {lead.skills
-                                              .slice(0, 2)
-                                              .join(" · ")}
+                                            {lead.role}
                                           </span>
                                         ) : null}
                                       </div>
@@ -1690,143 +1689,23 @@ export default function ProjectDetails() {
                               About the Team
                             </h3>
 
-                            <div className="grid grid-cols-2 gap-x-6 mt-6">
-                              <div className="flex items-start gap-x-3">
-                                <Avatar size="lg">
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <div className="space-y-1.5">
-                                  <Badge
-                                    className="rounded-[4px] bg-primary-50"
-                                    visual="primary"
-                                  >
-                                    Project Lead
-                                  </Badge>
-
-                                  <div className="flex flex-col gap-y-0.5">
-                                    <span className="block text-sm leading-none text-gray-500 font-extralight">
-                                      <span className="text-base font-bold text-dark-blue-400 ">
-                                        Chris
-                                      </span>{" "}
-                                      @ux23isee
-                                    </span>
-
-                                    <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                      Full Stack Designer
-                                    </span>
-                                  </div>
-                                </div>
+                            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+                              <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                                <Users03 className="size-6 text-gray-400" />
                               </div>
 
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <MapPin className="size-[18px]" /> Locations
-                                </h3>
+                              <h4 className="mt-4 text-base font-semibold text-dark-blue-400">
+                                No team assigned yet
+                              </h4>
+                              <p className="mt-1 max-w-[260px] text-sm text-gray-500">
+                                Be the first to claim this project and lead a
+                                team to deliver it.
+                              </p>
 
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    USA,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    UK,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Brazil,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    and 1 more...
-                                  </NextLink>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-6 grid grid-cols-2 gap-x-6">
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <MessageTextSquare01 className="size-[18px]" />{" "}
-                                  Languages
-                                </h3>
-
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    English,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Spanish,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    French
-                                  </NextLink>
-                                </div>
-                              </div>
-
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <Stars02 className="size-[18px]" /> Skills &
-                                  Expertise
-                                </h3>
-
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Performance,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Security,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Operating Systems,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Design,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Databases,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    and 1 more...
-                                  </NextLink>
-                                </div>
+                              <div className="mt-5">
+                                <Button size="md" visual="primary">
+                                  Claim this Project
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -4468,106 +4347,100 @@ export default function ProjectDetails() {
                   Current Team
                 </span>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AvatarGroup size="sm" excess>
-                        {(Array.isArray(project.team) && project.team.length > 0
-                          ? project.team
-                          : [
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                            ]
-                        ).map((m: any, i: number) => (
-                          <Avatar
-                            key={m.username ?? i}
-                            className="border-2 border-white hover:ring-0 active:ring-0"
-                            size="sm"
-                          >
-                            {m.avatarUrl ? (
-                              <AvatarImage
-                                src={m.avatarUrl}
-                                alt={m.firstName}
-                              />
-                            ) : null}
-                            <AvatarFallback>
-                              {(m.firstName || "?").charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                      </AvatarGroup>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-0" size="md">
-                      <ScrollArea
-                        className="h-[192px] p-3 pr-4"
-                        scrollBar={
-                          <ScrollBar
-                            className="w-4 p-1"
-                            thumbClassName="bg-white/20"
-                          />
-                        }
-                      >
-                        <div className="space-y-3 pr-5">
-                          {(Array.isArray(project.team) &&
-                          project.team.length > 0
-                            ? project.team
-                            : [
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                              ]
-                          ).map((m: any, i: number) => (
-                            <div
+                {Array.isArray(project.team) && project.team.length > 0 ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AvatarGroup size="sm" excess>
+                          {project.team.map((m: any, i: number) => (
+                            <Avatar
                               key={m.username ?? i}
-                              className="flex items-center gap-x-[18px]"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                              size="sm"
                             >
-                              <div className="flex items-center gap-x-2 flex-auto">
-                                <Avatar>
-                                  {m.avatarUrl ? (
-                                    <AvatarImage
-                                      src={m.avatarUrl}
-                                      alt={m.firstName}
-                                    />
-                                  ) : null}
-                                  <AvatarFallback>
-                                    {(m.firstName || "?")
-                                      .charAt(0)
-                                      .toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col flex-auto">
-                                  <div className="flex items-center gap-x-0.5">
-                                    <span className="text-xs leading-5 font-semibold text-white">
-                                      {m.firstName}
-                                    </span>
-                                    <span className="text-[10px] leading-none font-light text-white">
-                                      @{m.username}
+                              {m.avatarUrl ? (
+                                <AvatarImage
+                                  src={m.avatarUrl}
+                                  alt={m.firstName}
+                                />
+                              ) : null}
+                              <AvatarFallback>
+                                {(m.firstName || "?").charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+                      </TooltipTrigger>
+                      <TooltipContent className="p-0" size="md">
+                        <ScrollArea
+                          className="h-[192px] p-3 pr-4"
+                          scrollBar={
+                            <ScrollBar
+                              className="w-4 p-1"
+                              thumbClassName="bg-white/20"
+                            />
+                          }
+                        >
+                          <div className="space-y-3 pr-5">
+                            {project.team.map((m: any, i: number) => (
+                              <div
+                                key={m.username ?? i}
+                                className="flex items-center gap-x-[18px]"
+                              >
+                                <div className="flex items-center gap-x-2 flex-auto">
+                                  <Avatar>
+                                    {m.avatarUrl ? (
+                                      <AvatarImage
+                                        src={m.avatarUrl}
+                                        alt={m.firstName}
+                                      />
+                                    ) : null}
+                                    <AvatarFallback>
+                                      {(m.firstName || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex flex-col flex-auto">
+                                    <div className="flex items-center gap-x-0.5">
+                                      <span className="text-xs leading-5 font-semibold text-white">
+                                        {m.firstName}
+                                      </span>
+                                      <span className="text-[10px] leading-none font-light text-white">
+                                        @{m.username}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-light text-white">
+                                      {m.location ||
+                                        m.skills?.[0] ||
+                                        "Team Member"}
                                     </span>
                                   </div>
-                                  <span className="text-[10px] font-light text-white">
-                                    {m.location ||
-                                      m.skills?.[0] ||
-                                      "Team Member"}
-                                  </span>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <div className="flex flex-col items-start gap-y-2">
+                    <div className="flex items-center -space-x-2">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
+                        >
+                          <Users03 className="size-3.5 text-gray-400" />
                         </div>
-                      </ScrollArea>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-400 font-extralight leading-none">
+                      No team assigned yet
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 space-y-3">
