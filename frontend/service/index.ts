@@ -86,7 +86,14 @@ axiosInstance.interceptors.response.use(
       return axiosInstance(originalRequest)
     } catch (refreshError) {
       processQueue(refreshError)
-      // Refresh failed — clear tokens, user will need to re-login
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.startsWith("/sign-in") &&
+        !window.location.pathname.startsWith("/sign-up")
+      ) {
+        window.location.href = "/sign-in"
+        return new Promise(() => {})
+      }
       return Promise.reject(refreshError)
     } finally {
       isRefreshing = false

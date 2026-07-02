@@ -77,6 +77,12 @@ export class ProxyService {
       headers['authorization'] = `Bearer ${cookieToken}`
     }
 
+    // Forward raw Cookie header so auth-service can read refresh_token cookie
+    // on /auth/refresh and other cookie-dependent endpoints
+    if (req.headers.cookie) {
+      headers['cookie'] = req.headers.cookie as string
+    }
+
     if (user) {
       headers['x-user-id'] = user.userId
       headers['x-user-email'] = user.email
