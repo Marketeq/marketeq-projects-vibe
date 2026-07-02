@@ -14,6 +14,10 @@ interface GroqCallOptions {
   temperature?: number;
 }
 
+const DEFAULT_GROQ_MODEL = 'llama-3.1-8b-instant';
+const DEFAULT_GROQ_MAX_TOKENS = 2048;
+const DEFAULT_GROQ_TEMPERATURE = 0.3;
+
 interface GeneratedTask {
   taskName:        string;
   roleTitle:       string;
@@ -35,8 +39,8 @@ export interface GeneratedProjectScope {
 interface GeneratedServicePhase {
   phaseName:           string;
   phaseType:           'setup' | 'recurring' | 'ongoing';
-  recurrenceSchedule?: string;
-  recurrenceCount?:    number;
+  recurrenceSchedule?: string | null;
+  recurrenceCount?:    number | null;
   tasks:               GeneratedTask[];
 }
 
@@ -75,7 +79,7 @@ interface RoleDescriptionOutput {
 }
 
 export class GroqUnavailableException extends Error {
-  constructor() {
+  constructor(public readonly reason = 'unknown') {
     super('AI generation service is temporarily unavailable.');
   }
 }
@@ -83,24 +87,269 @@ export class GroqUnavailableException extends Error {
 @Injectable()
 export class JobListingAiService {
   private readonly logger = new Logger(JobListingAiService.name);
-  private readonly apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  private readonly defaultApiUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
   constructor(
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {}
 
+  private configNumber(key: string, fallback: number): number {
+    const value = this.config.get<string | number>(key);
+    if (value === undefined || value === null || value === '') return fallback;
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  private parseGroqJson<T>(raw: string): T {
+    const trimmed = raw.trim();
+    const withoutFence = trimmed
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    const objectStart = withoutFence.indexOf('{');
+    const objectEnd = withoutFence.lastIndexOf('}');
+    const json =
+      objectStart >= 0 && objectEnd >= objectStart
+        ? withoutFence.slice(objectStart, objectEnd + 1)
+        : withoutFence;
+
+    return JSON.parse(json) as T;
+  }
+
+  private getFailureReason(error: unknown): string {
+    const candidate = error as {
+      response?: { status?: number };
+      code?: string;
+      message?: string;
+      name?: string;
+    };
+
+    if (candidate.response?.status) return `http_${candidate.response.status}`;
+    if (candidate.code) return candidate.code;
+    if (candidate.message === 'GROQ_API_KEY is not configured') return 'missing_api_key';
+    if (candidate instanceof SyntaxError) return 'invalid_json_response';
+    return candidate.name ?? 'unknown';
+  }
+
+  private stripMarkdown(value: string): string {
+    return value
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/^\s{0,3}[-*+]\s+/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private limitWords(value: string, maxWords: number): string {
+    const words = this.stripMarkdown(value).split(/\s+/).filter(Boolean);
+    return words.slice(0, maxWords).join(' ');
+  }
+
+  private limitCharacters(value: string, maxCharacters: number): string {
+    const normalized = this.stripMarkdown(value);
+    if (normalized.length <= maxCharacters) return normalized;
+
+    const truncated = normalized.slice(0, maxCharacters).trim();
+    const lastSpaceIndex = truncated.lastIndexOf(' ');
+    return lastSpaceIndex > 0 ? truncated.slice(0, lastSpaceIndex).trim() : truncated;
+  }
+
+  private normalizeSmartAssistantFieldValue(
+    field: string,
+    aiValue: unknown,
+    fallbackValue: string,
+  ): string {
+    const candidate = typeof aiValue === 'string' ? aiValue : '';
+    const safeValue = candidate.trim() ? candidate : fallbackValue;
+
+    if (field === 'title') {
+      return this.limitCharacters(safeValue, 100);
+    }
+
+    if (['overview', 'benefits', 'responsibilities'].includes(field)) {
+      return this.limitCharacters(safeValue, 100);
+    }
+
+    return this.stripMarkdown(safeValue);
+  }
+
+  private normalizeRoleDescriptionOutput(
+    role: RoleDescriptionOutput,
+  ): RoleDescriptionOutput {
+    return {
+      roleTitle: role.roleTitle,
+      overview: this.limitCharacters(role.overview ?? '', 100),
+      benefits: this.limitCharacters(role.benefits ?? '', 100),
+      responsibilities: this.limitCharacters(role.responsibilities ?? '', 100),
+      skills: Array.isArray(role.skills) ? role.skills.slice(0, 10) : [],
+    };
+  }
+
+  private normalizeTask(task: Partial<GeneratedTask>, index: number): GeneratedTask {
+    const estimatedHours = Number(task.estimatedHours);
+    const experienceLevel = ['junior', 'mid', 'senior'].includes(String(task.experienceLevel))
+      ? String(task.experienceLevel)
+      : 'mid';
+    const workSchedule = task.workSchedule === 'part_time' ? 'part_time' : 'full_time';
+
+    return {
+      taskName: typeof task.taskName === 'string' && task.taskName.trim()
+        ? task.taskName.trim()
+        : `Task ${index + 1}`,
+      roleTitle: typeof task.roleTitle === 'string' && task.roleTitle.trim()
+        ? task.roleTitle.trim()
+        : 'Specialist',
+      location: typeof task.location === 'string' && task.location.trim()
+        ? task.location.trim()
+        : 'United States',
+      experienceLevel,
+      workSchedule,
+      estimatedHours: Number.isFinite(estimatedHours) && estimatedHours > 0
+        ? estimatedHours
+        : 10,
+    };
+  }
+
+  private normalizeProjectScope(
+    scope: Partial<GeneratedProjectScope>,
+    maxPhases = 10,
+    maxTasks = 16,
+  ): GeneratedProjectScope {
+    const phases = Array.isArray(scope.phases) ? scope.phases : [];
+
+    return {
+      phases: phases.slice(0, maxPhases).map((phase, phaseIndex) => ({
+        phaseName:
+          typeof phase.phaseName === 'string' && phase.phaseName.trim()
+            ? phase.phaseName.trim()
+            : `Phase ${phaseIndex + 1}`,
+        tasks: (Array.isArray(phase.tasks) ? phase.tasks : [])
+          .slice(0, maxTasks)
+          .map((task, taskIndex) => this.normalizeTask(task, taskIndex)),
+      })),
+    };
+  }
+
+  private normalizeServiceScope(
+    scope: Partial<GeneratedServiceScope>,
+    maxPhases = 10,
+    maxTasks = 16,
+  ): GeneratedServiceScope {
+    const phases = Array.isArray(scope.phases) ? scope.phases : [];
+    const normalized = phases.slice(0, maxPhases).map((phase, phaseIndex) => {
+      const phaseType = ['setup', 'recurring', 'ongoing'].includes(String(phase.phaseType))
+        ? phase.phaseType
+        : phaseIndex === 0
+          ? 'setup'
+          : 'recurring';
+
+      const recurrenceSchedule =
+        phaseType === 'recurring'
+          ? ['weekly', 'monthly', 'quarterly'].includes(String(phase.recurrenceSchedule))
+            ? String(phase.recurrenceSchedule)
+            : 'monthly'
+          : null;
+      const recurrenceCount =
+        phaseType === 'recurring'
+          ? Math.max(1, Number.isFinite(Number(phase.recurrenceCount)) ? Number(phase.recurrenceCount) : 3)
+          : null;
+
+      return {
+        phaseName:
+          typeof phase.phaseName === 'string' && phase.phaseName.trim()
+            ? phase.phaseName.trim()
+            : phaseType === 'setup'
+              ? 'Setup'
+              : phaseType === 'ongoing'
+                ? 'Ongoing Support'
+                : `Recurring ${phaseIndex + 1}`,
+        phaseType,
+        recurrenceSchedule,
+        recurrenceCount,
+        tasks: (Array.isArray(phase.tasks) ? phase.tasks : [])
+          .slice(0, maxTasks)
+          .map((task, taskIndex) => this.normalizeTask(task, taskIndex)),
+      };
+    });
+
+    if (!normalized.some((phase) => phase.phaseType === 'setup')) {
+      normalized.unshift({
+        phaseName: 'Setup',
+        phaseType: 'setup',
+        recurrenceSchedule: null,
+        recurrenceCount: null,
+        tasks: [],
+      });
+    }
+
+    if (!normalized.some((phase) => phase.phaseType === 'recurring')) {
+      normalized.splice(Math.min(1, normalized.length), 0, {
+        phaseName: 'Recurring Work',
+        phaseType: 'recurring',
+        recurrenceSchedule: 'monthly',
+        recurrenceCount: 3,
+        tasks: [],
+      });
+    }
+
+    if (!normalized.some((phase) => phase.phaseType === 'ongoing')) {
+      normalized.push({
+        phaseName: 'Ongoing Support',
+        phaseType: 'ongoing',
+        recurrenceSchedule: null,
+        recurrenceCount: null,
+        tasks: [],
+      });
+    }
+
+    return { phases: normalized.slice(0, maxPhases) };
+  }
+
+  private preserveExistingServicePhaseTypes(
+    updatedScope: GeneratedProjectScope | GeneratedServiceScope,
+    currentScope: GeneratedProjectScope | GeneratedServiceScope,
+  ): GeneratedServiceScope {
+    const updatedPhases = Array.isArray((updatedScope as GeneratedServiceScope).phases)
+      ? (updatedScope as GeneratedServiceScope).phases
+      : [];
+    const currentPhases = Array.isArray((currentScope as GeneratedServiceScope).phases)
+      ? (currentScope as GeneratedServiceScope).phases
+      : [];
+
+    return {
+      phases: updatedPhases.map((phase, index) => {
+        const matchingCurrentPhase =
+          currentPhases.find((currentPhase) => currentPhase.phaseName === phase.phaseName) ??
+          currentPhases[index];
+
+        return {
+          ...phase,
+          phaseType: matchingCurrentPhase?.phaseType ?? phase.phaseType,
+        };
+      }),
+    };
+  }
+
   private async call<T>(options: GroqCallOptions, generationType: string): Promise<T> {
     const startMs = Date.now();
     try {
-      const apiKey     = this.config.get<string>('GROQ_API_KEY');
-      const model      = this.config.get<string>('GROQ_MODEL');
-      const maxTokens  = options.maxTokens  ?? this.config.get<number>('GROQ_MAX_TOKENS');
-      const temperature = options.temperature ?? this.config.get<number>('GROQ_TEMPERATURE');
+      const apiKey = this.config.get<string>('GROQ_API_KEY');
+      if (!apiKey) {
+        throw new Error('GROQ_API_KEY is not configured');
+      }
+
+      const apiUrl = this.config.get<string>('GROQ_API_URL') ?? this.defaultApiUrl;
+      const model = this.config.get<string>('GROQ_MODEL') ?? DEFAULT_GROQ_MODEL;
+      const maxTokens = options.maxTokens ?? this.configNumber('GROQ_MAX_TOKENS', DEFAULT_GROQ_MAX_TOKENS);
+      const temperature = options.temperature ?? this.configNumber('GROQ_TEMPERATURE', DEFAULT_GROQ_TEMPERATURE);
 
       const response = await firstValueFrom(
         this.http.post(
-          this.apiUrl,
+          apiUrl,
           {
             model,
             max_tokens:      maxTokens,
@@ -118,13 +367,14 @@ export class JobListingAiService {
       const raw = response.data.choices[0].message.content;
       const latencyMs = Date.now() - startMs;
       this.logger.log(`jl_ai_generation_latency_ms type=${generationType} latency=${latencyMs}`);
-      return JSON.parse(raw) as T;
+      return this.parseGroqJson<T>(raw);
     } catch (error) {
       const latencyMs = Date.now() - startMs;
+      const reason = this.getFailureReason(error);
       this.logger.error(
-        `jl_ai_generation_failed type=${generationType} latency=${latencyMs} error=${(error as Error).message}`,
+        `jl_ai_generation_failed type=${generationType} latency=${latencyMs} reason=${reason} error=${(error as Error).message}`,
       );
-      throw new GroqUnavailableException();
+      throw new GroqUnavailableException(reason);
     }
   }
 
@@ -154,7 +404,7 @@ export class JobListingAiService {
         },
       ],
     }, 'job_title');
-    return result.title.substring(0, 100);
+    return this.limitCharacters(result.title ?? '', 100);
   }
 
   async generateTools(input: {
@@ -233,14 +483,7 @@ export class JobListingAiService {
       ],
     }, 'scope_project');
 
-    // Enforce caps in case model exceeds them
-    result.phases = result.phases.slice(0, 10);
-    result.phases = result.phases.map(phase => ({
-      ...phase,
-      tasks: phase.tasks.slice(0, 16),
-    }));
-
-    return result;
+    return this.normalizeProjectScope(result);
   }
 
   async generateServiceScope(input: {
@@ -283,20 +526,7 @@ export class JobListingAiService {
       ],
     }, 'scope_service');
 
-    // Enforce structure rules in case model output violates them
-    result.phases = result.phases.slice(0, 10);
-
-    const hasSetup   = result.phases.some(p => p.phaseType === 'setup');
-    const hasOngoing = result.phases.some(p => p.phaseType === 'ongoing');
-
-    if (!hasSetup) {
-      result.phases.unshift({ phaseName: 'Setup', phaseType: 'setup', recurrenceSchedule: undefined, recurrenceCount: undefined, tasks: [] });
-    }
-    if (!hasOngoing) {
-      result.phases.push({ phaseName: 'Ongoing Support', phaseType: 'ongoing', recurrenceSchedule: undefined, recurrenceCount: undefined, tasks: [] });
-    }
-
-    return result;
+    return this.normalizeServiceScope(result);
   }
 
   async generateScopeFromMinimalInput(input: {
@@ -338,10 +568,9 @@ export class JobListingAiService {
       ],
     }, 'scope_minimal');
 
-    // Apply same caps as the has-scope paths
-    (result as any).phases = (result as any).phases.slice(0, 8);
-
-    return result;
+    return isService
+      ? this.normalizeServiceScope(result as Partial<GeneratedServiceScope>, 8, 12)
+      : this.normalizeProjectScope(result as Partial<GeneratedProjectScope>, 8, 12);
   }
 
   async generateRoleDescriptions(input: {
@@ -365,9 +594,9 @@ export class JobListingAiService {
           content:
             'You write professional job listing descriptions for freelance roles. ' +
             'Respond only with a JSON object: { "roles": [{ "roleTitle": "string", ' +
-            '"responsibilities": "string (max 100 words)", ' +
-            '"overview": "string (max 100 words)", ' +
-            '"benefits": "string (max 100 words)", ' +
+            '"responsibilities": "string (max 100 characters)", ' +
+            '"overview": "string (max 100 characters)", ' +
+            '"benefits": "string (max 100 characters)", ' +
             '"skills": ["string"] (5-10 skills) }] }. ' +
             'overview and benefits describe the project/service as a whole, not the specific role. ' +
             'responsibilities are specific to the role. ' +
@@ -388,7 +617,8 @@ export class JobListingAiService {
         },
       ],
     }, 'role_descriptions');
-    return result.roles;
+    return (Array.isArray(result.roles) ? result.roles : [])
+      .map((role) => this.normalizeRoleDescriptionOutput(role));
   }
 
   async generateBasicInformation(input: {
@@ -428,7 +658,7 @@ export class JobListingAiService {
       ],
     }, 'basic_information');
     return {
-      title:      result.title.substring(0, 100),
+      title:      this.limitCharacters(result.title ?? '', 100),
       jobType:    result.jobType,
       industries: result.industries.slice(0, 10),
       languages:  result.languages.slice(0, 10),
@@ -539,7 +769,15 @@ export class JobListingAiService {
       ],
     }, 'smart_assistant');
 
-    return result;
+    return {
+      ...result,
+      updatedScope: isService
+        ? this.normalizeServiceScope(
+            this.preserveExistingServicePhaseTypes(result.updatedScope, input.currentScope),
+          )
+        : this.normalizeProjectScope(result.updatedScope as Partial<GeneratedProjectScope>),
+      suggestions: Array.isArray(result.suggestions) ? result.suggestions.slice(0, 3) : [],
+    };
   }
 
   async handleSmartAssistantFieldEdit(input: {
@@ -550,13 +788,8 @@ export class JobListingAiService {
     updatedValue: string;
     suggestions:  string[];
   }> {
-    const maxWordsByField: Record<string, number> = {
-      title:            100,
-      overview:         100,
-      benefits:         100,
-      responsibilities: 100,
-    };
-    const maxWords = maxWordsByField[input.field] ?? 100;
+    const limitInstruction =
+      'updatedValue must not exceed 100 characters. ';
 
     const result = await this.call<{ updatedValue: string; suggestions: string[] }>({
       maxTokens:   1024,
@@ -567,9 +800,9 @@ export class JobListingAiService {
           content:
             `You are a Smart Assistant editing a ${input.field} field for a freelance job listing. ` +
             `Respond only with JSON: { "updatedValue": "string", "suggestions": ["string"] }. ` +
-            `updatedValue must not exceed ${maxWords} words. ` +
+            limitInstruction +
             'suggestions contains 2-3 short follow-up action options (e.g. "Make it shorter"). ' +
-            'Preserve the original meaning unless the command explicitly changes it. ' +
+            'Preserve the original meaning unless the command explicitly asks to change the meaning, audience, scope, tone, or emphasis. ' +
             'Do not use markdown in updatedValue.',
         },
         {
@@ -579,7 +812,14 @@ export class JobListingAiService {
       ],
     }, 'smart_assistant');
 
-    return result;
+    return {
+      updatedValue: this.normalizeSmartAssistantFieldValue(
+        input.field,
+        result.updatedValue,
+        input.currentValue,
+      ),
+      suggestions: Array.isArray(result.suggestions) ? result.suggestions.slice(0, 3) : [],
+    };
   }
 
   async shortenSelectedText(input: {

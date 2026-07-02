@@ -5,13 +5,32 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  MaxLength,
   Min,
+  ValidateBy,
+  ValidationOptions,
 } from 'class-validator';
 import { Frequency } from '../enums/frequency.enum';
 import { HiringType } from '../enums/hiring-type.enum';
+import { JobListingType } from '../enums/job-listing-type.enum';
 import { ScopeKnowledge } from '../enums/scope-knowledge.enum';
 import { WorkType } from '../enums/work-type.enum';
+
+function MaxWords(maxWords: number, validationOptions?: ValidationOptions) {
+  return ValidateBy(
+    {
+      name: 'maxWords',
+      constraints: [maxWords],
+      validator: {
+        validate(value: unknown): boolean {
+          if (typeof value !== 'string') return false;
+          const wordCount = value.trim().split(/\s+/).filter(Boolean).length;
+          return wordCount <= maxWords;
+        },
+      },
+    },
+    validationOptions,
+  );
+}
 
 export class UpdateJobListingDto {
   // ── Step 1 ─────────────────────────────────────────────────────
@@ -27,19 +46,23 @@ export class UpdateJobListingDto {
   @IsOptional()
   hiringType?: HiringType;
 
+  @IsEnum(JobListingType)
+  @IsOptional()
+  listingType?: JobListingType;
+
   // ── Step 2 ─────────────────────────────────────────────────────
   @IsString()
-  @MaxLength(100, { message: 'Description must not exceed 100 words' })
+  @MaxWords(100, { message: 'Description must not exceed 100 words' })
   @IsOptional()
   description?: string;
 
   @IsString()
-  @MaxLength(100, { message: 'Deliverables must not exceed 100 words' })
+  @MaxWords(100, { message: 'Deliverables must not exceed 100 words' })
   @IsOptional()
   deliverables?: string;
 
   @IsString()
-  @MaxLength(100, { message: 'Success criteria must not exceed 100 words' })
+  @MaxWords(100, { message: 'Success criteria must not exceed 100 words' })
   @IsOptional()
   successCriteria?: string;
 
@@ -82,4 +105,9 @@ export class UpdateJobListingDto {
   @IsString()
   @IsOptional()
   ndaScopeVisibility?: string;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  lastCompletedStep?: number;
 }

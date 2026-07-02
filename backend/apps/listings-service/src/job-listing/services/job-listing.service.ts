@@ -11,15 +11,17 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v4 as uuidv4 } from 'uuid';
 import sanitizeHtml from 'sanitize-html';
+import { v4 as uuidv4 } from 'uuid';
 import { JobListing } from '../entities/job-listing.entity';
 import { TeamMemberRow } from '../entities/job-listing-role-row.entity';
 import { BasicInformation } from '../entities/job-listing-basic-info.entity';
+import { RoleDescription } from '../entities/job-listing-role-description.entity';
 import { JobListingStatus } from '../enums/job-listing-status.enum';
+import { JobListingType } from '../enums/job-listing-type.enum';
 import { ContractType } from '../enums/contract-type.enum';
+import { WorkType } from '../enums/work-type.enum';
+import { HiringType } from '../enums/hiring-type.enum';
 import { PresignBriefUploadDto } from '../dto/presign-brief-upload.dto';
 import { CreateJobListingDto } from '../dto/create-job-listing.dto';
 import { UpdateJobListingDto } from '../dto/update-job-listing.dto';
@@ -27,8 +29,11 @@ import { UpdateBasicInformationDto } from '../dto/update-basic-info.dto';
 import { SendInvitesDto } from '../dto/send-invites.dto';
 import { ListJobListingsQueryDto } from '../dto/list-job-listings-query.dto';
 import { CreateRoleRowDto } from '../dto/create-role-row.dto';
+import { UpdateRoleDescriptionDto } from '../dto/update-role-description.dto';
 import { JobListingInviteService } from './job-listing-invite.service';
-import { createR2Client } from '../config/r2.config';
+import { JobListingBriefStorageService } from './job-listing-brief-storage.service';
+import { JobListingScopeService } from './job-listing-scope.service';
+import { JobListingEventsPublisher } from '../events/job-listing-events.publisher';
 
 // ── Rich text helpers (exported so publish service can reuse wordCount) ───────
 
@@ -51,7 +56,6 @@ export function wordCount(html: string): number {
 @Injectable()
 export class JobListingService {
   private readonly logger = new Logger(JobListingService.name);
-  private readonly r2Client: S3Client;
 
   constructor(
     @InjectRepository(JobListing)
@@ -60,11 +64,36 @@ export class JobListingService {
     private readonly roleRowRepo: Repository<TeamMemberRow>,
     @InjectRepository(BasicInformation)
     private readonly basicInfoRepo: Repository<BasicInformation>,
+    @InjectRepository(RoleDescription)
+    private readonly roleDescriptionRepo: Repository<RoleDescription>,
     private readonly config: ConfigService,
     private readonly http: HttpService,
     private readonly inviteService: JobListingInviteService,
-  ) {
-    this.r2Client = createR2Client(config);
+    private readonly briefStorage: JobListingBriefStorageService,
+    private readonly publisher: JobListingEventsPublisher,
+    private readonly scopeService: JobListingScopeService,
+  ) {}
+
+  private inferListingType(input: {
+    listingType?: JobListingType | null;
+    workType?: WorkType | null;
+    hiringType?: HiringType | null;
+  }): JobListingType | undefined {
+    if (input.listingType) return input.listingType;
+    if (input.workType === WorkType.PROJECT) return JobListingType.PROJECT;
+    if (input.workType === WorkType.SERVICE) return JobListingType.SERVICE;
+    if (input.hiringType === HiringType.TEAM) return JobListingType.TEAM;
+    if (input.hiringType === HiringType.INDIVIDUAL) return JobListingType.INDIVIDUAL;
+    return undefined;
+  }
+
+  private async attachInheritedScope<T extends JobListing>(listing: T): Promise<T & { inheritedScope?: any[] }> {
+    if (listing.contractType !== ContractType.EXISTING || !listing.contractId) {
+      return listing;
+    }
+
+    const inheritedScope = await this.scopeService.loadInheritedScope(listing.contractId);
+    return Object.assign(listing, { inheritedScope });
   }
 
   // Called during create() when contractType is EXISTING.
@@ -120,7 +149,7 @@ export class JobListingService {
 
   // Returns a fully-loaded listing with all relations needed by AlgoliaService.
   async findOneInternal(listingId: string): Promise<JobListing> {
-    return (await this.repo.findOne({
+    const listing = await this.repo.findOne({
       where: { id: listingId },
       relations: [
         'basicInformation',
@@ -129,11 +158,26 @@ export class JobListingService {
         'phases',
         'phases.tasks',
       ],
-    }))!;
+    });
+
+    if (!listing) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+    }
+
+    return listing;
   }
 
-  async linkContract(_listingId: string, _contractId: string): Promise<void> {
-    // TODO: implement in service document
+  async linkContract(listingId: string, contractId: string): Promise<void> {
+    const result = await this.repo.update(listingId, {
+      contractId,
+      lastActivityAt: new Date(),
+    });
+
+    if (!result.affected) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+    }
+
+    this.logger.log(`Job listing linked to contract: listingId=${listingId} contractId=${contractId}`);
   }
 
   // Called when contractType is EXISTING during create().
@@ -168,6 +212,7 @@ export class JobListingService {
       scopeKnowledge: dto.scopeKnowledge ?? null,
       workType:       dto.workType       ?? null,
       hiringType:     dto.hiringType     ?? null,
+      listingType:    this.inferListingType(dto) ?? null,
       status:         JobListingStatus.DRAFT,
       lastActivityAt: new Date(),
     });
@@ -177,6 +222,13 @@ export class JobListingService {
     if (dto.contractType === ContractType.EXISTING && dto.contractId) {
       await this.populateFromContract(saved.id, dto.contractId);
     }
+
+    this.publisher.emit('job_listing.created', {
+      listingId: saved.id,
+      clientUserId: saved.clientUserId,
+      contractType: saved.contractType,
+      listingType: saved.listingType,
+    });
 
     this.logger.log(`Job listing created: ${saved.id}`);
     return (await this.repo.findOne({ where: { id: saved.id } }))!;
@@ -208,7 +260,7 @@ export class JobListingService {
       throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
     }
 
-    return listing;
+    return this.attachInheritedScope(listing);
   }
 
   async update(
@@ -217,10 +269,16 @@ export class JobListingService {
     dto: UpdateJobListingDto,
   ): Promise<JobListing> {
     const fields: Partial<JobListing> = {};
+    const existing = await this.repo.findOne({ where: { id: listingId } });
+
+    if (!existing) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+    }
 
     if (dto.scopeKnowledge     !== undefined) fields.scopeKnowledge     = dto.scopeKnowledge;
     if (dto.workType           !== undefined) fields.workType           = dto.workType;
     if (dto.hiringType         !== undefined) fields.hiringType         = dto.hiringType;
+    if (dto.listingType        !== undefined) fields.listingType        = dto.listingType;
     if (dto.description        !== undefined) fields.description        = dto.description;
     if (dto.deliverables       !== undefined) fields.deliverables       = dto.deliverables;
     if (dto.successCriteria    !== undefined) fields.successCriteria    = dto.successCriteria;
@@ -228,8 +286,21 @@ export class JobListingService {
     if (dto.budgetFrequency    !== undefined) fields.budgetFrequency    = dto.budgetFrequency;
     if (dto.durationMonths     !== undefined) fields.durationMonths     = dto.durationMonths;
     if (dto.isOngoing          !== undefined) fields.isOngoing          = dto.isOngoing;
-    if (dto.ndaEnabled         !== undefined) fields.ndaEnabled         = dto.ndaEnabled;
+    if (dto.ndaEnabled !== undefined && existing.contractType !== ContractType.EXISTING) {
+      fields.ndaEnabled = dto.ndaEnabled;
+    }
     if (dto.ndaScopeVisibility !== undefined) fields.ndaScopeVisibility = dto.ndaScopeVisibility;
+    if (dto.lastCompletedStep  !== undefined) fields.lastCompletedStep  = dto.lastCompletedStep;
+
+    if (dto.listingType === undefined) {
+      const inferredListingType = this.inferListingType({
+        workType: dto.workType ?? existing.workType,
+        hiringType: dto.hiringType ?? existing.hiringType,
+      });
+      if (inferredListingType && inferredListingType !== existing.listingType) {
+        fields.listingType = inferredListingType;
+      }
+    }
 
     if (dto.budgetAmount !== undefined) {
       fields.budgetAmountUsdCents = await this.convertToUsdCents(dto.budgetAmount, dto.budgetDisplayCurrency);
@@ -240,10 +311,12 @@ export class JobListingService {
 
     await this.repo.update(listingId, fields as any);
 
-    return (await this.repo.findOne({
+    const updated = (await this.repo.findOne({
       where: { id: listingId },
       relations: ['basicInformation', 'roleDescriptions', 'teamMemberRows', 'phases', 'phases.tasks'],
     }))!;
+
+    return this.attachInheritedScope(updated);
   }
 
   async updateBasicInformation(
@@ -291,9 +364,30 @@ export class JobListingService {
   }
 
   async softDelete(listingId: string): Promise<void> {
+    const listing = await this.repo.findOne({ where: { id: listingId } });
+    if (!listing) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+    }
+
+    const closedAt = new Date();
     await this.repo.update(listingId, {
       status:   JobListingStatus.CLOSED,
-      closedAt: new Date(),
+      closedAt,
+    });
+
+    const payload = {
+      listingId,
+      clientUserId: listing.clientUserId,
+      algoliaObjectId: listing.algoliaObjectId,
+    };
+
+    this.publisher.emit('job_listing.closed', {
+      ...payload,
+      closedAt: closedAt.toISOString(),
+    });
+    this.publisher.emit('job_listing.deleted', {
+      ...payload,
+      deletedAt: closedAt.toISOString(),
     });
   }
 
@@ -361,6 +455,276 @@ export class JobListingService {
     return this.roleRowRepo.save(roleRow);
   }
 
+  async listRoleDescriptions(listingId: string): Promise<RoleDescription[]> {
+    return this.roleDescriptionRepo.find({
+      where: { jobListingId: listingId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  async saveRoleDescription(
+    listingId: string,
+    roleTitle: string,
+    dto: UpdateRoleDescriptionDto,
+  ): Promise<RoleDescription> {
+    const normalizedRoleTitle = roleTitle.trim();
+    if (!normalizedRoleTitle) {
+      throw new BadRequestException({
+        code: 'JL_ROLE_TITLE_REQUIRED',
+        message: 'Role title is required.',
+      });
+    }
+
+    const listing = await this.repo.findOne({
+      where: { id: listingId },
+      select: ['id'],
+    });
+    if (!listing) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+    }
+
+    for (const [field, value] of Object.entries({
+      overview: dto.overview,
+      benefits: dto.benefits,
+      responsibilities: dto.responsibilities,
+    })) {
+      if (value !== undefined && wordCount(value) > 100) {
+        throw new BadRequestException({
+          code: 'JL_ROLE_DESCRIPTION_TOO_LONG',
+          message: `${field} must not exceed 100 words.`,
+        });
+      }
+    }
+
+    let roleDescription = await this.roleDescriptionRepo.findOne({
+      where: { jobListingId: listingId, roleTitle: normalizedRoleTitle },
+    });
+
+    if (!roleDescription) {
+      roleDescription = this.roleDescriptionRepo.create({
+        jobListingId: listingId,
+        roleTitle: normalizedRoleTitle,
+        overview: null,
+        benefits: null,
+        responsibilities: null,
+        skills: [],
+      });
+    }
+
+    if (dto.overview !== undefined) roleDescription.overview = dto.overview;
+    if (dto.benefits !== undefined) roleDescription.benefits = dto.benefits;
+    if (dto.responsibilities !== undefined) roleDescription.responsibilities = dto.responsibilities;
+    if (dto.skills !== undefined) roleDescription.skills = dto.skills;
+    roleDescription.updatedAt = new Date();
+
+    await this.repo.update(listingId, {
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+
+    return this.roleDescriptionRepo.save(roleDescription);
+  }
+
+  async saveGeneratedRoleDescriptions(
+    listingId: string,
+    descriptions: Array<{
+      roleTitle: string;
+      overview?: string;
+      benefits?: string;
+      responsibilities?: string;
+      skills?: string[];
+    }>,
+  ): Promise<RoleDescription[]> {
+    const saved: RoleDescription[] = [];
+
+    for (const description of descriptions) {
+      saved.push(
+        await this.saveRoleDescription(listingId, description.roleTitle, {
+          overview: description.overview,
+          benefits: description.benefits,
+          responsibilities: description.responsibilities,
+          skills: description.skills,
+        }),
+      );
+    }
+
+    return saved;
+  }
+
+  resolveSmartAssistantRoleTitle(listing: JobListing, preferredRoleTitle?: string): string {
+    const normalizedPreferred = preferredRoleTitle?.trim();
+    if (normalizedPreferred) return normalizedPreferred;
+
+    const existingRoleDescription = listing.roleDescriptions?.find((role) => role.roleTitle?.trim());
+    if (existingRoleDescription?.roleTitle) return existingRoleDescription.roleTitle;
+
+    const teamRole = listing.teamMemberRows?.find((row) => row.roleTitle?.trim());
+    if (teamRole?.roleTitle) return teamRole.roleTitle;
+
+    const taskRole = listing.phases
+      ?.flatMap((phase) => phase.tasks ?? [])
+      .find((task) => task.roleTitle?.trim());
+    if (taskRole?.roleTitle) return taskRole.roleTitle;
+
+    return 'General';
+  }
+
+  async applySmartAssistantFieldValue(
+    listing: JobListing,
+    field: string,
+    value: unknown,
+    roleTitle?: string,
+  ): Promise<void> {
+    const stringValue = typeof value === 'string' ? value : String(value ?? '');
+
+    if (field === 'title') {
+      await this.updateBasicInformation(listing.id, { title: stringValue });
+      await this.repo.update(listing.id, {
+        lastActivityAt: new Date(),
+        staleWarningSent: false,
+      });
+      return;
+    }
+
+    if (!['overview', 'benefits', 'responsibilities'].includes(field)) {
+      throw new BadRequestException({
+        code: 'JL_SMART_ASSISTANT_FIELD_UNSUPPORTED',
+        message: 'Smart Assistant can only edit title, overview, benefits, or responsibilities.',
+      });
+    }
+
+    const targetRoleTitle = this.resolveSmartAssistantRoleTitle(listing, roleTitle);
+    await this.saveRoleDescription(listing.id, targetRoleTitle, {
+      [field]: stringValue,
+    } as UpdateRoleDescriptionDto);
+  }
+
+  async recordSmartAssistantFieldEdit(
+    listing: JobListing,
+    field: string,
+    before: string,
+    after: string,
+    command: string,
+    roleTitle?: string,
+  ): Promise<void> {
+    const history = [
+      ...(listing.smartAssistantHistory ?? []),
+      {
+        id: uuidv4(),
+        field,
+        before,
+        after,
+        command,
+        createdAt: new Date().toISOString(),
+        ...(roleTitle ? { roleTitle } : {}),
+      },
+    ];
+
+    if (history.length > 20) {
+      history.splice(0, history.length - 20);
+    }
+
+    await this.repo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+  }
+
+  async restoreSmartAssistantFieldEdit(
+    listing: JobListing,
+    historyId: string,
+  ): Promise<{ field: string; restoredValue: unknown }> {
+    const entry = (listing.smartAssistantHistory ?? []).find(
+      (item) => item.id === historyId && item.field !== 'scope',
+    );
+
+    if (!entry) {
+      throw new NotFoundException({
+        code: 'JL_SMART_ASSISTANT_HISTORY_NOT_FOUND',
+        message: 'Smart Assistant history entry not found.',
+      });
+    }
+
+    await this.applySmartAssistantFieldValue(listing, entry.field, entry.after, entry.roleTitle);
+
+    const history = [
+      ...(listing.smartAssistantHistory ?? []),
+      {
+        id: uuidv4(),
+        field: entry.field,
+        before: entry.before,
+        after: entry.after,
+        command: `restore:${historyId}`,
+        createdAt: new Date().toISOString(),
+        ...(entry.roleTitle ? { roleTitle: entry.roleTitle } : {}),
+      },
+    ];
+
+    if (history.length > 20) {
+      history.splice(0, history.length - 20);
+    }
+
+    await this.repo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+
+    return { field: entry.field, restoredValue: entry.after };
+  }
+
+  async undoLatestSmartAssistantFieldEdit(
+    listing: JobListing,
+    historyId: string,
+  ): Promise<{ field: string; restoredValue: unknown }> {
+    const history = [...(listing.smartAssistantHistory ?? [])];
+    const latest = history[history.length - 1];
+
+    if (!latest || latest.id !== historyId || latest.field === 'scope') {
+      throw new BadRequestException({
+        code: 'JL_SMART_ASSISTANT_UNDO_NOT_AVAILABLE',
+        message: 'Only the most recent Smart Assistant field edit can be undone.',
+      });
+    }
+
+    await this.applySmartAssistantFieldValue(listing, latest.field, latest.before, latest.roleTitle);
+    history.pop();
+
+    await this.repo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+
+    return { field: latest.field, restoredValue: latest.before };
+  }
+
+  async replaceLatestSmartAssistantFieldHistoryAfter(
+    listing: JobListing,
+    historyId: string,
+    after: string,
+  ): Promise<void> {
+    const history = [...(listing.smartAssistantHistory ?? [])];
+    const latest = history[history.length - 1];
+
+    if (!latest || latest.id !== historyId || latest.field === 'scope') {
+      throw new BadRequestException({
+        code: 'JL_SMART_ASSISTANT_RETRY_NOT_AVAILABLE',
+        message: 'Only the most recent Smart Assistant field edit can be retried.',
+      });
+    }
+
+    latest.after = after;
+    latest.createdAt = new Date().toISOString();
+
+    await this.repo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+  }
+
   async sendInvites(listingId: string, dto: SendInvitesDto): Promise<void> {
     return this.inviteService.send(listingId, dto);
   }
@@ -388,30 +752,10 @@ export class JobListingService {
     listingId: string,
     dto: PresignBriefUploadDto,
   ): Promise<{ presignedUrl: string; key: string; expiresAt: string }> {
-    const sanitisedFilename = dto.filename
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .substring(0, 200);
-
-    const key = `briefs/${listingId}/${uuidv4()}/${sanitisedFilename}`;
-
-    const command = new PutObjectCommand({
-      Bucket: this.config.get('CLOUDFLARE_R2_BUCKET'),
-      Key: key,
-      ContentType: dto.contentType,
-      ContentLength: dto.sizeBytes,
-    });
-
-    const presignedUrl = await getSignedUrl(this.r2Client, command, {
-      expiresIn: 300, // 5 minutes
-    });
-
-    const expiresAt = new Date(Date.now() + 300_000).toISOString();
-
-    // jl_brief_presign_rejected is not logged here — contentType and sizeBytes are
+    // jl_brief_presign_rejected is not logged here: contentType and sizeBytes are
     // validated by class-validator at the DTO level (presign-brief-upload.dto.ts).
     // Invalid requests are rejected before reaching this service method.
     // If rejection logging is needed, add it to a validation exception filter.
-    this.logger.log(`jl_brief_presign_issued listingId=${listingId}`);
-    return { presignedUrl, key, expiresAt };
+    return this.briefStorage.createPresignedUpload(listingId, dto);
   }
 }

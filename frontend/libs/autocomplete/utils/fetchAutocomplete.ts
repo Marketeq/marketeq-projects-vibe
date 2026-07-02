@@ -1,14 +1,23 @@
 import { AutocompleteAPI } from '@/service/http/autocomplete'
 
 export const fetchAutocomplete = async (type: string, q = ''): Promise<any[]> => {
+  const readLocalMock = async () => {
+    const mod = await import(`@/public/mock/${type}.json`)
+    return mod.default || mod
+  }
+
   try {
+    if (!q) {
+      const data = await readLocalMock()
+      return data.slice(0, 10)
+    }
+
     const res = await AutocompleteAPI.getByType(type, q)
     return res.data
   } catch (err) {
     // Fallback to static JSON
     try {
-      const mod = await import(`@/public/mock/${type}.json`)
-      const data = mod.default || mod
+      const data = await readLocalMock()
       if (!q) return data.slice(0, 10)
       const lower = q.toLowerCase()
       return data.filter((item: any) =>

@@ -21,7 +21,7 @@ export class JobListingOwnerGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const userId = request.user?.sub;
+    const userId = request.user?.sub ?? request.user?.id ?? request.user?.userId;
     const id = request.params?.id;
 
     if (!id) return true; // No listing ID in route — guard not applicable.

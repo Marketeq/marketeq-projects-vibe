@@ -26,6 +26,7 @@ export interface SmartAssistantHistoryEntry {
   after:     unknown; // New value after AI edit
   command:   string;  // The command that produced this entry
   createdAt: string;  // ISO timestamp
+  roleTitle?: string; // Present for per-role Step 5 fields.
 }
 
 @Entity({ name: 'job_listings' })

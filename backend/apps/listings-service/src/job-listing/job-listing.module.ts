@@ -27,6 +27,7 @@ import { JobListingAiService } from './services/job-listing-ai.service';
 import { JobListingDraftService } from './services/job-listing-draft.service';
 import { JobListingPublishService } from './services/job-listing-publish.service';
 import { JobListingInviteService } from './services/job-listing-invite.service';
+import { JobListingBriefStorageService } from './services/job-listing-brief-storage.service';
 
 // ── Events ───────────────────────────────────────────────────────────────────
 import { JobListingEventsPublisher } from './events/job-listing-events.publisher';
@@ -97,10 +98,11 @@ import { AlgoliaService } from '../algolia/algolia.service';
     JobListingBudgetService,
     JobListingAiService,
 
-    // Stub services — implemented in upcoming documents
+    // Job listing workflow services
     JobListingDraftService,
     JobListingPublishService,
     JobListingInviteService,
+    JobListingBriefStorageService,
 
     // Infrastructure
     JobListingEventsPublisher,

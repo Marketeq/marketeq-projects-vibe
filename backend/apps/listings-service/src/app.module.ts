@@ -20,7 +20,13 @@ import { JobsModule } from './jobs/job.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['apps/listings-service/.env', '.env'],
+      envFilePath: [
+        'apps/listings-service/.env',
+        'backend/apps/listings-service/.env',
+        '../../.env',
+        'backend/.env',
+        '.env',
+      ],
     }),
     TypeOrmModule.forRoot({
       type: 'postgres',

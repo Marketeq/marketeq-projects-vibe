@@ -5,7 +5,6 @@ import { cn } from "@/utils/functions"
 import { useControllableState, useDeferredValue } from "@/utils/hooks"
 import { Check, ChevronDown, SearchMd } from "@blend-metrics/icons"
 import { type DialogProps } from "@radix-ui/react-dialog"
-import axios from "axios"
 import { Command as CommandPrimitive } from "cmdk"
 import { useAsync } from "react-use"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -249,15 +248,6 @@ export function OwnCombobox({
   )
 }
 
-const instance = axios.create({
-  baseURL: "https://restcountries.com/v3.1",
-})
-
-const getCountries = async <TData,>(url: string) => {
-  const { data } = await instance.get<TData>(url)
-  return data
-}
-
 export interface Country {
   flags: Flags
   name: Name
@@ -305,14 +295,51 @@ const POPULAR_COUNTRIES = [
 
 const popularSet = new Set(POPULAR_COUNTRIES)
 
+const FALLBACK_COUNTRY_CODES: Array<{ common: string; cca2: string }> = [
+  { common: 'United States', cca2: 'US' },
+  { common: 'United Kingdom', cca2: 'GB' },
+  { common: 'Canada', cca2: 'CA' },
+  { common: 'India', cca2: 'IN' },
+  { common: 'Germany', cca2: 'DE' },
+  { common: 'Australia', cca2: 'AU' },
+  { common: 'Brazil', cca2: 'BR' },
+  { common: 'Philippines', cca2: 'PH' },
+  { common: 'Ukraine', cca2: 'UA' },
+  { common: 'Poland', cca2: 'PL' },
+  { common: 'Pakistan', cca2: 'PK' },
+]
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  USA: 'United States',
+  US: 'United States',
+  UK: 'United Kingdom',
+}
+
+const FALLBACK_COUNTRIES: Country[] = FALLBACK_COUNTRY_CODES.map(
+  ({ common, cca2 }) => ({
+    cca2,
+    flags: {
+      png: `https://flagcdn.com/36x27/${cca2.toLowerCase()}.png`,
+      svg: `https://flagcdn.com/${cca2.toLowerCase()}.svg`,
+      alt: common,
+    },
+    name: {
+      common,
+      official: common,
+      nativeName: {},
+    },
+  })
+)
+
 // Cache fetched countries so we don't re-fetch on every mount.
 export let countriesCache: Country[] | null = null
 
 /** Get flag image URL for a country name (requires countries to be loaded) */
 export function getFlagUrlByName(countryName: string): string | null {
-  if (!countriesCache) return null
-  const country = countriesCache.find(
-    (c) => c.name.common.toLowerCase() === countryName.toLowerCase()
+  const normalizedCountryName = COUNTRY_ALIASES[countryName] ?? countryName
+  const country = (countriesCache ?? FALLBACK_COUNTRIES).find(
+    (c) =>
+      c.name.common.toLowerCase() === normalizedCountryName.toLowerCase()
   )
   if (!country) return null
   return getFlagUrl(country)
@@ -356,9 +383,18 @@ export const CountriesCombobox = ({
 }) => {
   const data = useAsync(async () => {
     if (countriesCache) return countriesCache
-    const result = await getCountries<Country[]>("/all?fields=id,name,flags,cca2")
-    countriesCache = result
-    return result
+    try {
+      const response = await fetch("/api/countries", {
+        headers: { Accept: "application/json" },
+      })
+      if (!response.ok) return FALLBACK_COUNTRIES
+
+      const result = (await response.json()) as Country[]
+      countriesCache = result
+      return result
+    } catch {
+      return FALLBACK_COUNTRIES
+    }
   }, [])
 
   const [open, setOpen] = React.useState(false)
@@ -373,14 +409,16 @@ export const CountriesCombobox = ({
     if (!open) setSearchQuery("")
   }, [open])
 
-  const selectedCountry = data.value?.find(
-    (country) => country.name.common === state
+  const countries = data.value?.length ? data.value : FALLBACK_COUNTRIES
+  const normalizedState = state ? COUNTRY_ALIASES[state] ?? state : state
+
+  const selectedCountry = countries.find(
+    (country) => country.name.common === normalizedState
   )
 
   const sorted = React.useMemo(() => {
-    if (!data.value) return { popular: [], rest: [] }
-    return sortCountries(data.value)
-  }, [data.value])
+    return sortCountries(countries)
+  }, [countries])
 
   const listRef = React.useRef<HTMLDivElement>(null)
   const isSearching = searchQuery.trim().length > 0

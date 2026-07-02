@@ -11,7 +11,11 @@ import { JobListingService } from './job-listing.service';
 import { JobListing } from '../entities/job-listing.entity';
 import { TeamMemberRow } from '../entities/job-listing-role-row.entity';
 import { BasicInformation } from '../entities/job-listing-basic-info.entity';
+import { RoleDescription } from '../entities/job-listing-role-description.entity';
 import { JobListingInviteService } from './job-listing-invite.service';
+import { JobListingBriefStorageService } from './job-listing-brief-storage.service';
+import { JobListingScopeService } from './job-listing-scope.service';
+import { JobListingEventsPublisher } from '../events/job-listing-events.publisher';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +26,7 @@ const mockRepo = {
 
 const mockRoleRowRepo = {};
 const mockBasicInfoRepo = {};
+const mockRoleDescriptionRepo = {};
 
 const mockConfig = {
   get: jest.fn().mockReturnValue('http://contracts-service'),
@@ -33,6 +38,18 @@ const mockHttp = {
 
 const mockInviteService = {
   send: jest.fn(),
+};
+
+const mockBriefStorage = {
+  createPresignedUpload: jest.fn(),
+};
+
+const mockPublisher = {
+  emit: jest.fn(),
+};
+
+const mockScopeService = {
+  loadInheritedScope: jest.fn().mockResolvedValue([]),
 };
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -47,9 +64,13 @@ describe('JobListingService — JL-10 Existing Contract', () => {
         { provide: getRepositoryToken(JobListing),    useValue: mockRepo },
         { provide: getRepositoryToken(TeamMemberRow), useValue: mockRoleRowRepo },
         { provide: getRepositoryToken(BasicInformation), useValue: mockBasicInfoRepo },
+        { provide: getRepositoryToken(RoleDescription), useValue: mockRoleDescriptionRepo },
         { provide: ConfigService,                     useValue: mockConfig },
         { provide: HttpService,                       useValue: mockHttp },
         { provide: JobListingInviteService,            useValue: mockInviteService },
+        { provide: JobListingBriefStorageService,       useValue: mockBriefStorage },
+        { provide: JobListingEventsPublisher,           useValue: mockPublisher },
+        { provide: JobListingScopeService,              useValue: mockScopeService },
       ],
     }).compile();
 
