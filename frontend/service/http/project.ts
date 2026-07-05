@@ -64,6 +64,18 @@ export const ProjectAPI = {
   GetMyProjects: () => {
     return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
   },
+  SuggestFaqs: (projectId: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,
+      {}
+    )
+  },
+  SuggestFaqAnswer: (projectId: string, question: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/faqs/answer`,
+      { question }
+    )
+  },
   ReplaceProjectScope: (
     projectId: string,
     scope: Array<{

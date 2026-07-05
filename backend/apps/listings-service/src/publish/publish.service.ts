@@ -47,6 +47,8 @@ import {
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
 import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types';
+import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
+import { FaqContext, FaqSuggestion } from './faq/faq.types';
 
 @Injectable()
 export class PublishService {
@@ -62,7 +64,76 @@ export class PublishService {
     private readonly httpService: HttpService,
     @Inject(DELIVERABLES_ADAPTER)
     private readonly deliverablesAdapter: DeliverablesAdapter,
+    @Inject(FAQ_ADAPTER)
+    private readonly faqAdapter: FaqAdapter,
   ) {}
+
+  private faqContextFromProject(project: Project): FaqContext {
+    return {
+      title: project.title,
+      listingType: project.listingType,
+      categories: project.categories,
+      skills: project.skills,
+      tags: project.tags,
+      durationMonths: project.durationMonths,
+      shortDescription: project.shortDescription,
+      fullDescription: project.fullDescription,
+    };
+  }
+
+  private async loadFaqScope(
+    projectId: string,
+  ): Promise<Array<{ phaseName: string; tasks: string[] }>> {
+    try {
+      const phases = await this.phaseRepository.findAll({
+        filterOptions: { projectId },
+      });
+      const sorted = [...phases].sort(
+        (a, b) => (a.order ?? 0) - (b.order ?? 0),
+      );
+      return await Promise.all(
+        sorted.map(async (phase, index) => {
+          const hydrated =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+          return {
+            phaseName:
+              hydrated.name || hydrated.stageName || `Phase ${index + 1}`,
+            tasks: (hydrated.task ?? [])
+              .map((t) => t.taskName)
+              .filter(Boolean),
+          };
+        }),
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async suggestFaqs(
+    userId: string,
+    projectId: string,
+  ): Promise<FaqSuggestion[]> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    const scope = await this.loadFaqScope(projectId);
+    return this.faqAdapter.suggestFaqs({
+      ...this.faqContextFromProject(project),
+      scope,
+    });
+  }
+
+  async suggestFaqAnswer(
+    userId: string,
+    projectId: string,
+    question: string,
+  ): Promise<{ answer: string }> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    const scope = await this.loadFaqScope(projectId);
+    const answer = await this.faqAdapter.suggestAnswer(
+      { ...this.faqContextFromProject(project), scope },
+      question,
+    );
+    return { answer };
+  }
 
   private get shouldSkipModeration(): boolean {
     return process.env.SKIP_CONTENT_MODERATION === 'true';
@@ -127,6 +198,7 @@ export class PublishService {
     subCategories?: string[] | null;
     categorySelections?: { category: string; subCategories: string[] }[] | null;
     tags?: string[] | null;
+    faqs?: { question: string; answer: string }[] | null;
     imageUrl?: string | null;
   }): ProjectModerationInput {
     return {
@@ -137,6 +209,7 @@ export class PublishService {
       subCategories: input.subCategories ?? [],
       categorySelections: input.categorySelections ?? [],
       tags: input.tags ?? [],
+      faqs: input.faqs ?? [],
       imageUrl: input.imageUrl ?? undefined,
     };
   }
@@ -442,6 +515,8 @@ export class PublishService {
     if (dto.tags !== undefined) payload.tags = dto.tags;
     if (dto.skills !== undefined) payload.skills = dto.skills;
     if (dto.listingType !== undefined) payload.listingType = dto.listingType;
+    if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
+    if (dto.faqs !== undefined) payload.faqs = dto.faqs;
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -610,6 +685,7 @@ export class PublishService {
         subCategories: project.subCategories,
         categorySelections: project.categorySelections,
         tags: project.tags,
+        faqs: project.faqs,
       });
 
       const moderationResult = await this.projectModerationService.moderateProject(

@@ -31,6 +31,8 @@ export class ProjectMapper {
     project.deletedAt = raw.deletedAt;
     project.deliverables = raw.deliverables ?? null;
     project.mediaUrls = raw.mediaUrls ?? [];
+    project.videoUrl = raw.videoUrl ?? null;
+    project.faqs = raw.faqs ?? [];
     if (raw.media) {
       project.media = raw.media;
     }
@@ -65,6 +67,8 @@ export class ProjectMapper {
     projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.deliverables = project.deliverables ?? null;
     projectEntity.mediaUrls = project.mediaUrls ?? [];
+    projectEntity.videoUrl = project.videoUrl ?? undefined;
+    projectEntity.faqs = project.faqs ?? [];
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;
