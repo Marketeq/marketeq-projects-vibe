@@ -260,17 +260,19 @@ export class PublishService {
         /banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines/i.test(
           moderationReason,
         );
-      throw new BadRequestException(
-        isImageViolation
-          ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
-          : isVideoViolation
-            ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
-            : isContentViolation
-              ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
-              : moderationResult.reason
-                ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
-                : 'Project rejected: content violates moderation policy.',
-      );
+      const message = isImageViolation
+        ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
+        : isVideoViolation
+          ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
+          : isContentViolation
+            ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
+            : moderationResult.reason
+              ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
+              : 'Project rejected: content violates moderation policy.';
+      throw new BadRequestException({
+        message,
+        field: moderationResult.field,
+      });
     }
 
     if (status === 'pending_review') {
@@ -515,6 +517,7 @@ export class PublishService {
     if (dto.tags !== undefined) payload.tags = dto.tags;
     if (dto.skills !== undefined) payload.skills = dto.skills;
     if (dto.listingType !== undefined) payload.listingType = dto.listingType;
+    if (dto.projectType !== undefined) payload.projectType = dto.projectType;
     if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
     if (dto.faqs !== undefined) payload.faqs = dto.faqs;
 
@@ -653,10 +656,6 @@ export class PublishService {
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
-    if (project.status === 'published') {
-      return project;
-    }
-
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
       const hasCover =
@@ -706,6 +705,18 @@ export class PublishService {
       this.throwIfHttpException(error);
       throw new InternalServerErrorException('Failed to publish project');
     }
+  }
+
+  async unpublishProject(userId: string, projectId: string): Promise<Project> {
+    await this.ensureProjectOwnership(projectId, userId);
+    const updated = await this.projectRepository.update(projectId, {
+      status: 'draft',
+      projectDatePublished: null,
+    });
+    if (!updated) {
+      throw new NotFoundException('Project not found');
+    }
+    return updated;
   }
 
   async createProjectOfPhase(

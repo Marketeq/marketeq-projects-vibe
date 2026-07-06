@@ -3721,7 +3721,7 @@ export default function ProjectDetails() {
                   // start on day (prev end + 1).
                   let cursor = 1
                   const withDays = phases.map((phase) => {
-                    const phaseHours = phase.tasks.reduce(
+                    const phaseHours = (phase.tasks ?? []).reduce(
                       (sum, t) => sum + (t.estimatedHours || 0),
                       0
                     )
@@ -3783,7 +3783,7 @@ export default function ProjectDetails() {
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {phase.tasks.map((task, ti) => (
+                                  {(phase.tasks ?? []).map((task, ti) => (
                                     <TableRow key={`task-${pi}-${ti}`}>
                                       <TableCell className="py-4 px-6">
                                         <span className="text-sm text-nowrap font-semibold text-dark-blue-400">

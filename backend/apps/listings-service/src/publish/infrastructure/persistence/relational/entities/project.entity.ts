@@ -44,6 +44,7 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ name: 'subcategories', type: String, array: true, default: [] })
   subCategories: string[];
 
+  @Column({ name: 'categorySelections', type: 'jsonb', default: [] })
   categorySelections: {
     category: string;
     subCategories: string[];
@@ -63,6 +64,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Column({ type: String, nullable: true })
   listingType: string;
+
+  @Column({ name: 'projectType', type: String, nullable: true })
+  projectType?: string | null;
 
   @Column({ type: 'numeric', nullable: true })
   budget: number;
