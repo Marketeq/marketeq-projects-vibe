@@ -282,6 +282,76 @@ export class BillingService {
     return this.invoiceRepo.findOne({ where: { id: invoiceId } }) as Promise<BillingInvoice>;
   }
 
+  async changeSubscriptionFrequency(
+    groupId: string,
+    newFrequency: BillingFrequency,
+    newInstallmentAmountCents: number,
+  ): Promise<BillingSubscription[]> {
+    const subs = await this.subRepo.find({
+      where: { groupId, status: SubscriptionStatus.ACTIVE },
+    });
+    if (!subs.length) throw new NotFoundException('No active subscriptions found for this group');
+
+    const intervalMap: Record<BillingFrequency, { interval: 'week' | 'month'; intervalCount: number }> = {
+      [BillingFrequency.WEEKLY]: { interval: 'week', intervalCount: 1 },
+      [BillingFrequency.BIWEEKLY]: { interval: 'week', intervalCount: 2 },
+      [BillingFrequency.MONTHLY]: { interval: 'month', intervalCount: 1 },
+    };
+    const { interval, intervalCount } = intervalMap[newFrequency];
+
+    const updated: BillingSubscription[] = [];
+    for (const sub of subs) {
+      await this.stripe.updateSubscriptionFrequency(
+        sub.stripeSubscriptionId,
+        newInstallmentAmountCents,
+        interval,
+        intervalCount,
+      );
+
+      await this.subRepo.update(sub.id, {
+        frequency: newFrequency,
+        installmentAmount: newInstallmentAmountCents / 100,
+      });
+
+      updated.push(await this.subRepo.findOne({ where: { id: sub.id } }) as BillingSubscription);
+    }
+
+    this.logger.log(`Changed frequency for group ${groupId} to ${newFrequency}`);
+    return updated;
+  }
+
+  async reconcileEndOfProject(
+    contractId: string,
+    adjustmentAmountCents: number,
+    adjustmentReason: string,
+  ): Promise<BillingInvoice> {
+    const existingSub = await this.subRepo.findOne({ where: { contractId } });
+    if (!existingSub) throw new NotFoundException('No subscription found for this contract');
+
+    const invoice = await this.invoiceRepo.save(this.invoiceRepo.create({
+      contractId,
+      groupId: existingSub.groupId,
+      clientId: existingSub.clientId,
+      talentId: '',
+      subscriptionId: existingSub.id,
+      amount: adjustmentAmountCents / 100,
+      description: `End-of-project adjustment: ${adjustmentReason}`,
+      status: InvoiceStatus.PENDING,
+      metadata: { adjustmentReason, type: 'reconciliation' },
+    }));
+
+    this.events.invoiceCreated(
+      invoice.id,
+      contractId,
+      existingSub.groupId,
+      invoice.amount,
+      0,
+    );
+
+    this.logger.log(`Reconciliation invoice ${invoice.id} created for contract ${contractId}: $${invoice.amount}`);
+    return invoice;
+  }
+
   async getRetryLogs(invoiceId: string): Promise<PaymentRetryLog[]> {
     return this.retryRepo.find({ where: { invoiceId }, order: { attemptNumber: 'ASC' } });
   }

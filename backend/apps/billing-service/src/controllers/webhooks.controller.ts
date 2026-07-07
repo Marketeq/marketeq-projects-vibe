@@ -1,7 +1,10 @@
 import { Controller, Post, Req, Headers, RawBodyRequest, BadRequestException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Request } from 'express';
 import { BillingService } from '../services/billing.service';
 import { StripeSubscriptionService } from '../services/stripe-subscription.service';
+import { WebhookLog } from '../entities/webhook-log.entity';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -10,6 +13,7 @@ export class WebhooksController {
   constructor(
     private readonly billing: BillingService,
     private readonly stripeService: StripeSubscriptionService,
+    @InjectRepository(WebhookLog) private readonly webhookLogRepo: Repository<WebhookLog>,
   ) {}
 
   @Post('stripe')
@@ -26,45 +30,62 @@ export class WebhooksController {
       throw new BadRequestException('Invalid Stripe webhook signature');
     }
 
-    this.logger.log(`Stripe webhook received: ${event.type}`);
+    // Log every webhook event for auditability
+    const logEntry = this.webhookLogRepo.create({
+      stripeEventId: event.id,
+      eventType: event.type,
+      payload: event.data.object,
+      processingStatus: 'processing',
+    });
+    const savedLog = await this.webhookLogRepo.save(logEntry);
 
-    switch (event.type) {
-      case 'invoice.payment_succeeded':
-        await this.billing.handleInvoicePaid(
-          event.data.object.id,
-          event.data.object.amount_paid,
-        );
-        break;
+    this.logger.log(`Stripe webhook received: ${event.type} (${event.id})`);
 
-      case 'invoice.payment_failed':
-        await this.billing.handlePaymentFailed(
-          event.data.object.id,
-          event.data.object.last_finalization_error?.message ?? 'unknown',
-        );
-        break;
+    try {
+      switch (event.type) {
+        case 'invoice.payment_succeeded':
+          await this.billing.handleInvoicePaid(
+            event.data.object.id,
+            event.data.object.amount_paid,
+          );
+          break;
 
-      case 'invoice.created': {
-        // Stripe creates invoices for recurring subscriptions automatically
-        // We log it — the actual record is created when payment_succeeded fires
-        const inv = event.data.object;
-        this.logger.log(`Stripe invoice created: ${inv.id} for subscription ${inv.subscription}`);
-        break;
+        case 'invoice.payment_failed':
+          await this.billing.handlePaymentFailed(
+            event.data.object.id,
+            event.data.object.last_finalization_error?.message ?? 'unknown',
+          );
+          break;
+
+        case 'invoice.created': {
+          const inv = event.data.object;
+          this.logger.log(`Stripe invoice created: ${inv.id} for subscription ${inv.subscription}`);
+          break;
+        }
+
+        case 'customer.subscription.deleted': {
+          const sub = event.data.object;
+          this.logger.log(`Stripe subscription deleted: ${sub.id}`);
+          break;
+        }
+
+        case 'charge.refunded': {
+          const charge = event.data.object;
+          this.logger.log(`Stripe charge refunded: ${charge.id}, amount: ${charge.amount_refunded}`);
+          break;
+        }
+
+        default:
+          this.logger.log(`Unhandled Stripe event type: ${event.type}`);
       }
 
-      case 'customer.subscription.deleted': {
-        const sub = event.data.object;
-        this.logger.log(`Stripe subscription deleted: ${sub.id}`);
-        break;
-      }
-
-      case 'charge.refunded': {
-        const charge = event.data.object;
-        this.logger.log(`Stripe charge refunded: ${charge.id}, amount: ${charge.amount_refunded}`);
-        break;
-      }
-
-      default:
-        this.logger.log(`Unhandled Stripe event type: ${event.type}`);
+      await this.webhookLogRepo.update(savedLog.id, { processingStatus: 'processed' });
+    } catch (err: any) {
+      await this.webhookLogRepo.update(savedLog.id, {
+        processingStatus: 'failed',
+        errorMessage: err.message,
+      });
+      this.logger.error(`Webhook processing failed for ${event.id}: ${err.message}`);
     }
 
     return { received: true };

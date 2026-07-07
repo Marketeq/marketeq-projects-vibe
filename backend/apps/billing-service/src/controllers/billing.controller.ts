@@ -98,6 +98,30 @@ export class BillingController {
     return this.svc.getRetryLogs(id);
   }
 
+  // --- Mid-cycle change ---
+
+  @Post('subscriptions/change-frequency/:groupId')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  changeFrequency(
+    @Param('groupId') groupId: string,
+    @Body() body: { newFrequency: 'weekly' | 'biweekly' | 'monthly'; newInstallmentAmountCents: number },
+  ) {
+    return this.svc.changeSubscriptionFrequency(groupId, body.newFrequency as any, body.newInstallmentAmountCents);
+  }
+
+  // --- End-of-project reconciliation ---
+
+  @Post('reconcile/:contractId')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  reconcile(
+    @Param('contractId') contractId: string,
+    @Body() body: { adjustmentAmountCents: number; reason: string },
+  ) {
+    return this.svc.reconcileEndOfProject(contractId, body.adjustmentAmountCents, body.reason);
+  }
+
   // --- Health ---
 
   @Get('/health')
