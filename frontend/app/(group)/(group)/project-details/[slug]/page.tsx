@@ -504,8 +504,43 @@ export default function ProjectDetails() {
   const sidebarPricing = React.useMemo(() => {
     if (!project) return null
     const totalCost = Number(project.priceMin ?? project.budget ?? 0)
-    const durationStr = (project.duration ?? "") as string
-    const durationWeeks = parseInt(durationStr, 10) || 0
+
+    // Minimum team members = unique roles from scope (docs §01 L88-91)
+    const scopeArr = Array.isArray(project.scope)
+      ? project.scope.slice().sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+      : []
+    const uniqueRoles = new Set(
+      scopeArr.flatMap((phase: any) =>
+        (phase.tasks ?? []).map((t: any) => t.roleName).filter(Boolean)
+      )
+    )
+
+    // Derive total duration straight from scope task hours + each phase's own
+    // team size (distinct roles working it in parallel), instead of trusting a
+    // separately-computed backend field — this keeps the headline duration and
+    // the phase-by-phase timeline below always in agreement. Falls back to the
+    // stored duration string only when there's no scope to derive it from.
+    let totalProjectDays = 0
+    let phaseDayRanges: { start: number; end: number }[] = []
+    if (scopeArr.length > 0) {
+      let cursor = 1
+      phaseDayRanges = scopeArr.map((phase: any) => {
+        const tasks = phase.tasks ?? []
+        const phaseHours = tasks.reduce((sum: number, t: any) => sum + (t.estimatedHours || 0), 0)
+        const phaseTeamSize = new Set(tasks.map((t: any) => t.roleName).filter(Boolean)).size || 1
+        const days = Math.max(1, Math.ceil(phaseHours / (8 * phaseTeamSize)))
+        const start = cursor
+        const end = cursor + days - 1
+        cursor = end + 1
+        return { start, end }
+      })
+      totalProjectDays = cursor - 1
+    } else {
+      const durationStr = (project.duration ?? "") as string
+      totalProjectDays = (parseInt(durationStr, 10) || 0) * 7
+    }
+
+    const durationWeeks = totalProjectDays > 0 ? totalProjectDays / 7 : 0
     const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
 
     // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
@@ -523,27 +558,18 @@ export default function ProjectDetails() {
       ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
     ]
 
-    // Minimum team members = unique roles from scope (docs §01 L88-91)
-    const scopeArr = Array.isArray(project.scope) ? project.scope : []
-    const uniqueRoles = new Set(
-      scopeArr.flatMap((phase: any) =>
-        (phase.tasks ?? []).map((t: any) => t.roleName).filter(Boolean)
-      )
-    )
-
     // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    const durationDays = durationWeeks * 7
     let formattedDuration = ""
-    if (durationDays > 0 && durationDays < 7) {
-      formattedDuration = `${durationDays} day`
+    if (totalProjectDays > 0 && totalProjectDays < 7) {
+      formattedDuration = `${totalProjectDays} day`
     } else if (durationWeeks > 0 && durationWeeks < 4) {
-      formattedDuration = `${durationWeeks} week`
+      formattedDuration = `${Math.round(durationWeeks)} week`
     } else if (durationWeeks >= 4) {
       const months = Math.ceil(durationWeeks / 4.33)
       formattedDuration = `${months} month`
     }
 
-    return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
+    return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration, phaseDayRanges }
   }, [project])
 
 
@@ -3683,19 +3709,12 @@ export default function ProjectDetails() {
                     "Phase Seven",
                     "Phase Eight",
                   ]
-                  // Accumulate day ranges across phases so later phases
-                  // start on day (prev end + 1).
-                  let cursor = 1
-                  const withDays = phases.map((phase) => {
-                    const phaseHours = phase.tasks.reduce(
-                      (sum, t) => sum + (t.estimatedHours || 0),
-                      0
-                    )
-                    const days = Math.max(1, Math.ceil(phaseHours / 8))
-                    const start = cursor
-                    const end = cursor + days - 1
-                    cursor = end + 1
-                    return { phase, start, end }
+                  // Reuse the day ranges already derived in sidebarPricing (same
+                  // phases, same sort order) so this timeline always matches the
+                  // headline duration shown in the sidebar — never recomputed twice.
+                  const withDays = phases.map((phase, i) => {
+                    const range = sidebarPricing?.phaseDayRanges?.[i]
+                    return { phase, start: range?.start ?? 1, end: range?.end ?? 1 }
                   })
                   return (
                     <div className="mt-6">

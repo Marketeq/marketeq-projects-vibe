@@ -8,6 +8,7 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   ArrowRight,
   Check,
@@ -76,26 +77,35 @@ export default function Projects() {
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("Featured")
   const [pageData, setPageData] = useState<any>(null) // ✅ ADD THIS LINE
-  // Fetch data from backend
+  // Fetch category-page metadata (banner, breadcrumbs) — unrelated to the actual project list.
+  useEffect(() => {
+    getCategoryPage("creative")
+      .then((data) => setPageData(data))
+      .catch((error) => console.error("Failed to fetch category page:", error))
+  }, [])
+
+  // Fetch the real "all projects" listing. The category-page "blocks" approach above only
+  // ever returns projects curated into that one category page's config (which is empty for
+  // "creative"), so it always showed "No projects found" regardless of how many real
+  // projects existed — fetch the general projects endpoint directly instead.
   useEffect(() => {
     async function fetchData() {
       try {
         setIsLoading(true)
-        const data = await getCategoryPage("creative")
-        setPageData(data)
-        if (data?.blocks) {
-          const allItems: any[] = []
-
-          // Filter to only get projects, not talent
-          data.blocks.forEach((block: any) => {
-            if (block.entity === "projects" && block.items) {
-              allItems.push(...block.items)
-            }
+        const apiBase = getPublicApiUrl() || "http://localhost:4000"
+        const res = await fetch(`${apiBase}/v1/projects`)
+        const data = res.ok ? await res.json() : []
+        const allItems: ProjectItem[] = (Array.isArray(data) ? data : []).map(
+          (p: any) => ({
+            ...p,
+            coverImage: p.mediaUrls?.[0],
+            summary: p.shortDescription,
+            scopeTotal: { budget: p.budget, timeline: p.duration },
           })
+        )
 
-          setAllProjects(allItems)
-          setDisplayedProjects(allItems)
-        }
+        setAllProjects(allItems)
+        setDisplayedProjects(allItems)
       } catch (error) {
         console.error("Failed to fetch:", error)
       } finally {

@@ -10,18 +10,18 @@ export function hourlyRateForTask(input: {
     : (input.location ?? '');
   const loc = locRaw.toLowerCase();
 
-  let base = 85;
-  if (role.includes('architect')) base = 140;
-  else if (role.includes('machine learning') || role.includes('data scientist')) base = 135;
-  else if (role.includes('devops') || role.includes('site reliability')) base = 120;
-  else if (role.includes('security')) base = 125;
-  else if (role.includes('backend')) base = 105;
-  else if (role.includes('full stack') || role.includes('fullstack')) base = 110;
-  else if (role.includes('frontend')) base = 100;
-  else if (role.includes('mobile')) base = 105;
-  else if (role.includes('qa')) base = 70;
-  else if (role.includes('ui/ux') || role.includes('designer') || role.includes('design')) base = 90;
-  else if (role.includes('research')) base = 85;
+  let base = 20;
+  if (role.includes('architect')) base = 35;
+  else if (role.includes('machine learning') || role.includes('data scientist')) base = 32;
+  else if (role.includes('devops') || role.includes('site reliability')) base = 30;
+  else if (role.includes('security')) base = 30;
+  else if (role.includes('backend')) base = 25;
+  else if (role.includes('full stack') || role.includes('fullstack')) base = 28;
+  else if (role.includes('frontend')) base = 24;
+  else if (role.includes('mobile')) base = 25;
+  else if (role.includes('qa')) base = 18;
+  else if (role.includes('ui/ux') || role.includes('designer') || role.includes('design')) base = 21;
+  else if (role.includes('research')) base = 20;
 
   const expMult =
     exp === 'student' ? 0.5

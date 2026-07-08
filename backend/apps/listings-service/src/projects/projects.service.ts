@@ -11,7 +11,7 @@ import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 import { budgetFromScope } from '../shared/utils/pricing';
-import { toStringArray, normalizeN8nScope } from '../shared/utils/scope';
+import { toStringArray, normalizeN8nScope, projectDaysFromScope } from '../shared/utils/scope';
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
@@ -81,7 +81,11 @@ export class ProjectsService {
       ?? dto.projectScope ?? dto.project_scope ?? dto.workPhases ?? dto.work_phases ?? [];
     const scope = normalizeN8nScope(Array.isArray(rawScope) ? rawScope : []);
     const { budget, totalHours } = budgetFromScope(scope);
-    const durationWeeks = totalHours > 0 ? Math.ceil(totalHours / 40) : null;
+    // Derive duration from the same per-phase day calculation the frontend uses
+    // for its timeline (phases run sequentially; each phase's distinct roles work
+    // in parallel) so the stored duration and the on-page timeline never disagree.
+    const totalDays = projectDaysFromScope(scope);
+    const durationWeeks = totalDays > 0 ? Math.ceil(totalDays / 7) : null;
     const duration = durationWeeks ? `${durationWeeks} week${durationWeeks !== 1 ? 's' : ''}` : undefined;
     const deliverables = Array.isArray(dto.deliverables) && dto.deliverables.length
       ? dto.deliverables

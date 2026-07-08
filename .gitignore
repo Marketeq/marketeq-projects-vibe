@@ -161,3 +161,4 @@ backend/gen-token.js
 .DS_Store
 .vscode/
 patch-transactions-comps.js
+scripts/content_automation_seeding.py

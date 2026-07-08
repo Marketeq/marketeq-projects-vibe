@@ -27,6 +27,22 @@ export function normalizeExperienceLevel(val: unknown): string {
   return 'Medior';
 }
 
+// Total calendar days for the project, derived the same way the frontend
+// derives its phase-by-phase timeline: phases run sequentially, but within
+// each phase, its distinct roles work in parallel (8hrs/day per person).
+// Keeping this identical to the frontend calc is what matters — it's what
+// keeps the stored duration and the on-page timeline from disagreeing.
+export function projectDaysFromScope(scope: Array<{ tasks: Array<{ roleName: string; estimatedHours: number }> }>): number {
+  let totalDays = 0;
+  for (const phase of scope) {
+    const tasks = phase.tasks ?? [];
+    const phaseHours = tasks.reduce((sum, t) => sum + (Number(t.estimatedHours) || 0), 0);
+    const teamSize = new Set(tasks.map((t) => t.roleName).filter(Boolean)).size || 1;
+    totalDays += Math.max(1, Math.ceil(phaseHours / (8 * teamSize)));
+  }
+  return totalDays;
+}
+
 export function normalizeN8nScope(raw: any[]): Array<{
   phaseName: string;
   order: number;
