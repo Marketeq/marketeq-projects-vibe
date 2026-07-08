@@ -26,6 +26,9 @@ export class MediaEntity extends EntityRelationalHelper implements Media {
   @Column({ type: String, array: true, nullable: true })
   additionalImages?: string[];
 
+  @Column({ type: String, array: true, nullable: true })
+  hiddenImages?: string[];
+
   @Column({ type: String, nullable: true })
   videoUrl?: string; // maps to frontend: "video_url"
 

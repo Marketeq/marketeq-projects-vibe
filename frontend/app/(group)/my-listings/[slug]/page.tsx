@@ -2,7 +2,13 @@
 
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { useParams, useRouter } from "next/navigation"
+
+const ClientListingView = dynamic(
+  () => import("@/app/(group)/(group)/project-details/[slug]/page"),
+  { ssr: false }
+)
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
@@ -1463,6 +1469,7 @@ export default function ProjectDetails() {
   const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
   const [unsavedNavOpen, setUnsavedNavOpen] = React.useState(false)
   const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
+  const [isClientView, setIsClientView] = React.useState(false)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
   const [publishAttempted, setPublishAttempted] = React.useState(false)
@@ -1697,14 +1704,28 @@ export default function ProjectDetails() {
     [project.id, project.mediaUrls]
   )
 
-  const handleGalleryToggleHidden = React.useCallback((index: number) => {
-    setHiddenImages((prev) => {
-      const next = new Set(prev)
+  const handleGalleryToggleHidden = React.useCallback(
+    (index: number) => {
+      const next = new Set(hiddenImages)
       if (next.has(index)) next.delete(index)
       else next.add(index)
-      return next
-    })
-  }, [])
+      setHiddenImages(next)
+
+      if (project.id && isRealBackendId(project.id)) {
+        const urls: string[] = project.mediaUrls ?? []
+        const additional = urls.filter(
+          (u: string) => u && !u.startsWith("blob:")
+        )
+        const hidden = Array.from(next)
+          .map((i) => urls[i])
+          .filter((u): u is string => Boolean(u && !u.startsWith("blob:")))
+        ProjectAPI.UpdateGalleryImages(project.id, additional, hidden).catch(
+          (err: any) => console.error("Failed to save hidden images:", err)
+        )
+      }
+    },
+    [hiddenImages, project.id, project.mediaUrls]
+  )
 
   const gallerySensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -2691,6 +2712,7 @@ export default function ProjectDetails() {
           let featuredImage: string | null = null
           let featuredVideo: string | null = null
           const galleryUrls: string[] = []
+          const hiddenUrls: string[] = []
           if (d.media) {
             const mediaObj = Array.isArray(d.media) ? d.media[0] : d.media
             if (mediaObj?.featuredImage) featuredImage = mediaObj.featuredImage
@@ -2698,7 +2720,18 @@ export default function ProjectDetails() {
             if (Array.isArray(mediaObj?.additionalImages)) {
               galleryUrls.push(...mediaObj.additionalImages)
             }
+            if (Array.isArray(mediaObj?.hiddenImages)) {
+              hiddenUrls.push(...mediaObj.hiddenImages)
+            }
           }
+          const finalGallery =
+            galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? [])
+          const hiddenIndices = new Set<number>()
+          for (const u of hiddenUrls) {
+            const idx = finalGallery.indexOf(u)
+            if (idx >= 0) hiddenIndices.add(idx)
+          }
+          setHiddenImages(hiddenIndices)
           setProject({
             ...d,
             role: d.category || d.categories?.[0] || "Software Development",
@@ -2712,8 +2745,7 @@ export default function ProjectDetails() {
               null,
             featuredVideo:
               featuredVideo || d.featuredVideo || d.videoUrl || null,
-            mediaUrls:
-              galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? []),
+            mediaUrls: finalGallery,
             programmingLanguages:
               Array.isArray(d.skills) && d.skills.length > 0
                 ? d.skills
@@ -3226,6 +3258,12 @@ export default function ProjectDetails() {
           </div>
         </div>
       </div>
+    )
+  }
+
+  if (isClientView) {
+    return (
+      <ClientListingView isPreview onEdit={() => setIsClientView(false)} />
     )
   }
 
@@ -5603,7 +5641,12 @@ export default function ProjectDetails() {
                                 </div>
                               </div>
 
-                              <div className="border-t border-gray-200 px-6 py-6 space-y-6 max-h-[60vh] overflow-y-auto">
+                              <ScrollArea
+                                className="max-h-[60vh] border-t border-gray-200"
+                                viewportClassName="!h-auto !max-h-[60vh] [&>div]:!h-auto"
+                                scrollBar={<ScrollBar className="w-4 p-1" />}
+                              >
+                                <div className="px-6 py-6 space-y-6">
                                 {[
                                   {
                                     label: "Programming Languages",
@@ -5827,6 +5870,7 @@ export default function ProjectDetails() {
                                   )}
                                 </div>
                               </div>
+                              </ScrollArea>
 
                               <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
                                 <Button
@@ -9213,15 +9257,7 @@ export default function ProjectDetails() {
                           visual="gray"
                           size="md"
                           className="flex-auto"
-                          onClick={() => {
-                            const url = `/project-details/${project.id || project.slug || params.slug}`
-                            if (hasChanges) {
-                              setPendingNavUrl(url)
-                              setUnsavedNavOpen(true)
-                            } else {
-                              router.push(url)
-                            }
-                          }}
+                          onClick={() => setIsClientView(true)}
                         >
                           <Eye className="size-[15px]" />
                           View as Client

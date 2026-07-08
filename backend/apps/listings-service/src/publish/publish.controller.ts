@@ -248,7 +248,7 @@ export class PublishController {
     const featuredVideoFile =
       files?.featuredVideo?.[0] ?? files?.videoUrl?.[0];
 
-    if (!featuredImageFile) {
+    if (!featuredImageFile && !dto.featuredImage) {
       throw new BadRequestException('Featured image is required.');
     }
 
@@ -260,7 +260,7 @@ export class PublishController {
       }
     });
 
-    if (!this.imageValidator.isValid(featuredImageFile)) {
+    if (featuredImageFile && !this.imageValidator.isValid(featuredImageFile)) {
       throw new BadRequestException(
         this.imageValidator.buildErrorMessage(featuredImageFile),
       );
@@ -281,12 +281,13 @@ export class PublishController {
   async updateGalleryImages(
     @Req() req: AuthenticatedRequest,
     @Param('projectId') projectId: string,
-    @Body() body: { additionalImages: string[] },
+    @Body() body: { additionalImages: string[]; hiddenImages?: string[] },
   ) {
     return this.publishService.updateMediaGallery(
       req.user.sub,
       projectId,
       body.additionalImages ?? [],
+      body.hiddenImages,
     );
   }
 

@@ -366,6 +366,39 @@ const resolveMediaFileForUpload = async (
   return makeUniqueFile(file)
 }
 
+const appendFeaturedImageField = async (
+  formData: FormData,
+  meta: File | Blob | undefined
+): Promise<boolean> => {
+  if (!meta) return false
+  if (isPersistedMediaFile(meta)) {
+    formData.append("featuredImage", meta.__persistedUrl!)
+    return true
+  }
+  const resolved = await resolveMediaFileForUpload(meta, "featured-image.jpg")
+  if (!resolved) return false
+  formData.append("featuredImage", resolved)
+  return true
+}
+
+const appendAdditionalImageFields = async (
+  formData: FormData,
+  metas: (File | Blob | undefined)[]
+): Promise<void> => {
+  for (const meta of metas) {
+    if (!meta) continue
+    if (isPersistedMediaFile(meta)) {
+      formData.append("additionalImages", meta.__persistedUrl!)
+      continue
+    }
+    const resolved = await resolveMediaFileForUpload(
+      meta,
+      "additional-image.jpg"
+    )
+    if (resolved) formData.append("additionalImages", resolved)
+  }
+}
+
 const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
   try {
     const response = await fetch(url)
@@ -1214,22 +1247,12 @@ const BottomBar = ({
         if (featuredFile || additionalFiles.length || videoUrl) {
           const formData = new FormData()
           formData.append("projectId", String(projectId))
-          const uniqueFeatured = await resolveMediaFileForUpload(
-            featuredFile,
-            "featured-image.jpg"
-          )
-          if (uniqueFeatured) {
-            formData.append("featuredImage", uniqueFeatured)
+          await appendFeaturedImageField(formData, featuredFile)
+          await appendAdditionalImageFields(formData, additionalFiles)
+          for (const url of media.hiddenImages ?? []) {
+            formData.append("hiddenImages", url)
           }
-          for (const file of additionalFiles) {
-            const uniqueAdditional = await resolveMediaFileForUpload(
-              file,
-              "additional-image.jpg"
-            )
-            if (uniqueAdditional) {
-              formData.append("additionalImages", uniqueAdditional)
-            }
-          }
+          formData.append("replaceHidden", "true")
           if (videoUrl) {
             formData.append("videoUrl", videoUrl)
           }
@@ -3601,6 +3624,7 @@ const mediaFormSchema = z
         }
       )
       .optional(),
+    hiddenImages: z.array(z.string()).optional(),
   })
   .refine(
     (data) => data.featuredImages.every((value) => value.progress === 100),
@@ -3642,6 +3666,7 @@ type MediaFormValues = {
     meta: any
   }[][]
   featuredVideo: string
+  hiddenImages?: string[]
 }
 
 const MEDIA_VALIDATION_TARGETS: Array<{
@@ -3671,6 +3696,24 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     trigger,
     setValue,
   } = useMediaContext()
+
+  const formHiddenImages =
+    (useWatch({ control, name: "hiddenImages" }) as string[] | undefined) ?? []
+  const hiddenKey = formHiddenImages.join("|")
+  const [hiddenImages, setHiddenImages] = useState<string[]>([])
+  useEffect(() => {
+    setHiddenImages(formHiddenImages)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hiddenKey])
+  const setHiddenForUrl = (url: string, hidden: boolean) => {
+    const next = hidden
+      ? hiddenImages.includes(url)
+        ? hiddenImages
+        : [...hiddenImages, url]
+      : hiddenImages.filter((u) => u !== url)
+    setHiddenImages(next)
+    setValue("hiddenImages", next, { shouldDirty: true })
+  }
 
   const { currentStep } = useStepRootContext()
   const [progressValue, setProgressValue] = useState(0)
@@ -3914,26 +3957,42 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     key={index}
                     name={`additionalImages.${index}`}
                     control={control}
-                    render={({ field: { value, onChange } }) => (
-                      <SquareShapeDropzone
-                        className="transition-colors duration-300"
-                        value={value}
-                        onValueChange={(value) => {
-                          onChange(
-                            value?.map((item) => ({ ...item, progress: 50 }))
-                          )
-                          window.setTimeout(() => {
+                    render={({ field: { value, onChange } }) => {
+                      const meta = value?.[0]?.meta
+                      const url =
+                        meta && isPersistedMediaFile(meta)
+                          ? meta.__persistedUrl
+                          : undefined
+                      return (
+                        <SquareShapeDropzone
+                          className="transition-colors duration-300"
+                          value={value}
+                          onValueChange={(value) => {
                             onChange(
-                              value?.map((item) => ({ ...item, progress: 100 }))
+                              value?.map((item) => ({ ...item, progress: 50 }))
                             )
-                          }, ONE_SECOND * 2)
-                          isSubmitted ? trigger("additionalImages") : noop
-                        }}
-                        onError={(message) =>
-                          setError(`additionalImages.${index}`, { message })
-                        }
-                      />
-                    )}
+                            window.setTimeout(() => {
+                              onChange(
+                                value?.map((item) => ({
+                                  ...item,
+                                  progress: 100,
+                                }))
+                              )
+                            }, ONE_SECOND * 2)
+                            isSubmitted ? trigger("additionalImages") : noop
+                          }}
+                          onError={(message) =>
+                            setError(`additionalImages.${index}`, { message })
+                          }
+                          isHidden={
+                            url ? hiddenImages.includes(url) : undefined
+                          }
+                          onToggleHidden={
+                            url ? (h) => setHiddenForUrl(url, h) : undefined
+                          }
+                        />
+                      )
+                    }}
                   />
                 ))}
               </div>
@@ -7453,6 +7512,7 @@ function PublishProject({
     resolver: zodResolver(mediaFormSchema),
     defaultValues: {
       featuredVideo: "",
+      hiddenImages: [],
     },
   })
   const projectScopeMethods = useState<Phase[]>([{}])
@@ -7482,6 +7542,7 @@ function PublishProject({
   const persistedMediaRef = useRef<{
     featuredImage?: string
     additionalImages?: string[]
+    hiddenImages?: string[]
     featuredVideo?: string
   } | null>(null)
   const lastDraftPayloadRef = useRef<string>("")
@@ -7625,6 +7686,9 @@ function PublishProject({
               additionalImages: Array.isArray(draft.media.additionalImages)
                 ? draft.media.additionalImages
                 : [],
+              hiddenImages: Array.isArray(draft.media.hiddenImages)
+                ? draft.media.hiddenImages
+                : [],
               featuredVideo: draft.media.featuredVideo ?? "",
             }
           : null
@@ -7660,6 +7724,7 @@ function PublishProject({
             },
           ]),
           featuredVideo: draft?.videoUrl ?? persistedMedia?.featuredVideo ?? "",
+          hiddenImages: persistedMedia?.hiddenImages ?? [],
         })
         lastMediaPayloadRef.current = JSON.stringify({
           featuredImage: persistedMedia?.featuredImage ?? "",
@@ -7899,6 +7964,7 @@ function PublishProject({
           .map((item) => item?.meta)
           .filter(Boolean) ?? []
       const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
+      const hiddenImages = mediaValues.hiddenImages ?? []
 
       const signature = JSON.stringify({
         featuredImage: isPersistedMediaFile(featuredMeta)
@@ -7907,38 +7973,26 @@ function PublishProject({
         additionalImages: additionalMeta.map((item: any) =>
           isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
         ),
-        featuredVideo: videoUrl,
+        hiddenImages,
       })
 
       if (signature === lastMediaPayloadRef.current) return
       if (!featuredMeta) return
 
+      lastMediaPayloadRef.current = signature
+
       const formData = new FormData()
       formData.append("projectId", draftProjectId)
 
-      const resolvedFeatured = await resolveMediaFileForUpload(
-        featuredMeta,
-        "featured-image.jpg"
-      )
-      if (!resolvedFeatured) return
-      formData.append("featuredImage", resolvedFeatured)
+      const hasFeatured = await appendFeaturedImageField(formData, featuredMeta)
+      if (!hasFeatured) return
 
-      for (const file of additionalMeta) {
-        const resolvedAdditional = await resolveMediaFileForUpload(
-          file,
-          "additional-image.jpg"
-        )
-        if (resolvedAdditional) {
-          formData.append("additionalImages", resolvedAdditional)
-        }
-      }
+      await appendAdditionalImageFields(formData, additionalMeta)
 
-      if (videoUrl) {
-        formData.append(
-          "videoUrl",
-          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
-        )
+      for (const url of hiddenImages) {
+        formData.append("hiddenImages", url)
       }
+      formData.append("replaceHidden", "true")
 
       try {
         const response = await ProjectAPI.UploadMedia(formData)
@@ -7951,14 +8005,11 @@ function PublishProject({
             response?.data?.additionalImages ??
             persistedMediaRef.current?.additionalImages ??
             [],
-          featuredVideo:
-            response?.data?.featuredVideo ??
-            response?.data?.videoUrl ??
-            videoUrl,
+          hiddenImages: response?.data?.hiddenImages ?? hiddenImages,
+          featuredVideo: videoUrl,
         }
 
         persistedMediaRef.current = nextMedia
-        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
 
         mediaMethods.reset({
           featuredImages: nextMedia.featuredImage
@@ -7983,6 +8034,24 @@ function PublishProject({
             ]
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
+          hiddenImages: nextMedia.hiddenImages ?? [],
+        })
+
+        const resetValues = mediaMethods.getValues()
+        const resetFeatured = resetValues.featuredImages?.[0]?.meta
+        const resetAdditional =
+          resetValues.additionalImages
+            ?.flat()
+            .map((item) => item?.meta)
+            .filter(Boolean) ?? []
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: isPersistedMediaFile(resetFeatured)
+            ? resetFeatured.__persistedUrl
+            : (resetFeatured?.name ?? ""),
+          additionalImages: resetAdditional.map((item: any) =>
+            isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
+          ),
+          hiddenImages: resetValues.hiddenImages ?? [],
         })
         setLastSavedAt(new Date())
       } catch (error) {
