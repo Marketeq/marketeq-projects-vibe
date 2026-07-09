@@ -10,18 +10,18 @@ import {
 import { type BlockItem } from "@/src/lib/api/category-pages"
 import {
   addFavorite,
-  findFavoriteByItemId,
+  findFavoriteByTypeAndItemId,
   getAllFavorites,
   removeFavorite,
+  type FavoriteType,
 } from "@/src/lib/api/favorites"
 import { type TalentUser, talentToCardProps } from "@/src/lib/api/talent-users"
-import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
+import {
+  projectDetailsUrl,
+  serviceDetailsUrl,
+} from "@/src/lib/listing-urls"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
 import { fromLength } from "@/utils/functions"
-import { projectSeeds } from "@/data/projects.seed"
-import { serviceSeeds } from "@/data/services.seed"
-import { talentSeeds } from "@/data/talent.seed"
-import { teamSeeds } from "@/data/teams.seed"
 import {
   ArrowRight,
   Check,
@@ -30,10 +30,8 @@ import {
   Clock,
   Home03,
   Mail,
-  MarkerPin02,
+  RefreshCw,
   Star,
-  Star01,
-  Stars02,
 } from "@blend-metrics/icons"
 import { TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { SwiperSlide } from "swiper/react"
@@ -3266,7 +3264,7 @@ export default function Projects() {
                     {/* Entity root — links to /projects, /services, etc. */}
                     {l2Meta || l3Meta ? (
                       <NextLink
-                        href={`/c/${l1Meta.slug}/${pageKind}`}
+                        href={`/${pageKind}`}
                         className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
                       >
                         {sectionLabel}
@@ -3283,7 +3281,7 @@ export default function Projects() {
                           /
                         </span>
                         <NextLink
-                          href={`/c/${l1Meta.slug}/${pageKind}`}
+                          href={`/${pageKind}/${l1Meta.slug}`}
                           className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
                         >
                           {l1Meta.name}
@@ -3297,7 +3295,7 @@ export default function Projects() {
                         </span>
                         {l3Meta ? (
                           <NextLink
-                            href={`/c/${l1Meta.slug}/${l2Meta.slug}/${pageKind}`}
+                            href={`/${pageKind}/${l1Meta.slug}/${l2Meta.slug}`}
                             className="text-xs leading-6 font-semibold text-white opacity-60 hover:opacity-100 transition-opacity"
                           >
                             {l2Meta.name}
@@ -3407,7 +3405,7 @@ export default function Projects() {
                               <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
                                 {subcat.name}
                               </h1>
-                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
+                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-3">
                                 {subcat.description ||
                                   `Explore ${subcat.name} category`}
                               </p>
@@ -3697,9 +3695,7 @@ export default function Projects() {
                         size="lg"
                         className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
                       >
-                        <NextLink href={listingHref("services")}>
-                          Explore More Services
-                        </NextLink>
+                        Explore More Teams
                       </Button>
                     </div>
                     <div className="mt-6">
@@ -4521,7 +4517,7 @@ export default function Projects() {
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
-                            <article className="py-[50px] h-full rounded-lg bg-warning-600 flex flex-col items-start justify-end px-6">
+                            <article className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6" style={{ backgroundColor: "#DC6803" }}>
                               <h1 className="text-[28px] font-bold leading-none text-white">
                                 {sub.name} Projects
                               </h1>
@@ -5609,7 +5605,7 @@ export default function Projects() {
                           </div>
                         </div>
 
-                        <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-3">
+                        <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
                           Brief Description of the project. Lorem ipsum dolor
                           sit amet, consectetur adipiscing elit, sed do eiusmod
                           tempor incididunt.
@@ -6514,50 +6510,50 @@ export default function Projects() {
                   >
                     <TabsTrigger value="Industry">Industry</TabsTrigger>
                   </Badge> */}
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Budget">Budget</TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Project Length">
-                      Project Length
-                    </TabsTrigger>
-                  </Badge>
-                  <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Team Size">Team Size</TabsTrigger>
-                  </Badge>
-                </TabsList>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Budget">Budget</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Project Length">
+                        Project Length
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Team Size">Team Size</TabsTrigger>
+                    </Badge>
+                  </TabsList>
 
-                <Button
-                  size="lg"
-                  variant="link"
-                  visual="gray"
-                  className="hover:text-dark-blue-400"
-                >
-                  Advanced Filters
-                  <ArrowRight className="size-[15px]" />
-                </Button>
-              </div>
+                  <Button
+                    size="lg"
+                    variant="link"
+                    visual="gray"
+                    className="hover:text-dark-blue-400"
+                  >
+                    Advanced Filters
+                    <ArrowRight className="size-[15px]" />
+                  </Button>
+                </div>
 
-              <div className="mt-6">
-                {/*
+                <div className="mt-6">
+                  {/*
                   Each tab corresponds to an Algolia facet on the projects index.
                   Spec: /docs/md/Search Service/ ✅ Finalized Filter Fields table for project search.md
                         /docs/md/Search Service/📄 search-config.ts — Filters Only (projects).md
@@ -6568,134 +6564,136 @@ export default function Projects() {
                   - Team Size       → team_size_range (enum — exact values)
                   Each tile links to /search with the filter pre-applied and scoped to the current category.
                 */}
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Project Type"
-                >
-                  {[
-                    "Web App",
-                    "Mobile App",
-                    "Desktop App",
-                    "SaaS Platform",
-                    "API / Backend",
-                    "E-commerce Store",
-                    "Landing Page",
-                    "Chrome Extension",
-                    "CLI Tool",
-                    "Game",
-                  ].map((projectType) => (
-                    <NextLink
-                      key={projectType}
-                      href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {projectType}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Industry"
-                >
-                  {[
-                    "Agriculture",
-                    "Oil & Gas",
-                    "Manufacturing",
-                    "Construction",
-                    "Utilities",
-                    "Retail & Wholesale",
-                    "Transportation",
-                    "Finance & Banking",
-                    "Real Estate",
-                    "Healthcare",
-                  ].map((industry) => (
-                    <NextLink
-                      key={industry}
-                      href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {industry}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Budget"
-                >
-                  {[
-                    { label: "Under $5k", min: 0, max: 5000 },
-                    { label: "$5k – $15k", min: 5000, max: 15000 },
-                    { label: "$15k – $50k", min: 15000, max: 50000 },
-                    { label: "$50k – $100k", min: 50000, max: 100000 },
-                    { label: "$100k – $250k", min: 100000, max: 250000 },
-                    { label: "$250k – $500k", min: 250000, max: 500000 },
-                    { label: "$500k – $1M", min: 500000, max: 1000000 },
-                    { label: "$1M+", min: 1000000, max: null as number | null },
-                  ].map((b) => (
-                    <NextLink
-                      key={b.label}
-                      href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {b.label}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Project Length"
-                >
-                  {[
-                    "1 - 3 months",
-                    "3 - 6 months",
-                    "6 - 12 months",
-                    "12 - 18 months",
-                    "18 - 24 months",
-                    "24+ months",
-                  ].map((duration) => (
-                    <NextLink
-                      key={duration}
-                      href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {duration}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-                <TabsContent
-                  className="grid grid-cols-5 gap-[15px]"
-                  value="Team Size"
-                >
-                  {[
-                    "1 - 2 members",
-                    "2 - 5 members",
-                    "5 - 10 members",
-                    "10 - 15 members",
-                    "15 - 20 members",
-                    "20+ members",
-                  ].map((size) => (
-                    <NextLink
-                      key={size}
-                      href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
-                      className="focus-visible:outline-none"
-                    >
-                      <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
-                        {size}
-                      </article>
-                    </NextLink>
-                  ))}
-                </TabsContent>
-              </div>
-            </Tabs>
-          </div>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Project Type"
+                  >
+                    {[
+                      "Web App",
+                      "Mobile App",
+                      "Desktop App",
+                      "SaaS Platform",
+                      "API / Backend",
+                      "E-commerce Store",
+                      "Landing Page",
+                      "Chrome Extension",
+                      "CLI Tool",
+                      "Game",
+                    ].map((projectType) => (
+                      <NextLink
+                        key={projectType}
+                        href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {projectType}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Industry"
+                  >
+                    {[
+                      "Agriculture",
+                      "Oil & Gas",
+                      "Manufacturing",
+                      "Construction",
+                      "Utilities",
+                      "Retail & Wholesale",
+                      "Transportation",
+                      "Finance & Banking",
+                      "Real Estate",
+                      "Healthcare",
+                    ].map((industry) => (
+                      <NextLink
+                        key={industry}
+                        href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {industry}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Budget"
+                  >
+                    {[
+                      { label: "Under $5k", min: 0, max: 5000 },
+                      { label: "$5k – $15k", min: 5000, max: 15000 },
+                      { label: "$15k – $50k", min: 15000, max: 50000 },
+                      { label: "$50k – $100k", min: 50000, max: 100000 },
+                      { label: "$100k – $250k", min: 100000, max: 250000 },
+                      { label: "$250k – $500k", min: 250000, max: 500000 },
+                      { label: "$500k – $1M", min: 500000, max: 1000000 },
+                      { label: "$1M+", min: 1000000, max: null as number | null },
+
+
+                    ].map((b) => (
+                      <NextLink
+                        key={b.label}
+                        href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {b.label}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Project Length"
+                  >
+                    {[
+                      "1 - 3 months",
+                      "3 - 6 months",
+                      "6 - 12 months",
+                      "12 - 18 months",
+                      "18 - 24 months",
+                      "24+ months",
+                    ].map((duration) => (
+                      <NextLink
+                        key={duration}
+                        href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {duration}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Team Size"
+                  >
+                    {[
+                      "1 - 2 members",
+                      "2 - 5 members",
+                      "5 - 10 members",
+                      "10 - 15 members",
+                      "15 - 20 members",
+                      "20+ members",
+                    ].map((size) => (
+                      <NextLink
+                        key={size}
+                        href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {size}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                </div>
+              </Tabs>
+            </div>
           )}
 
           {/* {Category} All Stars — talent Swiper with filter tabs */}
@@ -6772,11 +6770,10 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-primary-700 p-10 flex flex-col items-start justify-between"
+                              className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#2459DB" }}
                             >
-                              <div className="pt-6">
-                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                <h1 className="text-[28px] font-bold leading-none text-white">
                                   {currentName} Talent
                                 </h1>
                                 <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
@@ -6790,6 +6787,7 @@ export default function Projects() {
                                   className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
                                   size="lg"
                                 >
+                                  
                                   <NextLink href={listingHref("talent")}>
                                     Explore More{" "}
                                     <ArrowRight className="size-[15px] ml-2" />
@@ -7304,20 +7302,17 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#027A48" }}
                             >
-                              <div className="pt-6">
-                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
-                                  New {currentName} Talent
-                                </h1>
-                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
-                                  Discover the newest{" "}
-                                  {currentName.toLowerCase()} experts joining
-                                  our community.
-                                </p>
-                              </div>
-                              <div className="flex flex-col gap-y-4">
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                New {currentName} Talent
+                              </h1>
+                              <p className="mt-3 text-lg font-light leading-none text-white">
+                                Discover the newest {currentName.toLowerCase()}{" "}
+                                experts joining our community.
+                              </p>
+                              <div className="mt-8 flex flex-col gap-y-3">
                                 <Button
                                   asChild
                                   className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#027A48] hover:text-[#027A48] px-6 h-12 text-base font-semibold"
@@ -7492,14 +7487,13 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-primary-700 p-10 flex flex-col items-start justify-between"
+                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
                               style={{ backgroundColor: "#2459DB" }}
                             >
-                              <div className="pt-6">
-                                <h1 className="text-4xl font-bold leading-[1.1] text-white tracking-tight">
+                                <h1 className="text-[28px] font-bold leading-none text-white">
                                   {currentName} Talent
                                 </h1>
-                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                <p className="mt-3 text-lg font-light leading-none text-white">
                                   Find {currentName.toLowerCase()} talent to
                                   bring your projects to life.
                                 </p>
@@ -7981,11 +7975,7 @@ export default function Projects() {
                 {projectCardMocks.slice(0, 3).map((project, idx) => (
                   <NextLink
                     key={`featured-project-collection-${project.id}`}
-                    href={buildProjectUrl(
-                      currentCategoryPath,
-                      project.slug,
-                      project.id
-                    )}
+                    href={projectDetailsUrl(project.slug, project.id)}
                     className="group block rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition hover:border-gray-300 hover:ring-1 hover:ring-gray-300"
                   >
                     <div className="relative h-[170px] overflow-hidden rounded-md bg-gray-100">
@@ -8003,7 +7993,7 @@ export default function Projects() {
                     <h2 className="mt-2 text-lg font-bold leading-6 text-dark-blue-400 group-hover:underline">
                       {project.title}
                     </h2>
-                    <p className="mt-2 line-clamp-2 text-sm font-light leading-5 text-dark-blue-400">
+                    <p className="mt-2 line-clamp-3 text-sm font-light leading-5 text-dark-blue-400">
                       {project.description}
                     </p>
                   </NextLink>
@@ -8108,7 +8098,7 @@ export default function Projects() {
 
             <div className="grid grid-cols-2 gap-x-8 mt-6">
               <div className="flex flex-col gap-y-8">
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -8144,7 +8134,7 @@ export default function Projects() {
                     </Button>
                   </div>
                 </article>
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -8181,7 +8171,7 @@ export default function Projects() {
                   </div>
                 </article>
               </div>
-              <div className="rounded-lg overflow-hidden relative group cursor-pointer focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+              <div className="rounded-lg overflow-hidden relative group cursor-pointer">
                 <NextImage
                   className="object-cover group-hover:scale-105 motion-safe:transition-transform motion-safe:[transition-duration:3000ms]"
                   src="/artificial-hand.jpeg"
