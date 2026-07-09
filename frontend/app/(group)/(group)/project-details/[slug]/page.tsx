@@ -1636,6 +1636,7 @@ export default function ProjectDetails({
                               location: string | null
                               languages: string[]
                               skills: string[]
+                              role: string
                               isLead: boolean
                               isOnline: boolean
                             }
@@ -1696,11 +1697,9 @@ export default function ProjectDetails({
                                           </span>{" "}
                                           @{lead.username}
                                         </NextLink>
-                                        {lead.skills[0] ? (
+                                        {lead.role ? (
                                           <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                            {lead.skills
-                                              .slice(0, 2)
-                                              .join(" · ")}
+                                            {lead.role}
                                           </span>
                                         ) : null}
                                       </div>
@@ -4571,106 +4570,100 @@ export default function ProjectDetails({
                   Current Team
                 </span>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AvatarGroup size="sm" excess>
-                        {(Array.isArray(project.team) && project.team.length > 0
-                          ? project.team
-                          : [
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                            ]
-                        ).map((m: any, i: number) => (
-                          <Avatar
-                            key={m.username ?? i}
-                            className="border-2 border-white hover:ring-0 active:ring-0"
-                            size="sm"
-                          >
-                            {m.avatarUrl ? (
-                              <AvatarImage
-                                src={m.avatarUrl}
-                                alt={m.firstName}
-                              />
-                            ) : null}
-                            <AvatarFallback>
-                              {(m.firstName || "?").charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                      </AvatarGroup>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-0" size="md">
-                      <ScrollArea
-                        className="h-[192px] p-3 pr-4"
-                        scrollBar={
-                          <ScrollBar
-                            className="w-4 p-1"
-                            thumbClassName="bg-white/20"
-                          />
-                        }
-                      >
-                        <div className="space-y-3 pr-5">
-                          {(Array.isArray(project.team) &&
-                          project.team.length > 0
-                            ? project.team
-                            : [
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                              ]
-                          ).map((m: any, i: number) => (
-                            <div
+                {Array.isArray(project.team) && project.team.length > 0 ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AvatarGroup size="sm" excess>
+                          {project.team.map((m: any, i: number) => (
+                            <Avatar
                               key={m.username ?? i}
-                              className="flex items-center gap-x-[18px]"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                              size="sm"
                             >
-                              <div className="flex items-center gap-x-2 flex-auto">
-                                <Avatar>
-                                  {m.avatarUrl ? (
-                                    <AvatarImage
-                                      src={m.avatarUrl}
-                                      alt={m.firstName}
-                                    />
-                                  ) : null}
-                                  <AvatarFallback>
-                                    {(m.firstName || "?")
-                                      .charAt(0)
-                                      .toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col flex-auto">
-                                  <div className="flex items-center gap-x-0.5">
-                                    <span className="text-xs leading-5 font-semibold text-white">
-                                      {m.firstName}
-                                    </span>
-                                    <span className="text-[10px] leading-none font-light text-white">
-                                      @{m.username}
+                              {m.avatarUrl ? (
+                                <AvatarImage
+                                  src={m.avatarUrl}
+                                  alt={m.firstName}
+                                />
+                              ) : null}
+                              <AvatarFallback>
+                                {(m.firstName || "?").charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+                      </TooltipTrigger>
+                      <TooltipContent className="p-0" size="md">
+                        <ScrollArea
+                          className="h-[192px] p-3 pr-4"
+                          scrollBar={
+                            <ScrollBar
+                              className="w-4 p-1"
+                              thumbClassName="bg-white/20"
+                            />
+                          }
+                        >
+                          <div className="space-y-3 pr-5">
+                            {project.team.map((m: any, i: number) => (
+                              <div
+                                key={m.username ?? i}
+                                className="flex items-center gap-x-[18px]"
+                              >
+                                <div className="flex items-center gap-x-2 flex-auto">
+                                  <Avatar>
+                                    {m.avatarUrl ? (
+                                      <AvatarImage
+                                        src={m.avatarUrl}
+                                        alt={m.firstName}
+                                      />
+                                    ) : null}
+                                    <AvatarFallback>
+                                      {(m.firstName || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex flex-col flex-auto">
+                                    <div className="flex items-center gap-x-0.5">
+                                      <span className="text-xs leading-5 font-semibold text-white">
+                                        {m.firstName}
+                                      </span>
+                                      <span className="text-[10px] leading-none font-light text-white">
+                                        @{m.username}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-light text-white">
+                                      {m.location ||
+                                        m.skills?.[0] ||
+                                        "Team Member"}
                                     </span>
                                   </div>
-                                  <span className="text-[10px] font-light text-white">
-                                    {m.location ||
-                                      m.skills?.[0] ||
-                                      "Team Member"}
-                                  </span>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <div className="flex flex-col items-start gap-y-2">
+                    <div className="flex items-center -space-x-2">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
+                        >
+                          <Users03 className="size-3.5 text-gray-400" />
                         </div>
-                      </ScrollArea>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-400 font-extralight leading-none">
+                      No team assigned yet
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 space-y-3">

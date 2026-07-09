@@ -1,3 +1,33 @@
+// Maps role types to the region where that talent is most commonly sourced
+// on the platform. Used as the default region when no location is specified,
+// producing realistic budget estimates based on actual talent distribution.
+const POPULAR_REGION_FOR_ROLE: Record<string, string> = {
+  architect:        'Eastern Europe',
+  'machine learning': 'South Asia',
+  'data scientist':  'South Asia',
+  devops:           'Eastern Europe',
+  'site reliability': 'Eastern Europe',
+  security:         'Eastern Europe',
+  backend:          'Eastern Europe',
+  'full stack':     'Eastern Europe',
+  fullstack:        'Eastern Europe',
+  frontend:         'Latin America',
+  mobile:           'South Asia',
+  qa:               'South Asia',
+  'ui/ux':          'Latin America',
+  designer:         'Latin America',
+  design:           'Latin America',
+  research:         'South Asia',
+};
+
+export function popularRegionForRole(roleName: string): string {
+  const role = (roleName || '').toLowerCase();
+  for (const [keyword, region] of Object.entries(POPULAR_REGION_FOR_ROLE)) {
+    if (role.includes(keyword)) return region;
+  }
+  return 'Eastern Europe';
+}
+
 export function hourlyRateForTask(input: {
   roleName: string;
   experienceLevel: string;
@@ -8,7 +38,9 @@ export function hourlyRateForTask(input: {
   const locRaw = Array.isArray(input.location)
     ? (input.location[0] ?? '')
     : (input.location ?? '');
-  const loc = locRaw.toLowerCase();
+  // When no location is provided, default to the most popular sourcing
+  // region for this role so budget estimates are realistic.
+  const loc = (locRaw || popularRegionForRole(input.roleName)).toLowerCase();
 
   let base = 85;
   if (role.includes('architect')) base = 140;
@@ -30,14 +62,14 @@ export function hourlyRateForTask(input: {
     : exp === 'guru' ? 1.5
     : 1.0;
 
-  let locMult = 0.85;
+  let locMult = 0.40;
   if (loc.includes('united states') || loc.includes('canada') || loc.includes('united kingdom') || loc.includes('australia') || loc.includes('australia / nz')) locMult = 1.0;
-  else if (loc.includes('western europe') || loc.includes('germany') || loc.includes('netherlands') || loc.includes('france') || loc.includes('sweden') || loc.includes('norway') || loc.includes('denmark')) locMult = 0.95;
-  else if (loc.includes('eastern europe') || loc.includes('poland') || loc.includes('romania') || loc.includes('ukraine') || loc.includes('bulgaria')) locMult = 0.7;
-  else if (loc.includes('south asia') || loc.includes('india') || loc.includes('pakistan') || loc.includes('bangladesh') || loc.includes('sri lanka')) locMult = 0.5;
-  else if (loc.includes('southeast asia') || loc.includes('east asia') || loc.includes('middle east')) locMult = 0.6;
-  else if (loc.includes('latin america') || loc.includes('brazil') || loc.includes('mexico') || loc.includes('argentina') || loc.includes('colombia')) locMult = 0.65;
-  else if (loc.includes('africa')) locMult = 0.55;
+  else if (loc.includes('western europe') || loc.includes('germany') || loc.includes('netherlands') || loc.includes('france') || loc.includes('sweden') || loc.includes('norway') || loc.includes('denmark')) locMult = 0.85;
+  else if (loc.includes('eastern europe') || loc.includes('poland') || loc.includes('romania') || loc.includes('ukraine') || loc.includes('bulgaria')) locMult = 0.40;
+  else if (loc.includes('south asia') || loc.includes('india') || loc.includes('pakistan') || loc.includes('bangladesh') || loc.includes('sri lanka')) locMult = 0.25;
+  else if (loc.includes('southeast asia') || loc.includes('east asia') || loc.includes('middle east')) locMult = 0.30;
+  else if (loc.includes('latin america') || loc.includes('brazil') || loc.includes('mexico') || loc.includes('argentina') || loc.includes('colombia')) locMult = 0.35;
+  else if (loc.includes('africa')) locMult = 0.25;
 
   return Math.round(base * expMult * locMult);
 }
