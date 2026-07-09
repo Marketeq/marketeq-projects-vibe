@@ -1,56 +1,51 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ModerationLog, ModerationAction, ContentType } from './entities/moderation-log.entity';
 
 @Injectable()
 export class ModerationLogService {
- 
-  private logs = [
-    {
-      content_id: "12345",
-      content_type: "project",
-      action: "approved",
-      reason: null,
-      moderator_id: null,
-      timestamp: new Date().toISOString(),
-    },
-    {
-      content_id: "67890",
-      content_type: "review",
-      action: "flagged",
-      reason: "Profanity detected in review",
-      moderator_id: null,
-      timestamp: new Date().toISOString(),
-    },
-    // Add more simulated logs as needed
-  ];
+  constructor(
+    @InjectRepository(ModerationLog)
+    private readonly logRepo: Repository<ModerationLog>,
+  ) {}
 
-  async getLogs(status?: string, contentType?: string, page: number = 1, perPage: number = 10): Promise<any[]> {
-    let filteredLogs = this.logs;
+  async getLogs(
+    status?: string,
+    contentType?: string,
+    page: number = 1,
+    perPage: number = 10,
+  ): Promise<{ logs: ModerationLog[]; total: number; page: number; perPage: number }> {
+    const qb = this.logRepo.createQueryBuilder('log').orderBy('log.timestamp', 'DESC');
 
-    // Optional filtering by status and contentType
     if (status) {
-      filteredLogs = filteredLogs.filter(log => log.action === status);
+      qb.andWhere('log.action = :status', { status });
     }
     if (contentType) {
-      filteredLogs = filteredLogs.filter(log => log.content_type === contentType);
+      qb.andWhere('log.contentType = :contentType', { contentType });
     }
 
-    // Pagination logic
-    const start = (page - 1) * perPage;
-    const end = start + perPage;
-    return filteredLogs.slice(start, end);
+    qb.skip((page - 1) * perPage).take(perPage);
+    const [logs, total] = await qb.getManyAndCount();
+
+    return { logs, total, page, perPage };
   }
 
-  async createLog(log: { contentId: string; action: string; reason: string | null }) {
-    const newLog = {
-      content_id: log.contentId,
-      content_type: 'project',  // You can adjust or pass this dynamically
-      action: log.action,
-      reason: log.reason,
-      moderator_id: null,
-      timestamp: new Date().toISOString(),
-    };
-    this.logs.push(newLog);
-    console.log(`Log created:`, newLog);
+  async createLog(data: {
+    contentId: string;
+    contentType?: ContentType;
+    action: ModerationAction;
+    reason: string | null;
+    moderatorId?: string;
+    meta?: Record<string, any>;
+  }): Promise<ModerationLog> {
+    return this.logRepo.save(this.logRepo.create({
+      contentId: data.contentId,
+      contentType: data.contentType ?? ContentType.PROJECT,
+      action: data.action,
+      reason: data.reason,
+      moderatorId: data.moderatorId ?? null,
+      meta: data.meta ?? null,
+    }));
   }
-
 }

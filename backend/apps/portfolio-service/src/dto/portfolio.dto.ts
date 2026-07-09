@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsObject, MaxLength, Matches } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, MaxLength, Matches } from 'class-validator';
 
 export class UpsertDraftDto {
   @IsString()
@@ -20,9 +20,17 @@ export class UpsertDraftDto {
   @IsString()
   @IsOptional()
   htmlDraft?: string;
+
+  @IsArray()
+  @IsOptional()
+  gallery?: Record<string, any>[];
 }
 
 export class PublishDto {
   @IsString()
   slug: string;
+
+  @IsString()
+  @IsOptional()
+  ownerUserId?: string;
 }

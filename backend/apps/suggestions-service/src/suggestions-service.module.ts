@@ -16,7 +16,7 @@ import { SuggestionsController } from './suggestions.controller';
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         entities: [JobTitle],
-        synchronize: config.get('NODE_ENV') !== 'production',
+        synchronize: false,
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,

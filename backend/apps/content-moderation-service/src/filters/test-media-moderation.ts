@@ -1,14 +1,11 @@
 import { MediaModerationService } from './media-moderation.service';
 import { PythonScriptService } from './python-script.service';
-import { ModerationLogService } from '../moderation-log.service'; // ✅ Make sure this path is correct
-import { ContentValidationService } from './content-validation.service'; // Add this import if available
 import * as path from 'path';
 
 console.log('🚀 Booting up moderation test script...');
 
 // Instantiate services
 const pythonService = new PythonScriptService();
-const logService = new ModerationLogService(); // ✅ NEW: Log service
 const moderationService = new MediaModerationService();
 //const contentService = new ContentValidationService(); // Add this if you have it
 

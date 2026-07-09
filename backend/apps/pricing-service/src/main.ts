@@ -13,7 +13,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const port = process.env.PORT ?? '3016';
+  const port = process.env.PORT ?? '3029';
   await app.listen(port);
   console.log(`pricing-service running on port ${port}`);
 }

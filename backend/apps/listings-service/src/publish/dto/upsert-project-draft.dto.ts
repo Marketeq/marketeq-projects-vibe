@@ -128,11 +128,6 @@ export class UpsertProjectDraftDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  projectType?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
   videoUrl?: string;
 
   @ApiProperty({ type: [FaqItemDto], required: false })

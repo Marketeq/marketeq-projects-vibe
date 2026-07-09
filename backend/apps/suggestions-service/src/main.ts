@@ -23,7 +23,7 @@ async function bootstrap() {
     logger.warn('RABBITMQ_URI not set; RMQ consumer disabled');
   }
 
-  const port = process.env.PORT || 3020;
+  const port = process.env.PORT || 3021;
   await app.listen(port);
   logger.log(`suggestions-service running on port ${port}`);
 

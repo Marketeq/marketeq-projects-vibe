@@ -30,6 +30,7 @@ export class ContentModerationController {
   ) {}
 
   @Post('content')
+  @UseGuards(JwtAuthGuard)
   async moderateContent(@Body() contentDto: { contentId: string; content: string; title: string; category: string; subcategory: string; tags?: string[]; categories?: string[] }): Promise<any> {
     const { contentId, content, title, category, subcategory } = contentDto;
     const combinedTextForKeywordChecks = [title, content]
@@ -110,6 +111,7 @@ export class ContentModerationController {
   }
 
   @Post('media')
+  @UseGuards(JwtAuthGuard)
   async moderateMedia(
     @Body() mediaDto: { contentId: string; mediaType: string; mediaUrl: string },
   ): Promise<any> {
@@ -309,12 +311,24 @@ export class ContentModerationController {
   }
 
   @Post('content/:id/approve')
+  @UseGuards(JwtAuthGuard, AdminGuard)
   async approveContent(@Param('id') contentId: string, @Body() body: { reason?: string }) {
     await this.contentModerationService.approveContent(contentId, body?.reason);
     return {
       status: 'approved',
       contentId,
       reason: body?.reason || 'Content has been approved',
+    };
+  }
+
+  @Post('content/:id/reject')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async rejectContent(@Param('id') contentId: string, @Body() body: { reason?: string }) {
+    await this.contentModerationService.rejectContent(contentId, body?.reason ?? 'Rejected by admin');
+    return {
+      status: 'rejected',
+      contentId,
+      reason: body?.reason || 'Content has been rejected by admin',
     };
   }
 
