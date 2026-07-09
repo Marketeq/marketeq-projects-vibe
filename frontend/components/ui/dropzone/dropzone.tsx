@@ -563,7 +563,13 @@ const SquareShapeDropzoneSuccess = ({
   open: () => void
 }) => {
   const [dataUrl, setDataUrl] = React.useState<string>()
+  const persistedUrl = (meta as File & { __persistedUrl?: string })
+    .__persistedUrl
   React.useEffect(() => {
+    if (persistedUrl) {
+      setDataUrl(persistedUrl)
+      return
+    }
     const reader = new FileReader()
     const onLoad = () => {
       setDataUrl(reader.result as string)
@@ -574,7 +580,7 @@ const SquareShapeDropzoneSuccess = ({
     return () => {
       reader.removeEventListener("load", onLoad)
     }
-  }, [meta])
+  }, [meta, persistedUrl])
   return (
     <div className="group relative border-2 border-gray-300 rounded-[5px] h-[100px] overflow-hidden">
       {dataUrl ? (

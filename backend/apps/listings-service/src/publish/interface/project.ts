@@ -28,6 +28,7 @@ export class Project {
   tags?: string[] | null;
   skills?: string[] | null;
   listingType?: string | null;
+  projectType?: string | null;
   status?: string | null;
   projectDatePublished?: Date | null;
   userId: string;

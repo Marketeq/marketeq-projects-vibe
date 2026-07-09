@@ -384,6 +384,32 @@ const toEmbedUrl = (raw?: string | null): string => {
   return url
 }
 
+const backendErrorMessage = (err: any): string => {
+  const raw = err?.response?.data?.message
+  if (Array.isArray(raw)) return raw.join(" ")
+  if (typeof raw === "string") return raw
+  return ""
+}
+
+const isModerationRejection = (err: any): boolean =>
+  err?.response?.status === 400 &&
+  /moderation|rejected|violat/i.test(backendErrorMessage(err))
+
+const moderationFieldLabel = (field?: string | null): string | null => {
+  switch (field) {
+    case "title":
+      return "project title"
+    case "shortDescription":
+      return "short description"
+    case "fullDescription":
+      return "project description"
+    case "faqs":
+      return "FAQ's"
+    default:
+      return null
+  }
+}
+
 const generateFaqSuggestions = (
   project: any
 ): Array<{ question: string; answer: string }> => {
@@ -1440,24 +1466,27 @@ export default function ProjectDetails() {
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
   const [publishAttempted, setPublishAttempted] = React.useState(false)
+  const [publishError, setPublishError] = React.useState<string | null>(null)
+  const [publishErrorField, setPublishErrorField] = React.useState<
+    string | null
+  >(null)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
+
+  const publishImageCount =
+    (project.mediaUrls ?? []).filter(
+      (u: string) => !!u && u.trim() !== "" && !u.startsWith("blob:")
+    ).length + (project.featuredVideo ? 1 : 0)
 
   const hasPublishBlockingErrors = SHOW_PUBLISH_VALIDATION
     ? [
         !project.featuredImage &&
           !project.mediaUrls?.[0] &&
           !project.featuredVideo,
-        (project.mediaUrls?.length ?? 0) + (project.featuredVideo ? 1 : 0) < 3,
+        publishImageCount < 3,
         !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
         !project.title || project.title === "Enter Project Title",
         (project.categories || []).length < 3,
         (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
-        !project.featuredImage && !project.mediaUrls?.[0],
-        (project.mediaUrls?.length ?? 0) < 3,
-        !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
-        !project.title || project.title === "Enter Project Title",
-        (project.categories || []).length < 3,
-        !project.summary,
         getRichTextCharacterCount(project.description || "") === 0,
         !(
           Array.isArray(project.deliverables) &&
@@ -1499,7 +1528,7 @@ export default function ProjectDetails() {
 
   const missingPublishImages =
     SHOW_PUBLISH_VALIDATION &&
-    ((project.mediaUrls?.length ?? 0) + (project.featuredVideo ? 1 : 0) < 3 ||
+    (publishImageCount < 3 ||
       (!project.featuredImage &&
         !project.mediaUrls?.[0] &&
         !project.featuredVideo))
@@ -1579,22 +1608,6 @@ export default function ProjectDetails() {
             )
           } catch (err) {
             console.error("Failed to save gallery images:", err)
-        const formData = new FormData()
-        // Sent as featuredImage for the upload/moderation pipeline, but flagged
-        // as a gallery upload so the backend appends it instead of replacing the cover.
-        formData.append("featuredImage", file)
-        formData.append("target", "additional")
-        formData.append("projectId", project.id)
-        try {
-          const res = await ProjectAPI.UploadMedia(formData)
-          const url = res?.data?.url || res?.data?.featuredImage
-          if (url) {
-            if (replaceIndex !== undefined) {
-              while (newUrls.length <= replaceIndex) newUrls.push("")
-              newUrls[replaceIndex] = url
-            } else {
-              newUrls.push(url)
-            }
           }
         }, 500)
       }
@@ -1615,15 +1628,21 @@ export default function ProjectDetails() {
             const res = await ProjectAPI.UploadMedia(formData)
             finalUrl = res?.data?.url || res?.data?.featuredImage
           } catch (err: any) {
-            finalUrl = URL.createObjectURL(file)
-            const status = err?.response?.status
-            toast({
-              title:
-                status === 503
-                  ? "Image moderation service unavailable. Showing local preview."
-                  : "Failed to upload image. Showing local preview.",
-              variant: "destructive",
-            })
+            if (isModerationRejection(err)) {
+              toast({
+                title: backendErrorMessage(err),
+                variant: "destructive",
+              })
+            } else {
+              finalUrl = URL.createObjectURL(file)
+              toast({
+                title:
+                  err?.response?.status === 503
+                    ? "Image moderation service unavailable. Showing local preview."
+                    : "Failed to upload image. Showing local preview.",
+                variant: "destructive",
+              })
+            }
           }
 
           if (finalUrl) {
@@ -1765,15 +1784,19 @@ export default function ProjectDetails() {
         }
       } catch (err: any) {
         console.error("Failed to upload featured image:", err)
-        const localUrl = URL.createObjectURL(file)
-        setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
-        toast({
-          title:
-            err?.response?.status === 503
-              ? "Image moderation service unavailable. Showing local preview."
-              : "Failed to upload featured image. Showing local preview.",
-          variant: "destructive",
-        })
+        if (isModerationRejection(err)) {
+          toast({ title: backendErrorMessage(err), variant: "destructive" })
+        } else {
+          const localUrl = URL.createObjectURL(file)
+          setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+          toast({
+            title:
+              err?.response?.status === 503
+                ? "Image moderation service unavailable. Showing local preview."
+                : "Failed to upload featured image. Showing local preview.",
+            variant: "destructive",
+          })
+        }
       } finally {
         setFeaturedUploading(false)
         setFeaturedCompleting(true)
@@ -1784,11 +1807,9 @@ export default function ProjectDetails() {
 
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
-    if (hasPublishBlockingErrors) {
-      setPublishAttempted(true)
-      return
-    }
     setIsPublishing(true)
+    setPublishError(null)
+    setPublishErrorField(null)
     try {
       await ProjectAPI.PublishProject(project.id)
       setProject((prev: any) => ({ ...prev, status: "published" }))
@@ -1796,12 +1817,15 @@ export default function ProjectDetails() {
       setPublishDialogOpen(false)
       const label = project.listingType === "service" ? "service" : "project"
       toast({ title: `Your ${label} is live`, variant: "success" })
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to publish:", err)
-      toast({
-        title: "Failed to publish. Please try again.",
-        variant: "destructive",
-      })
+      const message =
+        backendErrorMessage(err) || "Failed to publish. Please try again."
+      const field = err?.response?.data?.field
+      setPublishError(message)
+      setPublishErrorField(typeof field === "string" ? field : null)
+      setPublishDialogOpen(false)
+      toast({ title: message, variant: "destructive" })
     } finally {
       setIsPublishing(false)
     }
@@ -1811,9 +1835,7 @@ export default function ProjectDetails() {
     if (!project?.id || !isRealBackendId(project.id)) return
     setIsPublishing(true)
     try {
-      await ProjectAPI.UpdateProjectDraft(project.id, {
-        status: "draft",
-      } as any)
+      await ProjectAPI.UnpublishProject(project.id)
       setProject((prev: any) => ({ ...prev, status: "draft" }))
       setHasChanges(false)
       const label = project.listingType === "service" ? "service" : "project"
@@ -2813,7 +2835,8 @@ export default function ProjectDetails() {
             reviewCount: 14,
             listingType: d.listingType || "project",
           })
-          if (d.listingType) setInfoProjectType(d.listingType)
+          if (d.projectType || d.listingType)
+            setInfoProjectType(d.projectType || d.listingType)
           if (d.shortDescription) setInfoSummary(d.shortDescription)
           if (d.title && d.title !== "Enter Project Title")
             setInfoTitle(d.title)
@@ -2989,7 +3012,8 @@ export default function ProjectDetails() {
           reviewCount: 14,
           listingType: data.listingType || "project",
         })
-        if (data.listingType) setInfoProjectType(data.listingType)
+        if (data.projectType || data.listingType)
+          setInfoProjectType(data.projectType || data.listingType)
         if (data.shortDescription) setInfoSummary(data.shortDescription)
         setLoading(false)
         return
@@ -3252,7 +3276,6 @@ export default function ProjectDetails() {
                         !project.featuredImage &&
                         !project.mediaUrls?.[0] &&
                         !project.featuredVideo
-                        !project.mediaUrls?.[0]
                         ? "bg-error-25 border-error-300"
                         : "bg-gray-50 border-gray-200"
                     )}
@@ -3326,7 +3349,6 @@ export default function ProjectDetails() {
                           publishAttempted &&
                           !project.mediaUrls?.[0] &&
                           !project.featuredVideo ? (
-                          !project.mediaUrls?.[0] ? (
                             <span
                               className="size-[54px] bg-error-300"
                               style={{
@@ -3378,7 +3400,6 @@ export default function ProjectDetails() {
                     !project.featuredImage &&
                     !project.mediaUrls?.[0] &&
                     !project.featuredVideo && (
-                    !project.mediaUrls?.[0] && (
                       <p className="text-sm text-error-500">
                         Please add a featured image
                       </p>
@@ -3459,11 +3480,11 @@ export default function ProjectDetails() {
                             setInfoProjectType(val)
                             setProject((prev: any) => ({
                               ...prev,
-                              listingType: val,
+                              projectType: val,
                             }))
                             setProjectTypeQuery("")
                             setProjectTypeOpen(false)
-                            saveProjectFields({ listingType: val })
+                            saveProjectFields({ projectType: val })
                           }}
                           className="w-full"
                         >
@@ -3718,8 +3739,6 @@ export default function ProjectDetails() {
                     style={{ whiteSpace: "pre-line" }}
                     className={cn(
                       "text-sm font-light break-words line-clamp-3",
-                    className={cn(
-                      "text-sm font-light break-words",
                       SHOW_PUBLISH_VALIDATION &&
                         publishAttempted &&
                         !project.summary
@@ -3737,6 +3756,9 @@ export default function ProjectDetails() {
                         Please add a short description
                       </p>
                     )}
+                  {publishError && publishErrorField === "shortDescription" && (
+                    <p className="mt-2 text-sm text-error-500">{publishError}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -4033,7 +4055,6 @@ export default function ProjectDetails() {
                                     allUrls.length +
                                       (project.featuredVideo ? 1 : 0) <
                                       3
-                                    allUrls.length < 3
                                   }
                                   isHidden={hiddenImages.has(index)}
                                   isUploading={uploadingSlots.has(index)}
@@ -4060,10 +4081,7 @@ export default function ProjectDetails() {
 
                 {SHOW_PUBLISH_VALIDATION &&
                   publishAttempted &&
-                  (project.mediaUrls?.length ?? 0) +
-                    (project.featuredVideo ? 1 : 0) <
-                    3 && (
-                  (project.mediaUrls?.length ?? 0) < 3 && (
+                  publishImageCount < 3 && (
                     <p className="mt-2 text-sm text-error-500">
                       Please add at least 3 images to your project
                     </p>
@@ -4277,6 +4295,13 @@ export default function ProjectDetails() {
                           </>
                         )}
 
+                        {publishError &&
+                          publishErrorField === "fullDescription" && (
+                            <p className="mt-2 text-sm text-error-500">
+                              {publishError}
+                            </p>
+                          )}
+
                         {descFullscreenOpen && (
                           <RichTextEditor
                             defaultValue={descDraft}
@@ -4349,7 +4374,7 @@ export default function ProjectDetails() {
                                   ...prev,
                                   title: infoTitle || prev.title,
                                   summary: infoSummary || prev.summary,
-                                  listingType: infoProjectType,
+                                  projectType: infoProjectType,
                                   categories: updatedCategories,
                                   subcategories: updatedSubCategories,
                                   categorySelections,
@@ -4358,7 +4383,7 @@ export default function ProjectDetails() {
                                 saveProjectFields({
                                   title: infoTitle || undefined,
                                   shortDescription: infoSummary || undefined,
-                                  listingType: infoProjectType || undefined,
+                                  projectType: infoProjectType || undefined,
                                   categories: updatedCategories,
                                   subCategories: updatedSubCategories,
                                   categorySelections,
@@ -4608,7 +4633,7 @@ export default function ProjectDetails() {
                                                           return v
                                                         return v
                                                           .replace(
-                                                            /[^a-zA-Z ]/g,
+                                                            /[^a-zA-Z0-9 ]/g,
                                                             ""
                                                           )
                                                           .trim()
@@ -5677,7 +5702,7 @@ export default function ProjectDetails() {
                                             )
                                               return v
                                             return v
-                                              .replace(/[^a-zA-Z ]/g, "")
+                                              .replace(/[^a-zA-Z0-9 ]/g, "")
                                               .trim()
                                               .toLowerCase()
                                               .replace(/\b\w/g, (c) =>
@@ -6339,6 +6364,11 @@ export default function ProjectDetails() {
                           )}
 
                           <div className="mt-8">
+                            {publishError && publishErrorField === "faqs" && (
+                              <p className="mb-3 text-sm text-error-500">
+                                {publishError}
+                              </p>
+                            )}
                             <Tabs
                               value={questionsSectionTab}
                               onValueChange={setQuestionsSectionTab}
@@ -9080,7 +9110,6 @@ export default function ProjectDetails() {
                                 (publishAttempted
                                   ? "bg-error-500 hover:bg-error-600 border-error-500"
                                   : "opacity-40 hover:opacity-40")
-                                "opacity-40 hover:opacity-40"
                             )}
                           >
                             Publish
@@ -9185,7 +9214,7 @@ export default function ProjectDetails() {
                           size="md"
                           className="flex-auto"
                           onClick={() => {
-                            const url = `/project-details/${project.slug || project.id || params.slug}`
+                            const url = `/project-details/${project.id || project.slug || params.slug}`
                             if (hasChanges) {
                               setPendingNavUrl(url)
                               setUnsavedNavOpen(true)
@@ -9245,6 +9274,21 @@ export default function ProjectDetails() {
                           Please add at least 3 images to your project
                         </p>
                       )}
+                    </div>
+                  )}
+
+                {publishError &&
+                  !["faqs", "shortDescription", "fullDescription"].includes(
+                    publishErrorField ?? ""
+                  ) && (
+                    <div className="mt-2">
+                      <p className="text-sm text-error-500">
+                        {moderationFieldLabel(publishErrorField)
+                          ? `Check your ${moderationFieldLabel(
+                              publishErrorField
+                            )} — ${publishError}`
+                          : publishError}
+                      </p>
                     </div>
                   )}
 

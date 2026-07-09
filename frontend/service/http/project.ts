@@ -165,6 +165,12 @@ export const ProjectAPI = {
       {}
     )
   },
+  UnpublishProject: (projectId: string) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/unpublish`,
+      {}
+    )
+  },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
   },

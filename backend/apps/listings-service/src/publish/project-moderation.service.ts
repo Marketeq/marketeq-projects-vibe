@@ -8,6 +8,7 @@ type ModerationStatus = 'approved' | 'rejected' | 'pending_review';
 export type ProjectModerationResult = {
   status: ModerationStatus;
   reason?: string;
+  field?: string;
 };
 
 export type ProjectModerationInput = {
@@ -65,6 +66,51 @@ export class ProjectModerationService {
       return 120000;
     }
     return rawValue;
+  }
+
+  private async detectRejectedField(
+    projectId: string,
+    input: ProjectModerationInput,
+  ): Promise<string | undefined> {
+    const faqText = (input.faqs ?? [])
+      .map((f) => [f?.question, f?.answer].filter(Boolean).join(' '))
+      .join('\n');
+    const fields: { key: string; text?: string | null }[] = [
+      { key: 'title', text: input.title },
+      { key: 'shortDescription', text: input.shortDescription },
+      { key: 'fullDescription', text: input.fullDescription },
+      { key: 'faqs', text: faqText },
+    ];
+
+    const placeholderTitle = 'Sample project title';
+    const placeholderContent = 'Sample project description for moderation checks';
+
+    for (const field of fields) {
+      const text = (field.text ?? '').trim();
+      if (!text) continue;
+      const title = field.key === 'title' ? text : placeholderTitle;
+      const content = field.key === 'title' ? placeholderContent : text;
+      try {
+        const response = await this.httpService.axiosRef.post(
+          `${this.moderationBaseUrl}/api/moderate/content`,
+          {
+            contentId: `${projectId}:${field.key}`,
+            title,
+            content,
+            category: '',
+            subcategory: '',
+          },
+          { timeout: this.moderationTimeoutMs },
+        );
+        if (response?.data?.status === 'rejected') {
+          return field.key;
+        }
+      } catch {
+        return undefined;
+      }
+    }
+
+    return undefined;
   }
 
   async moderateProject(
@@ -161,13 +207,17 @@ export class ProjectModerationService {
         );
       }
 
-      return {
-        status,
-        reason:
-          typeof response?.data?.reason === 'string'
-            ? response.data.reason
-            : undefined,
-      };
+      const reason =
+        typeof response?.data?.reason === 'string'
+          ? response.data.reason
+          : undefined;
+
+      const field =
+        status === 'rejected'
+          ? await this.detectRejectedField(projectId, input)
+          : undefined;
+
+      return { status, reason, field };
     } catch (error) {
       if (error instanceof ModerationInvalidResponseError) {
         throw error;
