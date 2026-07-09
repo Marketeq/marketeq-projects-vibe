@@ -256,6 +256,13 @@ jobs:
             add "🔥 **Hardcoded SSL based on \`NODE_ENV\`** — database SSL must be driven by \`DATABASE_SSL_ENABLED\` env var, not \`NODE_ENV === 'production'\`. Our Supabase VPS does not support SSL. Use: \`ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false\`. See DEVOPS_SOP §6."
           fi
 
+          # --- Section 10: Stale branch check (SOP §3.6, §8.11) ---
+          git fetch origin "$BASE_REF" --unshallow 2>/dev/null || true
+          BEHIND_COUNT=$(git rev-list --count HEAD.."origin/$BASE_REF" 2>/dev/null || echo 0)
+          if [ "$BEHIND_COUNT" -gt 5 ]; then
+            add "🔀 **Stale branch — $BEHIND_COUNT commits behind \`$BASE_REF\`** — squash-merging a stale branch silently overwrites changes made on the base since the branch point. This has caused code loss in this repo (SOP §8.11). Rebase on \`$BASE_REF\` before merging: \`git fetch origin $BASE_REF && git rebase origin/$BASE_REF && git push --force-with-lease\`"
+          fi
+
           # --- Section 9: New @ts-ignore without justification ---
           TS_IGNORE_HITS=$(git diff "$BASE_SHA"...HEAD -- '*.ts' '*.tsx' 2>/dev/null | grep -E '^\+[^+].*@ts-ignore' | grep -vE '@ts-ignore.*--' || true)
           if [ -n "$TS_IGNORE_HITS" ]; then
