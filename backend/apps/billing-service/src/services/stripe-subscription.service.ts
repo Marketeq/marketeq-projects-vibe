@@ -90,6 +90,52 @@ export class StripeSubscriptionService {
     this.logger.log(`Resumed Stripe subscription ${stripeSubscriptionId}`);
   }
 
+  async retrieveInvoice(stripeInvoiceId: string): Promise<Stripe.Invoice> {
+    return this.stripe.invoices.retrieve(stripeInvoiceId);
+  }
+
+  async refundInvoice(stripeInvoiceId: string, amountCents?: number): Promise<Stripe.Refund> {
+    const invoice = await this.stripe.invoices.retrieve(stripeInvoiceId);
+    const chargeId = typeof invoice.charge === 'string' ? invoice.charge : invoice.charge?.id;
+    if (!chargeId) {
+      throw new BadRequestException('No charge found on this invoice');
+    }
+
+    const params: Stripe.RefundCreateParams = { charge: chargeId };
+    if (amountCents) params.amount = amountCents;
+
+    const refund = await this.stripe.refunds.create(params);
+    this.logger.log(`Refund ${refund.id} created for invoice ${stripeInvoiceId}`);
+    return refund;
+  }
+
+  async updateSubscriptionFrequency(
+    stripeSubscriptionId: string,
+    newAmountCents: number,
+    interval: 'week' | 'month',
+    intervalCount: number,
+  ): Promise<Stripe.Subscription> {
+    const sub = await this.stripe.subscriptions.retrieve(stripeSubscriptionId);
+    const itemId = sub.items.data[0]?.id;
+    if (!itemId) throw new BadRequestException('No subscription item found');
+
+    const updated = await this.stripe.subscriptions.update(stripeSubscriptionId, {
+      items: [{
+        id: itemId,
+        price_data: {
+          currency: 'usd',
+          product: sub.items.data[0].price.product as string,
+          unit_amount: newAmountCents,
+          recurring: { interval, interval_count: intervalCount },
+        } as any,
+      }],
+      proration_behavior: 'create_prorations',
+    });
+
+    this.logger.log(`Updated Stripe subscription ${stripeSubscriptionId} to ${interval}/${intervalCount}`);
+    return updated;
+  }
+
   constructWebhookEvent(payload: Buffer, signature: string): Stripe.Event {
     return this.stripe.webhooks.constructEvent(
       payload,

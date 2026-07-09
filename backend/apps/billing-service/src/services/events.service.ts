@@ -19,4 +19,28 @@ export class EventsService {
   paymentFailed(contractId: string, groupId: string, reason: string): void {
     this.emit('billing.payment_failed', { contractId, groupId, reason });
   }
+
+  paymentSucceeded(contractId: string, groupId: string, invoiceId: string, amount: number): void {
+    this.emit('billing.payment_succeeded', { contractId, groupId, invoiceId, amount });
+  }
+
+  invoiceCreated(invoiceId: string, contractId: string, groupId: string, amount: number, installmentNumber: number): void {
+    this.emit('billing.invoice_created', { invoiceId, contractId, groupId, amount, installmentNumber });
+  }
+
+  subscriptionPaused(groupId: string, reason: string): void {
+    this.emit('billing.subscription_paused', { groupId, reason });
+  }
+
+  subscriptionResumed(groupId: string): void {
+    this.emit('billing.subscription_resumed', { groupId });
+  }
+
+  subscriptionCanceled(groupId: string): void {
+    this.emit('billing.subscription_canceled', { groupId });
+  }
+
+  refundIssued(invoiceId: string, contractId: string, amount: number): void {
+    this.emit('billing.refund_issued', { invoiceId, contractId, amount });
+  }
 }
