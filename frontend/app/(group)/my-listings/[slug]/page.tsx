@@ -335,6 +335,9 @@ const SHORT_DESCRIPTION_MIN_LENGTH = 50
 const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MIN_LENGTH = 100
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
+// Demo-toggle: publish-attempt validation (red inline hints + blocked publish).
+// Set to false to hide all publish validation.
+const SHOW_PUBLISH_VALIDATION = true
 
 const plainTextFromRichTextHtml = (value: string) => {
   if (!value) return ""
@@ -913,6 +916,7 @@ function SortableGalleryItem({
   onDelete,
   onToggleHidden,
   onUploadComplete,
+  showError,
 }: {
   index: number
   url: string | undefined
@@ -923,6 +927,7 @@ function SortableGalleryItem({
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
   onUploadComplete: () => void
+  showError?: boolean
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const {
@@ -949,7 +954,12 @@ function SortableGalleryItem({
       style={style}
       className="group/slide shrink-0 w-[calc(33.333%-8px)]"
     >
-      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+      <div
+        className={cn(
+          "relative border h-[150.6px] overflow-hidden rounded-lg",
+          showError && !url ? "border-error-300" : "border-gray-200"
+        )}
+      >
         {url ? (
           <>
             <NextImage
@@ -1134,8 +1144,29 @@ function SortableGalleryItem({
           </div>
         ) : (
           <>
-            <div className="absolute inset-0 bg-gray-50 flex items-center justify-center">
-              <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+            <div
+              className={cn(
+                "absolute inset-0 flex items-center justify-center",
+                showError ? "bg-error-25" : "bg-gray-50"
+              )}
+            >
+              {showError ? (
+                <span
+                              className="size-[54px] bg-error-300"
+                              style={{
+                                WebkitMaskImage: "url(/placeholder-img.svg)",
+                                maskImage: "url(/placeholder-img.svg)",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                                WebkitMaskSize: "contain",
+                                maskSize: "contain",
+                                WebkitMaskPosition: "center",
+                                maskPosition: "center",
+                              }}
+                            />
+              ) : (
+                <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+              )}
             </div>
             <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center">
               <button
@@ -1235,6 +1266,9 @@ export default function ProjectDetails() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [descFullscreenOpen, setDescFullscreenOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
+  const descDraftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const toTitleCase = (str: string) =>
     str.replace(/\b\w/g, (char) => char.toUpperCase())
@@ -1306,7 +1340,31 @@ export default function ProjectDetails() {
   const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
+  const [publishAttempted, setPublishAttempted] = React.useState(false)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
+
+  const hasPublishBlockingErrors = SHOW_PUBLISH_VALIDATION
+    ? [
+        !project.featuredImage && !project.mediaUrls?.[0],
+        (project.mediaUrls?.length ?? 0) < 3,
+        !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
+        !project.title || project.title === "Enter Project Title",
+        (project.categories || []).length < 3,
+        !project.summary,
+        getRichTextCharacterCount(project.description || "") === 0,
+        !(
+          Array.isArray(project.deliverables) &&
+          project.deliverables.length > 0
+        ),
+        !(
+          project.programmingLanguages?.length > 0 ||
+          project.developmentTech?.length > 0 ||
+          project.subcategories?.length > 0 ||
+          project.tags?.length > 0
+        ),
+        !project.faqs || project.faqs.length === 0,
+      ].some(Boolean)
+    : false
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
   const { toast } = useToast()
 
@@ -1350,8 +1408,10 @@ export default function ProjectDetails() {
         setUploadingSlots((prev) => new Set(prev).add(targetIndex))
 
         const formData = new FormData()
-        // Backend requires featuredImage field to be present
+        // Sent as featuredImage for the upload/moderation pipeline, but flagged
+        // as a gallery upload so the backend appends it instead of replacing the cover.
         formData.append("featuredImage", file)
+        formData.append("target", "additional")
         formData.append("projectId", project.id)
         try {
           const res = await ProjectAPI.UploadMedia(formData)
@@ -1549,6 +1609,10 @@ export default function ProjectDetails() {
 
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
+    if (hasPublishBlockingErrors) {
+      setPublishAttempted(true)
+      return
+    }
     setIsPublishing(true)
     try {
       await ProjectAPI.PublishProject(project.id)
@@ -2305,6 +2369,8 @@ export default function ProjectDetails() {
             featuredImage:
               featuredImage ||
               d.featuredImage ||
+              galleryUrls[0] ||
+              d.mediaUrls?.[0] ||
               null,
             featuredVideo: featuredVideo || d.featuredVideo || null,
             mediaUrls:
@@ -2860,7 +2926,18 @@ export default function ProjectDetails() {
                 </div>
 
                 <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
-                  <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
+                  <div className="flex flex-col gap-y-1.5">
+                  <div
+                    className={cn(
+                      "group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg border",
+                      SHOW_PUBLISH_VALIDATION &&
+                        publishAttempted &&
+                        !project.featuredImage &&
+                        !project.mediaUrls?.[0]
+                        ? "bg-error-25 border-error-300"
+                        : "bg-gray-50 border-gray-200"
+                    )}
+                  >
                     {(featuredUploading || featuredCompleting) &&
                     !project.featuredImage ? (
                       <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
@@ -2926,11 +3003,29 @@ export default function ProjectDetails() {
                     ) : (
                       <>
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <img
-                            src="/placeholder-img.svg"
-                            alt=""
-                            className="size-[54px]"
-                          />
+                          {SHOW_PUBLISH_VALIDATION &&
+                          publishAttempted &&
+                          !project.mediaUrls?.[0] ? (
+                            <span
+                              className="size-[54px] bg-error-300"
+                              style={{
+                                WebkitMaskImage: "url(/placeholder-img.svg)",
+                                maskImage: "url(/placeholder-img.svg)",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                                WebkitMaskSize: "contain",
+                                maskSize: "contain",
+                                WebkitMaskPosition: "center",
+                                maskPosition: "center",
+                              }}
+                            />
+                          ) : (
+                            <img
+                              src="/placeholder-img.svg"
+                              alt=""
+                              className="size-[54px]"
+                            />
+                          )}
                         </div>
                         <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center">
                           <button
@@ -2955,6 +3050,15 @@ export default function ProjectDetails() {
                           </button>
                         </div>
                       </>
+                    )}
+                  </div>
+                  {SHOW_PUBLISH_VALIDATION &&
+                    publishAttempted &&
+                    !project.featuredImage &&
+                    !project.mediaUrls?.[0] && (
+                      <p className="text-sm text-error-500">
+                        Please add a featured image
+                      </p>
                     )}
                   </div>
 
@@ -3009,10 +3113,19 @@ export default function ProjectDetails() {
                       <PopoverTrigger asChild>
                         <button type="button">
                           <Badge
-                            className="rounded-[5px] bg-gray-100 cursor-pointer"
+                            className={cn(
+                              "rounded-[5px] cursor-pointer",
+                              SHOW_PUBLISH_VALIDATION &&
+                                publishAttempted &&
+                                !PROJECT_TYPE_OPTIONS.includes(infoProjectType)
+                                ? "bg-error-50 text-error-500"
+                                : "bg-gray-100"
+                            )}
                             visual="gray"
                           >
-                            {infoProjectType || "Select Project Type"}
+                            {PROJECT_TYPE_OPTIONS.includes(infoProjectType)
+                              ? infoProjectType
+                              : "Select Project Type"}
                           </Badge>
                         </button>
                       </PopoverTrigger>
@@ -3058,6 +3171,14 @@ export default function ProjectDetails() {
                         </Combobox>
                       </PopoverContent>
                     </Popover>
+
+                    {SHOW_PUBLISH_VALIDATION &&
+                      publishAttempted &&
+                      !PROJECT_TYPE_OPTIONS.includes(infoProjectType) && (
+                        <p className="text-sm text-error-500">
+                          Please select your project type
+                        </p>
+                      )}
 
                     <div
                       className="flex items-center gap-1.5 w-full cursor-pointer"
@@ -3157,7 +3278,17 @@ export default function ProjectDetails() {
                             )}
                           </>
                         ) : (
-                          <span className="text-[22px] leading-[30px] font-semibold text-dark-blue-400">
+                          <span
+                            className={cn(
+                              "text-[22px] leading-[30px] font-semibold break-words min-w-0",
+                              SHOW_PUBLISH_VALIDATION &&
+                                publishAttempted &&
+                                (!project.title ||
+                                  project.title === "Enter Project Title")
+                                ? "text-error-500"
+                                : "text-dark-blue-400"
+                            )}
+                          >
                             {project.title || "Enter Project Title"}
                           </span>
                         )}
@@ -3171,6 +3302,15 @@ export default function ProjectDetails() {
                         )}
                       />
                     </div>
+
+                    {SHOW_PUBLISH_VALIDATION &&
+                      publishAttempted &&
+                      (!project.title ||
+                        project.title === "Enter Project Title") && (
+                        <p className="text-sm text-error-500">
+                          Please enter your project title
+                        </p>
+                      )}
 
                     {(project.categories || []).length > 0 ? (
                       <div className="flex items-center gap-x-3">
@@ -3193,7 +3333,12 @@ export default function ProjectDetails() {
                       </div>
                     ) : (
                       <button
-                        className="inline-flex items-center gap-x-1.5 text-sm font-semibold text-dark-blue-400 hover:underline transition duration-300"
+                        className={cn(
+                          "inline-flex items-center gap-x-1.5 text-sm font-semibold hover:underline transition duration-300",
+                          SHOW_PUBLISH_VALIDATION && publishAttempted
+                            ? "text-error-500"
+                            : "text-dark-blue-400"
+                        )}
                         onClick={() => {
                           setInfoTitle(
                             project.title === "Enter Project Title"
@@ -3209,6 +3354,14 @@ export default function ProjectDetails() {
                         Add Categories
                       </button>
                     )}
+
+                    {SHOW_PUBLISH_VALIDATION &&
+                      publishAttempted &&
+                      (project.categories || []).length < 3 && (
+                        <p className="text-sm text-error-500">
+                          Please add at least 3 categories
+                        </p>
+                      )}
                   </div>
 
                   <IconButton
@@ -3238,10 +3391,26 @@ export default function ProjectDetails() {
                     setProjectInfoOpen(true)
                   }}
                 >
-                  <p className="text-sm font-light text-dark-blue-400">
+                  <p
+                    className={cn(
+                      "text-sm font-light break-words",
+                      SHOW_PUBLISH_VALIDATION &&
+                        publishAttempted &&
+                        !project.summary
+                        ? "text-error-500"
+                        : "text-dark-blue-400"
+                    )}
+                  >
                     {project.summary ||
                       "Add a short description here to explain your project features and benefits. This will help visitors quickly see the difference between your project and similar projects in the marketplace..."}
                   </p>
+                  {SHOW_PUBLISH_VALIDATION &&
+                    publishAttempted &&
+                    !project.summary && (
+                      <p className="mt-2 text-sm text-error-500">
+                        Please add a short description
+                      </p>
+                    )}
                 </div>
               </div>
             </div>
@@ -3529,6 +3698,11 @@ export default function ProjectDetails() {
                                   key={id}
                                   index={index}
                                   url={allUrls[index]}
+                                  showError={
+                                    SHOW_PUBLISH_VALIDATION &&
+                                    publishAttempted &&
+                                    allUrls.length < 3
+                                  }
                                   isHidden={hiddenImages.has(index)}
                                   isUploading={uploadingSlots.has(index)}
                                   isCompleting={completingSlots.has(index)}
@@ -3551,6 +3725,14 @@ export default function ProjectDetails() {
                     </div>
                   </div>
                 </DndContext>
+
+                {SHOW_PUBLISH_VALIDATION &&
+                  publishAttempted &&
+                  (project.mediaUrls?.length ?? 0) < 3 && (
+                    <p className="mt-2 text-sm text-error-500">
+                      Please add at least 3 images to your project
+                    </p>
+                  )}
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -3700,31 +3882,64 @@ export default function ProjectDetails() {
                             }}
                           />
                         ) : (
-                          <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 flex items-start justify-between">
-                            <div>
-                              <h1 className="text-lg font-semibold text-dark-blue-400">
-                                Project Description
-                              </h1>
-                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                Describe your project in a meaningful way that
-                                will attract top clients. You can even add
-                                images using our rich text editor to make your
-                                project stand out.
-                              </p>
-                            </div>
-                            <Button
-                              variant="outlined"
-                              visual="gray"
-                              className="shrink-0 ml-[75px]"
-                              onClick={() => {
-                                setDescDraft(project.description || "")
-                                setDescFullscreenOpen(true)
-                              }}
+                          <>
+                            <div
+                              className={cn(
+                                "border-2 rounded-lg p-6 flex items-start justify-between",
+                                SHOW_PUBLISH_VALIDATION && publishAttempted
+                                  ? "border-error-300 bg-error-50"
+                                  : "border-gray-200 bg-gray-25"
+                              )}
                             >
-                              <Plus className="size-[15px]" />
-                              Add Description
-                            </Button>
-                          </div>
+                              <div>
+                                <h1
+                                  className={cn(
+                                    "text-lg font-semibold",
+                                    SHOW_PUBLISH_VALIDATION && publishAttempted
+                                      ? "text-error-500"
+                                      : "text-dark-blue-400"
+                                  )}
+                                >
+                                  Project Description
+                                </h1>
+                                <p
+                                  className={cn(
+                                    "mt-1 text-sm font-light",
+                                    SHOW_PUBLISH_VALIDATION && publishAttempted
+                                      ? "text-error-500"
+                                      : "text-dark-blue-400"
+                                  )}
+                                >
+                                  Describe your project in a meaningful way that
+                                  will attract top clients. You can even add
+                                  images using our rich text editor to make your
+                                  project stand out.
+                                </p>
+                              </div>
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                className={cn(
+                                  "shrink-0 ml-[75px]",
+                                  SHOW_PUBLISH_VALIDATION &&
+                                    publishAttempted &&
+                                    "text-error-500 border-error-300"
+                                )}
+                                onClick={() => {
+                                  setDescDraft(project.description || "")
+                                  setDescFullscreenOpen(true)
+                                }}
+                              >
+                                <Plus className="size-[15px]" />
+                                Add Description
+                              </Button>
+                            </div>
+                            {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                              <p className="mt-2 text-sm text-error-500">
+                                Please add a project description
+                              </p>
+                            )}
+                          </>
                         )}
 
                         {descFullscreenOpen && (
@@ -3754,7 +3969,14 @@ export default function ProjectDetails() {
                             fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
                             fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
                             className="hidden"
-                            onUpdate={(html) => setDescDraft(html)}
+                            onUpdate={(html) => {
+                              if (descDraftTimerRef.current)
+                                clearTimeout(descDraftTimerRef.current)
+                              descDraftTimerRef.current = setTimeout(
+                                () => setDescDraft(html),
+                                250
+                              )
+                            }}
                           />
                         )}
 
@@ -4250,7 +4472,7 @@ export default function ProjectDetails() {
                                           </span>
                                         </p>
                                         <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                          {phase.items
+                                          {(phase.items ?? [])
                                             .slice(0, 6)
                                             .map((item, i) => (
                                               <div
@@ -4313,35 +4535,68 @@ export default function ProjectDetails() {
                               }}
                             </ShowMoreLessRoot>
                           ) : (
-                            <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
-                              <div>
-                                <h1 className="text-lg font-semibold text-dark-blue-400">
-                                  Deliverables
-                                </h1>
-                                <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                  Your project deliverables will be displayed
-                                  here once you add a scope to your offer. These
-                                  deliverables are automatically generated based
-                                  on the details in your scope and tasks,
-                                  they&apos;re not directly editable.
-                                </p>
-                              </div>
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                className="shrink-0 ml-[75px]"
-                                onClick={() => {
-                                  setSelected("View Project Scope")
-                                  window.scrollTo({
-                                    top: 0,
-                                    behavior: "smooth",
-                                  })
-                                }}
+                            <>
+                              <div
+                                className={cn(
+                                  "border-2 rounded-lg p-6 mt-6 flex items-start justify-between",
+                                  SHOW_PUBLISH_VALIDATION && publishAttempted
+                                    ? "border-error-300 bg-error-50"
+                                    : "border-gray-200 bg-gray-25"
+                                )}
                               >
-                                <Plus className="size-[15px]" />
-                                Add Scope
-                              </Button>
-                            </div>
+                                <div>
+                                  <h1
+                                    className={cn(
+                                      "text-lg font-semibold",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
+                                    Deliverables
+                                  </h1>
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-sm font-light",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
+                                    Your project deliverables will be displayed
+                                    here once you add a scope to your offer. These
+                                    deliverables are automatically generated based
+                                    on the details in your scope and tasks,
+                                    they&apos;re not directly editable.
+                                  </p>
+                                </div>
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className={cn(
+                                    "shrink-0 ml-[75px]",
+                                    SHOW_PUBLISH_VALIDATION &&
+                                      publishAttempted &&
+                                      "text-error-500 border-error-300"
+                                  )}
+                                  onClick={() => {
+                                    setSelected("View Project Scope")
+                                    window.scrollTo({
+                                      top: 0,
+                                      behavior: "smooth",
+                                    })
+                                  }}
+                                >
+                                  <Plus className="size-[15px]" />
+                                  Add Scope
+                                </Button>
+                              </div>
+                              {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                                <p className="mt-2 text-sm text-error-500">
+                                  Please add a scope to your project
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
 
@@ -4861,13 +5116,34 @@ export default function ProjectDetails() {
                               )}
                             </div>
                           ) : (
-                            <div className="mt-6 rounded-lg overflow-hidden">
-                              <div className="p-6 border-2 border-gray-200 bg-gray-25 rounded-t-lg flex items-start justify-between">
+                            <>
+                            <div
+                              className={cn(
+                                "mt-6 p-6 border-2 rounded-lg flex items-start justify-between",
+                                  SHOW_PUBLISH_VALIDATION && publishAttempted
+                                    ? "border-error-300 bg-error-50"
+                                    : "border-gray-200 bg-gray-25"
+                                )}
+                              >
                                 <div>
-                                  <h1 className="text-lg font-semibold text-dark-blue-400">
+                                  <h1
+                                    className={cn(
+                                      "text-lg font-semibold",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
                                     Project Details
                                   </h1>
-                                  <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-sm font-light",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
                                     Your project deliverables will be displayed
                                     here once you add a scope to your offer.
                                     These deliverables are automatically
@@ -4879,7 +5155,12 @@ export default function ProjectDetails() {
                                 <Button
                                   variant="outlined"
                                   visual="gray"
-                                  className="shrink-0 ml-[75px]"
+                                  className={cn(
+                                    "shrink-0 ml-[75px]",
+                                    SHOW_PUBLISH_VALIDATION &&
+                                      publishAttempted &&
+                                      "text-error-500 border-error-300"
+                                  )}
                                   onClick={() => {
                                     setDetailsLangs(
                                       project.programmingLanguages ?? []
@@ -4898,9 +5179,14 @@ export default function ProjectDetails() {
                                   Add Details
                                 </Button>
                               </div>
+                              {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                                <p className="mt-2 text-sm text-error-500">
+                                  Please add your project details
+                                </p>
+                              )}
 
                               {/* About the Team — empty state */}
-                              <div className="p-6 bg-white rounded-b-lg border border-gray-200 border-t-0">
+                              <div className="mt-6 p-6 bg-white rounded-lg border border-gray-200">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-base leading-none font-semibold text-dark-blue-400">
                                     About the Team
@@ -4924,7 +5210,7 @@ export default function ProjectDetails() {
                                   button to manage your team.
                                 </p>
                               </div>
-                            </div>
+                            </>
                           )}
 
                           {/* Project Details Dialog */}
@@ -5726,7 +6012,14 @@ export default function ProjectDetails() {
                                     variant="unstyled"
                                     showUnderline={false}
                                     value="section-faqs"
-                                    className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                                    className={cn(
+                                      "focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300",
+                                      SHOW_PUBLISH_VALIDATION &&
+                                        publishAttempted &&
+                                        (!project.faqs ||
+                                          project.faqs.length === 0) &&
+                                        "border-error-300 text-error-500 data-[state=active]:border-error-300 data-[state=active]:text-error-500 hover:data-[state=active]:border-error-300 hover:data-[state=active]:text-error-500"
+                                    )}
                                   >
                                     FAQ&apos;s
                                   </TabsTrigger>
@@ -5743,12 +6036,36 @@ export default function ProjectDetails() {
 
                               <TabsContent value="section-faqs">
                                 {!project.faqs || project.faqs.length === 0 ? (
-                                  <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
+                                  <>
+                                  <div
+                                    className={cn(
+                                      "border-2 rounded-lg p-6 mt-6 flex items-start justify-between",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "border-error-300 bg-error-50"
+                                        : "border-gray-200 bg-gray-25"
+                                    )}
+                                  >
                                     <div>
-                                      <h1 className="text-lg font-semibold text-dark-blue-400">
+                                      <h1
+                                        className={cn(
+                                          "text-lg font-semibold",
+                                          SHOW_PUBLISH_VALIDATION &&
+                                            publishAttempted
+                                            ? "text-error-500"
+                                            : "text-dark-blue-400"
+                                        )}
+                                      >
                                         FAQ&apos;s
                                       </h1>
-                                      <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                      <p
+                                        className={cn(
+                                          "mt-1 text-sm font-light",
+                                          SHOW_PUBLISH_VALIDATION &&
+                                            publishAttempted
+                                            ? "text-error-500"
+                                            : "text-dark-blue-400"
+                                        )}
+                                      >
                                         Your project deliverables will be
                                         displayed here once you add a scope to
                                         your offer. These deliverables are
@@ -5760,7 +6077,12 @@ export default function ProjectDetails() {
                                     <Button
                                       variant="outlined"
                                       visual="gray"
-                                      className="shrink-0 ml-[75px]"
+                                      className={cn(
+                                        "shrink-0 ml-[75px]",
+                                        SHOW_PUBLISH_VALIDATION &&
+                                          publishAttempted &&
+                                          "text-error-500 border-error-300"
+                                      )}
                                       onClick={() => {
                                         setQuestionsTab("dialog-faqs")
                                         setQuestionsDialogOpen(true)
@@ -5770,6 +6092,12 @@ export default function ProjectDetails() {
                                       Add FAQ&apos;s
                                     </Button>
                                   </div>
+                                  {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                                    <p className="mt-2 text-sm text-error-500">
+                                      Please add at least 5 FAQ&apos;s
+                                    </p>
+                                  )}
+                                  </>
                                 ) : (
                                   <ShowMoreLessRoot>
                                     {({
@@ -8182,8 +8510,19 @@ export default function ProjectDetails() {
                         <TooltipTrigger asChild>
                           <Button
                             size="md"
-                            onClick={() => setPublishDialogOpen(true)}
+                            onClick={() => {
+                              if (hasPublishBlockingErrors) {
+                                setPublishAttempted(true)
+                                return
+                              }
+                              setPublishDialogOpen(true)
+                            }}
                             disabled={isPublishing}
+                            aria-disabled={hasPublishBlockingErrors}
+                            className={cn(
+                              hasPublishBlockingErrors &&
+                                "opacity-40 hover:opacity-40"
+                            )}
                           >
                             Publish
                           </Button>
