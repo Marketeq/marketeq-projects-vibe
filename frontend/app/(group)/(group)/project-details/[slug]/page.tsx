@@ -805,8 +805,8 @@ export default function ProjectDetails({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px] mx-auto">
+      <div className="min-h-screen bg-white px-5 md:px-10 lg:px-[100px] py-10">
+        <div className="max-w-[1240px] w-full mx-auto">
           {/* breadcrumb */}
           <div className="flex items-center gap-x-3">
             <Shimmer className="h-3 w-3 rounded-full" />
@@ -815,7 +815,7 @@ export default function ProjectDetails({
             <Shimmer className="h-3 w-32" />
           </div>
           <div className="flex items-start gap-x-8 mt-8">
-            <div className="max-w-[818px] flex-auto space-y-6">
+            <div className="flex-auto min-w-0 space-y-6">
               {/* title + categories */}
               <div className="space-y-3">
                 <Shimmer className="h-8 w-2/3" />
@@ -902,12 +902,12 @@ export default function ProjectDetails({
   }
 
   return (
-    <div className="px-[100px] relative bg-white">
-      <div className="max-w-[1240px] mx-auto flex items-start gap-x-8">
-        <div className="max-w-[818px] flex-auto">
+    <div className="px-5 md:px-10 lg:px-[100px] relative bg-white">
+      <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
+        <div className="flex-auto min-w-0">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
-              <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+              <div className="absolute top-0 bottom-px bg-gray-50 w-[100vw] left-[calc(50%-50vw)]" />
 
               <div className="flex items-center gap-x-2 relative">
                 <NextLink href="/">
@@ -1171,7 +1171,7 @@ export default function ProjectDetails({
                 static /waves.png placeholder carousel so the design
                 density stays intact (saved "no-empty-swap" memory rule).
               */}
-              <Carousel className="max-w-[818px] w-full">
+              <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
                   {(() => {
                     const video =
@@ -1246,8 +1246,8 @@ export default function ProjectDetails({
                   ref={tabsRef}
                   data-position={isSticky ? "sticky" : "default"}
                 >
-                  <div className="fixed top-0 z-50 inset-x-0 bg-white border border-gray-200 drop-shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] px-[100px] group-data-[position=default]/tabs:contents">
-                    <div className="max-w-[1240px] mx-auto flex items-center group-data-[position=default]/tabs:contents">
+                  <div className="fixed top-0 z-50 inset-x-0 bg-white border border-gray-200 drop-shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] px-5 md:px-10 lg:px-[100px] group-data-[position=default]/tabs:contents">
+                    <div className="max-w-[1240px] w-full mx-auto flex items-center group-data-[position=default]/tabs:contents">
                       <div className="pt-[12px] flex-auto group-data-[position=default]/tabs:contents">
                         <div className="pb-2 inline-flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                           <div className="h-12 relative w-[66px] overflow-hidden rounded-[5px] bg-[#FBFBFB] border-b border-black/15">
@@ -3693,74 +3693,75 @@ export default function ProjectDetails({
                             value={`scope-${pi}`}
                             className="rounded-lg border border-gray-200 shadow-sm"
                           >
-                            <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                              <div className="inline-flex items-center gap-x-3.5">
-                                <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                                  <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                </AccordionTrigger>
+                            <AccordionTrigger className="focus-visible:outline-none w-full cursor-pointer">
+                              <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                                <div className="inline-flex items-center gap-x-3.5">
+                                  <div className="size-8 inline-flex items-center justify-center">
+                                    <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                  </div>
 
-                                <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                  {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
-                                  <span className="font-light">
-                                    {phase.phaseName}
+                                  <span className="text-base md:text-[18px] font-semibold leading-7 text-dark-blue-400">
+                                    {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                    <span className="font-light">
+                                      {phase.phaseName}
+                                    </span>
                                   </span>
-                                </span>
-                              </div>
+                                </div>
 
-                              <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  Day {start}
-                                </span>
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  -
-                                </span>
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  Day {end}
-                                </span>
+                                <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                    Day {start}
+                                  </span>
+                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                    -
+                                  </span>
+                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                    Day {end}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
+                            </AccordionTrigger>
 
                             <DisclosureContent>
-                              <Table>
+                              <Table className="w-full table-fixed">
                                 <TableHeader className="bg-gray-50">
                                   <TableRow className="hover:bg-transparent">
-                                    <TableHead>Task</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead>Location</TableHead>
-                                    <TableHead>Experience</TableHead>
-                                    <TableHead>Duration</TableHead>
+                                    <TableHead className="w-[45%]">Task</TableHead>
+                                    <TableHead className="w-[25%]">Role</TableHead>
+                                    <TableHead className="w-[15%]">Experience</TableHead>
+                                    <TableHead className="w-[15%] text-right">Duration</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                   {(phase.tasks ?? []).map((task, ti) => (
                                     <TableRow key={`task-${pi}-${ti}`}>
                                       <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          {task.title}
-                                        </span>
+                                        <TooltipProvider delayDuration={200}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="text-sm font-semibold text-dark-blue-400 truncate block cursor-default">
+                                                {task.title}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent visual="white">
+                                              {task.title}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
                                       </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          {task.roleName}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight text-dark-blue-400">
-                                          {task.location ? (
-                                            <span className="inline-flex items-center gap-x-2">
-                                              {locationToFlag(task.location) ? (
-                                                <span aria-hidden="true">
-                                                  {locationToFlag(
-                                                    task.location
-                                                  )}
-                                                </span>
-                                              ) : null}
-                                              <span>{task.location}</span>
-                                            </span>
-                                          ) : (
-                                            "-"
-                                          )}
-                                        </span>
+                                      <TableCell className="py-4 px-6 whitespace-nowrap max-w-[200px]">
+                                        <TooltipProvider delayDuration={200}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="text-sm font-extralight text-dark-blue-400 truncate block cursor-default">
+                                                {task.roleName}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent visual="white">
+                                              {task.roleName}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
                                       </TableCell>
                                       <TableCell className="py-4 px-6">
                                         <Badge
@@ -3770,8 +3771,8 @@ export default function ProjectDetails({
                                           {task.experienceLevel}
                                         </Badge>
                                       </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                      <TableCell className="py-4 px-6 text-right">
+                                        <span className="text-sm text-nowrap text-dark-blue-400">
                                           {task.estimatedHours} hours
                                         </span>
                                       </TableCell>
@@ -4758,7 +4759,7 @@ export default function ProjectDetails({
       <div className="pb-[100px]" />
 
       {/* Similar Projects — full-width section */}
-      <div className="-mx-[100px] px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
+      <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
         <div>
           <div className="space-y-6">
             <div className="flex items-end justify-between">
@@ -5309,7 +5310,7 @@ export default function ProjectDetails({
       </div>
 
       {/* Ready to Work CTA */}
-      <div className="-mx-[100px] px-[100px] py-[70px] bg-gray-50">
+      <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] py-[70px] bg-gray-50">
         <div className="relative">
           <h1 className="text-[30px] font-bold text-center leading-none text-dark-blue-400">
             Ready to Work With Premium Quality Talent?
