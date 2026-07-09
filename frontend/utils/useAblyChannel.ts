@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
+import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
-import { getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 export function useAblyChannel(
@@ -8,57 +8,86 @@ export function useAblyChannel(
   onMessage: (data: any) => void,
   onPinToggled?: (data: { messageId: string; isPinned: boolean }) => void,
   onDelete?: (messageId: string) => void,
-  onUndelete?: (messageId: string) => void
+  onUndelete?: (messageId: string) => void,
+  onEdit?: (data: any) => void,
+  onReaction?: (data: { messageId: string; reactions: any[] }) => void
 ) {
-  const clientRef = useRef<Ably.Realtime | null>(null)
+  const { user } = useAuth()
+  // Stable refs so the effect doesn't tear down on every render
+  const onMessageRef = useRef(onMessage)
+  const onPinToggledRef = useRef(onPinToggled)
+  const onDeleteRef = useRef(onDelete)
+  const onUndeleteRef = useRef(onUndelete)
+  const onEditRef = useRef(onEdit)
+  const onReactionRef = useRef(onReaction)
 
   useEffect(() => {
-    const currentUser = getCurrentUser()
+    onMessageRef.current = onMessage
+  }, [onMessage])
+  useEffect(() => {
+    onPinToggledRef.current = onPinToggled
+  }, [onPinToggled])
+  useEffect(() => {
+    onDeleteRef.current = onDelete
+  }, [onDelete])
+  useEffect(() => {
+    onUndeleteRef.current = onUndelete
+  }, [onUndelete])
+  useEffect(() => {
+    onEditRef.current = onEdit
+  }, [onEdit])
+  useEffect(() => {
+    onReactionRef.current = onReaction
+  }, [onReaction])
 
-    if (!currentUser) {
+  useEffect(() => {
+    if (!threadId) return
+
+    if (!user?.id) {
       console.error("No logged-in user; cannot subscribe to Ably")
       return
     }
 
     const client = new Ably.Realtime({
-      // we use authCallback instead of authUrl so we can use apiFetch
-
       authCallback: async (_tokenParams, callback) => {
         try {
-          const token = localStorage.getItem("token")
-          // your Nest endpoint returns the full Ably tokenDetails JSON
           const tokenDetails = await apiFetch<any>(
-            `/api/messaging/ably?threadId=${threadId}`,
-            { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+            `/v1/threads/ably-token?threadId=${threadId}`,
+            { method: "GET" }
           )
+          if (!tokenDetails) {
+            callback("Realtime token unavailable", null)
+            return
+          }
           callback(null, tokenDetails)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           callback(msg, null)
         }
       },
-      clientId: currentUser.id,
+      clientId: user.id,
     })
 
-    clientRef.current = client
-
-    const channel = client.channels.get(`thread-${threadId}`)
+    const channel = client.channels.get(`chat:thread-${threadId}`)
 
     channel.subscribe((msg) => {
-      console.log(`Ably received ${msg.name}:`, msg.data)
-
       if (msg.name === "message:new") {
-        onMessage(msg.data)
+        onMessageRef.current(msg.data)
       }
-      if (msg.name === "message-pin-toggled" && onPinToggled) {
-        onPinToggled(msg.data)
+      if (msg.name === "message:edit" && onEditRef.current) {
+        onEditRef.current(msg.data)
       }
-
-      if (msg.name === "message-deleted" && onDelete) {
-        onDelete(msg.data.messageId)
+      if (msg.name === "message-pin-toggled" && onPinToggledRef.current) {
+        onPinToggledRef.current(msg.data)
       }
-      if (msg.name === "message-undeleted" && onUndelete) {
-        onUndelete(msg.data.messageId)
+      if (msg.name === "message:delete" && onDeleteRef.current) {
+        onDeleteRef.current(msg.data.messageId)
+      }
+      if (msg.name === "message:restore" && onUndeleteRef.current) {
+        onUndeleteRef.current(msg.data.messageId)
+      }
+      if (msg.name === "message:reaction" && onReactionRef.current) {
+        onReactionRef.current(msg.data)
       }
     })
 
@@ -66,5 +95,5 @@ export function useAblyChannel(
       channel.unsubscribe()
       client.close()
     }
-  }, [threadId, onMessage, onPinToggled, onDelete, onUndelete])
+  }, [threadId, user?.id])
 }

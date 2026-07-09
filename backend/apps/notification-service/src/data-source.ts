@@ -1,0 +1,28 @@
+import 'reflect-metadata';
+import { DataSource } from 'typeorm';
+import { config as loadEnv } from 'dotenv';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
+
+const envPaths = [
+  resolve(process.cwd(), 'apps/notification-service/.env'),
+  resolve(__dirname, '..', '.env'),
+  resolve(process.cwd(), '.env'),
+];
+const envPath = envPaths.find((p) => existsSync(p));
+loadEnv(envPath ? { path: envPath } : undefined);
+
+const rawSsl = String(
+  process.env.DATABASE_SSL ?? process.env.DATABASE_SSL_ENABLED ?? '',
+).toLowerCase();
+const useSsl = rawSsl === 'true';
+
+export const AppDataSource = new DataSource({
+  type: 'postgres',
+  url: process.env.DATABASE_URL,
+  schema: process.env.DATABASE_SCHEMA || 'notifications',
+  synchronize: false,
+  entities: [__dirname + '/**/*.entity{.ts,.js}'],
+  migrations: [__dirname + '/migrations/*{.ts,.js}'],
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
+});

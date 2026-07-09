@@ -1,51 +1,62 @@
-import { Controller, Get, Put, Param, Body, Request, UseGuards } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { Controller, Post, Put, Get, Param, Body, Headers, ForbiddenException } from '@nestjs/common';
 import { ContractsService } from '../services/contracts.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
-import { DisputeContractDto } from '../dtos/dispute-contract.dto';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
+import { ConfigService } from '@nestjs/config';
+import { Public } from '../decorators/public.decorator';
 
 @Controller('contracts')
-@UseGuards(JwtAuthGuard)
 export class ContractsController {
-  constructor(private readonly svc: ContractsService) {}
+  constructor(
+    private readonly contractsService: ContractsService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  @Get(':id')
-  getContract(@Param('id') id: string) {
-    return this.svc.getContract(id);
+  private validateInternalToken(token: string | undefined) {
+    const expected = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('Invalid internal token');
+    }
   }
 
-  @Get('client/:clientId')
-  getClientContracts(@Param('clientId') clientId: string) {
-    return this.svc.getContractsByClient(clientId);
-  }
-
-  @Get('talent/:talentId')
-  getTalentContracts(@Param('talentId') talentId: string) {
-    return this.svc.getContractsByTalent(talentId);
-  }
-
-  @UseGuards(RolesGuard('client'))
+  // End a single contract
   @Put(':id/end')
-  endContract(@Param('id') id: string, @Body() dto: EndContractDto, @Request() req: any) {
-    return this.svc.endContract(id, dto, req.user);
+  async endContract(@Param('id') id: string, @Body() dto: EndContractDto) {
+    return this.contractsService.endContract(id, dto);
   }
 
-  @UseGuards(RolesGuard('talent'))
+  // Accept/Reject flow for talent
   @Put(':id/respond')
-  respond(@Param('id') id: string, @Body() dto: AcceptRejectDto, @Request() req: any) {
-    return this.svc.respondToOffer(id, dto, req.user);
+  async respond(@Param('id') id: string, @Body() dto: AcceptRejectDto) {
+    return this.contractsService.respondToOffer(id, dto);
   }
 
-  @Put(':id/dispute')
-  disputeContract(@Param('id') id: string, @Body() dto: DisputeContractDto, @Request() req: any) {
-    return this.svc.disputeContract(id, dto, req.user);
+  // List contracts for a client
+  @Get('client/:clientId')
+  async getClientContracts(@Param('clientId') clientId: string) {
+    return this.contractsService.getContractsByClient(clientId);
   }
 
-  @MessagePattern('contract.activate')
-  handleActivate(@Payload() data: { groupId: string; paymentRef?: string }) {
-    return this.svc.activateGroup(data.groupId, data.paymentRef);
+  // List contracts for a talent
+  @Get('talent/:talentId')
+  async getTalentContracts(@Param('talentId') talentId: string) {
+    return this.contractsService.getContractsByTalent(talentId);
+  }
+
+  // Get one contract by ID
+  @Get(':id')
+  async getContract(@Param('id') id: string) {
+    return this.contractsService.getContract(id);
+  }
+
+  @Public()
+  @Post(':id/cms-sync')
+  async syncFromCms(
+    @Headers('x-internal-token') token: string | undefined,
+    @Param('id') id: string,
+    @Body() dto: any,
+  ) {
+    this.validateInternalToken(token);
+    return this.contractsService.update(id, dto);
   }
 }

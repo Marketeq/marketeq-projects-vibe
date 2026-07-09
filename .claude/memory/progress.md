@@ -11,12 +11,23 @@
 - user-service – talent profile, certifications, education, experience, industries, languages, skills
 - listings-service – projects, services, jobs, teams, media
 - checkout-service – Stripe checkout, wallet, webhooks
-- messaging-service – Ably real-time, message threads, history
+- messaging-service – Ably real-time, message threads, history, E2E encryption (AES-256-GCM + RSA-4096-OAEP key wrapping)
 - notification-service – Ably push, SendGrid email, event handlers, preferences
 - contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
+- time-tracking-service – complete service, code review fixes, QA tested all endpoints
+- transaction-service – ledger entries, Stripe webhooks, RabbitMQ events, 3 migrations, 62 .ts files
+- billing-service – Stripe checkout, QuickBooks, wire transfers, RabbitMQ, 15 .ts files
+- pricing-service – rate cards, fee calculation, FX rates, 30 .ts files
+- portfolio-service – media handling, Editor.js blocks, auth/access control, 20 .ts files
+- content-moderation-service – text/media filters, profanity detection, approval flow, 48 .ts files
+- search-service – Algolia indexing, filter config, autocomplete, 8 .ts files
+- suggestions-service – dynamic job title suggestions, RabbitMQ, 9 .ts files
+- earnings-service – balance tracking, RabbitMQ consumers (6 events), currency conversion (4-tier fallback), CSV/PDF export, Redis caching, service-to-service auth, 5 migrations
+- payout-service – withdrawals, deposit methods (Stripe/PayPal/Wise/Payoneer/Crypto), schedule engine, magic link, KYC gating, pause system, 22 modules, 97 .ts files
+- offer-service – complete offer lifecycle, counter-offers, milestones, templates, notifications, work schedules, 164 files
 
 ## In Progress
-(none currently — agents: claim your service here before starting)
+- homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
 
 ## Available Now (no blocking dependencies)
 These can be built immediately in parallel:
@@ -36,7 +47,7 @@ These can be built immediately in parallel:
 - earnings-service → needs contracts-service ✅ + transaction-service
 - payout-service → needs earnings-service + billing-service
 - billing-service → needs checkout-service ✅ (unblocked now)
-- time-tracking-service → needs contracts-service ✅ (unblocked now)
+- time-tracking-service → ✅ DONE
 - admin-service → needs most services complete
 - affiliate-referral-service → standalone, low priority
 
@@ -55,7 +66,13 @@ These can be built immediately in parallel:
 - time-tracking-service → contracts-service
 
 ## Frontend Progress
-- Inbox/messaging UI: hooks built (use-messages, use-send-message, use-file-upload, etc.)
+- Homepage: SSR page fetches from api-gateway `/homepage`, renders dynamic sections (projects, services, teams, talent), hero, banner, categories, SEO metadata. Uses `ListingCard`/`ListingCardCompact` components. Types aligned with backend.
+- Inbox/messaging UI: fully wired to backend APIs, E2E encryption integrated (client-side AES encrypt/decrypt, key exchange, cookie-based auth)
 - UI component library: complete (/components/ui/)
-- Types: defined for user, talent, client, project, conversation, message, auth
+- Types: defined for user, talent, client, project, conversation, message, auth, homepage
 - E2E tests: Playwright + Cucumber setup, auth tests written
+
+## Setup Notes (for new devs)
+- `E2EE_SERVER_SECRET` must be added to backend/.env for messaging-service
+- `user_keys` and `user_devices` tables must exist in user_service schema (run migration manually or execute SQL)
+- Gateway needs `messaging`, `user-keys`, `devices` route mappings (in proxy.controller.ts)

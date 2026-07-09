@@ -1,20 +1,32 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import axios from 'axios';
+import * as otplib from 'otplib';
+import * as QRCode from 'qrcode';
+import { UAParser } from 'ua-parser-js';
 import type { StringValue } from 'ms';
 
+import { BrevoService } from '../brevo/brevo.service';
+
 import { User } from '../user/entities/user.entity';
+import { Session } from '../session/entities/session.entity';
+import { SessionResponseDto } from './dto/session-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -28,27 +40,121 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
 type JwtPair = { access_token: string; refresh_token: string };
+type SyncUserProfilePayload = {
+  id: string;
+  email: string;
+  username?: string;
+  provider?: string;
+  hasPassword?: boolean;
+  firstName?: string;
+  lastName?: string;
+};
+
+type AuthUserPayload = {
+  id: string;
+  username: string;
+  email: string;
+  provider?: string;
+  hasPassword?: boolean;
+  twoFactorEnabled?: boolean;
+  twoFactorMethod?: string | null;
+  firstName?: string;
+  lastName?: string;
+};
+
+type LoginResult =
+  | (JwtPair & { sessionId: string; user: AuthUserPayload })
+  | { requiresTwoFactor: true; partialToken: string; twoFactorMethod: string };
+
+type SyncRetryItem = {
+  payload: SyncUserProfilePayload;
+  attempts: number;
+  nextAttemptAt: number;
+  lastError?: string;
+};
 
 const normalizeKey = (value?: string) =>
   value ? value.replace(/\\n/g, '\n') : value;
 
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
 const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
+const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
+const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
+  'Too many requests. Please try again later.';
+
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
+  private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
+  private readonly passwordResetRateLimits = new Map<string, RateLimitBucket>();
+  private retryTimer: NodeJS.Timeout | null = null;
+  private readonly syncRetryTickMs = 5000;
+  private readonly syncRetryBaseDelayMs = 5000;
+  private readonly syncRetryMaxDelayMs = 5 * 60 * 1000;
+  private readonly syncRetryMaxAttempts = 10;
+
+  private sessionCleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Session)
+    private readonly sessionRepository: Repository<Session>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly brevoService: BrevoService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  onModuleInit() {
+    this.retryTimer = setInterval(() => {
+      void this.processSyncRetryQueue();
+    }, this.syncRetryTickMs);
+
+    this.sessionCleanupTimer = setInterval(() => {
+      void this.cleanupExpiredSessions();
+    }, 60 * 60 * 1000);
+  }
+
+  onModuleDestroy() {
+    if (this.retryTimer) {
+      clearInterval(this.retryTimer);
+      this.retryTimer = null;
+    }
+    if (this.sessionCleanupTimer) {
+      clearInterval(this.sessionCleanupTimer);
+      this.sessionCleanupTimer = null;
+    }
+  }
+
+  private serializeUser(
+    user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'> & { twoFactorMethod?: string | null },
+    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
+  ): AuthUserPayload {
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      provider: user.provider,
+      hasPassword: user.hasPassword,
+      twoFactorEnabled: user.twoFactorEnabled ?? false,
+      twoFactorMethod: user.twoFactorMethod ?? null,
+      ...(extra ?? {}),
+    };
+  }
+
+  async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
+    const email = normalizeEmail(dto.email);
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -59,35 +165,50 @@ export class AuthService {
 
     const user = this.userRepository.create({
       username: dto.username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       provider: 'EMAIL',
       hasPassword: true,
     });
 
-    await this.userRepository.save(user);
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.throwDuplicateEmailIfNeeded(error);
+      throw error;
+    }
 
     try {
       await this.syncUserProfile(user);
     } catch (error) {
-      await this.userRepository.delete({ id: user.id });
-      throw error;
+      this.logger.warn(
+        `register: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
     }
 
+    await this.sendPasswordCreatedEmail(user.email, user.username, 'register');
+
+    const sessionId = randomUUID();
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
+      sessionId,
     });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      sessionId,
+      user: this.serializeUser(user),
     };
   }
 
-  async registerEmail(dto: RegisterEmailDto) {
+  async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
+    const email = normalizeEmail(dto.email);
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -100,29 +221,40 @@ export class AuthService {
 
     const user = this.userRepository.create({
       username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       provider: 'EMAIL',
       hasPassword: false,
     });
 
-    await this.userRepository.save(user);
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.throwDuplicateEmailIfNeeded(error);
+      throw error;
+    }
 
     try {
       await this.syncUserProfile(user);
     } catch (error) {
-      await this.userRepository.delete({ id: user.id });
-      throw error;
+      this.logger.warn(
+        `registerEmail: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
     }
 
+    const sessionId = randomUUID();
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
+      sessionId,
     });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      sessionId,
+      user: this.serializeUser(user),
     };
   }
 
@@ -133,6 +265,41 @@ export class AuthService {
     });
 
     return { available: !existingUser };
+  }
+
+  private throwDuplicateEmailIfNeeded(error: unknown): never | void {
+    if (this.isDuplicateEmailError(error)) {
+      throw new BadRequestException('User already exists');
+    }
+  }
+
+  private isDuplicateEmailError(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = error.driverError as
+      | {
+          code?: string;
+          constraint?: string;
+          detail?: string;
+          message?: string;
+        }
+      | undefined;
+
+    if (driverError?.code !== '23505') {
+      return false;
+    }
+
+    const constraint = driverError.constraint?.toLowerCase() ?? '';
+    const detail = driverError.detail?.toLowerCase() ?? '';
+    const message = driverError.message?.toLowerCase() ?? '';
+
+    return (
+      constraint.includes('email') ||
+      detail.includes('(email)=') ||
+      message.includes('(email)=')
+    );
   }
 
   async updateUsername(
@@ -155,7 +322,7 @@ export class AuthService {
 
     const current = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'username', 'provider', 'hasPassword'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled'],
     });
 
     if (!current) {
@@ -168,11 +335,7 @@ export class AuthService {
     await this.syncUserProfile(current);
 
     return {
-      user: {
-        id: current.id,
-        username: current.username,
-        email: current.email,
-      },
+      user: this.serializeUser(current),
     };
   }
 
@@ -184,48 +347,155 @@ export class AuthService {
 
     const current = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled'],
     });
 
     if (!current) {
       throw new UnauthorizedException('Invalid user');
     }
 
+    const hadPassword = current.hasPassword;
     current.password = await bcrypt.hash(dto.password, 10);
     current.hasPassword = true;
     await this.userRepository.save(current);
 
-    await this.syncUserProfile(current);
+    try {
+      await this.syncUserProfile(current);
+    } catch (error) {
+      this.logger.warn(
+        `setPassword: user profile sync failed for ${current.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
+
+    if (!hadPassword) {
+      await this.sendPasswordCreatedEmail(current.email, current.username, 'setPassword');
+    }
 
     return {
-      user: {
-        id: current.id,
-        username: current.username,
-        email: current.email,
-      },
+      user: this.serializeUser(current),
     };
   }
 
-  async login(dto: LoginDto): Promise<JwtPair> {
+  async login(dto: LoginDto, userAgent = '', ipAddress = ''): Promise<LoginResult> {
     const user = await this.userRepository.findOne({
       where: { email: dto.email },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod'],
     });
 
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
+
+    if (!user.hasPassword || !user.password) {
+      throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
+    }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
-    if (!isMatch) throw new UnauthorizedException('Invalid credentials');
+    if (!isMatch) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
-    await this.syncUserProfile(user);
+    if (user.twoFactorEnabled) {
+      const method = user.twoFactorMethod ?? 'totp';
+      const partialToken = await this.issuePartialToken(user, dto.rememberMe ?? false);
 
-    return this.issueTokens({ sub: user.id, email: user.email });
+      if (method === 'sms') {
+        try {
+          await this.sendLoginTwoFactorCode(user.id);
+        } catch (err) {
+          this.logger.error(`Failed to send login SMS OTP for ${user.email}: ${(err as Error)?.message}`);
+        }
+      }
+
+      return { requiresTwoFactor: true, partialToken, twoFactorMethod: method };
+    }
+
+    try {
+      await this.syncUserProfile(user);
+    } catch (error) {
+      this.logger.warn(
+        `login: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
+      );
+    }
+
+    const sessionId = randomUUID();
+    const rememberMe = dto.rememberMe ?? false;
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
+
+    return {
+      ...tokens,
+      sessionId,
+      user: this.serializeUser(user),
+    };
   }
 
-  async forgotPassword(dto: ForgotPasswordDto) {
+  /**
+   * Dev-only login: issue real RS256 tokens for an existing user by email.
+   * Disabled in production. Behaves identically to real login (same token format,
+   * same gateway verification) so local dev matches cloud behavior exactly.
+   */
+  async devLogin(email: string, userAgent = '', ipAddress = ''): Promise<JwtPair & { sessionId: string; user: AuthUserPayload }> {
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEV_LOGIN !== 'true') {
+      throw new UnauthorizedException('Dev login is not available in production');
+    }
+
+    let user = await this.userRepository.findOne({
+      where: { email },
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled'],
+    });
+
+    // Auto-create auth entry for seed users that only exist in user-service
+    if (!user) {
+      const username = await this.generatePlaceholderUsername();
+      const hashedPassword = await bcrypt.hash(this.generateRandomPassword(), 10);
+
+      user = this.userRepository.create({
+        username,
+        email,
+        password: hashedPassword,
+        provider: 'EMAIL',
+        hasPassword: false,
+      });
+      await this.userRepository.save(user);
+
+      // Sync to user-service (will find existing user by email)
+      try {
+        await this.syncUserProfile(user);
+      } catch {
+        // User-service may already have this user — that's fine
+      }
+    }
+
+    const sessionId = randomUUID();
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+
+    return {
+      ...tokens,
+      sessionId,
+      user: this.serializeUser(user),
+    };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto, ipAddress = '') {
+    const normalizedEmail = normalizeEmail(dto.email);
+    this.enforcePasswordResetRateLimit(
+      `forgot-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_FORGOT_PASSWORD_IP_LIMIT',
+      10,
+      'AUTH_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `forgot-password:email:${normalizedEmail}`,
+      'AUTH_FORGOT_PASSWORD_EMAIL_LIMIT',
+      3,
+      'AUTH_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
     const user = await this.userRepository.findOne({
-      where: { email: dto.email },
-      select: ['id', 'email'],
+      where: { email: normalizedEmail },
+      select: ['id', 'email', 'username', 'passwordResetVersion'],
     });
 
     const message =
@@ -235,21 +505,59 @@ export class AuthService {
       return { message };
     }
 
+    user.passwordResetVersion = randomUUID();
+    await this.userRepository.save(user);
+
     const resetToken = await this.issuePasswordResetToken(user);
+
+    const fallbackBase =
+      this.configService.get<string>('PASSWORD_RESET_URL') ??
+      (this.configService.get<string>('FRONTEND_URL')
+        ? `${this.configService.get<string>('FRONTEND_URL')!.replace(/\/$/, '')}/reset-password`
+        : undefined);
+
+    const base = this.resolveTrustedPasswordResetBase(dto.redirectUrl, fallbackBase);
     const resetUrl =
-      dto.redirectUrl && resetToken
-        ? `${dto.redirectUrl}${dto.redirectUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
+      base && resetToken
+        ? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
         : undefined;
+
+    if (resetUrl) {
+      try {
+        await this.brevoService.sendPasswordResetEmail(user.email, {
+          firstName: user.username,
+          resetUrl,
+        });
+      } catch (error) {
+        this.logger.error(
+          `forgotPassword: Brevo password reset email failed for ${user.email}: ${(error as Error)?.message}`,
+        );
+      }
+    }
+
+    const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
 
     return {
       message,
-      reset_token: resetToken,
-      reset_url: resetUrl,
+      ...(isDev && { reset_token: resetToken, reset_url: resetUrl }),
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
-    let payload: { sub?: string; email?: string; type?: string };
+  async resetPassword(dto: ResetPasswordDto, ipAddress = '') {
+    this.enforcePasswordResetRateLimit(
+      `reset-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RESET_PASSWORD_IP_LIMIT',
+      20,
+      'AUTH_RESET_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    let payload: {
+      sub?: string;
+      email?: string;
+      type?: string;
+      resetVersion?: string;
+    };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.token, {
@@ -259,29 +567,48 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    if (!payload?.sub || payload.type !== 'reset') {
+    if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'passwordResetVersion'],
     });
 
-    if (!user) {
+    if (!user || user.passwordResetVersion !== payload.resetVersion) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    user.password = await bcrypt.hash(dto.password, 10);
+    const nextResetVersion = randomUUID();
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id, passwordResetVersion: payload.resetVersion },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Invalid or expired reset token');
+      }
+
+      await manager.getRepository(Session).delete({ userId: user.id });
+    });
+
     user.hasPassword = true;
-    await this.userRepository.save(user);
+    user.passwordResetVersion = nextResetVersion;
 
     await this.syncUserProfile(user);
 
     return { success: true };
   }
 
-  async loginWithGoogle(dto: GoogleLoginDto) {
+  async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
     let accessToken = dto.access_token;
     let idToken = dto.id_token ?? dto.credential;
 
@@ -348,6 +675,8 @@ export class AuthService {
     let email: string | undefined;
     let emailVerified: string | boolean | undefined;
     let aud: string | undefined;
+    let firstName: string | undefined;
+    let lastName: string | undefined;
 
     if (idToken) {
       let tokenInfo: {
@@ -355,6 +684,8 @@ export class AuthService {
         email?: string;
         email_verified?: string | boolean;
         sub?: string;
+        given_name?: string;
+        family_name?: string;
       };
 
       try {
@@ -385,6 +716,8 @@ export class AuthService {
       }
 
       email = tokenInfo.email;
+      firstName = tokenInfo.given_name;
+      lastName = tokenInfo.family_name;
     } else if (accessToken) {
       let tokenInfo: Record<string, any>;
       try {
@@ -407,17 +740,21 @@ export class AuthService {
         throw new UnauthorizedException('Invalid Google access token');
       }
 
-      if (!email) {
-        try {
-          const response = await axios.get(
-            'https://www.googleapis.com/oauth2/v3/userinfo',
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            },
-          );
-          email = response.data?.email;
-          emailVerified = response.data?.email_verified;
-        } catch {
+      // Always call userinfo to get profile data (name, avatar);
+      // tokeninfo only returns email/aud, not profile fields.
+      try {
+        const response = await axios.get(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
+        );
+        email = email ?? response.data?.email;
+        emailVerified = emailVerified ?? response.data?.email_verified;
+        firstName = response.data?.given_name;
+        lastName = response.data?.family_name;
+      } catch {
+        if (!email) {
           throw new UnauthorizedException('Invalid Google access token');
         }
       }
@@ -439,7 +776,7 @@ export class AuthService {
 
     let user = await this.userRepository.findOne({
       where: { email: resolvedEmail },
-      select: ['id', 'email', 'username', 'provider', 'hasPassword'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled'],
     });
 
     let createdUser = false;
@@ -463,26 +800,37 @@ export class AuthService {
     }
 
     try {
-      await this.syncUserProfile(user);
+      await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
+        // New user: rollback the auth record so the user can retry cleanly.
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      // Existing user: profile already exists in user-service — do not
+      // block login just because the sync refresh failed.
+      this.logger.warn(
+        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
+    const sessionId = randomUUID();
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
+      sessionId,
     });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      sessionId,
+      user: this.serializeUser(user, { firstName, lastName }),
     };
   }
 
-  async loginWithLinkedIn(dto: LinkedInLoginDto) {
+  async loginWithLinkedIn(dto: LinkedInLoginDto, userAgent = '', ipAddress = '') {
     let accessToken = dto.access_token;
 
     const clientId = this.configService.get<string>('LINKEDIN_CLIENT_ID');
@@ -536,8 +884,8 @@ export class AuthService {
       throw new BadRequestException('access_token or code is required');
     }
 
-    const { email, emailVerified } =
-      await this.fetchLinkedInEmail(accessToken);
+    const { email, emailVerified, firstName, lastName } =
+      await this.fetchLinkedInProfile(accessToken);
 
     if (!email) {
       throw new UnauthorizedException('Invalid LinkedIn token');
@@ -551,7 +899,7 @@ export class AuthService {
 
     let user = await this.userRepository.findOne({
       where: { email: resolvedEmail },
-      select: ['id', 'email', 'username', 'provider', 'hasPassword'],
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled'],
     });
 
     let createdUser = false;
@@ -575,28 +923,40 @@ export class AuthService {
     }
 
     try {
-      await this.syncUserProfile(user);
+      await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
       if (createdUser) {
         await this.userRepository.delete({ id: user.id });
+        throw error;
       }
-      throw error;
+      this.logger.warn(
+        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+      );
     }
 
+    const sessionId = randomUUID();
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
+      sessionId,
     });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
-      user: { id: user.id, username: user.username, email: user.email },
+      sessionId,
+      user: this.serializeUser(user, { firstName, lastName }),
     };
   }
 
-  async refresh(dto: RefreshDto): Promise<JwtPair> {
+  async refresh(dto: RefreshDto): Promise<JwtPair & { sessionId?: string }> {
+    if (!dto.refresh_token) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
     const refreshSecret = this.getRefreshSecret();
-    let payload: { sub: string; email?: string; type?: string };
+    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.refresh_token, {
@@ -611,38 +971,625 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '' });
+    if (payload.sid) {
+      const session = await this.sessionRepository.findOne({ where: { id: payload.sid, userId: payload.sub } });
+      if (!session) {
+        throw new UnauthorizedException('Session has been revoked');
+      }
+
+      const submittedRefreshTokenHash = createHash('sha256').update(dto.refresh_token).digest('hex');
+      if (session.refreshTokenHash !== submittedRefreshTokenHash) {
+        await this.sessionRepository.delete({ id: session.id });
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      const rememberMe = payload.rememberMe ?? false;
+      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe });
+
+      session.refreshTokenHash = createHash('sha256').update(newTokens.refresh_token).digest('hex');
+      session.lastActiveAt = new Date();
+      session.expiresAt = new Date(Date.now() + this.refreshTtlMs(rememberMe));
+      await this.sessionRepository.save(session);
+
+      return { ...newTokens, sessionId: payload.sid };
+    }
+
+    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false });
   }
 
-  async logout(user: { id?: string; sub?: string }) {
+  async logout(user: { id?: string; sub?: string }, refreshToken?: string) {
     const userId = user?.sub ?? user?.id;
     if (!userId) {
       throw new UnauthorizedException('Invalid user');
     }
 
-    // Stateless JWT logout: client clears tokens.
+    if (refreshToken) {
+      try {
+        const refreshSecret = this.getRefreshSecret();
+        const payload = await this.jwtService.verifyAsync(refreshToken, {
+          secret: refreshSecret,
+          algorithms: ['HS256'],
+        });
+        if (payload.sid) {
+          await this.sessionRepository.delete({ id: payload.sid, userId });
+        }
+      } catch {
+        // Token may be expired/invalid — still clear client-side
+      }
+    }
+
     return { success: true };
+  }
+
+  async getSessions(userId: string, currentSessionId?: string): Promise<SessionResponseDto[]> {
+    const sessions = await this.sessionRepository.find({
+      where: { userId },
+      order: { lastActiveAt: 'DESC' },
+    });
+
+    const now = new Date();
+    const staleThresholdMs = 3 * 60 * 1000; // 3 minutes without heartbeat = stale
+
+    return sessions
+      .filter((s) => s.expiresAt > now)
+      .filter((s) => {
+        // Always show the current session; hide stale sessions from other devices
+        if (s.id === currentSessionId) return true;
+        return (now.getTime() - s.lastActiveAt.getTime()) < staleThresholdMs;
+      })
+      .map((s) => ({
+        id: s.id,
+        userAgent: s.userAgent,
+        browserName: s.browserName ?? null,
+        browserVersion: s.browserVersion ?? null,
+        osName: s.osName ?? null,
+        osVersion: s.osVersion ?? null,
+        deviceType: s.deviceType ?? null,
+        ipAddress: s.ipAddress,
+        createdAt: s.createdAt.toISOString(),
+        lastActiveAt: s.lastActiveAt.toISOString(),
+        isCurrent: s.id === currentSessionId,
+      }));
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    const session = await this.sessionRepository.findOne({ where: { id: sessionId, userId } });
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+    await this.sessionRepository.delete({ id: sessionId });
+  }
+
+  async heartbeat(userId: string, sessionId: string): Promise<{ valid: boolean }> {
+    if (!sessionId) {
+      return { valid: true };
+    }
+
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId, userId },
+    });
+
+    if (!session || session.expiresAt < new Date()) {
+      throw new UnauthorizedException('Session has been revoked or expired');
+    }
+
+    session.lastActiveAt = new Date();
+    await this.sessionRepository.save(session);
+    return { valid: true };
+  }
+
+  async revokeAllOtherSessions(userId: string, currentSessionId: string): Promise<{ revoked: number }> {
+    const result = await this.sessionRepository.delete({ userId, id: Not(currentSessionId) });
+    return { revoked: result.affected ?? 0 };
+  }
+
+  async generateTwoFactorSecret(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'twoFactorEnabled'],
+    });
+
+    if (!user) throw new UnauthorizedException('Invalid user');
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException('Two-factor authentication is already enabled');
+    }
+
+    const secret = otplib.generateSecret();
+    const otpauthUrl = otplib.generateURI({ issuer: 'Marketeq', label: user.email, secret });
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    const encrypted = this.encryptSecret(secret);
+    await this.userRepository.update(userId, { twoFactorSecret: encrypted });
+
+    return { secret, qrCodeDataUrl };
+  }
+
+  async enableTwoFactor(userId: string, code: string, method: 'totp' | 'sms' = 'totp') {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorOtpCode', 'twoFactorOtpExpiresAt'],
+    });
+
+    if (!user) throw new UnauthorizedException('Invalid user');
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException('Two-factor authentication is already enabled');
+    }
+
+    if (method === 'totp') {
+      if (!user.twoFactorSecret) {
+        throw new BadRequestException('Generate a 2FA secret first');
+      }
+      const secret = this.decryptSecret(user.twoFactorSecret);
+      const result = otplib.verifySync({ token: code, secret });
+      if (!result.valid) {
+        throw new BadRequestException('Invalid verification code');
+      }
+    } else {
+      if (!user.twoFactorOtpCode || !user.twoFactorOtpExpiresAt) {
+        throw new BadRequestException('Generate an SMS code first');
+      }
+      if (new Date() > user.twoFactorOtpExpiresAt) {
+        throw new BadRequestException('Verification code has expired. Please request a new one.');
+      }
+      const storedCode = this.decryptSecret(user.twoFactorOtpCode);
+      if (storedCode !== code) {
+        throw new BadRequestException('Invalid verification code');
+      }
+    }
+
+    const backupCodes = this.generateBackupCodes();
+    const hashedCodes = await Promise.all(
+      backupCodes.map((c) => bcrypt.hash(c, 10)),
+    );
+
+    await this.userRepository.update(userId, {
+      twoFactorEnabled: true,
+      twoFactorMethod: method,
+      twoFactorBackupCodes: JSON.stringify(hashedCodes),
+      twoFactorOtpCode: null as any,
+      twoFactorOtpExpiresAt: null as any,
+    });
+
+    try {
+      await this.syncUserProfile({ ...user, twoFactorEnabled: true });
+    } catch (error) {
+      this.logger.warn(
+        `enableTwoFactor: user profile sync failed for ${user.email}: ${(error as Error)?.message}`,
+      );
+    }
+
+    return { backupCodes };
+  }
+
+  async disableTwoFactor(userId: string, code: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod', 'twoFactorSecret', 'twoFactorBackupCodes', 'twoFactorOtpCode', 'twoFactorOtpExpiresAt'],
+    });
+
+    if (!user) throw new UnauthorizedException('Invalid user');
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Two-factor authentication is not enabled');
+    }
+
+    const method = user.twoFactorMethod ?? 'totp';
+    let isValid: boolean;
+
+    if (method === 'sms') {
+      isValid = await this.validateSmsOtpCode(user as any, code);
+    } else {
+      isValid = await this.validateTwoFactorCode(user, code);
+    }
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    await this.userRepository.update(userId, {
+      twoFactorEnabled: false,
+      twoFactorSecret: null as any,
+      twoFactorBackupCodes: null as any,
+      twoFactorMethod: null as any,
+      twoFactorPhone: null as any,
+      twoFactorOtpCode: null as any,
+      twoFactorOtpExpiresAt: null as any,
+      twoFactorOtpSentAt: null as any,
+    });
+
+    try {
+      await this.syncUserProfile({ ...user, twoFactorEnabled: false });
+    } catch (error) {
+      this.logger.warn(
+        `disableTwoFactor: user profile sync failed for ${user.email}: ${(error as Error)?.message}`,
+      );
+    }
+
+    return { success: true };
+  }
+
+  async verifyTwoFactorLogin(partialToken: string, code: string, userAgent = '', ipAddress = '') {
+    let payload: { sub?: string; email?: string; type?: string; rememberMe?: boolean };
+
+    try {
+      payload = await this.jwtService.verifyAsync(partialToken, {
+        algorithms: ['RS256'],
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    if (!payload?.sub || payload.type !== '2fa-pending') {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+      select: ['id', 'email', 'username', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod', 'twoFactorSecret', 'twoFactorBackupCodes', 'twoFactorOtpCode', 'twoFactorOtpExpiresAt'],
+    });
+
+    if (!user || !user.twoFactorEnabled) {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    const method = user.twoFactorMethod ?? 'totp';
+    let isValid: boolean;
+
+    if (method === 'sms') {
+      isValid = await this.validateSmsOtpCode(user as any, code);
+    } else {
+      isValid = await this.validateTwoFactorCode(user, code);
+    }
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    await this.syncUserProfile(user);
+
+    const sessionId = randomUUID();
+    const rememberMe = payload.rememberMe ?? false;
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
+
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
+
+    return { ...tokens, sessionId, user: this.serializeUser(user) };
+  }
+
+  async regenerateBackupCodes(userId: string, code: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorBackupCodes'],
+    });
+
+    if (!user || !user.twoFactorEnabled) {
+      throw new BadRequestException('Two-factor authentication is not enabled');
+    }
+
+    const isValid = await this.validateTwoFactorCode(user, code);
+    if (!isValid) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    const backupCodes = this.generateBackupCodes();
+    const hashedCodes = await Promise.all(
+      backupCodes.map((c) => bcrypt.hash(c, 10)),
+    );
+
+    await this.userRepository.update(userId, {
+      twoFactorBackupCodes: JSON.stringify(hashedCodes),
+    });
+
+    return { backupCodes };
+  }
+
+  async generateSmsTwoFactor(userId: string, phone: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'twoFactorEnabled'],
+    });
+
+    if (!user) throw new UnauthorizedException('Invalid user');
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException('Two-factor authentication is already enabled');
+    }
+
+    const code = this.generateOtpCode();
+    const encrypted = this.encryptSecret(code);
+
+    await this.userRepository.update(userId, {
+      twoFactorPhone: phone,
+      twoFactorOtpCode: encrypted,
+      twoFactorOtpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      twoFactorOtpSentAt: new Date(),
+    });
+
+    try {
+      await this.brevoService.sendTwoFactorSms(phone, code);
+    } catch (err) {
+      throw new BadRequestException((err as Error)?.message || 'Failed to send SMS verification code');
+    }
+
+    return { codeSent: true };
+  }
+
+  async resendTwoFactorCode(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorPhone', 'twoFactorOtpSentAt'],
+    });
+
+    if (!user || !user.twoFactorPhone) {
+      throw new BadRequestException('No phone number configured for SMS 2FA');
+    }
+
+    if (user.twoFactorOtpSentAt && Date.now() - user.twoFactorOtpSentAt.getTime() < 60_000) {
+      throw new BadRequestException('Please wait 60 seconds before requesting a new code');
+    }
+
+    const code = this.generateOtpCode();
+    const encrypted = this.encryptSecret(code);
+
+    await this.userRepository.update(userId, {
+      twoFactorOtpCode: encrypted,
+      twoFactorOtpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      twoFactorOtpSentAt: new Date(),
+    });
+
+    try {
+      await this.brevoService.sendTwoFactorSms(user.twoFactorPhone, code);
+    } catch (err) {
+      throw new BadRequestException((err as Error)?.message || 'Failed to send SMS verification code');
+    }
+
+    return { codeSent: true };
+  }
+
+  async sendLoginTwoFactorCode(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorPhone', 'twoFactorMethod', 'twoFactorOtpSentAt'],
+    });
+
+    if (!user || !user.twoFactorPhone) {
+      throw new BadRequestException('No phone number configured for SMS 2FA');
+    }
+
+    if (user.twoFactorOtpSentAt && Date.now() - user.twoFactorOtpSentAt.getTime() < 60_000) {
+      return { codeSent: true };
+    }
+
+    const code = this.generateOtpCode();
+    const encrypted = this.encryptSecret(code);
+
+    await this.userRepository.update(userId, {
+      twoFactorOtpCode: encrypted,
+      twoFactorOtpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      twoFactorOtpSentAt: new Date(),
+    });
+
+    try {
+      await this.brevoService.sendTwoFactorSms(user.twoFactorPhone, code);
+    } catch (err) {
+      throw new BadRequestException((err as Error)?.message || 'Failed to send SMS verification code');
+    }
+
+    return { codeSent: true };
+  }
+
+  private generateOtpCode(): string {
+    const num = Math.floor(100000 + Math.random() * 900000);
+    return num.toString();
+  }
+
+  private async validateSmsOtpCode(
+    user: Pick<User, 'twoFactorOtpCode' | 'twoFactorOtpExpiresAt' | 'twoFactorBackupCodes'> & { id: string },
+    code: string,
+  ): Promise<boolean> {
+    if (user.twoFactorOtpCode && user.twoFactorOtpExpiresAt) {
+      if (new Date() > user.twoFactorOtpExpiresAt) {
+        return false;
+      }
+      const storedCode = this.decryptSecret(user.twoFactorOtpCode);
+      if (storedCode === code) {
+        await this.userRepository.update(user.id, {
+          twoFactorOtpCode: null as any,
+          twoFactorOtpExpiresAt: null as any,
+        });
+        return true;
+      }
+    }
+
+    if (!user.twoFactorBackupCodes) return false;
+
+    const hashedCodes: string[] = JSON.parse(user.twoFactorBackupCodes);
+    for (let i = 0; i < hashedCodes.length; i++) {
+      if (await bcrypt.compare(code, hashedCodes[i])) {
+        hashedCodes.splice(i, 1);
+        await this.userRepository.update(user.id, {
+          twoFactorBackupCodes: JSON.stringify(hashedCodes),
+        });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async validateTwoFactorCode(
+    user: Pick<User, 'twoFactorSecret' | 'twoFactorBackupCodes'> & { id: string },
+    code: string,
+  ): Promise<boolean> {
+    if (!user.twoFactorSecret) return false;
+
+    const secret = this.decryptSecret(user.twoFactorSecret);
+    const totpResult = otplib.verifySync({ token: code, secret });
+    if (totpResult.valid) {
+      return true;
+    }
+
+    if (!user.twoFactorBackupCodes) return false;
+
+    const hashedCodes: string[] = JSON.parse(user.twoFactorBackupCodes);
+    for (let i = 0; i < hashedCodes.length; i++) {
+      if (await bcrypt.compare(code, hashedCodes[i])) {
+        hashedCodes.splice(i, 1);
+        await this.userRepository.update(user.id, {
+          twoFactorBackupCodes: JSON.stringify(hashedCodes),
+        });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async verifyPartialToken(partialToken: string): Promise<string> {
+    let payload: { sub?: string; type?: string };
+    try {
+      payload = await this.jwtService.verifyAsync(partialToken, { algorithms: ['RS256'] });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    if (!payload?.sub || payload.type !== '2fa-pending') {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    return payload.sub;
+  }
+
+  private async issuePartialToken(user: { id: string; email: string }, rememberMe: boolean): Promise<string> {
+    return this.jwtService.signAsync(
+      { sub: user.id, email: user.email, type: '2fa-pending', rememberMe },
+      { expiresIn: '5m' },
+    );
+  }
+
+  private encryptSecret(secret: string): string {
+    const key = this.getTwoFactorEncryptionKey();
+    const iv = randomBytes(16);
+    const cipher = createCipheriv('aes-256-cbc', key, iv);
+    let encrypted = cipher.update(secret, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return iv.toString('hex') + ':' + encrypted;
+  }
+
+  private decryptSecret(encrypted: string): string {
+    const key = this.getTwoFactorEncryptionKey();
+    const [ivHex, data] = encrypted.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(data, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  }
+
+  private getTwoFactorEncryptionKey(): Buffer {
+    const envKey = this.configService.get<string>('TWO_FACTOR_ENCRYPTION_KEY');
+    if (!envKey) {
+      throw new InternalServerErrorException('TWO_FACTOR_ENCRYPTION_KEY is required');
+    }
+    return scryptSync(envKey, 'marketeq-2fa-salt', 32);
+  }
+
+  private generateBackupCodes(): string[] {
+    const codes: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const code = randomBytes(4).toString('hex');
+      codes.push(`${code.slice(0, 4)}-${code.slice(4)}`);
+    }
+    return codes;
+  }
+
+  private async createSession(params: {
+    id: string;
+    userId: string;
+    refreshToken: string;
+    userAgent: string;
+    ipAddress: string;
+    rememberMe?: boolean;
+  }): Promise<void> {
+    const hash = createHash('sha256').update(params.refreshToken).digest('hex');
+    const expiresAt = new Date(Date.now() + this.refreshTtlMs(params.rememberMe ?? false));
+
+    const parser = new UAParser(params.userAgent);
+    const browser = parser.getBrowser();
+    const os = parser.getOS();
+    const device = parser.getDevice();
+
+    const session = new Session();
+    session.id = params.id;
+    session.userId = params.userId;
+    session.refreshTokenHash = hash;
+    session.userAgent = params.userAgent;
+    session.browserName = browser.name ?? undefined;
+    session.browserVersion = browser.major ?? undefined;
+    session.osName = os.name ?? undefined;
+    session.osVersion = os.version ?? undefined;
+    session.deviceType = device.type === 'mobile' ? 'mobile'
+      : device.type === 'tablet' ? 'tablet'
+      : 'desktop';
+    session.ipAddress = params.ipAddress;
+    session.expiresAt = expiresAt;
+    await this.sessionRepository.save(session);
+  }
+
+  private parseExpiresInMs(value: string): number {
+    const match = value.match(/^(\d+)(s|m|h|d)?$/);
+    if (!match) return 7 * 24 * 60 * 60 * 1000;
+    const num = parseInt(match[1], 10);
+    const unit = match[2] ?? 's';
+    const multipliers: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+    return num * (multipliers[unit] ?? 1000);
+  }
+
+  private refreshTtlValue(rememberMe?: boolean): string {
+    if (rememberMe) {
+      return this.configService.get<string>('AUTH_REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN') ?? '14d';
+    }
+    return this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '5h';
+  }
+
+  private refreshTtlMs(rememberMe: boolean): number {
+    return this.parseExpiresInMs(this.refreshTtlValue(rememberMe));
+  }
+
+  private async cleanupExpiredSessions(): Promise<void> {
+    const result = await this.sessionRepository.delete({ expiresAt: LessThan(new Date()) });
+    if (result.affected && result.affected > 0) {
+      this.logger.log(`[sessions] cleaned up ${result.affected} expired sessions`);
+    }
   }
 
   private async issueTokens(payload: {
     sub: string;
     email: string;
+    sessionId?: string;
+    rememberMe?: boolean;
   }): Promise<JwtPair> {
-    const access_token = this.jwtService.sign(payload);
+    const accessPayload: Record<string, any> = { sub: payload.sub, email: payload.email };
+    if (payload.sessionId) {
+      accessPayload.sid = payload.sessionId;
+    }
+    const access_token = this.jwtService.sign(accessPayload);
 
     const refreshSecret = this.getRefreshSecret();
-    const refreshExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '7d',
-    );
+    const rememberMe = payload.rememberMe ?? false;
+    const refreshExpires = parseExpiresIn(this.refreshTtlValue(rememberMe));
 
-    const refresh_token = await this.jwtService.signAsync(
-      { ...payload, type: 'refresh' },
-      {
-        secret: refreshSecret,
-        algorithm: 'HS256',
-        expiresIn: refreshExpires,
-      },
-    );
+    const refreshPayload: Record<string, any> = {
+      sub: payload.sub,
+      email: payload.email,
+      type: 'refresh',
+      rememberMe,
+    };
+    if (payload.sessionId) {
+      refreshPayload.sid = payload.sessionId;
+    }
+
+    const refresh_token = await this.jwtService.signAsync(refreshPayload, {
+      secret: refreshSecret,
+      algorithm: 'HS256',
+      expiresIn: refreshExpires,
+    });
 
     return { access_token, refresh_token };
   }
@@ -650,15 +1597,111 @@ export class AuthService {
   private async issuePasswordResetToken(user: {
     id: string;
     email: string;
+    passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
       this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
     );
 
     return this.jwtService.signAsync(
-      { sub: user.id, email: user.email, type: 'reset' },
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'reset',
+        resetVersion: user.passwordResetVersion,
+      },
       { expiresIn: resetExpires },
     );
+  }
+
+  private resolveTrustedPasswordResetBase(
+    requestedBase?: string,
+    fallbackBase?: string,
+  ): string | undefined {
+    if (!requestedBase) {
+      return fallbackBase;
+    }
+
+    const trustedOrigins = [
+      ...(this.configService.get<string>('FRONTEND_URL') ?? '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+      fallbackBase,
+    ]
+      .filter((value): value is string => !!value)
+      .map((value) => {
+        try {
+          return new URL(value).origin;
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((value): value is string => !!value);
+
+    try {
+      const requestedUrl = new URL(requestedBase);
+      if (trustedOrigins.includes(requestedUrl.origin)) {
+        return requestedBase;
+      }
+    } catch {
+      // Fall back to configured URL below.
+    }
+
+    return fallbackBase;
+  }
+
+  private enforcePasswordResetRateLimit(
+    key: string,
+    limitEnvKey: string,
+    defaultLimit: number,
+    windowEnvKey: string,
+    defaultWindowMs: number,
+  ): void {
+    const now = Date.now();
+    const limit = this.getPositiveIntegerConfig(limitEnvKey, defaultLimit);
+    const windowMs = this.getPositiveIntegerConfig(
+      windowEnvKey,
+      defaultWindowMs,
+    );
+
+    this.cleanupExpiredPasswordResetRateLimits(now);
+
+    const bucket = this.passwordResetRateLimits.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      this.passwordResetRateLimits.set(key, {
+        count: 1,
+        resetAt: now + windowMs,
+      });
+      return;
+    }
+
+    if (bucket.count >= limit) {
+      throw new HttpException(
+        PASSWORD_RESET_RATE_LIMIT_MESSAGE,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    bucket.count += 1;
+  }
+
+  private cleanupExpiredPasswordResetRateLimits(now = Date.now()): void {
+    for (const [key, bucket] of this.passwordResetRateLimits.entries()) {
+      if (bucket.resetAt <= now) {
+        this.passwordResetRateLimits.delete(key);
+      }
+    }
+  }
+
+  private normalizeRateLimitIp(ipAddress: string): string {
+    return ipAddress.trim() || 'unknown';
+  }
+
+  private getPositiveIntegerConfig(key: string, fallback: number): number {
+    const raw = this.configService.get<string>(key);
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private getRefreshSecret(): string {
@@ -669,37 +1712,21 @@ export class AuthService {
     return secret;
   }
 
-  private async syncUserProfile(user: User) {
-    const baseUrl =
-      this.configService.get<string>('USER_SERVICE_URL') ??
-      'http://localhost:3000';
-    const token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
-
-    if (!token) {
-      throw new InternalServerErrorException(
-        'INTERNAL_SERVICE_TOKEN is required to sync user profiles',
-      );
-    }
-
-    const url = `${baseUrl.replace(/\/$/, '')}/internal/users`;
+  private async syncUserProfile(user: User, extra?: { firstName?: string; lastName?: string }) {
+    const payload: SyncUserProfilePayload = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      provider: user.provider ?? 'EMAIL',
+      hasPassword: user.hasPassword ?? false,
+      ...(extra?.firstName && { firstName: extra.firstName }),
+      ...(extra?.lastName && { lastName: extra.lastName }),
+    };
 
     try {
-      await axios.post(
-        url,
-        {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          provider: user.provider ?? 'EMAIL',
-          hasPassword: user.hasPassword ?? false,
-        },
-        {
-          headers: {
-            'x-internal-token': token,
-          },
-        },
-      );
+      await this.postUserProfileSync(payload);
     } catch (error) {
+      this.enqueueSyncRetry(payload, (error as Error)?.message);
       this.logger.error(
         `Failed to sync user profile to user-service for user ${user.id}: ${(error as Error)?.message}`,
         (error as Error)?.stack,
@@ -710,15 +1737,112 @@ export class AuthService {
     }
   }
 
-  private async fetchLinkedInEmail(
+  private getUserSyncEndpoint(): { url: string; token: string } {
+    const baseUrl =
+      this.configService.get<string>('USER_SERVICE_URL') ??
+      'http://localhost:3002';
+    const token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+
+    if (!token) {
+      throw new InternalServerErrorException(
+        'INTERNAL_SERVICE_TOKEN is required to sync user profiles',
+      );
+    }
+
+    return {
+      url: `${baseUrl.replace(/\/$/, '')}/internal/users`,
+      token,
+    };
+  }
+
+  private async postUserProfileSync(payload: SyncUserProfilePayload) {
+    const { url, token } = this.getUserSyncEndpoint();
+    try {
+      await axios.post(url, payload, {
+        headers: {
+          'x-internal-token': token,
+        },
+      });
+    } catch (error) {
+      // user-service may return 409 when profile already exists; treat this as idempotent success.
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        this.logger.warn(
+          `[sync] user profile already exists in user-service; treating as success for user=${payload.id} email=${payload.email}`,
+        );
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private getRetryKey(payload: SyncUserProfilePayload): string {
+    return payload.id || payload.email;
+  }
+
+  private enqueueSyncRetry(payload: SyncUserProfilePayload, errorMessage?: string) {
+    const key = this.getRetryKey(payload);
+    const existing = this.syncRetryQueue.get(key);
+    const attempts = (existing?.attempts ?? 0) + 1;
+
+    if (attempts > this.syncRetryMaxAttempts) {
+      this.syncRetryQueue.delete(key);
+      this.logger.error(
+        `[sync.retry] dropping user profile sync after ${this.syncRetryMaxAttempts} attempts for user=${payload.id} email=${payload.email}`,
+      );
+      return;
+    }
+
+    const delayMs = Math.min(
+      this.syncRetryBaseDelayMs * 2 ** (attempts - 1),
+      this.syncRetryMaxDelayMs,
+    );
+
+    this.syncRetryQueue.set(key, {
+      payload,
+      attempts,
+      nextAttemptAt: Date.now() + delayMs,
+      lastError: errorMessage,
+    });
+
+    this.logger.warn(
+      `[sync.retry] queued user profile sync retry attempt=${attempts} delayMs=${delayMs} user=${payload.id} email=${payload.email}`,
+    );
+  }
+
+  private async processSyncRetryQueue() {
+    if (!this.syncRetryQueue.size) {
+      return;
+    }
+
+    const now = Date.now();
+    const dueEntries = [...this.syncRetryQueue.entries()].filter(
+      ([, item]) => item.nextAttemptAt <= now,
+    );
+
+    for (const [key, item] of dueEntries) {
+      try {
+        await this.postUserProfileSync(item.payload);
+        this.syncRetryQueue.delete(key);
+        this.logger.log(
+          `[sync.retry] replay succeeded for user=${item.payload.id} email=${item.payload.email} after attempts=${item.attempts}`,
+        );
+      } catch (error) {
+        this.enqueueSyncRetry(item.payload, (error as Error)?.message);
+      }
+    }
+  }
+
+  private async fetchLinkedInProfile(
     accessToken: string,
-  ): Promise<{ email?: string; emailVerified?: boolean }> {
+  ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       const email = response.data?.email;
+      const firstName = response.data?.given_name;
+      const lastName = response.data?.family_name;
       const emailVerifiedRaw = response.data?.email_verified;
       const emailVerified =
         emailVerifiedRaw === true || emailVerifiedRaw === 'true'
@@ -728,7 +1852,7 @@ export class AuthService {
             : undefined;
 
       if (email) {
-        return { email, emailVerified };
+        return { email, emailVerified, firstName, lastName };
       }
     } catch {
       // fallback below
@@ -776,5 +1900,27 @@ export class AuthService {
 
   private generateRandomPassword(): string {
     return randomBytes(16).toString('hex');
+  }
+
+  private async sendPasswordCreatedEmail(
+    email: string,
+    firstName: string | undefined,
+    context: string,
+  ): Promise<void> {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '');
+    const signInUrl =
+      this.configService.get<string>('PASSWORD_CREATED_LOGIN_URL') ??
+      (frontendUrl ? `${frontendUrl}/login` : undefined);
+
+    try {
+      await this.brevoService.sendPasswordCreatedEmail(email, {
+        firstName,
+        signInUrl,
+      });
+    } catch (error) {
+      this.logger.error(
+        `${context}: Brevo password created email failed for ${email}: ${(error as Error)?.message}`,
+      );
+    }
   }
 }

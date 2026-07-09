@@ -1,4 +1,5 @@
 import leoProfanity from "leo-profanity"
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 import { blacklist } from "../utils/blacklist"
 import { categoryRules } from "../utils/blacklist"
 
@@ -87,7 +88,7 @@ async function logRejection(
   reason: string
 ) {
   try {
-    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/talent/rejected-inputs`
+    const url = `${getPublicBackendUrl()}/talent/rejected-inputs`
     console.log("🔁 Sending rejected input to:", url)
 
     const response = await fetch(url, {
@@ -184,16 +185,13 @@ export async function submitTextToModerationQueue(
 
   try {
     const endpoint = "/talent/job-titles/queue"
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}${endpoint}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ title: input, type }),
-      }
-    )
+    const response = await fetch(`${getPublicBackendUrl()}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: input, type }),
+    })
 
     if (!response.ok) throw new Error("Failed to queue")
 

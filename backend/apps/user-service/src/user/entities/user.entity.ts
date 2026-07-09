@@ -4,114 +4,178 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
   OneToMany,
 } from 'typeorm';
-import { Education } from '../../education/entities/education.entity';
-import { Experience } from '../../experience/entities/experience.entity';
-import { Skill } from '../../skills/entities/skill.entity';
-import { Language } from '../../languages/entities/language.entity';
-import { Certification } from '../../certifications/entities/certification.entity';
-import { Industry } from '../../industries/entities/industry.entity';
 
-export type UserType = 'client' | 'talent';
-export type OnboardingStatus = 'pending' | 'completed' | 'skipped';
+import { Education } from '../../education/education.entity';
+import { Experience } from '../../experience/experience.entity';
+import { Industry } from '../../industries/industries.entity';
+import { Language } from '../../languages/languages.entity';
+import { Certification } from '../../certifications/certifications.entity';
+import { Portfolio } from '../../portfolio/portfolio.entity';
+import { Skill } from '../../skills/skills.entity';
+import { AffiliatedTeam } from '../../affiliated-teams/affiliated-teams.entity';
 
-@Entity({ name: 'users', schema: 'user_service' })
+@Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text', unique: true })
+  @Index({ unique: true })
+  @Column()
   email: string;
 
-  @Column({ type: 'text', unique: true, nullable: true })
-  username: string;
+  @Column({ nullable: true })
+  username?: string;
+
+  @Column({ nullable: true })
+  firstName?: string;
+
+  @Column({ nullable: true })
+  lastName?: string;
+
+  @Column({ nullable: true })
+  avatarUrl?: string;
+
+  @Column({ nullable: true })
+  phone?: string;
 
   @Column({ type: 'text', nullable: true })
-  firstName: string;
+  bio?: string;
 
   @Column({ type: 'text', nullable: true })
-  lastName: string;
+  overview?: string;
 
-  @Column({ type: 'text', nullable: true })
-  avatarUrl: string;
+  @Column({ nullable: true })
+  userType?: string;
 
-  @Column({ type: 'text', nullable: true })
-  bio: string;
+  @Column({ nullable: true })
+  location?: string;
 
-  @Column({ type: 'text', nullable: true })
-  overview: string;
+  @Column({ nullable: true })
+  timezone?: string;
 
-  @Column({ type: 'text', nullable: true })
-  userType: UserType;
+  @Column({ nullable: true })
+  availability?: string;
 
-  @Column({ type: 'text', nullable: true })
-  location: string;
+  @Column({ nullable: true })
+  role?: string;
 
-  @Column({ type: 'text', nullable: true })
-  timezone: string;
+  @Column({ default: 'EMAIL' })
+  provider: string;
 
-  @Column({ type: 'text', nullable: true })
-  availability: string;
+  @Column({ default: false })
+  hasPassword: boolean;
 
-  @Column({ type: 'text', nullable: true })
-  role: string;
+  @Column({ nullable: true })
+  industry?: string;
 
-  @Column({ type: 'text', nullable: true })
-  industry: string;
+  @Column({ nullable: true })
+  businessGoals?: string;
 
-  @Column({ type: 'text', nullable: true })
-  businessGoals: string;
+  @Column({ nullable: true })
+  teamName?: string;
 
-  @Column({ type: 'text', nullable: true })
-  teamName: string;
+  @Column({ nullable: true })
+  inviteCode?: string;
 
-  @Column({ type: 'text', nullable: true })
-  inviteCode: string;
-
-  @Column({ type: 'integer', nullable: true })
-  rateMin: number;
-
-  @Column({ type: 'integer', nullable: true })
-  rateMax: number;
-
-  @Column({ type: 'jsonb', nullable: true })
-  jobTitles: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }>;
-
-  @Column({ type: 'boolean', default: false })
+  @Column({ default: false })
   onboardingDismissed: boolean;
 
-  @Column({ type: 'text', default: 'pending' })
-  onboardingStatus: OnboardingStatus;
+  @Column({ nullable: true })
+  onboardingStatus?: string;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ default: true })
   isActive: boolean;
 
-  /** Timestamp when user completed registration/onboarding */
   @Column({ type: 'timestamptz', nullable: true })
-  onboardedAt: Date | null;
+  onboardedAt?: Date;
 
-  @OneToMany(() => Education, (e) => e.user, { cascade: true })
-  education: Education[];
+  @Column({ type: 'timestamptz', nullable: true })
+  clientOnboardedAt?: Date;
 
-  @OneToMany(() => Experience, (e) => e.user, { cascade: true })
-  experience: Experience[];
+  @Column({ type: 'timestamptz', nullable: true })
+  talentOnboardedAt?: Date;
 
-  @OneToMany(() => Skill, (s) => s.user, { cascade: true })
-  skills: Skill[];
+  @Column({ type: 'numeric', nullable: true })
+  rate?: number;
 
-  @OneToMany(() => Language, (l) => l.user, { cascade: true })
-  languages: Language[];
+  @Column({ type: 'numeric', nullable: true })
+  rateMin?: number | null;
 
-  @OneToMany(() => Certification, (c) => c.user, { cascade: true })
+  @Column({ type: 'numeric', nullable: true })
+  rateMax?: number | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  jobTitles?: any;
+
+  // Restored in migration 1773700000000 — previous "align entity with DB"
+  // pass (commit 371fd4f3) dropped these columns from the entity, which
+  // caused Talent onboarding / settings / custom-availability writes to
+  // silently no-op. Re-added here and re-asserted in the DB.
+  @Column({ type: 'varchar', nullable: true })
+  recentJobTitle?: string;
+
+  // These four columns are JSONB to tolerate the mixed shapes in callers
+  // (single string vs string[]). Type as `any` so both forms compile.
+  @Column({ type: 'jsonb', nullable: true })
+  industriesWorkedIn?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  lookingToWorkWith?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  projectTypes?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  language?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  customAvailability?: unknown;
+
+  @Column({ type: 'boolean', nullable: true, default: false })
+  isStudent?: boolean;
+
+  @Column({ type: 'int', nullable: true })
+  gettingStartedStep?: number;
+
+  @Column({ type: 'int', nullable: true })
+  totalProjectsCompleted?: number;
+
+  @Column({ type: 'numeric', nullable: true })
+  clientSuccessRating?: number;
+
+  @Column({ type: 'numeric', nullable: true })
+  repeatHireRate?: number;
+
+  @OneToMany(() => Education, (education) => education.user)
+  educations: Education[];
+
+  @OneToMany(() => Experience, (experience) => experience.user)
+  experiences: Experience[];
+
+  @OneToMany(() => Certification, (certification) => certification.user)
   certifications: Certification[];
 
-  @OneToMany(() => Industry, (i) => i.user, { cascade: true })
+  @OneToMany(() => Industry, (industry) => industry.user)
   industries: Industry[];
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @OneToMany(() => Language, (language) => language.user)
+  languages: Language[];
+
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user)
+  portfolioItems: Portfolio[];
+
+  @OneToMany(() => Skill, (skill) => skill.user)
+  skills: Skill[];
+
+  @OneToMany(() => AffiliatedTeam, (affiliatedTeam) => affiliatedTeam.user)
+  affiliatedTeams: AffiliatedTeam[];
+
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }

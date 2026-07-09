@@ -9,6 +9,7 @@ import {
   submitTextToModerationQueue,
 } from "@/utils/jobTitleValidation"
 import Fuse from "fuse.js"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   Badge,
   Combobox,
@@ -48,9 +49,8 @@ export const IndustrySelectorSingle = ({
   useEffect(() => {
     const loadIndustries = async () => {
       try {
-        const res = await fetch(
-          "http://localhost:3000/talent/autocomplete?type=industry"
-        )
+        const apiBase = getPublicApiUrl()
+        const res = await fetch(`${apiBase}/talent/autocomplete?type=industry`)
         const data = await res.json()
         const dynamic = data.map((entry: any) => entry.value)
         const combined = Array.from(

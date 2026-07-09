@@ -24,14 +24,14 @@ export class AutocompleteController {
     return this.svc.query(dto);
   }
 
-  @Get(':type')
-  getByType(@Param('type') type: EntryType) {
-    return this.svc.getByType(type);
-  }
-
   @Get('meta/category-map')
   getCategoryMap() {
     return this.svc.getCategoryMap();
+  }
+
+  @Get('categories')
+  getCategorySuggestions(@Query('q') query: string) {
+    return this.svc.getCategoryMatches(query);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -44,6 +44,22 @@ export class AutocompleteController {
   @Get('review/pending')
   getPending() {
     return this.svc.getPendingReview();
+  }
+
+  // Wildcard :type route MUST come after all specific routes to avoid shadowing them
+  @Get(':type')
+  async getByType(@Param('type') type: string, @Query('q') q?: string) {
+    // If a JSON data file exists for this type, serve from it with Fuse.js fuzzy search
+    if (this.svc.hasJsonData(type)) {
+      try {
+        return await this.svc.queryFromJson(type, q);
+      } catch (err) {
+        console.error(`[Autocomplete] queryFromJson error for type="${type}":`, err);
+        throw err;
+      }
+    }
+    // Otherwise fall back to the DB-based query
+    return this.svc.getByType(type as EntryType);
   }
 
   // RabbitMQ message patterns for inter-service use

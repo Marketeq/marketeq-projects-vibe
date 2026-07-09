@@ -19,6 +19,7 @@ import {
 import { AdobeBrand } from "@blend-metrics/icons/brands"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { SwiperSlide } from "swiper/react"
+import { CategoryBanner } from "@/components/category-banner"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -58,17 +59,14 @@ export default function All() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
         <div className="max-w-[1440px] mx-auto px-[50px]">
-          <div className="relative rounded-lg overflow-hidden h-[227px]">
-            <NextImage
-              src="/coding.png"
-              fill
-              className="object-cover"
-              sizes="100vw"
-            />
-            <div className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-0 p-6">
+          <CategoryBanner
+            image="/coding.png"
+            alt="Software Development banner"
+            title="Software Development"
+            description="Discover exciting projects, meet talented teams, and find the skills you need to succeed."
+            breadcrumbs={
               <div className="flex items-center gap-x-2">
-                <Home03 className="size-[18px]  text-white opacity-60" />
+                <Home03 className="size-[18px] text-white opacity-60" />
                 <span className="text-xs leading-6 font-semibold text-white opacity-60">
                   /
                 </span>
@@ -76,18 +74,8 @@ export default function All() {
                   Software Development
                 </span>
               </div>
-
-              <div className="mt-[50px] px-[50px]">
-                <h1 className="text-[36px] font-bold leading-none text-white">
-                  Software Development
-                </h1>
-                <p className="text-xl mt-3 leading-none text-white">
-                  Discover exciting projects, meet talented teams, and find the
-                  skills you need to succeed.
-                </p>
-              </div>
-            </div>
-          </div>
+            }
+          />
 
           <div className="mt-[50px]">
             <div className="flex items-center justify-between">
@@ -3793,12 +3781,7 @@ export default function All() {
                 Guides Related to Software Development
               </h1>
 
-              <Button
-                className="transition-[column-gap] hover:gap-x-3.5"
-                size="lg"
-                variant="link"
-                visual="gray"
-              >
+              <Button size="lg" variant="link" visual="gray">
                 Visit the Blog <ArrowRight className="size-[15px]" />
               </Button>
             </div>

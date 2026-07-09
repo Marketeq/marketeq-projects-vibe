@@ -1,0 +1,54 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY . .
+RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
+RUN npm ci --include=dev --legacy-peer-deps
+
+# Build all NestJS services one per RUN layer so Docker reclaims memory
+# between each compilation. Prevents OOM on memory-limited builders.
+ENV NODE_OPTIONS=--max-old-space-size=384
+RUN npx nest build admin-service
+RUN npx nest build affiliate-referral-service
+RUN npx nest build algolia-service
+RUN npx nest build api-gateway
+RUN npx nest build auth-service
+RUN npx nest build autocomplete-service
+RUN npx nest build billing-service
+RUN npx nest build category-service
+RUN npx nest build checkout-service
+RUN npx nest build content-moderation-service
+RUN npx nest build contracts-service
+RUN npx nest build earnings-service
+RUN npx nest build favorites-service
+RUN npx nest build invitations-service
+RUN npx nest build legal-service
+RUN npx nest build listings-service
+RUN npx nest build messaging-service
+RUN npx nest build notification-service
+RUN npx nest build offer-service
+RUN npx nest build payout-service
+RUN npx nest build portfolio-service
+RUN npx nest build pricing-service
+RUN npx nest build search-service
+RUN npx nest build suggestions-service
+RUN npx nest build time-tracking-service
+RUN npx nest build transaction-service
+RUN npx nest build user-service
+RUN npx nest build wallet-service
+RUN npx nest build wire-review-service
+ENV NODE_OPTIONS=
+
+RUN npm prune --production --legacy-peer-deps
+
+# ── Production image ────────────────────────────────────────────────────────
+FROM node:20-alpine
+WORKDIR /app
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/boot-all.js ./boot-all.js
+COPY --from=builder /app/libs/owner-target-grpc/proto ./libs/owner-target-grpc/proto
+
+EXPOSE 10000
+CMD ["node", "boot-all.js"]

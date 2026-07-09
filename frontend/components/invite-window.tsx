@@ -1,6 +1,8 @@
 "use client"
 
 import React, { useState } from "react"
+import { useAuth } from "@/contexts/auth"
+import { InvitationsAPI } from "@/service/http/invitations"
 import { callAll, cn, isNotEmpty } from "@/utils/functions"
 import {
   AlertCircle,
@@ -48,13 +50,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
   inputVariants,
+  useToast,
 } from "./ui"
+
+type InviteRole = "admin" | "editor" | "viewer"
 
 interface Invitee {
   avatar?: string
   username?: string
   email: string
-  role?: string
+  role: InviteRole
 }
 
 type Invitees = Invitee[]
@@ -74,12 +79,20 @@ const contacts = [
 
 const isEmail = (value: string) => z.string().email().safeParse(value).success
 
+const parseEmails = (input: string): string[] => {
+  return input
+    .split(/[\s,;]+/)
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+}
+
 export const useInviteWindowStore = create(
-  combine({ open: false }, (set) => ({
-    toggle: (open?: boolean) =>
+  combine({ open: false, title: "" }, (set) => ({
+    toggle: (open?: boolean, title?: string) =>
       set((state) => ({
         ...state,
         open: typeof open === "boolean" ? open : !state.open,
+        title: title ?? (typeof open === "boolean" && !open ? "" : state.title),
       })),
   }))
 )
@@ -108,11 +121,7 @@ const EXPIRATION_OPTIONS = [
 
 const ACCESS_OPTIONS = ["Anyone with the link", "Only invited people"]
 
-const InviteSettingsPanel = ({
-  onBack,
-}: {
-  onBack: () => void
-}) => {
+const InviteSettingsPanel = ({ onBack }: { onBack: () => void }) => {
   const [allowAnyone, setAllowAnyone] = useState(true)
   const [requireApproval, setRequireApproval] = useState(false)
   const [accessLevel, setAccessLevel] = useState(ACCESS_OPTIONS[0])
@@ -155,10 +164,7 @@ const InviteSettingsPanel = ({
                 Anyone with the link can request to join your team
               </p>
             </div>
-            <Switch
-              checked={allowAnyone}
-              onCheckedChange={setAllowAnyone}
-            />
+            <Switch checked={allowAnyone} onCheckedChange={setAllowAnyone} />
           </div>
           <div className="flex items-start justify-between gap-x-4">
             <div className="space-y-1">
@@ -253,12 +259,7 @@ const InviteSettingsPanel = ({
           </div>
 
           <div className="flex items-center justify-end gap-x-3 pt-2">
-            <Button
-              variant="outlined"
-              visual="gray"
-              size="sm"
-              onClick={onBack}
-            >
+            <Button variant="outlined" visual="gray" size="sm" onClick={onBack}>
               Cancel
             </Button>
             <Button size="sm" onClick={onBack}>
@@ -274,12 +275,24 @@ const InviteSettingsPanel = ({
 export const InviteWindow = () => {
   const [invitees, setInvitees] = useState<Invitees>([])
   const [inputValue, setInputValue] = useState("")
-  const { open, toggle: toggleInviteWindow } = useInviteWindowStore()
+  const {
+    open,
+    title: storeTitle,
+    toggle: toggleInviteWindow,
+  } = useInviteWindowStore()
   const [view, setView] = useState<InviteView>("invite")
   const [inviteSent, setInviteSent] = useState(false)
+  const [defaultRole] = useState<InviteRole>("viewer")
   const [isOpen, toggle] = useToggle(false)
   const [message, setMessage] = useState("")
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [copySuccess, setCopySuccess] = useState(false)
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const inviteBaseUrl = (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "")
+  ).replace(/\/$/, "")
 
   const filteredContacts = inputValue
     ? contacts.filter(
@@ -290,16 +303,33 @@ export const InviteWindow = () => {
     : []
 
   const handleAddEmail = () => {
-    if (isEmail(inputValue) && !invitees.some((i) => i.email === inputValue)) {
-      setInvitees((prev) => [...prev, { email: inputValue }])
-      setInputValue("")
-      setShowSuggestions(false)
-    }
+    const values = parseEmails(inputValue)
+    if (!values.length) return
+
+    setInvitees((prev) => {
+      const existing = new Set(prev.map((item) => item.email.toLowerCase()))
+      const additions: Invitee[] = []
+
+      for (const email of values) {
+        if (!isEmail(email) || existing.has(email)) continue
+        additions.push({ email, role: defaultRole })
+        existing.add(email)
+      }
+
+      return additions.length ? [...prev, ...additions] : prev
+    })
+
+    setInputValue("")
+    setShowSuggestions(false)
   }
 
   const handleAddContact = (contact: (typeof contacts)[0]) => {
-    if (!invitees.some((i) => i.email === contact.email)) {
-      setInvitees((prev) => [...prev, contact])
+    const normalizedEmail = contact.email.toLowerCase()
+    if (!invitees.some((i) => i.email.toLowerCase() === normalizedEmail)) {
+      setInvitees((prev) => [
+        ...prev,
+        { ...contact, email: normalizedEmail, role: defaultRole },
+      ])
       setInputValue("")
       setShowSuggestions(false)
     }
@@ -316,22 +346,144 @@ export const InviteWindow = () => {
     }
   }
 
-  const handleSendInvite = () => {
-    if (isNotEmpty(invitees)) {
+  const handleSendInvite = async () => {
+    let finalInvitees = [...invitees]
+
+    if (inputValue.trim()) {
+      const values = parseEmails(inputValue)
+      const existing = new Set(
+        finalInvitees.map((item) => item.email.toLowerCase())
+      )
+      const additions = values
+        .filter((email) => isEmail(email) && !existing.has(email))
+        .map((email) => ({ email, role: defaultRole as InviteRole }))
+
+      if (additions.length) {
+        finalInvitees = [...finalInvitees, ...additions]
+        setInvitees(finalInvitees)
+      }
+      setInputValue("")
+    }
+
+    if (!isNotEmpty(finalInvitees)) {
+      toast({
+        title: "No invitees",
+        description: "Please add at least one email address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const teamId = user?.id || (user as any)?.sub
+    if (!teamId) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in again to send invitations.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const groupedByRole = finalInvitees.reduce(
+      (acc, invitee) => {
+        if (!acc[invitee.role]) acc[invitee.role] = []
+        acc[invitee.role].push(invitee.email)
+        return acc
+      },
+      {} as Record<InviteRole, string[]>
+    )
+
+    try {
+      await Promise.all(
+        (Object.entries(groupedByRole) as [InviteRole, string[]][])
+          .filter(([, emails]) => emails.length > 0)
+          .map(([role, emails]) =>
+            InvitationsAPI.createInvitations({
+              teamId,
+              role,
+              emails,
+              note: message || undefined,
+            })
+          )
+      )
+
       setInviteSent(true)
       setTimeout(() => {
         setInviteSent(false)
         toggleInviteWindow(false)
         setInvitees([])
         setMessage("")
-      }, 2000)
+      }, 1500)
+    } catch (error: any) {
+      toast({
+        title: "Failed to send invitations",
+        description:
+          error?.response?.data?.message ||
+          error?.message ||
+          "Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
-  const handleCopyLink = () => {
-    navigator.clipboard?.writeText(
-      `${window.location.origin}/invite/team`
-    )
+  const handleCopyLink = async () => {
+    const teamId = user?.id || (user as any)?.sub
+    if (!teamId) {
+      toast({
+        title: "Unable to copy link",
+        description:
+          "Could not determine your team. Please sign in and try again.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      let teamName = (user as any)?.teamName || "Client Team"
+      try {
+        const teamResponse = await (
+          await import("@/service/http/teams")
+        ).TeamsAPI.getTeam(teamId)
+        const teamData = teamResponse?.data
+        teamName = teamData?.name || teamData?.teamName || teamName
+      } catch {
+        // If team lookup fails, continue with fallback teamName
+      }
+
+      const res = await InvitationsAPI.createInvitationLink({
+        teamId,
+        teamName,
+        role: "viewer",
+      })
+      const inviteLink =
+        res?.data?.url ||
+        (res?.data?.token
+          ? `${inviteBaseUrl}/invite/accept?token=${res.data.token}`
+          : "")
+
+      if (!inviteLink) {
+        throw new Error(
+          "We couldn't generate the invite link. Please try again."
+        )
+      }
+
+      await navigator.clipboard.writeText(inviteLink)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+      toast({
+        title: "Link copied!",
+        description: "A team invite link was copied to your clipboard",
+      })
+    } catch (err: any) {
+      toast({
+        title: "Failed to copy",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "We couldn't generate the invite link. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleOpenChange = (nextOpen: boolean | undefined) => {
@@ -364,7 +516,7 @@ export const InviteWindow = () => {
             <>
               <div className="flex justify-between items-center">
                 <h2 className="text-lg leading-7 font-semibold text-gray-800">
-                  Invite Your Team
+                  {storeTitle || "Invite Your Team"}
                 </h2>
 
                 <div className="inline-flex items-center gap-x-4">
@@ -502,7 +654,7 @@ export const InviteWindow = () => {
                   <span className="text-base leading-5 font-medium text-gray-700">
                     Invites
                   </span>
-                  {invitees.map(({ email, avatar, username }) => (
+                  {invitees.map(({ email, avatar, username, role }) => (
                     <div className="space-y-3 mt-3" key={email}>
                       <div className="flex justify-between items-center">
                         <div className="inline-flex items-center gap-x-3">
@@ -525,21 +677,35 @@ export const InviteWindow = () => {
                         </div>
 
                         <DropdownMenu>
-                          <DropdownMenuTrigger className="inline-flex items-center gap-x-1 text-sm font-medium text-gray-900">
-                            Viewer
+                          <DropdownMenuTrigger className="inline-flex items-center gap-x-1 text-sm font-medium text-gray-900 capitalize">
+                            {role}
                             <ChevronDown className="text-gray-500 h-5 w-5 flex-none" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent>
-                            <DropdownMenuRadioGroup>
-                              <DropdownMenuRadioCheckItem value="Viewer">
+                            <DropdownMenuRadioGroup
+                              value={role}
+                              onValueChange={(value) => {
+                                const nextRole = value as InviteRole
+                                setInvitees((prev) =>
+                                  prev.map((item) =>
+                                    item.email === email
+                                      ? { ...item, role: nextRole }
+                                      : item
+                                  )
+                                )
+                              }}
+                            >
+                              <DropdownMenuRadioCheckItem value="viewer">
                                 Viewer
                               </DropdownMenuRadioCheckItem>
-                              <DropdownMenuRadioCheckItem value="Editor">
+                              <DropdownMenuRadioCheckItem value="editor">
                                 Editor
+                              </DropdownMenuRadioCheckItem>
+                              <DropdownMenuRadioCheckItem value="admin">
+                                Admin
                               </DropdownMenuRadioCheckItem>
                             </DropdownMenuRadioGroup>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>Resend Invite</DropdownMenuItem>
                             <DropdownMenuItem
                               onSelect={() => handleRemoveInvitee(email)}
                             >

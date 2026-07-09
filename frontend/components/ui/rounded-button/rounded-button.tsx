@@ -25,7 +25,8 @@ const roundedButtonVariants = cva(
 )
 
 interface RoundedButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof roundedButtonVariants> {}
 
 const RoundedButton = ({

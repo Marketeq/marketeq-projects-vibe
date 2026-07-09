@@ -21,13 +21,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 @Inj()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
+    const rawKey = config.get<string>('AUTH_JWT_PUBLIC_KEY')
+    const publicKey = rawKey?.replace(/\\n/g, '\n')
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
         (req: any) => req?.cookies?.access_token ?? null,
       ]),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET'),
+      algorithms: publicKey ? ['RS256'] : ['HS256'],
+      secretOrKey: publicKey || config.get<string>('JWT_SECRET'),
     })
   }
 

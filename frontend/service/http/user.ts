@@ -1,27 +1,28 @@
+import { getPublicUserUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
-import Cookies from "js-cookie"
 
-const USER_BASE = process.env.NEXT_PUBLIC_USER_URL ?? ""
-
-const authHeaders = () => {
-  const token = Cookies.get("access_token")
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
+const USER_BASE = getPublicUserUrl()
 
 export interface EducationPayload {
-  institution: string
+  school: string
   degree: string
-  field: string
-  startDate: string
-  endDate?: string
+  fieldOfStudy?: string
+  startYear: number
+  startMonth?: number
+  endYear?: number
+  endMonth?: number
+  currentlyStudying?: boolean
 }
 
 export interface ExperiencePayload {
   company: string
-  role: string
+  title: string
+  location?: string
   startDate: string
   endDate?: string
+  isCurrentRole?: boolean
   description?: string
+  skills?: string[]
 }
 
 export interface SkillPayload {
@@ -31,15 +32,24 @@ export interface SkillPayload {
 
 export interface LanguagePayload {
   name: string
-  proficiency?: string
+  fluency?: string
 }
 
 export interface CertificationPayload {
   name: string
-  issuingOrganization?: string
-  issueDate?: string
-  expiryDate?: string
+  issuer?: string
+  issueDate: string
+  expirationDate?: string
+  credentialId?: string
   credentialUrl?: string
+  skills?: string[]
+  doesntExpire?: boolean
+}
+
+export interface IndustryPayload {
+  industry: string
+  yearsOfExperience?: number
+  description?: string
 }
 
 export interface UserProfilePayload {
@@ -54,10 +64,18 @@ export interface UserProfilePayload {
   role?: string | null
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle: string; clientRate: number; earning: number; fee: number; saveAsDefault: boolean }> | null
+  jobTitles?: Array<{
+    jobTitle: string
+    clientRate: number
+    earning: number
+    fee: number
+    saveAsDefault: boolean
+  }> | null
+  recentJobTitle?: string | null
   userType?: string
   industry?: string
   businessGoals?: string[]
+  gettingStartedStep?: number | null
 }
 
 export const UserAPI = {
@@ -68,131 +86,68 @@ export const UserAPI = {
 
   // List users
   listUsers: (limit = 50, offset = 0) =>
-    AxiosRequest.get(`${USER_BASE}/v1/users?limit=${limit}&offset=${offset}`, {
-      headers: authHeaders(),
-    }),
+    AxiosRequest.get(`${USER_BASE}/v1/users?limit=${limit}&offset=${offset}`),
 
   // Profile
   getProfile: (userId: string) =>
-    AxiosRequest.get(`${USER_BASE}/v1/users/${userId}`, {
-      headers: authHeaders(),
-    }),
+    AxiosRequest.get(`${USER_BASE}/v1/users/${userId}`),
   getByUsername: (username: string) =>
-    AxiosRequest.get(`${USER_BASE}/v1/users/username/${username}`, {
-      headers: authHeaders(),
-    }),
+    // Public endpoint served by TalentController (no auth required).
+    // Returns the user plus loaded skills/experiences for the talent
+    // profile card view.
+    AxiosRequest.get(`${USER_BASE}/talent/users/${username}`),
+  getSimilarProfiles: (userId: string) =>
+    AxiosRequest.get(`${USER_BASE}/users/${userId}/similar-profiles`),
   updateProfile: (userId: string, data: UserProfilePayload) =>
-    AxiosRequest.put(`${USER_BASE}/v1/users/${userId}`, data, {
-      headers: authHeaders(),
-    }),
+    AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}`, data),
   dismissOnboarding: (userId: string) =>
-    AxiosRequest.patch(
-      `${USER_BASE}/v1/users/${userId}/onboarding/dismiss`,
-      {},
-      { headers: authHeaders() }
-    ),
+    AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}/onboarding/dismiss`, {}),
 
   // Education
-  addEducation: (userId: string, data: EducationPayload) =>
-    AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/education`, data, {
-      headers: authHeaders(),
-    }),
-  updateEducation: (userId: string, eduId: string, data: EducationPayload) =>
-    AxiosRequest.put(
-      `${USER_BASE}/v1/users/${userId}/education/${eduId}`,
-      data,
-      { headers: authHeaders() }
-    ),
-  removeEducation: (userId: string, eduId: string) =>
-    AxiosRequest.del(
-      `${USER_BASE}/v1/users/${userId}/education/${eduId}`,
-      { headers: authHeaders() }
-    ),
+  addEducation: (data: EducationPayload) =>
+    AxiosRequest.post(`${USER_BASE}/v1/education`, data),
+  updateEducation: (eduId: string, data: EducationPayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/education/${eduId}`, data),
+  removeEducation: (eduId: string) =>
+    AxiosRequest.del(`${USER_BASE}/v1/education/${eduId}`),
 
   // Experience
-  addExperience: (userId: string, data: ExperiencePayload) =>
-    AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/work`, data, {
-      headers: authHeaders(),
-    }),
-  updateExperience: (
-    userId: string,
-    workId: string,
-    data: ExperiencePayload
-  ) =>
-    AxiosRequest.put(
-      `${USER_BASE}/v1/users/${userId}/work/${workId}`,
-      data,
-      { headers: authHeaders() }
-    ),
-  removeExperience: (userId: string, workId: string) =>
-    AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/work/${workId}`, {
-      headers: authHeaders(),
-    }),
+  addExperience: (data: ExperiencePayload) =>
+    AxiosRequest.post(`${USER_BASE}/v1/experiences`, data),
+  updateExperience: (experienceId: string, data: ExperiencePayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/experiences/${experienceId}`, data),
+  removeExperience: (experienceId: string) =>
+    AxiosRequest.del(`${USER_BASE}/v1/experiences/${experienceId}`),
 
   // Skills
-  addSkill: (userId: string, data: SkillPayload) =>
-    AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/skills`, data, {
-      headers: authHeaders(),
-    }),
-  updateSkill: (userId: string, skillId: string, data: SkillPayload) =>
-    AxiosRequest.put(
-      `${USER_BASE}/v1/users/${userId}/skills/${skillId}`,
-      data,
-      { headers: authHeaders() }
-    ),
-  removeSkill: (userId: string, skillId: string) =>
-    AxiosRequest.del(`${USER_BASE}/v1/users/${userId}/skills/${skillId}`, {
-      headers: authHeaders(),
-    }),
+  addSkill: (data: SkillPayload) =>
+    AxiosRequest.post(`${USER_BASE}/v1/skills`, data),
+  updateSkill: (skillId: string, data: SkillPayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/skills/${skillId}`, data),
+  removeSkill: (skillId: string) =>
+    AxiosRequest.del(`${USER_BASE}/v1/skills/${skillId}`),
 
   // Languages
-  addLanguage: (userId: string, data: LanguagePayload) =>
-    AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/languages`, data, {
-      headers: authHeaders(),
-    }),
-  updateLanguage: (userId: string, langId: string, data: LanguagePayload) =>
-    AxiosRequest.put(
-      `${USER_BASE}/v1/users/${userId}/languages/${langId}`,
-      data,
-      { headers: authHeaders() }
-    ),
-  removeLanguage: (userId: string, langId: string) =>
-    AxiosRequest.del(
-      `${USER_BASE}/v1/users/${userId}/languages/${langId}`,
-      { headers: authHeaders() }
-    ),
+  addLanguage: (data: LanguagePayload) =>
+    AxiosRequest.post(`${USER_BASE}/v1/languages`, data),
+  updateLanguage: (langId: string, data: LanguagePayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/languages/${langId}`, data),
+  removeLanguage: (langId: string) =>
+    AxiosRequest.del(`${USER_BASE}/v1/languages/${langId}`),
 
   // Certifications
-  addCertification: (userId: string, data: CertificationPayload) =>
-    AxiosRequest.post(
-      `${USER_BASE}/v1/users/${userId}/certifications`,
-      data,
-      { headers: authHeaders() }
-    ),
-  updateCertification: (
-    userId: string,
-    certId: string,
-    data: CertificationPayload
-  ) =>
-    AxiosRequest.put(
-      `${USER_BASE}/v1/users/${userId}/certifications/${certId}`,
-      data,
-      { headers: authHeaders() }
-    ),
-  removeCertification: (userId: string, certId: string) =>
-    AxiosRequest.del(
-      `${USER_BASE}/v1/users/${userId}/certifications/${certId}`,
-      { headers: authHeaders() }
-    ),
+  addCertification: (data: CertificationPayload) =>
+    AxiosRequest.post(`${USER_BASE}/v1/certifications`, data),
+  updateCertification: (certId: string, data: CertificationPayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/certifications/${certId}`, data),
+  removeCertification: (certId: string) =>
+    AxiosRequest.del(`${USER_BASE}/v1/certifications/${certId}`),
 
   // Industries
-  addIndustry: (userId: string, data: { name: string }) =>
-    AxiosRequest.post(`${USER_BASE}/v1/users/${userId}/industries`, data, {
-      headers: authHeaders(),
-    }),
-  removeIndustry: (userId: string, industryId: string) =>
-    AxiosRequest.del(
-      `${USER_BASE}/v1/users/${userId}/industries/${industryId}`,
-      { headers: authHeaders() }
-    ),
+  addIndustry: (data: IndustryPayload) =>
+    AxiosRequest.post(`${USER_BASE}/v1/industries`, data),
+  updateIndustry: (industryId: string, data: IndustryPayload) =>
+    AxiosRequest.put(`${USER_BASE}/v1/industries/${industryId}`, data),
+  removeIndustry: (industryId: string) =>
+    AxiosRequest.del(`${USER_BASE}/v1/industries/${industryId}`),
 }

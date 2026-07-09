@@ -25,7 +25,7 @@ export class ManualTimeService {
 
     const entry = this.repo.create({
       userId,
-      projectId: dto.projectId ?? null,
+      contractId: dto.contractId ?? null,
       taskId: dto.taskId ?? null,
       startTime: start,
       endTime: end,
@@ -48,7 +48,7 @@ export class ManualTimeService {
     if (role !== 'admin' && entry.userId !== userId) {
       throw new ForbiddenException('Access denied');
     }
-    await this.repo.remove(entry);
+    await this.repo.softRemove(entry);
   }
 
   async getPending(): Promise<ManualTime[]> {

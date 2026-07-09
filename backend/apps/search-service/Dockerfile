@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/search-service/package*.json ./apps/search-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/search-service
+RUN npx nest build search-service
 
 FROM node:20-alpine
 WORKDIR /app

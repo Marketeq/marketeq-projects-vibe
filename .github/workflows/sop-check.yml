@@ -1,0 +1,379 @@
+name: Code Review SOP Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  sop:
+    name: Enforce Code Review SOP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run SOP checks
+        id: sop
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          set -e
+          git fetch origin "$BASE_REF" --depth=1 || true
+          BASE_SHA=$(git rev-parse "origin/$BASE_REF")
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA"...HEAD)
+          ADDED_FILES=$(git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD)
+          DIFF_LINE_COUNT=$(git diff --shortstat "$BASE_SHA"...HEAD | awk '{print $4+$6}')
+          DIFF_LINE_COUNT=${DIFF_LINE_COUNT:-0}
+
+          VIOLATIONS=()
+          add() { VIOLATIONS+=("$1"); }
+
+          # --- Section 1: Secrets / key material ---
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              *.pem|*.key|*.p12|*.pfx|*id_rsa|*id_rsa.*|*id_ed25519|*id_ed25519.*)
+                add "🔒 **Key material committed** — \`$f\` is a private-key-shaped file and must never be in git. See SOP §1.1 and §8.2." ;;
+              .env|.env.*|*/.env|*/.env.*)
+                if [ "$f" != ".env.example" ] && [[ "$f" != *".env.example" ]]; then
+                  add "🔒 **Committed .env file** — \`$f\`. Use .env.example for scaffolding only. See SOP §3.1."
+                fi ;;
+            esac
+          done <<< "$ADDED_FILES"
+
+          # Scan added file contents for PEM headers even if named innocuously
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue
+            if grep -lE '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----' "$f" >/dev/null 2>&1; then
+              add "🔒 **PEM private-key header inside a committed file** — \`$f\` contains \`-----BEGIN PRIVATE KEY-----\`. SOP §3.1 / §8.2."
+            fi
+          done <<< "$ADDED_FILES"
+
+          # --- Section 2: Repo-root package.json pollution ---
+          while IFS= read -r f; do
+            case "$f" in
+              package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)
+                add "📦 **Root-level \`$f\` added** — monorepo lockfiles must live in \`backend/\` or \`frontend/\`. See SOP §3.4 and §8.2." ;;
+            esac
+          done <<< "$ADDED_FILES"
+
+          # --- Section 3a: Off-limits profile-loading files (SOP §1.3) ---
+          PROFILE_HIT=0
+          while IFS= read -r f; do
+            case "$f" in
+              frontend/app/\(group\)/\(group\)/talent-profile/page.tsx|\
+              frontend/app/\(group\)/\(group\)/client-profile/page.tsx|\
+              frontend/components/edit-profile-modals.tsx|\
+              frontend/contexts/auth.tsx|\
+              frontend/src/lib/api/user.ts)
+                PROFILE_HIT=1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          if [ "$PROFILE_HIT" = "1" ]; then
+            CONFIRMATIONS_OK=1
+            for needle in \
+              "no API call shapes in the profile data-loading path were changed" \
+              "useEffect ordering around the profile fetch was not modified" \
+              "loading spinner / fallback states still work" \
+              "manual QA was performed against the live backend"; do
+              if ! grep -Fqi "$needle" <<< "$PR_BODY"; then
+                CONFIRMATIONS_OK=0
+              fi
+            done
+            if [ "$CONFIRMATIONS_OK" = "0" ]; then
+              add "⚠️ **Off-limits profile-loading files touched** without the four-point confirmation in the PR description. See SOP §1.3 and §3.2. Add all four confirmation sentences verbatim to the PR description."
+            fi
+          fi
+
+          # --- Section 3b: Off-limits login-frozen files (SOP §1.4) ---
+          LOGIN_HIT=0
+          while IFS= read -r f; do
+            case "$f" in
+              frontend/app/sign-in/page.tsx|\
+              frontend/app/sign-up/page.tsx|\
+              frontend/contexts/auth.tsx|\
+              frontend/src/lib/api/auth.ts|\
+              frontend/middleware.ts|\
+              backend/apps/auth-service/*|\
+              backend/libs/shared/src/guards/*|\
+              backend/libs/shared/src/decorators/*|\
+              frontend/.env.local.example|\
+              frontend/.env.staging.example|\
+              frontend/.env.production.example|\
+              backend/.env.local.example|\
+              backend/.env.staging.example|\
+              backend/.env.production.example)
+                LOGIN_HIT=1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          # Export LOGIN_HIT so later steps can read it
+          echo "login_hit=$LOGIN_HIT" >> "$GITHUB_OUTPUT"
+
+          if [ "$LOGIN_HIT" = "1" ]; then
+            LOGIN_OK=1
+            for needle in \
+              "local dev login on the frontend still works against a fresh .env" \
+              "backend JWT signing, verification, and guards are unchanged" \
+              "manual QA was performed locally with a client account and a talent account" \
+              "no credentials, keys, or secrets are committed in this PR"; do
+              if ! grep -Fqi "$needle" <<< "$PR_BODY"; then
+                LOGIN_OK=0
+              fi
+            done
+            if [ "$LOGIN_OK" = "0" ]; then
+              add "⚠️ **Off-limits login files touched** without the four-point login confirmation in the PR description. Per SOP §1.4, login code is frozen and must preserve the bidirectional invariant (works locally → must not break on dev/staging/live; works on dev/staging/live → must not break locally). Add all four confirmation sentences verbatim to the PR description **or** remove the login-touching changes from this PR."
+            fi
+          fi
+
+          # --- Section 4: Entity changes without migrations ---
+          ENTITY_CHANGED=0
+          MIGRATION_ADDED=0
+          while IFS= read -r f; do
+            case "$f" in
+              backend/apps/*/src/**/entities/*.entity.ts|backend/apps/*/src/entities/*.entity.ts)
+                ENTITY_CHANGED=1 ;;
+              backend/apps/*/src/migrations/*.ts|backend/apps/*/migrations/*.ts)
+                MIGRATION_ADDED=1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+          if [ "$ENTITY_CHANGED" = "1" ] && [ "$MIGRATION_ADDED" = "0" ]; then
+            add "🧩 **TypeORM entity changed without a migration** — \`synchronize: false\` is enforced. Add a migration file under \`backend/apps/<service>/src/migrations/\`. See SOP §3.4."
+          fi
+
+          # --- Section 5: Junk files ---
+          while IFS= read -r f; do
+            case "$f" in
+              *.DS_Store|*/dist/*|*/build/*|*/node_modules/*|*/.next/*)
+                add "📦 **Junk file committed** — \`$f\`. Remove it and add to .gitignore if needed. SOP §3.4." ;;
+            esac
+          done <<< "$ADDED_FILES"
+
+          # --- Section 6: Raw throw new Error in backend ---
+          BACKEND_RAW_THROW=$(git diff "$BASE_SHA"...HEAD -- 'backend/apps/**/*.ts' 2>/dev/null | grep -E '^\+[^+].*throw new Error\(' || true)
+          if [ -n "$BACKEND_RAW_THROW" ]; then
+            add "🐛 **Raw \`throw new Error()\` in backend code** — use NestJS exceptions (\`NotFoundException\`, \`BadRequestException\`, etc.). See SOP §3.5."
+          fi
+
+          # --- Section 7: --no-verify / --admin in scripts ---
+          BYPASS_HIT=$(git diff "$BASE_SHA"...HEAD 2>/dev/null | grep -E '^\+.*(--no-verify|gh pr merge .*--admin)' || true)
+          if [ -n "$BYPASS_HIT" ]; then
+            add "🔥 **Bypass flag detected** in the diff (\`--no-verify\` or \`gh pr merge --admin\`). Check bypasses are not allowed. See SOP §6."
+          fi
+
+          # --- Section 8: Oversized PR ---
+          if [ "$DIFF_LINE_COUNT" -gt 2000 ] && [[ "$PR_TITLE" != \[EPIC\]* ]]; then
+            add "📦 **Oversized PR** — $DIFF_LINE_COUNT lines changed. Split into smaller PRs or prefix the title with \`[EPIC]\` and justify in the description. See SOP §1.4."
+          fi
+
+          # --- Section 7a: Render URLs in .env.local.example (DEVOPS_SOP §4, §5) ---
+          # Local dev must run the backend locally, never against Render. This check
+          # runs on PRs targeting any branch so committed templates stay clean.
+          RENDER_IN_LOCAL_ENV=$(git diff "$BASE_SHA"...HEAD -- \
+            'frontend/.env.local.example' 'backend/.env.local.example' 2>/dev/null | \
+            grep -E '^\+[^+].*onrender\.com' || true)
+          if [ -n "$RENDER_IN_LOCAL_ENV" ]; then
+            add "🔥 **Render URL committed into \`.env.local.example\`** — per DEVOPS_SOP §4 and §5, local development must run the backend locally (\`http://localhost:*\`). Local templates must never point at \`*.onrender.com\`. A developer may connect to Render on their own machine, but committed \`.env.local.example\` templates must not enable it."
+          fi
+
+          # --- Section 8b: Hardcoded login values in login code (SOP §1.4) ---
+          LOGIN_CODE_FILES=(
+            "frontend/app/sign-in/page.tsx"
+            "frontend/app/sign-up/page.tsx"
+            "frontend/contexts/auth.tsx"
+            "frontend/src/lib/api/auth.ts"
+            "frontend/middleware.ts"
+          )
+          for lf in "${LOGIN_CODE_FILES[@]}"; do
+            if echo "$CHANGED_FILES" | grep -qxF "$lf"; then
+              HARDCODED=$(git diff "$BASE_SHA"...HEAD -- "$lf" 2>/dev/null | \
+                grep -E '^\+[^+]' | \
+                grep -E '(https?://[^" )]*onrender\.com|sameSite:\s*["'"'"'](lax|none|strict)["'"'"']|secure:\s*(true|false)|http://localhost:[0-9]+)' || true)
+              if [ -n "$HARDCODED" ]; then
+                add "🔥 **Hardcoded environment-specific value in \`$lf\`** — login code must read URLs, cookie flags, and auth mode from \`process.env.*\` only. See SOP §1.4 and DEVOPS_SOP §6. Fixing login in one environment by hardcoding a value that only works there **is the bug**. Move hardcoded values into the appropriate \`.env.*.example\` template and read them via env vars so local, dev, staging, and live all stay in sync."
+              fi
+            fi
+          done
+
+          # Same check for backend auth-service files
+          while IFS= read -r f; do
+            case "$f" in
+              backend/apps/auth-service/**)
+                HARDCODED=$(git diff "$BASE_SHA"...HEAD -- "$f" 2>/dev/null | \
+                  grep -E '^\+[^+]' | \
+                  grep -E '(https?://[^" )]*onrender\.com|sameSite:\s*["'"'"'](lax|none|strict)["'"'"']|secure:\s*(true|false)|origin:\s*["'"'"']http)' || true)
+                if [ -n "$HARDCODED" ]; then
+                  add "🔥 **Hardcoded environment-specific value in \`$f\`** — backend auth code must read CORS origins, cookie flags, and JWT issuer from \`process.env.*\` only. See SOP §1.4 and DEVOPS_SOP §6. The same committed code must work in local, dev, staging, and live with only env vars differing."
+                fi ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          # --- Section 8c: Env template branch mismatch (DEVOPS_SOP §5) ---
+          touches_local=0
+          touches_staging=0
+          touches_prod=0
+          while IFS= read -r f; do
+            case "$f" in
+              frontend/.env.local.example|backend/.env.local.example) touches_local=1 ;;
+              frontend/.env.staging.example|backend/.env.staging.example) touches_staging=1 ;;
+              frontend/.env.production.example|backend/.env.production.example) touches_prod=1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          # Cannot touch multiple templates at once
+          total=$((touches_local + touches_staging + touches_prod))
+          if [ "$total" -gt 1 ]; then
+            add "🔥 **PR modifies more than one \`.env.*.example\` template at once** — per DEVOPS_SOP §5, the local, staging, and production templates are independent and must be changed in separate PRs."
+          fi
+
+          # Template must match target branch
+          if [ "$touches_staging" = "1" ] && [ "$BASE_REF" != "staging" ]; then
+            add "🔥 **\`.env.staging.example\` modified on a PR targeting \`$BASE_REF\`** — staging template changes must target the \`staging\` branch. See DEVOPS_SOP §5."
+          fi
+          if [ "$touches_prod" = "1" ] && [ "$BASE_REF" != "live-mvp" ]; then
+            add "🔥 **\`.env.production.example\` modified on a PR targeting \`$BASE_REF\`** — production template changes must target the \`live-mvp\` branch. See DEVOPS_SOP §5."
+          fi
+          if [ "$touches_local" = "1" ] && [ "$BASE_REF" != "dev-main" ]; then
+            add "🔥 **\`.env.local.example\` modified on a PR targeting \`$BASE_REF\`** — local template changes must target the \`dev-main\` branch. See DEVOPS_SOP §5."
+          fi
+
+          # --- Section 9a: Hardcoded SSL based on NODE_ENV ---
+          SSL_HARDCODED=$(git diff "$BASE_SHA"...HEAD -- 'backend/apps/**/*.ts' 2>/dev/null | grep -E '^\+[^+].*ssl:.*NODE_ENV.*production' || true)
+          if [ -n "$SSL_HARDCODED" ]; then
+            add "🔥 **Hardcoded SSL based on \`NODE_ENV\`** — database SSL must be driven by \`DATABASE_SSL_ENABLED\` env var, not \`NODE_ENV === 'production'\`. Our Supabase VPS does not support SSL. Use: \`ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false\`. See DEVOPS_SOP §6."
+          fi
+
+          # --- Section 9: New @ts-ignore without justification ---
+          TS_IGNORE_HITS=$(git diff "$BASE_SHA"...HEAD -- '*.ts' '*.tsx' 2>/dev/null | grep -E '^\+[^+].*@ts-ignore' | grep -vE '@ts-ignore.*--' || true)
+          if [ -n "$TS_IGNORE_HITS" ]; then
+            add "🐛 **\`@ts-ignore\` added without a \`-- justification\` comment** on the same line. See SOP §3.5."
+          fi
+
+          # --- Emit results ---
+          if [ ${#VIOLATIONS[@]} -eq 0 ]; then
+            {
+              echo "status=pass"
+              echo "count=0"
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<SOP_EOF"
+              echo "## ✅ Code Review SOP Check — passed"
+              echo ""
+              echo "All mechanical checks from \`docs/CODE_REVIEW_SOP.md\` §3 passed. This does **not** replace a human review — a CODEOWNERS approval from @Marketeq/code-review is still required per SOP §9.3."
+              echo ""
+              echo "🤖 Automated by [Claude Code](https://claude.com/claude-code)"
+              echo "SOP_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "status=fail"
+              echo "count=${#VIOLATIONS[@]}"
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<SOP_EOF"
+              echo "## ⛔ Code Review SOP Check — ${#VIOLATIONS[@]} violation(s)"
+              echo ""
+              echo "This PR violates the Code Review SOP (\`docs/CODE_REVIEW_SOP.md\`). Fix every item below before merging. Bypassing this check requires explicit CTO approval per SOP §6."
+              echo ""
+              for v in "${VIOLATIONS[@]}"; do
+                echo "- $v"
+              done
+              echo ""
+              echo "---"
+              echo "🤖 Automated by [Claude Code](https://claude.com/claude-code)"
+              echo "SOP_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Always-post login sentinel comment
+        if: steps.sop.outputs.login_hit == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          MARKER="<!-- login-sentinel-comment -->"
+          BODY=$(cat <<'COMMENT'
+## 🚨 LOGIN TOUCHED — sentinel notice
+
+This PR modifies one or more files in the **login-frozen** set (SOP §1.4):
+
+- `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
+- `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`
+- `backend/apps/auth-service/**`
+- `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
+- `*.env.example`
+
+**Rule:** login is fixed once and stays fixed, bidirectionally. If login works locally it must not break on dev/staging/live. If login works on dev/staging/live it must not break locally. "Fixing" login in one environment by hardcoding a value that only works there **is the bug**, not the fix. Every regression here costs the whole team time.
+
+**Mandatory reviewer checklist before approval:**
+
+1. Check out this branch locally
+2. Delete your `frontend/.env.local` and `backend/.env.local`
+3. Copy the repo's `.env.example` files fresh
+4. Boot the backend and frontend locally with the standard dev commands
+5. Sign in with a **client** test account
+6. Sign in with a **talent** test account
+7. Confirm both accounts reach their dashboards without intervention
+8. If any step fails, request changes and do not merge
+
+The PR description must also contain the four-point login confirmation from SOP §1.4. If it does not, this PR is automatically blocked by the SOP check.
+
+CTO (@CTorres9800) has been auto-requested as a reviewer on this PR.
+
+🤖 Posted by [Claude Code](https://claude.com/claude-code)
+COMMENT
+)
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)
+          FULL_BODY="${MARKER}"$'\n'"${BODY}"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING}" -f body="$FULL_BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$FULL_BODY"
+          fi
+
+      - name: Label login-touched PRs
+        if: steps.sop.outputs.login_hit == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
+            -f "labels[]=login-touched" || true
+          gh api -X POST "repos/${{ github.repository }}/pulls/${PR_NUMBER}/requested_reviewers" \
+            -f "reviewers[]=CTorres9800" || true
+
+      - name: Post / update SOP comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BODY: ${{ steps.sop.outputs.body }}
+        run: |
+          MARKER="<!-- sop-check-comment -->"
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)
+          FULL_BODY="${MARKER}"$'\n'"${BODY}"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING}" -f body="$FULL_BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$FULL_BODY"
+          fi
+
+      - name: Fail the check on violations
+        if: steps.sop.outputs.status == 'fail'
+        run: |
+          echo "SOP check failed with ${{ steps.sop.outputs.count }} violation(s). See the PR comment for details."
+          exit 1

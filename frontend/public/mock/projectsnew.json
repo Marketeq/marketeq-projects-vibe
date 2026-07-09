@@ -3,10 +3,13 @@
     "label": "Web Application"
   },
   {
-    "label": "Website Design"
+    "label": "Mobile Application"
   },
   {
     "label": "E-commerce Platform"
+  },
+  {
+    "label": "Website Design"
   },
   {
     "label": "Content Management"
@@ -18,10 +21,10 @@
     "label": "Web Plugin"
   },
   {
-    "label": "Mobile Application"
+    "label": "Cloud Migration"
   },
   {
-    "label": "Mobile Game"
+    "label": "Blockchain Platform"
   },
   {
     "label": "Cross-Platform App"
@@ -69,25 +72,7 @@
     "label": "Cloud Database"
   },
   {
-    "label": "Cloud Migration"
-  },
-  {
-    "label": "Blockchain Platform"
-  },
-  {
-    "label": "Smart Contract"
-  },
-  {
-    "label": "Decentralized Application"
-  },
-  {
-    "label": "Crypto Wallet"
-  },
-  {
-    "label": "Blockchain Integration"
-  },
-  {
-    "label": "Token Development"
+    "label": "Cloud Native Apps"
   },
   {
     "label": "Machine Learning"
@@ -282,12 +267,27 @@
     "label": "Chatbot Development"
   },
   {
-    "label": "Cloud Native Apps"
-  },
-  {
     "label": "Financial Software"
   },
   {
     "label": "Healthcare Application"
+  },
+  {
+    "label": "Mobile Game"
+  },
+  {
+    "label": "Smart Contract"
+  },
+  {
+    "label": "Decentralized Application"
+  },
+  {
+    "label": "Crypto Wallet"
+  },
+  {
+    "label": "Blockchain Integration"
+  },
+  {
+    "label": "Token Development"
   }
 ]

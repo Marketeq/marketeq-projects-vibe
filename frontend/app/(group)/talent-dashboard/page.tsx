@@ -1,8 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth"
+import { useRouter } from "next/navigation"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { ROLE } from "@/types/user"
 import { ChevronRight, X } from "@blend-metrics/icons"
 import SecuritySettingsStepper from "@/components/security-settings"
 import {
@@ -11,7 +13,7 @@ import {
   CreateYourOwnProject,
   Footer,
   LeftSidebar,
-  RecentProjects,
+  RecentListings,
   RecommendedForYou,
   RightDrawer,
   RightSidebar,
@@ -31,9 +33,21 @@ import { StatusDialog } from "@/app/(group)/complete-profile/page"
 export default function TalentDashboard() {
   const [isOpen, setIsOpen] = useState(false)
   const { user } = useAuth()
+  const router = useRouter()
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [showCompleteProfile, setShowCompleteProfile] = useState(false)
   const [profileProgress, setProfileProgress] = useState(0)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("marketeq-profile-completion")
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      if (Object.values(parsed).some((v: unknown) => (v as Record<string, unknown>)?.opened)) {
+        setShowCompleteProfile(true)
+      }
+    } catch {}
+  }, [])
 
   const handleCompleteProfile = useCallback(() => {
     setShowCompleteProfile(true)
@@ -54,6 +68,15 @@ export default function TalentDashboard() {
     // setShowSecurityModal(true)
   }, [user])
 
+  // Redirect if the user's active role is not Talent
+  useEffect(() => {
+    if (!user) return
+    const role = resolveDashboardRole(user)
+    if (role && role !== ROLE.TALENT) {
+      router.replace("/client-dashboard")
+    }
+  }, [user, router])
+
   return (
     <>
       {showSecurityModal && (
@@ -66,11 +89,11 @@ export default function TalentDashboard() {
       <AuthenticatedRoute>
         <div className="flex bg-gray-50">
           <LeftSidebar />
-          <div className="flex-auto p-6 gap-x-8 flex justify-center min-[1024px]:py-8 min-[1024px]:pl-[256px] min-[1024px]:pr-8 xl:pr-[50px] xl:pl-[274px] 2xl:pr-[150px] 2xl:pl-[374px] overflow-hidden">
-            <div className="max-w-[1042px] space-y-3 md:space-y-5 min-w-0">
+          <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
+            <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
               <Welcome onToggle={() => setIsOpen(true)} />
 
-              <RecentProjects />
+              <RecentListings />
 
               <CreateYourOwnProject />
 
@@ -85,7 +108,10 @@ export default function TalentDashboard() {
               <Footer />
             </div>
 
-            <RightSidebar onCompleteProfile={handleCompleteProfile} profileProgress={profileProgress} />
+            <RightSidebar
+              onCompleteProfile={handleCompleteProfile}
+              profileProgress={profileProgress}
+            />
           </div>
 
           <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -121,7 +147,10 @@ export default function TalentDashboard() {
                 className="w-full h-[calc(theme(size.full)-theme(size.12))]"
                 scrollBar={<ScrollBar className="w-4 p-1" />}
               >
-                <RightDrawer onCompleteProfile={handleCompleteProfile} profileProgress={profileProgress} />
+                <RightDrawer
+                  onCompleteProfile={handleCompleteProfile}
+                  profileProgress={profileProgress}
+                />
               </ScrollArea>
             </DialogContent>
           </Dialog>

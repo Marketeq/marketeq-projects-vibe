@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useAuth } from "@/contexts/auth"
 import { AuthAPI } from "@/service/http/auth"
 import {
   cn,
@@ -13,15 +14,13 @@ import {
 } from "@/utils/functions"
 import { useStepper } from "@/utils/hooks"
 import { Check, Eye, EyeOff } from "@blend-metrics/icons"
-import { ArrowRight } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Controller, useForm, useWatch } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
 import {
   Button,
-  CircularProgress,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -73,9 +72,16 @@ const secureYourAccountFormSchema = z
 
 type SecureYourAccountFormValues = z.infer<typeof secureYourAccountFormSchema>
 
-const Step1 = ({ formData, setFormData }: any) => {
-  const { setStep, toggleStepValidation } = useStepperContext()
+const PasswordForm = ({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void
+  onSuccess: () => void
+}) => {
+  const { toggleStepValidation } = useStepperContext()
   const { toast } = useToast()
+  const { setUser } = useAuth()
   const {
     register,
     control,
@@ -85,22 +91,20 @@ const Step1 = ({ formData, setFormData }: any) => {
   } = useForm<SecureYourAccountFormValues>({
     resolver: zodResolver(secureYourAccountFormSchema),
     mode: "onChange",
-    defaultValues: {
-      password: formData.password || "",
-      confirmPassword: formData.password || "",
-    },
   })
 
   const password = useWatch({ control, name: "password" })
   const [showPassword, toggleShowPassword] = useToggle(false)
   const [showConfirmPassword, toggleShowConfirmPassword] = useToggle(false)
-  const { currentStep, totalSteps } = useStepRootContext()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { currentStep } = useStepRootContext()
 
   useEffect(() => {
     toggleStepValidation(currentStep)(isValid)
   }, [isValid, toggleStepValidation, currentStep])
 
   const onSubmit = async (data: SecureYourAccountFormValues) => {
+    setIsSubmitting(true)
     try {
       const response = await AuthAPI.CreatePassword({ password: data.password })
       const isSuccess =
@@ -108,15 +112,16 @@ const Step1 = ({ formData, setFormData }: any) => {
         response.status >= 200 &&
         response.status < 300
       if (isSuccess) {
-        setFormData((prev: any) => ({ ...prev, password: data.password }))
-        setStep(1)
+        setUser((prev) => (prev ? { ...prev, hasPassword: true } : prev))
         reset()
+        onSuccess()
       } else {
         throw new Error("Failed to set password")
       }
     } catch (error: any) {
       const errorMessage =
         error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
         error?.message ||
         "Something went wrong"
       toast({
@@ -124,22 +129,19 @@ const Step1 = ({ formData, setFormData }: any) => {
         variant: "destructive",
       })
     } finally {
+      setIsSubmitting(false)
     }
   }
 
-  // const progress = ((currentStep + 1) / totalSteps) * 100
-
   return (
-    <Dialog open>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent className="w-full max-w-md space-y-6">
         <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-6">
-          {/* <div className="flex items-center gap-2">
-          <CircularProgress value={progress} size={15.43} strokeWidth={2.5} />
-          <span className="text-xs text-gray-700">
-            STEP {currentStep + 1} / {totalSteps}
-          </span>
-        </div> */}
-
           <h2 className="text-2xl font-semibold text-dark-blue-400">
             Secure your account
           </h2>
@@ -252,8 +254,18 @@ const Step1 = ({ formData, setFormData }: any) => {
             </li>
           </ul>
 
-          <div className="flex justify-end pt-6">
-            <Button type="submit">Continue</Button>
+          <div className="flex justify-end gap-x-3 pt-6">
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Set Password"}
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -261,174 +273,25 @@ const Step1 = ({ formData, setFormData }: any) => {
   )
 }
 
-/*
-
-  const secondStepFormSchema = z.object({
-    phoneNumber: z.string().min(1, "Please enter your phone number"),
-  })
-
-  type SecondStepFormValues = z.infer<typeof secondStepFormSchema>
-
-  export const Step2 = () => {
-    const {
-      control,
-      formState: { errors },
-      handleSubmit,
-    } = useForm<SecondStepFormValues>({
-      resolver: zodResolver(secondStepFormSchema),
-    })
-    const onSubmit: SubmitHandler<SecondStepFormValues> = (values) => {}
-
-    return (
-      <Dialog>
-        <DialogTrigger>
-          <Button>Trigger</Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-[408px]">
-          <div className="flex items-center gap-x-2">
-            <CircularProgress
-              strokeWidth={1.5}
-              size={15.43}
-              value={30}
-              show={false}
-            />
-            <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 2 / 3
-            </span>
-          </div>
-
-          <div className="mt-2">
-            <h3 className="text-2xl leading-9 font-semibold text-dark-blue-400">
-              Secure your account
-            </h3>
-          </div>
-
-          <div className="mt-8">
-            <h1 className="text-lg leading-7 font-medium text-dark-blue-400">
-              Set up two-factor authentication
-            </h1>
-            <p className="text-sm leading-5 mt-3 text-dark-blue-400">
-              Enter your phone number and we’ll send a magic link to the number
-              entered. This helps keep your account secure.
-            </p>
-          </div>
-
-          <form className="mt-6" onClick={handleSubmit(onSubmit)}>
-            <div className="space-y-1.5">
-              <Label size="sm" htmlFor="phone-number" className="text-gray-700">
-                Phone Number
-              </Label>
-              <Controller
-                control={control}
-                name="phoneNumber"
-                render={({ field }) => (
-                  <PhoneNumberInput
-                    {...field}
-                    invalid={hookFormHasError({
-                      errors,
-                      name: "phoneNumber",
-                    })}
-                  />
-                )}
-              />
-
-              <HookFormErrorMessage
-                name="phoneNumber"
-                errors={errors}
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div className="flex items-center justify-between mt-[168px]">
-              <Button size="md" variant="ghost" visual="gray">
-                <ArrowLeft className="size-[15px]" />
-                Back
-              </Button>
-              <Button size="md">Continue</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    )
-  }
-
-  export const Step3 = () => {
-    return (
-      <Dialog>
-        <DialogTrigger>
-          <Button>Trigger</Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-[408px]">
-          <div className="flex items-center gap-x-2">
-            <CircularProgress
-              strokeWidth={1.5}
-              size={15.43}
-              value={30}
-              show={false}
-            />
-            <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 2 / 3
-            </span>
-          </div>
-
-          <div className="mt-2">
-            <h3 className="text-2xl leading-9 font-semibold text-dark-blue-400">
-              Secure your account
-            </h3>
-          </div>
-
-          <div className="mt-8">
-            <h1 className="text-lg leading-7 font-medium text-dark-blue-400">
-              Set up two-factor authentication
-            </h1>
-            <p className="text-sm leading-5 mt-3 text-dark-blue-400 whitespace-pre-line">
-              We sent a magic link sent to phone number ending with 7890. Click
-              the link to confirm your phone number. The link will expire in 24
-              hours.
-            </p>
-          </div>
-
-          <div className="mt-6 flex items-center gap-x-2">
-            <span className="text-sm leading-5 text-dark-blue-400">
-              Not seeing the link?
-            </span>
-            <Button variant="link">Resend</Button>
-          </div>
-
-          <div className="flex items-center justify-between mt-[160px]">
-            <Button size="md" variant="ghost" visual="gray">
-              <ArrowLeft className="size-[15px]" />
-              Back
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    )
-  }
-  
-*/
-
 const SaveChangesExit = ({ onClose }: { onClose: () => void }) => {
   return (
-    <Dialog open>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>All set! You’ve secured your account.</DialogTitle>
+          <DialogTitle>All set! You've secured your account.</DialogTitle>
           <DialogDescription>
-            Click the link below to continue setting up your account... Or close
-            this window to start browsing the marketplace. We’re excited to have
-            you with us!
+            Your password has been updated successfully. You can close this
+            window to continue.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-8">
           <Button variant="outlined" visual="gray" onClick={onClose}>
-            Close Window
-          </Button>
-          <Button>
-            Continue Setup
-            <ArrowRight className="size-[15px]" />
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -441,8 +304,6 @@ const SecuritySettingsStepper = ({
 }: {
   onCloseModal: () => void
 }) => {
-  const [formData, setFormData] = useState<{ password?: string }>({})
-
   const {
     nextStep,
     prevStep,
@@ -473,7 +334,7 @@ const SecuritySettingsStepper = ({
       <StepRootProvider value={stepperRootValue}>
         <StepControl>
           <Step>
-            <Step1 formData={formData} setFormData={setFormData} />
+            <PasswordForm onClose={onCloseModal} onSuccess={() => setStep(1)} />
           </Step>
           <Step>
             <SaveChangesExit onClose={onCloseModal} />

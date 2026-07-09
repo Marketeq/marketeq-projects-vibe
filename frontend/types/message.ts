@@ -1,14 +1,43 @@
+export type MessageType = "text" | "file" | "gif"
+
 export interface Message {
   id: string
-  content: string // encrypted by default
-  ciphertext: string // encrypted payload
+  content: string // decrypted display content
+  ciphertext?: string | null // encrypted payload (nullable for wrapper-only forwards)
   senderId: string
-  conversationId: string
-  isRead: boolean
-  createdAt: string // it's Date on the backend, but usually comes as an ISO string to the frontend
+  threadId: string
+  conversationId?: string // legacy alias for threadId
+  isRead?: boolean
+  createdAt: string
   updatedAt: string
-  isPinned?: boolean
-  isDeleted?: boolean
+  pinned?: boolean
+  isPinned?: boolean // legacy alias for pinned
+  deleted?: boolean
+  isDeleted?: boolean // legacy alias for deleted
+  status?: string
+  messageType?: MessageType
+  edited?: boolean
+  starred?: boolean
+  replyToMessageId?: string
+  forwardedFromId?: string
+  quotedCiphertext?: string | null
+  quotedContent?: string | null
+  attachments?: MessageAttachment[]
+  reactions?: MessageReaction[]
+}
+
+export interface MessageReaction {
+  userId: string
+  emoji: string
+  createdAt: string
+}
+
+export interface MessageAttachment {
+  id: string
+  fileUrl: string
+  fileType: string
+  fileName?: string | null
+  fileSize?: number | null
 }
 
 // Extended Message type to include file attachments

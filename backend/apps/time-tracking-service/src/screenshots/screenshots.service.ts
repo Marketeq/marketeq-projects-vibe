@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -12,6 +13,7 @@ import { ConfirmScreenshotDto } from './dto/confirm.dto';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { ReviewScreenshotDto } from './dto/review-screenshot.dto';
 import { ScreenshotQueryDto } from '../dtos/screenshot-query.dto';
+import { EarningsSyncService } from '../services/earnings-sync.service';
 import {
   BatchUpdateScreenshotDto,
   DeleteScreenshotDto,
@@ -26,16 +28,36 @@ export class ScreenshotsService {
     @InjectRepository(AdminSettings)
     private readonly settingsRepo: Repository<AdminSettings>,
     private readonly r2: R2Service,
+    private readonly earningsSync: EarningsSyncService,
   ) {}
 
-  // ── From original ──────────────────────────────────────────────────
 
   async confirm(dto: ConfirmScreenshotDto): Promise<Screenshot> {
     const keyboard = dto.keyboard ?? 0;
     const mouse = dto.mouse ?? 0;
-    const activity = keyboard + mouse;
-    const keyboardPct = activity > 0 ? Math.round((keyboard / activity) * 100) : 0;
-    const mousePct = activity > 0 ? Math.round((mouse / activity) * 100) : 0;
+    // keyboard and mouse values from the desktop are already activity percentages (0-100)
+    const keyboardPct = keyboard;
+    const mousePct = mouse;
+
+    // Save image locally if base64 data is provided
+    let url: string | null = null;
+    if ((dto as any).imageBase64 && process.env.NODE_ENV !== 'production') {
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const uploadsDir = path.join(process.cwd(), 'screenshot-uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const filename = dto.key.replace('screenshots/', '');
+        const filePath = path.join(uploadsDir, filename);
+        fs.writeFileSync(filePath, Buffer.from((dto as any).imageBase64, 'base64'));
+        const port = process.env.PORT ?? 3017;
+        url = `http://localhost:${port}/api/screenshot-files/${filename}`;
+      } catch (err) {
+        // Non-fatal — screenshot metadata still saves (dev-only local storage fallback)
+      }
+    }
 
     const saved = await this.repo.save({
       userId: dto.userId,
@@ -43,7 +65,7 @@ export class ScreenshotsService {
       mimeType: dto.mimeType,
       bytes: dto.bytes,
       capturedAt: dto.timestamp ? new Date(dto.timestamp) : null,
-      projectId: dto.projectId ?? null,
+      contractId: dto.contractId ?? null,
       taskId: dto.taskId ?? null,
       keyboard,
       mouse,
@@ -52,7 +74,18 @@ export class ScreenshotsService {
       monitorId: dto.monitorId ?? null,
       groupKey: dto.groupKey ?? null,
       isDeleted: false,
+      url: url ?? undefined,
+      apps: dto.apps ?? null,
     } as any);
+    // Sync to earnings_cache (non-blocking)
+    if (saved.contractId && saved.capturedAt) {
+      this.earningsSync.syncScreenshot({
+        userId: saved.userId,
+        contractId: saved.contractId,
+        taskId: saved.taskId ?? null,
+        capturedAt: new Date(saved.capturedAt),
+      }).catch(e => console.error('EarningsSync error:', e));
+    }
     return saved;
   }
 
@@ -131,9 +164,13 @@ export class ScreenshotsService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      throw new BadRequestException('"from" must be before "to"');
+    }
+
     const qb = this.repo.createQueryBuilder('s').where('s.isDeleted = false');
     if (userId) qb.andWhere('s.userId = :userId', { userId });
-    if (query.projectId) qb.andWhere('s.projectId = :projectId', { projectId: query.projectId });
+    if (query.contractId) qb.andWhere('s.contractId = :contractId', { contractId: query.contractId });
     if (query.taskId) qb.andWhere('s.taskId = :taskId', { taskId: query.taskId });
     if (query.from) qb.andWhere('s.createdAt >= :from', { from: new Date(query.from) });
     if (query.to) qb.andWhere('s.createdAt <= :to', { to: new Date(query.to) });
@@ -146,18 +183,51 @@ export class ScreenshotsService {
       timestamp: 's.createdAt',
       keyboard: 's.keyboard',
       mouse: 's.mouse',
-      project: 's.projectId',
+      project: 's.contractId',
     }[query.sortBy ?? 'timestamp'] ?? 's.createdAt';
 
     qb.orderBy(sortField, query.sortOrder ?? 'DESC');
     qb.skip((page - 1) * pageSize).take(pageSize);
 
+  
+
     const [rows, total] = await qb.getManyAndCount();
+
+    
+    // Contract names resolved by frontend via contract picker — no cross-schema query
+    const contractNameMap = new Map<string, string>();
+
+    // Resolve task names from time_tracking.contract_tasks table
+    const taskIds = [...new Set(rows.map(s => s.taskId).filter(Boolean))];
+    const taskNameMap = new Map<string, string>();
+    if (taskIds.length > 0) {
+      try {
+        const taskRows: Array<{ id: string; name: string }> = await this.repo.query(
+          `SELECT id, name FROM time_tracking.contract_tasks WHERE id = ANY($1)`,
+          [taskIds],
+        );
+        for (const t of taskRows) {
+          taskNameMap.set(t.id, t.name);
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
 
     const data = await Promise.all(
       rows.map(async (s) => {
-        const { url: thumbnailUrl } = await this.r2.presignGet(s.key);
-        return { ...s, thumbnailUrl };
+        let thumbnailUrl = s.url || '';
+        if (!thumbnailUrl) {
+          try {
+            const result = await this.r2.presignGet(s.key);
+            thumbnailUrl = result.url;
+          } catch {
+            thumbnailUrl = '';
+          }
+        }
+        const contractName = s.contractId ? (contractNameMap.get(s.contractId) ?? null) : null;
+        const taskName = s.taskId ? (taskNameMap.get(s.taskId) ?? null) : null;
+        return { ...s, thumbnailUrl, contractName, taskName };
       }),
     );
 
@@ -191,6 +261,10 @@ export class ScreenshotsService {
     userId: string,
     role: string,
   ): Promise<Array<Screenshot & { signedUrl: string }>> {
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      throw new BadRequestException('"from" must be before "to"');
+    }
+
     const qb = this.repo.createQueryBuilder('s').where('s.isDeleted = false');
 
     if (role !== 'admin') {
@@ -202,7 +276,7 @@ export class ScreenshotsService {
       return [];
     }
 
-    if (query.projectId) qb.andWhere('s.projectId = :p', { p: query.projectId });
+    if (query.contractId) qb.andWhere('s.contractId = :p', { p: query.contractId });
     if (query.taskId) qb.andWhere('s.taskId = :t', { t: query.taskId });
 
     if (query.from && query.to) {
@@ -238,7 +312,7 @@ export class ScreenshotsService {
       timestamp: 's.capturedAt',
       keyboard: 's.keyboard',
       mouse: 's.mouse',
-      project: 's.projectId',
+      project: 's.contractId',
     }[query.sortBy ?? 'timestamp'] ?? 's.capturedAt';
 
     qb.orderBy(sortField, query.sortOrder ?? 'DESC');
@@ -282,7 +356,7 @@ export class ScreenshotsService {
       if (!settings.allowReassign) throw new ForbiddenException('Reassigning project/task is not allowed by admin settings');
     }
 
-    if (dto.projectId !== undefined) screenshot.projectId = dto.projectId;
+    if (dto.contractId !== undefined) screenshot.contractId = dto.contractId;
     if (dto.taskId !== undefined) screenshot.taskId = dto.taskId;
     return this.repo.save(screenshot);
   }
@@ -299,7 +373,7 @@ export class ScreenshotsService {
     }
 
     const updates: Partial<Screenshot> = {};
-    if (dto.projectId !== undefined) updates.projectId = dto.projectId;
+    if (dto.contractId !== undefined) updates.contractId = dto.contractId;
     if (dto.taskId !== undefined) updates.taskId = dto.taskId;
 
     const qb = this.repo.createQueryBuilder()
@@ -307,7 +381,7 @@ export class ScreenshotsService {
       .set(updates)
       .whereInIds(dto.ids);
 
-    if (role !== 'admin') qb.andWhere('"userId" = :userId', { userId });
+    if (role !== 'admin') qb.andWhere('"user_id" = :userId', { userId });
 
     const result = await qb.execute();
     return { updated: result.affected ?? 0 };
@@ -330,6 +404,15 @@ export class ScreenshotsService {
     return this.repo.save(screenshot);
   }
 
+  async unblur(id: string, userId: string): Promise<Screenshot> {
+    const screenshot = await this.repo.findOneBy({ id, isDeleted: false });
+    if (!screenshot) throw new NotFoundException('Screenshot not found');
+    if (screenshot.userId !== userId) throw new ForbiddenException('Access denied');
+    screenshot.isBlurred = false;
+    screenshot.blurredAt = null as any;
+    return this.repo.save(screenshot);
+  }
+
   // ── Moderation: Flag ───────────────────────────────────────────────
 
   async flagScreenshot(id: string, userId: string, role: string, dto: CreateFlagDto): Promise<Screenshot> {
@@ -347,10 +430,12 @@ export class ScreenshotsService {
     return this.repo.save(screenshot);
   }
 
-  async getFlaggedScreenshots(): Promise<Screenshot[]> {
+  async getFlaggedScreenshots(page = 1, pageSize = 50): Promise<Screenshot[]> {
     return this.repo.find({
       where: { isFlagged: true, isDeleted: false },
       order: { flaggedAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
   }
 
@@ -387,3 +472,4 @@ export class ScreenshotsService {
     return settings;
   }
 }
+

@@ -2,21 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
-  Check,
-  MarkerPin02,
-  Star,
-  Star01,
-  Star02,
-} from "@blend-metrics/icons"
-import {
   addFavorite,
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
+import {
+  Check,
+  Copy,
+  Edit03,
+  MarkerPin02,
+  MoreHorizontal,
+  Star,
+  Star01,
+  Star02,
+  Trash2,
+} from "@blend-metrics/icons"
 import NextImage from "./next-image"
 import NextLink from "./next-link"
 import {
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Favorite,
   FavoriteRoot,
   Tooltip,
@@ -57,6 +66,10 @@ interface TalentSearchCardProps {
   profileHref?: string
   isFavorited?: boolean
   onFavoriteChange?: (favorited: boolean) => void
+  imageLoading?: "lazy" | "eager"
+  /** When true, replaces favorite icon with an options menu (for saved/favorites views) */
+  showOptionsMenu?: boolean
+  onRemove?: () => void
 }
 
 /**
@@ -126,11 +139,14 @@ export const TalentSearchCard = ({
   profileHref = "#",
   isFavorited = false,
   onFavoriteChange,
+  imageLoading = "lazy",
+  showOptionsMenu = false,
+  onRemove,
 }: TalentSearchCardProps) => {
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
 
   return (
-    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col">
+    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
       <div className="p-5">
         <div className="relative">
           <NextLink href={profileHref} className="block">
@@ -139,6 +155,7 @@ export const TalentSearchCard = ({
                 src={photo}
                 sizes="25vw"
                 fill
+                loading={imageLoading}
                 className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                 alt={name}
               />
@@ -153,7 +170,29 @@ export const TalentSearchCard = ({
               <div />
             )}
 
-            <Star01 className="size-5 text-white" />
+            {showOptionsMenu ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="pointer-events-auto size-5 inline-flex items-center justify-center text-white hover:text-gray-200 focus-visible:outline-none">
+                    <MoreHorizontal className="size-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[165px]">
+                  <DropdownMenuItem>
+                    <Edit03 className="h-4 w-4" /> Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Copy className="h-4 w-4" /> Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem visual="destructive" onClick={onRemove}>
+                    <Trash2 className="h-4 w-4" /> Remove
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Star01 className="size-5 text-white" />
+            )}
           </div>
 
           <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
@@ -186,8 +225,7 @@ export const TalentSearchCard = ({
           <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
             <MarkerPin02 className="size-3" />
             <p className="text-[10px] leading-5 font-semibold">
-              {country}{" "}
-              <span className="font-light">({localTime})</span>
+              {country} <span className="font-light">({localTime})</span>
             </p>
           </div>
 
@@ -217,56 +255,58 @@ export const TalentSearchCard = ({
               </span>
             </div>
 
-            <FavoriteRoot
-              value={isFavorited}
-              onValueChange={async (pressed) => {
-                if (pressed) {
-                  onFavoriteChange?.(true)
-                  if (id) {
-                    const result = await addFavorite({
-                      type: "talent",
-                      itemId: String(id),
-                    })
-                    if (!result) {
-                      onFavoriteChange?.(false)
+            {!showOptionsMenu && (
+              <FavoriteRoot
+                value={isFavorited}
+                onValueChange={async (pressed) => {
+                  if (pressed) {
+                    onFavoriteChange?.(true)
+                    if (id) {
+                      const result = await addFavorite({
+                        type: "talent",
+                        itemId: String(id),
+                      })
+                      if (!result) {
+                        onFavoriteChange?.(false)
+                      }
                     }
-                  }
-                } else {
-                  onFavoriteChange?.(false)
-                  if (id) {
-                    const favorite = await findFavoriteByItemId(String(id))
-                    if (favorite) {
-                      const success = await removeFavorite(favorite.id)
-                      if (!success) {
-                        onFavoriteChange?.(true)
+                  } else {
+                    onFavoriteChange?.(false)
+                    if (id) {
+                      const favorite = await findFavoriteByItemId(String(id))
+                      if (favorite) {
+                        const success = await removeFavorite(favorite.id)
+                        if (!success) {
+                          onFavoriteChange?.(true)
+                        }
                       }
                     }
                   }
-                }
-              }}
-            >
-              {({ pressed }) => (
-                <TooltipProvider delayDuration={75}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-block">
-                        <Favorite />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {pressed ? (
-                        <span className="inline-flex items-center gap-x-1">
-                          <Check className="size-[15px] shrink-0 text-green-500" />
-                          Saved
+                }}
+              >
+                {({ pressed }) => (
+                  <TooltipProvider delayDuration={75}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-block">
+                          <Favorite />
                         </span>
-                      ) : (
-                        "Save to favorites"
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </FavoriteRoot>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {pressed ? (
+                          <span className="inline-flex items-center gap-x-1">
+                            <Check className="size-[15px] shrink-0 text-green-500" />
+                            Saved
+                          </span>
+                        ) : (
+                          "Save to favorites"
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </FavoriteRoot>
+            )}
           </div>
         </div>
       </div>
@@ -278,15 +318,26 @@ export const TalentSearchCard = ({
         {skillsList.map((skill, index) => (
           <span
             key={index}
-            className="text-[10px] leading-5 font-semibold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap"
-            style={index >= visibleCount ? { position: "absolute", visibility: "hidden", pointerEvents: "none" } : undefined}
+            className="text-xs leading-5 font-semibold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap"
+            style={
+              index >= visibleCount
+                ? {
+                    position: "absolute",
+                    visibility: "hidden",
+                    pointerEvents: "none",
+                  }
+                : undefined
+            }
           >
             {skill}
           </span>
         ))}
-        <span className="text-[10px] leading-5 font-bold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap">
+        <NextLink
+          href={profileHref ? `${profileHref}#skills` : "#"}
+          className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 hover:underline cursor-pointer whitespace-nowrap"
+        >
           More...
-        </span>
+        </NextLink>
       </div>
     </article>
   )

@@ -15,7 +15,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ServicesService } from './service.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
-import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 
 @Controller('v1/services')
@@ -25,6 +25,11 @@ export class ServicesController {
   @Get()
   findAll() {
     return this.service.findAll();
+  }
+
+  @Get('slug/:slug')
+  findBySlug(@Param('slug') slug: string) {
+    return this.service.findBySlug(slug);
   }
 
   @Get(':id')

@@ -21,11 +21,13 @@ export interface FavoriteGroup {
 }
 
 export const FavoritesAPI = {
-  getGroups: () =>
-    AxiosRequest.get("/favorites/groups"),
+  getGroups: () => AxiosRequest.get("/favorites/groups"),
 
   createGroup: (name: string) =>
     AxiosRequest.post("/favorites/groups", { name }),
+
+  renameGroup: (groupId: string, name: string) =>
+    AxiosRequest.patch(`/favorites/groups/${groupId}`, { name }),
 
   deleteGroup: (groupId: string) =>
     AxiosRequest.del(`/favorites/groups/${groupId}`),
@@ -33,12 +35,14 @@ export const FavoritesAPI = {
   getFavorites: (type?: FavoriteType) =>
     AxiosRequest.get("/favorites", type ? { params: { type } } : {}),
 
-  addFavorite: (data: { type: FavoriteType; itemId: string; groupId?: string }) =>
-    AxiosRequest.post("/favorites", data),
+  addFavorite: (data: {
+    type: FavoriteType
+    itemId: string
+    groupId?: string
+  }) => AxiosRequest.post("/favorites", data),
 
   moveFavorite: (id: string, groupId: string) =>
     AxiosRequest.patch(`/favorites/${id}`, { groupId }),
 
-  removeFavorite: (id: string) =>
-    AxiosRequest.del(`/favorites/${id}`),
+  removeFavorite: (id: string) => AxiosRequest.del(`/favorites/${id}`),
 }

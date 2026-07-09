@@ -1,169 +1,273 @@
-// frontend/src/lib/api/favorites.ts - UPDATED
+// frontend/src/lib/api/favorites.ts
+const FAVORITES_API_URL =
+  process.env.NEXT_PUBLIC_FAVORITES_API_URL || "http://localhost:3012/favorites"
 
-const FAVORITES_API_URL = process.env.NEXT_PUBLIC_FAVORITES_API_URL || 'http://localhost:4003/favorites';
+function authHeaders(): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+  }
+}
+
+// ── Types ──────────────────────────────────────────────
+
+export type FavoriteType = "project" | "talent" | "job" | "service" | "team"
 
 export interface Favorite {
-    id: string;
-    type: 'project' | 'talent' | 'job' | 'service' | 'team';
-    itemId: string;
-    groupId: string | null;
-    userSub: string;
-    userId: string;
-    createdAt: string;
-    updatedAt: string;
+  id: string
+  type: FavoriteType
+  itemId: string
+  groupId: string
+  userId: string
+  createdAt: string
+}
+
+export interface FavoriteGroup {
+  id: string
+  name: string
+  userId: string
+  defaultType?: FavoriteType | null
+  favorites: Favorite[]
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CreateFavoriteDto {
-    type: 'project' | 'talent' | 'job' | 'service' | 'team';
-    itemId: string;
-    groupId?: string | null;
+  type: FavoriteType
+  itemId: string
+  groupId?: string
 }
 
-// Get all favorites for current user
-export async function getAllFavorites(): Promise<Favorite[]> {
-    try {
-        const res = await fetch(FAVORITES_API_URL, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                // Add user context headers if available
-                // 'x-user-sub': userSub,
-                // 'x-user-id': userId,
-            },
-            cache: 'no-store',
-        });
-
-        if (!res.ok) {
-            console.error('Failed to fetch favorites:', res.status, res.statusText);
-            return [];
-        }
-
-        return res.json();
-    } catch (error) {
-        console.error('Error fetching favorites:', error);
-        return [];
-    }
+export interface CreateGroupDto {
+  name: string
+  defaultType?: FavoriteType
 }
 
-// Add a favorite
-export async function addFavorite(dto: CreateFavoriteDto): Promise<Favorite | null> {
-    try {
-        console.log('🔵 Adding favorite:', dto);
-        
-        const res = await fetch(FAVORITES_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(dto),
-        });
-
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.error('Failed to add favorite:', res.status, errorText);
-            return null;
-        }
-
-        const result = await res.json();
-        console.log('✅ Favorite added:', result);
-        return result;
-    } catch (error) {
-        console.error('Error adding favorite:', error);
-        return null;
-    }
+export interface UpdateFavoriteDto {
+  groupId: string
 }
 
-// Remove a favorite by favorite ID
+export interface RenameGroupDto {
+  name: string
+}
+
+// ── Group Endpoints ────────────────────────────────────
+
+/** Create a new favorites group */
+export async function createGroup(
+  dto: CreateGroupDto
+): Promise<FavoriteGroup | null> {
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/groups`, {
+      method: "POST",
+      headers: authHeaders(),
+      credentials: "include",
+      body: JSON.stringify(dto),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch (error) {
+    console.error("Error creating group:", error)
+    return null
+  }
+}
+
+/** Get all groups for the current user (includes favorites in each group) */
+export async function getGroups(): Promise<FavoriteGroup[]> {
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/groups`, {
+      headers: authHeaders(),
+      credentials: "include",
+      cache: "no-store",
+    })
+    if (!res.ok) return []
+    return res.json()
+  } catch (error) {
+    console.error("Error fetching groups:", error)
+    return []
+  }
+}
+
+/** Rename a favorites group */
+export async function renameGroup(
+  groupId: string,
+  dto: RenameGroupDto
+): Promise<FavoriteGroup | null> {
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      credentials: "include",
+      body: JSON.stringify(dto),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch (error) {
+    console.error("Error renaming group:", error)
+    return null
+  }
+}
+
+/** Delete a favorites group (cascades to all favorites in it) */
+export async function deleteGroup(groupId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+      credentials: "include",
+    })
+    return res.ok
+  } catch (error) {
+    console.error("Error deleting group:", error)
+    return false
+  }
+}
+
+// ── Favorite Endpoints ─────────────────────────────────
+
+/**
+ * GET /favorites — returns groups with nested favorites (per docs).
+ * Optional type filter narrows which favorites appear.
+ */
+export async function getAllFavoritesGrouped(
+  type?: FavoriteType
+): Promise<FavoriteGroup[]> {
+  try {
+    const url = type ? `${FAVORITES_API_URL}?type=${type}` : FAVORITES_API_URL
+    const res = await fetch(url, {
+      headers: authHeaders(),
+      credentials: "include",
+      cache: "no-store",
+    })
+    if (!res.ok) return []
+    return res.json()
+  } catch (error) {
+    console.error("Error fetching favorites:", error)
+    return []
+  }
+}
+
+/**
+ * Flatten groups into a flat array of favorites.
+ * Used by helpers that need to search across all favorites.
+ */
+export async function getAllFavorites(
+  type?: FavoriteType
+): Promise<Favorite[]> {
+  const groups = await getAllFavoritesGrouped(type)
+  return groups.flatMap((g) => g.favorites)
+}
+
+/** Add a favorite */
+export async function addFavorite(
+  dto: CreateFavoriteDto
+): Promise<Favorite | null> {
+  try {
+    const res = await fetch(FAVORITES_API_URL, {
+      method: "POST",
+      headers: authHeaders(),
+      credentials: "include",
+      body: JSON.stringify(dto),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch (error) {
+    console.error("Error adding favorite:", error)
+    return null
+  }
+}
+
+/** Move a favorite to a different group */
+export async function moveFavorite(
+  favoriteId: string,
+  dto: UpdateFavoriteDto
+): Promise<Favorite | null> {
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      credentials: "include",
+      body: JSON.stringify(dto),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch (error) {
+    console.error("Error moving favorite:", error)
+    return null
+  }
+}
+
+/** Remove a favorite */
 export async function removeFavorite(favoriteId: string): Promise<boolean> {
-    try {
-        console.log('🔴 Removing favorite:', favoriteId);
-        
-        const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
-            method: 'DELETE',
-        });
-
-        const success = res.ok;
-        console.log(success ? '✅ Favorite removed' : '❌ Failed to remove favorite');
-        return success;
-    } catch (error) {
-        console.error('Error removing favorite:', error);
-        return false;
-    }
+  try {
+    const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+      credentials: "include",
+    })
+    return res.ok
+  } catch (error) {
+    console.error("Error removing favorite:", error)
+    return false
+  }
 }
 
-// Find favorite by itemId
-export async function findFavoriteByItemId(itemId: string): Promise<Favorite | null> {
-    try {
-        const favorites = await getAllFavorites();
-        return favorites.find(fav => fav.itemId === itemId) || null;
-    } catch (error) {
-        console.error('Error finding favorite:', error);
-        return null;
-    }
+// ── Convenience Helpers ────────────────────────────────
+
+/** Find favorite by itemId (searches all user favorites) */
+export async function findFavoriteByItemId(
+  itemId: string
+): Promise<Favorite | null> {
+  try {
+    const favorites = await getAllFavorites()
+    return favorites.find((fav) => fav.itemId === itemId) || null
+  } catch (error) {
+    console.error("Error finding favorite:", error)
+    return null
+  }
 }
 
-// Check if item is favorited
+/** Check if an item is favorited */
 export async function isFavorited(itemId: string): Promise<boolean> {
-    try {
-        const favorite = await findFavoriteByItemId(itemId);
-        return favorite !== null;
-    } catch (error) {
-        console.error('Error checking favorite status:', error);
-        return false;
-    }
+  const favorite = await findFavoriteByItemId(itemId)
+  return favorite !== null
 }
 
-// Get favorites count
+/** Get favorites by group ID (from groups endpoint for efficiency) */
+export async function getFavoritesByGroup(
+  groupId: string
+): Promise<Favorite[]> {
+  try {
+    const groups = await getGroups()
+    const group = groups.find((g) => g.id === groupId)
+    return group?.favorites ?? []
+  } catch (error) {
+    console.error("Error getting group favorites:", error)
+    return []
+  }
+}
+
+/** Get favorites count */
 export async function getFavoritesCount(): Promise<number> {
-    try {
-        const favorites = await getAllFavorites();
-        return favorites.length;
-    } catch (error) {
-        console.error('Error getting favorites count:', error);
-        return 0;
-    }
+  const favorites = await getAllFavorites()
+  return favorites.length
 }
 
-// Get project favorites only
+/** Get project favorites using server-side type filter */
 export async function getProjectFavorites(): Promise<Favorite[]> {
-    try {
-        const favorites = await getAllFavorites();
-        return favorites.filter(fav => fav.type === 'project');
-    } catch (error) {
-        console.error('Error getting project favorites:', error);
-        return [];
-    }
+  return getAllFavorites("project")
 }
 
-// Get service favorites only
+/** Get service favorites using server-side type filter */
 export async function getServiceFavorites(): Promise<Favorite[]> {
-    try {
-        const favorites = await getAllFavorites();
-        return favorites.filter(fav => fav.type === 'service');
-    } catch (error) {
-        console.error('Error getting service favorites:', error);
-        return [];
-    }
+  return getAllFavorites("service")
 }
 
-// Get team favorites only
+/** Get team favorites using server-side type filter */
 export async function getTeamFavorites(): Promise<Favorite[]> {
-    try {
-        const favorites = await getAllFavorites();
-        return favorites.filter(fav => fav.type === 'team');
-    } catch (error) {
-        console.error('Error getting team favorites:', error);
-        return [];
-    }
+  return getAllFavorites("team")
 }
 
-// Get talent favorites only
+/** Get talent favorites using server-side type filter */
 export async function getTalentFavorites(): Promise<Favorite[]> {
-    try {
-        const favorites = await getAllFavorites();
-        return favorites.filter(fav => fav.type === 'talent');
-    } catch (error) {
-        console.error('Error getting talent favorites:', error);
-        return [];
-    }
+  return getAllFavorites("talent")
 }

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { apiFetch } from "@/src/lib/api"
 import { CurrentUser } from "@/utils/auth"
-import { isNotUndefined } from "@/utils/functions"
 import { useUncontrolledState } from "@/utils/hooks"
 import { createContext } from "@/utils/react-utils"
 import {
@@ -20,12 +19,12 @@ import {
   Trash2,
 } from "@blend-metrics/icons"
 import { GoogleDrive1Brand } from "@blend-metrics/icons/brands"
-import { Meta } from "@storybook/react"
+import { Meta } from "@storybook/nextjs"
 import { format, isToday, isYesterday, parseISO } from "date-fns"
 import { useIsomorphicLayoutEffect, useToggle } from "react-use"
 import type { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
-import { Chat } from "@/components/chat"
+import { Chat, ChatsContextProvider } from "@/components/chat"
 import {
   Avatar,
   AvatarFallbackIcon,
@@ -420,47 +419,93 @@ const dummyConv: Conversation & { participantUsername: string } = {
   isGroup: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  participants: [
-    {
-      conversationId: "conv-1",
-      userId: "user-1",
-      joinedAt: new Date().toISOString(),
-    },
-    {
-      conversationId: "conv-1",
-      userId: "user-2",
-      joinedAt: new Date().toISOString(),
-    },
-  ],
+  participantIds: ["user-1", "user-2"],
   participantUsername: "Alice",
   isStarred: false,
+  isPinned: false,
+  isArchived: false,
+  isSpam: false,
+  isMuted: false,
+  isTrashed: false,
+  markedUnread: false,
+  lastReadAt: null,
   messages: [],
 }
 
+const mockMessage: Message = {
+  id: "msg-1",
+  conversationId: "conv-1",
+  threadId: "conv-1",
+  senderId: "user-2",
+  content: "Hello! This is a sample message rendered in Storybook.",
+  ciphertext: "",
+  isRead: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  isPinned: false,
+} as Message
+
+const mockCurrentUser: CurrentUser = {
+  id: "user-1",
+  username: "uxguy297$",
+} as CurrentUser
+
+const editCtxValue = {
+  chat: "",
+  onChatChange: () => {},
+  isSaved: false,
+  onSave: () => {},
+  onUnsave: () => {},
+}
+
+const chatsCtxValue = {
+  pinnedChats: 0,
+  onChatPinned: () => {},
+  onChatChecked: () => {},
+  showPinnedIcon: false,
+  toggleShowPinnedIcon: () => {},
+  checkedChats: 0,
+}
+
+// `as any` because Bubble/YourBubble are typed as React components, not stories.
+;(Bubble as any).args = {
+  message: mockMessage,
+  currentUser: mockCurrentUser,
+  participantUsername: "alice",
+}
+;(Bubble as any).decorators = [
+  (Story: any) => (
+    <EditContextProvider value={editCtxValue}>
+      <Story />
+    </EditContextProvider>
+  ),
+]
+;(YourBubble as any).args = {
+  message: mockMessage,
+  currentUser: mockCurrentUser,
+  participantUsername: "alice",
+}
+
 export const ChatDefault = () => (
-  <Chat
-    conversation={dummyConv}
-    currentUserId="user-1"
-    onClick={() => console.log("Chat clicked")}
-  />
+  <ChatsContextProvider value={chatsCtxValue}>
+    <Chat
+      conversation={dummyConv}
+      currentUserId="user-1"
+      onClick={() => console.log("Chat clicked")}
+    />
+  </ChatsContextProvider>
 )
 
 export const ChatActive = () => (
-  <Chat
-    conversation={dummyConv}
-    currentUserId="user-1"
-    variant="active"
-    onClick={() => console.log("Chat clicked")}
-  />
+  <ChatsContextProvider value={chatsCtxValue}>
+    <Chat
+      conversation={dummyConv}
+      currentUserId="user-1"
+      variant="active"
+      onClick={() => console.log("Chat clicked")}
+    />
+  </ChatsContextProvider>
 )
-
-// export const ChatDefault = () => {
-//   return <Chat />
-// }
-
-// export const ChatActive = () => {
-//   return <Chat variant="active" />
-// }
 
 export const BubbleWithPicture = () => {
   return (

@@ -11,7 +11,7 @@ export class TransactionsController {
   @Get()
   list(@Req() req: any, @Query('page') page = 1, @Query('limit') limit = 20) {
     const userId = req.user?.id;
-    return this.repo.find({ where: [{ fromUserId: userId }, { toUserId: userId }], order: { createdAt: 'DESC' }, skip: (page-1)*limit, take: limit });
+    return this.repo.find({ where: { userId }, order: { createdAt: 'DESC' }, skip: (page-1)*limit, take: limit });
   }
 
   @Get(':id')

@@ -5,7 +5,8 @@ import { VariantProps } from "class-variance-authority"
 import { inputVariants } from "@/components/ui"
 
 interface TextInputProps
-  extends React.InputHTMLAttributes<HTMLInputElement>,
+  extends
+    React.InputHTMLAttributes<HTMLInputElement>,
     VariantProps<typeof inputVariants> {
   type?: "email" | "password" | "search" | "tel" | "text" | "url"
   onValueChange?: (value: string) => void

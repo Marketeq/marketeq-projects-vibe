@@ -1,23 +1,55 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { UserController } from './user.controller';
-import { MeController } from './me.controller';
-import { InternalUserController } from './internal.controller';
-import { UserService } from './user.service';
-import { User } from './entities/user.entity';
-import { Education } from '../education/entities/education.entity';
-import { Experience } from '../experience/entities/experience.entity';
-import { Skill } from '../skills/entities/skill.entity';
-import { Language } from '../languages/entities/language.entity';
-import { Certification } from '../certifications/entities/certification.entity';
-import { Industry } from '../industries/entities/industry.entity';
+import { Module } from "@nestjs/common";
+import { UserService } from "./user.service";
+import { UserController } from "./user.controller";
+import { UserSettingsController } from "./user-settings.controller";
+import { UserSyncController } from "./user-sync.controller";
+import { UserSelfController } from "./user-self.controller";
+import { UserInternalController } from "./user-internal.controller";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { UserSchemaGuardService } from "./user-schema-guard.service";
+import { User } from "./entities/user.entity";
+import { Skill } from "../skills/skills.entity";
+import { TimezoneResolutionService } from "./timezone-resolution.service";
+import { R2Service } from "../storage/r2.service";
+import { ClientsModule, Transport } from "@nestjs/microservices";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { UserEventPublisher } from "./user-event.publisher";
+import { CmsBackfillService } from "./cms-backfill.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Education, Experience, Skill, Language, Certification, Industry]),
+    TypeOrmModule.forFeature([User, Skill]),
+    ClientsModule.registerAsync([
+      {
+        name: "RABBITMQ_CLIENT",
+        imports: [ConfigModule],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.get<string>("RABBITMQ_URL") || "amqp://localhost:5672"],
+            queue: "cms_user_events_queue",
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
+      },
+    ]),
   ],
-  controllers: [UserController, MeController, InternalUserController],
-  providers: [UserService],
+  providers: [
+    UserService,
+    TimezoneResolutionService,
+    UserSchemaGuardService,
+    R2Service,
+    UserEventPublisher,
+    CmsBackfillService,
+  ],
+  controllers: [
+    UserController,
+    UserSettingsController,
+    UserSyncController,
+    UserSelfController,
+    UserInternalController,
+  ],
   exports: [UserService],
 })
 export class UserModule {}

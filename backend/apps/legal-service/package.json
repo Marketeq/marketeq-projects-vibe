@@ -1,0 +1,42 @@
+{
+  "name": "@marketeq/legal-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build legal-service",
+    "start": "node dist/apps/legal-service/src/main",
+    "start:dev": "nest start legal-service --watch",
+    "start:prod": "node dist/apps/legal-service/src/main"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "@nestjs/axios": "^3.0.0",
+    "axios": "^1.6.0",
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/microservices": "^10.0.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/typeorm": "^10.0.0",
+    "amqp-connection-manager": "^4.1.14",
+    "amqplib": "^0.10.0",
+    "class-transformer": "^0.5.0",
+    "class-validator": "^0.14.0",
+    "dotenv": "^16.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "natural": "^6.0.0",
+    "pdfkit": "^0.14.0",
+    "pg": "^8.0.0",
+    "reflect-metadata": "^0.1.0",
+    "rxjs": "^7.0.0",
+    "typeorm": "^0.3.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "@types/pdfkit": "^0.13.0",
+    "@types/uuid": "^9.0.0"
+  }
+}

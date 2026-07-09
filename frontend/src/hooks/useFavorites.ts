@@ -1,5 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { FavoritesAPI, FavoriteType } from "@/service/http/favorites"
+import { FavoriteType, FavoritesAPI } from "@/service/http/favorites"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 const KEYS = {
   groups: ["favorites", "groups"] as const,
@@ -29,8 +29,11 @@ export function useFavorites(type?: FavoriteType) {
 export function useAddFavorite() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { type: FavoriteType; itemId: string; groupId?: string }) =>
-      FavoritesAPI.addFavorite(data),
+    mutationFn: (data: {
+      type: FavoriteType
+      itemId: string
+      groupId?: string
+    }) => FavoritesAPI.addFavorite(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["favorites"] })
     },
@@ -64,6 +67,17 @@ export function useCreateGroup() {
     mutationFn: (name: string) => FavoritesAPI.createGroup(name),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.groups })
+    },
+  })
+}
+
+export function useRenameGroup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ groupId, name }: { groupId: string; name: string }) =>
+      FavoritesAPI.renameGroup(groupId, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["favorites"] })
     },
   })
 }

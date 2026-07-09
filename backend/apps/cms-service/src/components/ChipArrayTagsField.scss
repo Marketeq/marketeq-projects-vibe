@@ -1,0 +1,212 @@
+/* Chip array field — uses Payload admin theme CSS variables only. */
+
+.marketeq-chipArray {
+  margin-bottom: 1rem;
+
+  &__title {
+    margin: 0 0 0.35rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--theme-text);
+  }
+
+  &__requiredMark {
+    color: var(--theme-error-500, var(--theme-error-600, #b42318));
+    font-weight: 600;
+  }
+
+  &__helperRow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+  }
+
+  &__helperText {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--theme-elevation-500);
+    flex: 1;
+  }
+
+  &__count {
+    font-size: 0.75rem;
+    color: var(--theme-elevation-500);
+    white-space: nowrap;
+  }
+
+  &__anchor {
+    position: relative;
+  }
+
+  &__control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.5rem;
+    padding: 0.35rem 2rem 0.35rem 0.5rem;
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: var(--style-radius-s, 4px);
+    background: var(--theme-input-bg);
+    color: var(--theme-text);
+    box-sizing: border-box;
+    position: relative;
+  }
+
+  &__control:focus-within {
+    border-color: var(--theme-elevation-250);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
+  }
+
+  &__control--error {
+    border-color: var(--theme-error-500, var(--theme-error-600, #b42318));
+  }
+
+  &__control--error:focus-within {
+    border-color: var(--theme-error-500, var(--theme-error-600, #b42318));
+    box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.15);
+  }
+
+  &__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+    padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+    border-radius: var(--style-radius-s, 4px);
+    border: 1px solid var(--theme-elevation-150);
+    background: var(--theme-elevation-100);
+    color: var(--theme-text);
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    font-weight: 500;
+  }
+
+  &__chipText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__chipRemove {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: var(--theme-elevation-500);
+    line-height: 1;
+    font-size: 0.95rem;
+  }
+
+  &__chipRemove:hover {
+    color: var(--theme-text);
+  }
+
+  &__input {
+    border: none;
+    outline: none;
+    flex: 1 1 140px;
+    min-width: 120px;
+    font-size: 0.95rem;
+    background: transparent;
+    color: var(--theme-text);
+    padding: 0.25rem 0.15rem;
+    font-family: inherit;
+  }
+
+  &__searchGlyph {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--theme-elevation-500);
+    font-size: 0.9rem;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  &__list {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 2px;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 20;
+    background: var(--theme-input-bg);
+    color: var(--theme-text);
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: var(--style-radius-s, 4px);
+    list-style: none;
+    padding: 0.25rem 0;
+    margin: 0;
+  }
+
+  &__listItem {
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--theme-text);
+  }
+
+  &__listItem:hover,
+  &__listItem:focus-visible {
+    background: var(--theme-elevation-100);
+    outline: none;
+  }
+
+  &__suggestedSection {
+    margin-top: 0.85rem;
+  }
+
+  &__suggestedLabel {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--theme-elevation-700);
+    margin-bottom: 0.35rem;
+  }
+
+  &__suggestedWrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  &__suggestedBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--theme-elevation-150);
+    background: var(--theme-elevation-100);
+    color: var(--theme-text);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    line-height: 1.3;
+    font-family: inherit;
+  }
+
+  &__suggestedBtn:hover {
+    background: var(--theme-elevation-150);
+  }
+
+  &__suggestedBtnPlus {
+    opacity: 0.55;
+    font-size: 0.85rem;
+    margin-left: 0.1rem;
+  }
+
+  &__error {
+    margin-top: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--theme-error-500, var(--theme-error-600, #b42318));
+  }
+}

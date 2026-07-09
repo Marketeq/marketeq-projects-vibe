@@ -13,7 +13,6 @@ import {
   Put,
   Query,
   Req,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -34,12 +33,25 @@ import {
   UpdateScreenshotMetaDto,
 } from '../dtos/update-screenshot.dto';
 
-type PresignBody = {
-  userId: string;
+import { IsIn, IsISO8601, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
+class PresignBodyDto {
+  @IsNotEmpty()
+  @IsString()
+  userId!: string;
+
+  @IsOptional()
+  @IsIn(['jpg', 'jpeg', 'png', 'webp'])
   ext?: 'jpg' | 'jpeg' | 'png' | 'webp';
+
+  @IsOptional()
+  @IsString()
   mimeType?: string;
+
+  @IsOptional()
+  @IsISO8601()
   tsIso?: string;
-};
+}
 
 function keyFor(userId: string, ext = 'jpg', tsIso?: string) {
   const ts = tsIso ? new Date(tsIso) : new Date();
@@ -55,7 +67,7 @@ function keyFor(userId: string, ext = 'jpg', tsIso?: string) {
   return `screens/${yyyy}/${mm}/${dd}/${safeUser}/${safeIso}-${randomUUID()}.${ext}`;
 }
 
-@Controller(['screenshots', 'api/screenshots'])
+@Controller('screenshots')
 @UseGuards(BearerGuard)
 export class ScreenshotsController {
   constructor(
@@ -67,10 +79,9 @@ export class ScreenshotsController {
   // ── Machine-to-machine endpoints (BearerGuard) ─────────────────────
 
   @Post('presign')
-  async presign(@Body() body: PresignBody) {
+  async presign(@Body() body: PresignBodyDto) {
     try {
-      if (!body?.userId) throw new HttpException({ message: 'userId is required' }, 400);
-      const ext = (body.ext ?? 'jpg').toLowerCase() as PresignBody['ext'];
+      const ext = (body.ext ?? 'jpg').toLowerCase() as PresignBodyDto['ext'];
       const mime =
         body.mimeType ?? (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
       const key = keyFor(body.userId, ext, body.tsIso);
@@ -90,7 +101,7 @@ export class ScreenshotsController {
 
   @Post('confirm')
   async confirm(@Body() dto: ConfirmScreenshotDto) {
-    if (!dto?.userId || !dto?.key || !dto?.mimeType || !dto?.bytes) {
+    if (!dto?.userId || !dto?.key || !dto?.mimeType || dto?.bytes == null) {
       throw new HttpException({ message: 'userId, key, mimeType, bytes are required' }, 400);
     }
     return this.svc.confirm(dto);
@@ -102,18 +113,17 @@ export class ScreenshotsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   async deleteScreenshot(
     @Param('id') id: string,
     @Req() req: any,
-    @Query('userId') userIdFromQuery?: string,
     @Query('scopeId') scopeId?: string,
     @Body() dto: DeleteScreenshotDto = {},
   ) {
-    const userId = req?.user?.sub ?? req?.user?.id ?? req?.headers?.['x-user-id'] ?? userIdFromQuery;
-    if (!userId) throw new UnauthorizedException('Missing user identity');
-    const role = req?.user?.role ?? 'user';
-    const result = await this.svc.deleteScreenshot(id, String(userId), role, dto, scopeId);
-    this.events.screenshotDeleted(id, String(userId), dto.reason ?? null);
+    const userId: string = req.user.sub;
+    const role: string = req.user.role ?? 'user';
+    const result = await this.svc.deleteScreenshot(id, userId, role, dto, scopeId);
+    this.events.screenshotDeleted(id, userId, dto.reason ?? null);
     return result;
   }
 
@@ -143,8 +153,8 @@ export class ScreenshotsController {
 
   @Get('flagged')
   @UseGuards(JwtAuthGuard, RolesGuard('admin'))
-  async getFlagged() {
-    return this.svc.getFlaggedScreenshots();
+  async getFlagged(@Query() query: ScreenshotQueryDto) {
+    return this.svc.getFlaggedScreenshots(query.page ?? 1, query.pageSize ?? 50);
   }
 
   @Get('group/:groupKey')
@@ -173,7 +183,9 @@ export class ScreenshotsController {
     @Req() req: any,
     @Body() dto: CreateFlagDto,
   ) {
-    return this.svc.flagScreenshot(id, req.user.sub, req.user.role, dto);
+    const screenshot = await this.svc.flagScreenshot(id, req.user.sub, req.user.role, dto);
+    this.events.screenshotFlagged(id, screenshot.userId, req.user.sub, dto.reason ?? null);
+    return screenshot;
   }
 
   @Put(':id/review')
@@ -183,7 +195,9 @@ export class ScreenshotsController {
     @Req() req: any,
     @Body() dto: ReviewScreenshotDto,
   ) {
-    return this.svc.reviewScreenshot(id, req.user.sub, dto);
+    const screenshot = await this.svc.reviewScreenshot(id, req.user.sub, dto);
+    this.events.screenshotReviewed(id, req.user.sub, dto.status, dto.comment ?? null);
+    return screenshot;
   }
 
   @Patch(':id/blur')
@@ -193,18 +207,18 @@ export class ScreenshotsController {
     @Req() req: any,
     @Query('scopeId') scopeId?: string,
   ) {
-    return this.svc.blur(id, req.user.sub, req.user.role, scopeId);
+    const screenshot = await this.svc.blur(id, req.user.sub, req.user.role, scopeId);
+    this.events.screenshotBlurred(id, req.user.sub, screenshot.blurredAt ?? new Date());
+    return screenshot;
   }
 
-  @Patch(':id/meta')
+  @Patch(':id/unblur')
   @UseGuards(JwtAuthGuard)
-  async updateMeta(
+  async unblur(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
-    @Body() dto: UpdateScreenshotMetaDto,
-    @Query('scopeId') scopeId?: string,
   ) {
-    return this.svc.updateMeta(id, req.user.sub, req.user.role, dto, scopeId);
+    return this.svc.unblur(id, req.user.sub);
   }
 
   @Patch('batch/meta')
@@ -216,4 +230,15 @@ export class ScreenshotsController {
   ) {
     return this.svc.batchUpdateMeta(req.user.sub, req.user.role, dto, scopeId);
   }
+  @Patch(':id/meta')
+  @UseGuards(JwtAuthGuard)
+  async updateMeta(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Body() dto: UpdateScreenshotMetaDto,
+    @Query('scopeId') scopeId?: string,
+  ) {
+    return this.svc.updateMeta(id, req.user.sub, req.user.role, dto, scopeId);
+  }
+
 }

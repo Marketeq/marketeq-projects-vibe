@@ -1,20 +1,29 @@
-import { Controller, Get, Param, Query, UseGuards, Req } from '@nestjs/common'
-import { InvoiceService } from '../services/invoice.service'
-import { JwtAuthGuard } from '../guards/jwt-auth.guard'
-import { InvoiceFilterDto } from '../dto/filter.dto'
+import { Controller, Get, Param, Query, UseGuards, Req } from '@nestjs/common';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { InvoiceService } from '../services/invoice.service';
+import { InvoiceFilterDto } from '../dto/filter.dto';
+import { Request } from 'express';
 
-@Controller('v1/invoices')
+@Controller('invoices')
 @UseGuards(JwtAuthGuard)
 export class InvoiceController {
-  constructor(private readonly svc: InvoiceService) {}
+  constructor(private readonly invoiceService: InvoiceService) {}
 
   @Get()
-  list(@Req() req: any, @Query() filter: InvoiceFilterDto) {
-    return this.svc.findAll(req.user.userId, filter)
+  async list(
+    @Query() filters: InvoiceFilterDto,
+    @Req() req: Request,
+  ) {
+    const userId = (req.user as any).userId;
+    return this.invoiceService.findAll(userId, filters);
   }
 
   @Get(':id')
-  detail(@Req() req: any, @Param('id') id: string) {
-    return this.svc.findOne(req.user.userId, id)
+  async detail(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    const userId = (req.user as any).userId;
+    return this.invoiceService.findOne(id, userId);
   }
 }

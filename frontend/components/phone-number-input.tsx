@@ -11,8 +11,7 @@ import {
 } from "react-international-phone"
 
 interface PhoneNumberInputProps<TFormValues extends FieldValues = FieldValues>
-  extends PhoneInputProps,
-    React.RefAttributes<PhoneInputRefType> {
+  extends PhoneInputProps, React.RefAttributes<PhoneInputRefType> {
   invalid?: boolean
   errorMessage?: string
   onChange?: (value: string) => void

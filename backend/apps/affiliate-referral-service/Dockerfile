@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/affiliate-referral-service/package*.json ./apps/affiliate-referral-service/
 COPY shared/ ./shared/
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build -w apps/affiliate-referral-service
+RUN npx nest build affiliate-referral-service
 
 FROM node:20-alpine
 WORKDIR /app

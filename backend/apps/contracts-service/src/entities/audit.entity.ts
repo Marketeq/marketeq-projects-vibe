@@ -1,8 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
 
 @Entity('contract_audits')
-@Index(['contractId'])
-@Index(['groupId'])
 export class ContractAudit {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -14,16 +17,16 @@ export class ContractAudit {
   role: string;
 
   @Column()
-  action: string;
+  action: string; // e.g., "CONTRACT_ENDED"
 
   @Column({ nullable: true })
-  contractId?: string;
+  contractId: string;
 
   @Column({ nullable: true })
-  groupId?: string;
+  groupId: string;
 
   @Column('jsonb', { nullable: true })
-  details?: Record<string, any>;
+  details: any;
 
   @CreateDateColumn()
   createdAt: Date;

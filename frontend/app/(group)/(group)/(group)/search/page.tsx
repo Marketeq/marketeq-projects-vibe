@@ -1,6 +1,14 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { Suspense, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import {
+  SearchAPI,
+  SearchCategory as SearchCategoryType,
+  SearchHit,
+  SearchResponse,
+  isGroupedResponse,
+} from "@/service/http/search"
 import { HOT_KEYS } from "@/utils/constants"
 import { cn, getFirstItem, getIsNotEmpty, keys } from "@/utils/functions"
 import {
@@ -28,6 +36,7 @@ import {
 } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { Logo4 } from "@/components/icons/logo-4"
+import { ListingCard, ListingCardProps } from "@/components/listing-card"
 import { SearchCard } from "@/components/search-card"
 import { SearchCardLandscape } from "@/components/search-card-landscape"
 import {
@@ -49,6 +58,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
   Favorite,
+  FavoriteRoot,
   IconButton,
   Input,
   InputGroup,
@@ -62,14 +72,442 @@ import {
   Toggle,
   inputVariants,
 } from "@/components/ui"
-import { Sidebar } from "./sidebar"
+import {
+  Sidebar,
+  SidebarJobs,
+  SidebarServices,
+  SidebarTalent,
+  SidebarTeams,
+} from "./sidebar"
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
 
-export default function Search() {
-  const [value, setValue] = useState([GRID_LAYOUT])
+/**
+ * Extract a human-friendly title from a raw Algolia hit. The field used
+ * depends on which index the hit came from — talent/teams have `name`,
+ * projects have `project_title`, services have `service_title`.
+ */
+function getHitTitle(hit: SearchHit): string {
+  return (
+    hit.project_title ||
+    hit.service_title ||
+    hit.team_name ||
+    hit.name ||
+    hit.title ||
+    hit.job_title ||
+    "Untitled"
+  )
+}
+
+function getHitSubtitle(hit: SearchHit): string {
+  return (
+    hit.description ||
+    hit.headline ||
+    hit.about_me ||
+    hit.overview ||
+    (Array.isArray(hit.skills) ? hit.skills.slice(0, 3).join(", ") : "") ||
+    ""
+  )
+}
+
+function getHitMeta(hit: SearchHit): string {
+  if (hit.budget_range) return `Budget: ${hit.budget_range}`
+  if (hit.price_range) return `Price: ${hit.price_range}`
+  if (hit.hourly_rate) return `$${hit.hourly_rate}/hr`
+  if (hit.timeline) return hit.timeline
+  if (hit.location) return hit.location
+  return ""
+}
+
+/**
+ * Convert a raw Algolia hit into ListingCard props for the given entity kind.
+ * The master ListingCard dispatches to the correct visual treatment (project,
+ * service, talent, or team). This mapper is intentionally forgiving because
+ * hit field names vary across indexes.
+ */
+function hitToListingCardProps(
+  hit: SearchHit,
+  kind: "project" | "service" | "talent" | "team",
+  cardVariant: "default" | "job" | "job-grid" = "default"
+): ListingCardProps {
+  const id = String(hit.objectID ?? hit.id ?? "")
+
+  if (kind === "project" || kind === "service") {
+    const isJobPlaceholder =
+      (cardVariant === "job" || cardVariant === "job-grid") &&
+      String(hit.objectID ?? hit.id ?? "").startsWith("placeholder-")
+
+    return {
+      kind,
+      id,
+      title: isJobPlaceholder
+        ? cardVariant === "job-grid"
+          ? "The Ultimate Mobile App Experience"
+          : "Corporate Dashboard Project"
+        : getHitTitle(hit),
+      description: isJobPlaceholder
+        ? cardVariant === "job-grid"
+          ? "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
+          : "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."
+        : hit.description || hit.overview || hit.headline || "",
+      mediaUrl: hit.image || hit.cover_image || hit.media_url || undefined,
+      budget:
+        kind === "service"
+          ? hit.monthly_price
+            ? `$${hit.monthly_price}/month`
+            : hit.price_range
+              ? `${hit.price_range}/month`
+              : hit.budget_range || "$5,000/month"
+          : hit.budget_range || hit.budget || "$50,000 budget",
+      duration: hit.timeline || hit.duration || hit.project_duration,
+      rating: typeof hit.rating === "number" ? hit.rating : 4.9,
+      reviewCount:
+        typeof hit.review_count === "number"
+          ? hit.review_count
+          : typeof hit.nb_reviews === "number"
+            ? hit.nb_reviews
+            : 5,
+      collaborators: Array.isArray(hit.collaborators)
+        ? hit.collaborators
+        : Array.isArray(hit.team_avatars)
+          ? hit.team_avatars
+          : undefined,
+      badge: kind === "service" ? "Service" : undefined,
+      favoriteSlot: <FavoriteRoot>{() => <Favorite />}</FavoriteRoot>,
+      cardVariant,
+    }
+  }
+
+  if (kind === "talent") {
+    return {
+      kind,
+      id,
+      username: String(hit.username || hit.handle || id),
+      name: hit.name || hit.full_name,
+      handle: hit.handle || (hit.username ? `@${hit.username}` : undefined),
+      role: hit.role || hit.job_title || hit.title,
+      photo: hit.photo || hit.avatar_url || hit.image,
+      rate: hit.hourly_rate
+        ? `$${hit.hourly_rate}/hr`
+        : hit.rate_range || "$85 - $120/hr",
+      experience:
+        hit.years_of_experience != null
+          ? `${hit.years_of_experience} years of experience`
+          : hit.experience,
+      country: hit.country || hit.location,
+      localTime: hit.local_time,
+      rating: typeof hit.rating === "number" ? hit.rating : undefined,
+      projects:
+        typeof hit.projects_count === "number"
+          ? hit.projects_count
+          : typeof hit.project_count === "number"
+            ? hit.project_count
+            : undefined,
+      allStars: Boolean(hit.all_stars ?? hit.is_all_star),
+      skills: Array.isArray(hit.skills) ? hit.skills : undefined,
+    }
+  }
+
+  // team
+  return {
+    kind: "team",
+    id,
+    name: hit.team_name || hit.name || "Team Name",
+    handle: hit.handle ? `@${String(hit.handle).replace(/^@/, "")}` : undefined,
+    tagline: hit.tagline || hit.team_type || "Development team",
+    experience:
+      hit.average_years_of_experience != null
+        ? `Average ${hit.average_years_of_experience} years of experience`
+        : hit.experience,
+    rate: hit.rate_range
+      ? `${hit.rate_range}/hr`
+      : hit.hourly_rate
+        ? `$${hit.hourly_rate}/hr`
+        : "$85 - $120/hr",
+    locations: Array.isArray(hit.locations)
+      ? hit.locations.join(", ")
+      : hit.location,
+    rating: typeof hit.rating === "number" ? hit.rating : undefined,
+    projectCount:
+      typeof hit.projects_count === "number"
+        ? hit.projects_count
+        : typeof hit.project_count === "number"
+          ? hit.project_count
+          : undefined,
+    skills: Array.isArray(hit.skills) ? hit.skills : undefined,
+    memberAvatars: Array.isArray(hit.member_avatars)
+      ? hit.member_avatars
+      : Array.isArray(hit.team_avatars)
+        ? hit.team_avatars
+        : undefined,
+    previousClientLogos: Array.isArray(hit.previous_client_logos)
+      ? hit.previous_client_logos
+      : Array.isArray(hit.client_logos)
+        ? hit.client_logos
+        : undefined,
+    favoriteSlot: <FavoriteRoot>{() => <Favorite />}</FavoriteRoot>,
+  }
+}
+
+/**
+ * Minimal placeholder record used when the backend returns no hits — keeps
+ * the grid populated with the correct card shape for the active entity so
+ * users see what the search page will look like once data flows.
+ */
+function placeholderHit(
+  kind: "project" | "service" | "talent" | "team",
+  i: number
+): SearchHit {
+  if (kind === "talent") {
+    return {
+      objectID: `placeholder-${kind}-${i}`,
+      name: "Anika",
+      username: "BlueberryBelle",
+      handle: "BlueberryBelle",
+      role: "Database Administrator",
+      hourly_rate: "85 - $120",
+      years_of_experience: 9,
+      country: "United States",
+      local_time: "7:39am local time",
+      rating: 4.2,
+      projects_count: 11,
+      all_stars: true,
+      skills: [
+        "UX Research",
+        "Web Design",
+        "Content Design",
+        "Frontend Development",
+      ],
+    }
+  }
+  if (kind === "team") {
+    return {
+      objectID: `placeholder-${kind}-${i}`,
+      team_name: "Team Name",
+      handle: "Tech_Sential",
+      team_type: "Development team",
+      average_years_of_experience: 10,
+      rate_range: "$85 - $120",
+      locations: ["UK", "USA", "Brazil", "Philippines"],
+      rating: 4.9,
+      projects_count: 16,
+      skills: [
+        "iOS",
+        "E-commerce",
+        "Mobile Application",
+        "Small Business",
+        "Software Development",
+      ],
+    }
+  }
+  return {
+    objectID: `placeholder-${kind}-${i}`,
+    project_title: "The Ultimate Mobile App Experience",
+    service_title: "The Ultimate Mobile App Experience",
+    description:
+      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
+    budget_range: kind === "service" ? "$5,000/month" : "$50,000 budget",
+    timeline: kind === "project" ? "Starting from 12 weeks" : undefined,
+    rating: 4.9,
+    review_count: 5,
+  }
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <Search />
+    </Suspense>
+  )
+}
+
+type SearchProps = {
+  defaultCategory?: string
+  defaultQuery?: string
+  forcedSidebarCategory?: SearchCategoryType | "all" | "jobs"
+}
+
+export function SearchPageContent({
+  defaultCategory = "",
+  defaultQuery = "Swift Development",
+  forcedSidebarCategory,
+}: SearchProps) {
+  return (
+    <Suspense fallback={null}>
+      <Search
+        defaultCategory={defaultCategory}
+        defaultQuery={defaultQuery}
+        forcedSidebarCategory={forcedSidebarCategory}
+      />
+    </Suspense>
+  )
+}
+
+function Search({
+  defaultCategory = "",
+  defaultQuery = "Swift Development",
+  forcedSidebarCategory,
+}: SearchProps) {
+  const [value, setValue] = useState([
+    forcedSidebarCategory === "jobs" ? LIST_LAYOUT : GRID_LAYOUT,
+  ])
   const [isOpen, toggleIsOpen] = useToggle(false)
+
+  // Ensure the search page always loads scrolled to the very top, regardless
+  // of where the user was scrolled on the previous page.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    }
+  }, [])
+
+  // Read search params so clicks from "Popular Searches" etc. reflect in the page.
+  const searchParams = useSearchParams()
+  const skillParam = searchParams?.get("skill") ?? ""
+  // Fall back to the skill query when no explicit `q` is provided so that
+  // /search?skill=Docker renders "Docker" as the displayed search term
+  // instead of the hardcoded "Swift Development" placeholder.
+  const query =
+    searchParams?.get("q") ?? (skillParam ? skillParam : defaultQuery)
+  const categorySlug = searchParams?.get("category") ?? defaultCategory
+  const categoryLabel = categorySlug
+    ? categorySlug
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+    : ""
+
+  // ── Phase 4: live results from backend search service ─────────────────
+  // Calls GET /search?q=...&category=... and renders the hits when the
+  // backend returns any. Falls back to mock SearchCard blocks on error or
+  // empty result so the design is always preserved.
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [totalHits, setTotalHits] = useState<number | null>(null)
+
+  // Map the top-nav listing-type category ("projects"/"services"/"teams"/"talent")
+  // onto the backend SearchCategory enum. Anything else falls through to "all".
+  const backendCategory: SearchCategoryType = useMemo(() => {
+    const known: SearchCategoryType[] = [
+      "talent",
+      "teams",
+      "projects",
+      "services",
+    ]
+    return (
+      known.includes(categorySlug as SearchCategoryType) ? categorySlug : "all"
+    ) as SearchCategoryType
+  }, [categorySlug])
+
+  useEffect(() => {
+    let cancelled = false
+    const skills = searchParams?.get("skill") ?? undefined
+    const location = searchParams?.get("location") ?? undefined
+    const industry = searchParams?.get("industry") ?? undefined
+
+    setIsLoading(true)
+    SearchAPI.search({
+      q: query,
+      category: backendCategory,
+      limit: 20,
+      page: 0,
+      skills,
+      location,
+      industry,
+    })
+      .then((res) => {
+        if (cancelled) return
+        const data: SearchResponse = res.data as SearchResponse
+        if (isGroupedResponse(data)) {
+          // Flatten grouped response into a single hit list for display
+          const merged: SearchHit[] = [
+            ...(data.talent?.hits ?? []),
+            ...(data.teams?.hits ?? []),
+            ...(data.projects?.hits ?? []),
+            ...(data.services?.hits ?? []),
+          ]
+          const total =
+            (data.talent?.nbHits ?? 0) +
+            (data.teams?.nbHits ?? 0) +
+            (data.projects?.nbHits ?? 0) +
+            (data.services?.nbHits ?? 0)
+          setSearchHits(merged)
+          setTotalHits(total)
+        } else {
+          setSearchHits(data.hits ?? [])
+          setTotalHits(data.nbHits ?? null)
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Silent fallback — the mock cards will render instead.
+        setSearchHits([])
+        setTotalHits(null)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [query, backendCategory, searchParams])
+
+  const resultsCount = totalHits ?? 147
+
+  // Resolve the card kind for the current category. "all" and unknown
+  // fall back to "project" so a generic /search URL still renders something
+  // sensible. Teams/talent need their dedicated card treatments.
+  const cardKind: "project" | "service" | "talent" | "team" = useMemo(() => {
+    switch (backendCategory) {
+      case "talent":
+        return "talent"
+      case "teams":
+        return "team"
+      case "services":
+        return "service"
+      case "projects":
+      case "all":
+      default:
+        return "project"
+    }
+  }, [backendCategory])
+
+  // Render the correct sidebar variant for the active category
+  const renderSidebar = (sidebarClassName?: string) => {
+    switch (forcedSidebarCategory ?? backendCategory) {
+      case "jobs":
+        return <SidebarJobs className={sidebarClassName} />
+      case "services":
+        return <SidebarServices className={sidebarClassName} />
+      case "talent":
+        return <SidebarTalent className={sidebarClassName} />
+      case "teams":
+        return <SidebarTeams className={sidebarClassName} />
+      case "projects":
+      case "all":
+      default:
+        return <Sidebar className={sidebarClassName} />
+    }
+  }
+
+  // Build the list that will actually be rendered — real hits when available,
+  // placeholders of the same kind otherwise so the grid isn't empty.
+  const rendered: SearchHit[] =
+    searchHits.length > 0
+      ? searchHits
+      : Array.from({ length: 8 }).map((_, i) => placeholderHit(cardKind, i))
+  // Jobs uses the same search surface, but the result card itself follows a
+  // dedicated landscape treatment instead of the project/service tile.
+  const listingCardVariant =
+    forcedSidebarCategory === "jobs" &&
+    (cardKind === "project" || cardKind === "service")
+      ? getFirstItem(value) === GRID_LAYOUT
+        ? "job-grid"
+        : "job"
+      : "default"
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
@@ -91,7 +529,7 @@ export default function Search() {
             className="h-full"
             scrollBar={<ScrollBar className="w-4 p-1" />}
           >
-            <Sidebar className="block w-full px-5" />
+            {renderSidebar("block w-full px-5")}
           </ScrollArea>
           <div className="h-12 absolute border-t border-gray-200 bg-white bottom-0 inset-x-0 flex items-center justify-between pl-3.5 p-1">
             <Button
@@ -109,6 +547,10 @@ export default function Search() {
         </DialogContent>
       </Dialog>
 
+      {/* Top dark-blue promo banner — hidden (commented out) and replaced by
+          a contextual banner rendered directly above the results count.
+          Preserved here so it can be restored easily if needed. */}
+      {/*
       <div className="p-10 lg:py-5 flex items-center md:flex-row gap-y-10 flex-col justify-between lg:px-[250px] bg-dark-blue-800">
         <div className="flex xs:max-md:items-center lg:items-center lg:flex-row flex-col lg:gap-y-5 lg:gap-x-[37px]">
           <Logo4 className="shrink-0 xs:max-lg:w-[262.31px]" />
@@ -128,15 +570,34 @@ export default function Search() {
           <ChevronRight className="size-[15px]" />
         </Button>
       </div>
+      */}
 
       <div className="lg:p-[50px] lg:flex gap-x-[50px]">
-        <Sidebar />
+        {renderSidebar()}
 
         <div className="flex-auto">
+          {/* Contextual search banner hidden for now. Keep this block in place so
+              we can restore it later without changing the surrounding layout. */}
+          {/*
+          <div className="mb-5 rounded-lg overflow-hidden">
+            <img
+              src="/search-banner-swift.png"
+              alt="Swift Development"
+              className="w-full h-auto block"
+            />
+          </div>
+          */}
+
           <div className="hidden lg:inline-flex items-center gap-x-3">
             <h1 className="text-base leading-[19.36px] font-light text-dark-blue-400">
-              <span className="font-bold">147</span> Results for{" "}
-              <span className="font-bold">“Swift Development”</span>
+              <span className="font-bold">{resultsCount}</span> Results for{" "}
+              <span className="font-bold">“{query}”</span>
+              {categoryLabel && (
+                <>
+                  {" "}
+                  in <span className="font-bold">{categoryLabel}</span>
+                </>
+              )}
             </h1>
 
             <Button
@@ -215,8 +676,14 @@ export default function Search() {
 
             <div className="lg:contents mt-5 md:mt-6 xs:max-md:px-5 md:max-lg:px-6 flex justify-between items-end">
               <h1 className="text-xs leading-[19.36px] lg:hidden font-light text-dark-blue-400">
-                <span className="font-semibold">147</span> Results for{" "}
-                <span className="font-semibold">“Swift Development”</span>
+                <span className="font-semibold">{resultsCount}</span> Results
+                for <span className="font-semibold">“{query}”</span>
+                {categoryLabel && (
+                  <>
+                    {" "}
+                    in <span className="font-semibold">{categoryLabel}</span>
+                  </>
+                )}
               </h1>
 
               <div className="flex items-center gap-x-6 lg:p-[11.5px]">
@@ -310,23 +777,40 @@ export default function Search() {
 
           <div className="mt-5 xs:max-md:pb-5 md:max-lg:pb-6 lg:mt-8 xs:max-md:px-3.5 md:max-lg:px-6">
             {getFirstItem(value) === GRID_LAYOUT ? (
-              <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-[15px] lg:gap-5">
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
-                <SearchCard />
+              <div
+                className={cn(
+                  "grid gap-[15px] lg:gap-5",
+                  listingCardVariant === "job"
+                    ? "grid-cols-1 md:grid-cols-1 lg:grid-cols-1"
+                    : "",
+                  cardKind === "talent" || cardKind === "team"
+                    ? "md:grid-cols-3 lg:grid-cols-4"
+                    : "md:grid-cols-2 lg:grid-cols-3"
+                )}
+              >
+                {rendered.map((hit) => (
+                  <ListingCard
+                    key={String(hit.objectID)}
+                    {...(hitToListingCardProps(
+                      hit,
+                      cardKind,
+                      listingCardVariant
+                    ) as ListingCardProps)}
+                  />
+                ))}
               </div>
             ) : (
               <div className="grid gap-y-[15px] lg:gap-y-5">
-                <SearchCardLandscape />
-                <SearchCardLandscape />
-                <SearchCardLandscape />
-                <SearchCardLandscape />
-                <SearchCardLandscape />
+                {rendered.map((hit) => (
+                  <ListingCard
+                    key={String(hit.objectID)}
+                    {...(hitToListingCardProps(
+                      hit,
+                      cardKind,
+                      listingCardVariant
+                    ) as ListingCardProps)}
+                  />
+                ))}
               </div>
             )}
           </div>

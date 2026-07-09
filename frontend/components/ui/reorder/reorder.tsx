@@ -29,7 +29,7 @@ const ReorderItem = <T,>({
     | React.ReactNode
   className?: string
   value: T
-  as?: keyof React.ReactHTML
+  as?: React.ComponentProps<typeof Reorder.Item>["as"]
 }) => {
   const dragControls = useDragControls()
   const shouldUseRenderProps = isFn(children)

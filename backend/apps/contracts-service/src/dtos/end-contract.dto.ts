@@ -1,11 +1,6 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
 
 export class EndContractDto {
-  @IsString()
-  @IsNotEmpty()
-  reasonCode: string;
-
-  @IsString()
-  @IsNotEmpty()
-  notes: string;
+  @IsNotEmpty() reasonCode: string;
+  @IsNotEmpty() notes: string;
 }

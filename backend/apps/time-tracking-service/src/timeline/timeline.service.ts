@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { listBuckets, getEvents } from '../aw.client';
@@ -15,6 +15,8 @@ type EventSeg = {
 
 @Injectable()
 export class TimelineService {
+  private readonly logger = new Logger(TimelineService.name);
+
   constructor(
     @InjectRepository(Screenshot)
     private readonly shots: Repository<Screenshot>,
@@ -24,7 +26,12 @@ export class TimelineService {
     return new Date(d).toISOString();
   }
 
-  async buildTimeline(params: { userId: string; projectId?: string; from: string; to: string }) {
+  async buildTimeline(params: { userId: string; contractId?: string; from: string; to: string }) {
+    const startDate = new Date(params.from);
+    const endDate = new Date(params.to);
+    if (isNaN(startDate.getTime())) throw new BadRequestException(`Invalid "from" date: ${params.from}`);
+    if (isNaN(endDate.getTime())) throw new BadRequestException(`Invalid "to" date: ${params.to}`);
+
     const startISO = this.toUTC(params.from);
     const endISO   = this.toUTC(params.to);
 
@@ -32,12 +39,15 @@ export class TimelineService {
       where: {
         userId: params.userId,
         isDeleted: false,
-        createdAt: Between(new Date(startISO), new Date(endISO)),
+        capturedAt: Between(new Date(startISO), new Date(endISO)),
       },
-      order: { createdAt: 'ASC' },
+      order: { capturedAt: 'ASC' },
     });
 
-    const raw = await listBuckets().catch(() => []);
+    const raw = await listBuckets().catch((err: any) => {
+      this.logger.warn(`Failed to fetch AW buckets: ${err?.message ?? err}`);
+      return [];
+    });
     const bucketList = Array.isArray(raw) ? raw : Object.values(raw ?? {});
     const buckets = bucketList.filter(
       (b: any) =>
@@ -45,7 +55,7 @@ export class TimelineService {
     );
 
     const events: EventSeg[] = [];
-    for (const b of buckets) {
+    for (const b of buckets as Array<{ id: string }>) {
       const evs = await getEvents(b.id, startISO, endISO);
       for (const e of evs) {
         const start = new Date(e.timestamp!).toISOString();
@@ -75,23 +85,23 @@ export class TimelineService {
       while (
         i + 1 < shots.length &&
         Math.abs(
-          new Date(shots[i + 1].createdAt).getTime() - new Date(ev.start).getTime(),
+          new Date(shots[i + 1].capturedAt!).getTime() - new Date(ev.start).getTime(),
         ) <
           Math.abs(
-            new Date(shots[i].createdAt).getTime() - new Date(ev.start).getTime(),
+            new Date(shots[i].capturedAt!).getTime() - new Date(ev.start).getTime(),
           )
       ) {
         i++;
       }
       const s = shots[i];
       const sMs = s
-        ? Math.abs(new Date(s.createdAt).getTime() - new Date(ev.start).getTime())
+        ? Math.abs(new Date(s.capturedAt!).getTime() - new Date(ev.start).getTime())
         : Infinity;
       out.push({
         ...ev,
         screenshot:
           s && sMs <= threshMs
-            ? { key: s.key, bytes: s.bytes, mimeType: s.mimeType, createdAt: s.createdAt }
+            ? { key: s.key, bytes: s.bytes, mimeType: s.mimeType, capturedAt: s.capturedAt }
             : null,
       });
     }

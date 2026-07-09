@@ -1,0 +1,779 @@
+[
+  {
+    "label": "Abkhazian"
+  },
+  {
+    "label": "Acehnese"
+  },
+  {
+    "label": "Afar"
+  },
+  {
+    "label": "Afrikaans"
+  },
+  {
+    "label": "Akan"
+  },
+  {
+    "label": "Albanian"
+  },
+  {
+    "label": "American Sign Language (ASL)"
+  },
+  {
+    "label": "Amharic"
+  },
+  {
+    "label": "Ancient Greek"
+  },
+  {
+    "label": "Arabic"
+  },
+  {
+    "label": "Arabic (Egyptian)"
+  },
+  {
+    "label": "Arabic (Gulf)"
+  },
+  {
+    "label": "Arabic (Levantine)"
+  },
+  {
+    "label": "Arabic (Maghrebi)"
+  },
+  {
+    "label": "Arabic (Modern Standard)"
+  },
+  {
+    "label": "Aragonese"
+  },
+  {
+    "label": "Armenian"
+  },
+  {
+    "label": "Armenian (Eastern)"
+  },
+  {
+    "label": "Armenian (Western)"
+  },
+  {
+    "label": "Assamese"
+  },
+  {
+    "label": "Asturian"
+  },
+  {
+    "label": "Australian Sign Language (Auslan)"
+  },
+  {
+    "label": "Avar"
+  },
+  {
+    "label": "Aymara"
+  },
+  {
+    "label": "Azerbaijani"
+  },
+  {
+    "label": "Balinese"
+  },
+  {
+    "label": "Balochi"
+  },
+  {
+    "label": "Bambara"
+  },
+  {
+    "label": "Bashkir"
+  },
+  {
+    "label": "Basque"
+  },
+  {
+    "label": "Belarusian"
+  },
+  {
+    "label": "Bemba"
+  },
+  {
+    "label": "Bengali"
+  },
+  {
+    "label": "Bhojpuri"
+  },
+  {
+    "label": "Bislama"
+  },
+  {
+    "label": "Bosnian"
+  },
+  {
+    "label": "Brazilian Sign Language (Libras)"
+  },
+  {
+    "label": "Breton"
+  },
+  {
+    "label": "British Sign Language (BSL)"
+  },
+  {
+    "label": "Bulgarian"
+  },
+  {
+    "label": "Burmese"
+  },
+  {
+    "label": "Cantonese"
+  },
+  {
+    "label": "Catalan"
+  },
+  {
+    "label": "Cebuano"
+  },
+  {
+    "label": "Central Kurdish (Sorani)"
+  },
+  {
+    "label": "Chamorro"
+  },
+  {
+    "label": "Chechen"
+  },
+  {
+    "label": "Cherokee"
+  },
+  {
+    "label": "Chichewa"
+  },
+  {
+    "label": "Chinese (Simplified)"
+  },
+  {
+    "label": "Chinese (Traditional)"
+  },
+  {
+    "label": "Chuvash"
+  },
+  {
+    "label": "Cornish"
+  },
+  {
+    "label": "Corsican"
+  },
+  {
+    "label": "Cree"
+  },
+  {
+    "label": "Croatian"
+  },
+  {
+    "label": "Czech"
+  },
+  {
+    "label": "Danish"
+  },
+  {
+    "label": "Dari"
+  },
+  {
+    "label": "Dinka"
+  },
+  {
+    "label": "Divehi"
+  },
+  {
+    "label": "Dogri"
+  },
+  {
+    "label": "Dutch"
+  },
+  {
+    "label": "Dzongkha"
+  },
+  {
+    "label": "English"
+  },
+  {
+    "label": "English (American)"
+  },
+  {
+    "label": "English (Australian)"
+  },
+  {
+    "label": "English (British)"
+  },
+  {
+    "label": "English (Canadian)"
+  },
+  {
+    "label": "English (Indian)"
+  },
+  {
+    "label": "English (South African)"
+  },
+  {
+    "label": "Esperanto"
+  },
+  {
+    "label": "Estonian"
+  },
+  {
+    "label": "Ewe"
+  },
+  {
+    "label": "Faroese"
+  },
+  {
+    "label": "Fijian"
+  },
+  {
+    "label": "Filipino"
+  },
+  {
+    "label": "Finnish"
+  },
+  {
+    "label": "Flemish"
+  },
+  {
+    "label": "Fon"
+  },
+  {
+    "label": "French"
+  },
+  {
+    "label": "French (Belgian)"
+  },
+  {
+    "label": "French (Canadian)"
+  },
+  {
+    "label": "French (Swiss)"
+  },
+  {
+    "label": "French Sign Language (LSF)"
+  },
+  {
+    "label": "Frisian (Western)"
+  },
+  {
+    "label": "Fulah"
+  },
+  {
+    "label": "Ga"
+  },
+  {
+    "label": "Galician"
+  },
+  {
+    "label": "Ganda"
+  },
+  {
+    "label": "Georgian"
+  },
+  {
+    "label": "German"
+  },
+  {
+    "label": "German (Austrian)"
+  },
+  {
+    "label": "German (Swiss)"
+  },
+  {
+    "label": "German Sign Language (DGS)"
+  },
+  {
+    "label": "Greek"
+  },
+  {
+    "label": "Greenlandic"
+  },
+  {
+    "label": "Guarani"
+  },
+  {
+    "label": "Gujarati"
+  },
+  {
+    "label": "Haitian Creole"
+  },
+  {
+    "label": "Hakka Chinese"
+  },
+  {
+    "label": "Hausa"
+  },
+  {
+    "label": "Hawaiian"
+  },
+  {
+    "label": "Hebrew"
+  },
+  {
+    "label": "Herero"
+  },
+  {
+    "label": "Hiligaynon"
+  },
+  {
+    "label": "Hindi"
+  },
+  {
+    "label": "Hmong"
+  },
+  {
+    "label": "Hokkien"
+  },
+  {
+    "label": "Hungarian"
+  },
+  {
+    "label": "Icelandic"
+  },
+  {
+    "label": "Igbo"
+  },
+  {
+    "label": "Ilocano"
+  },
+  {
+    "label": "Indian Sign Language (ISL)"
+  },
+  {
+    "label": "Indonesian"
+  },
+  {
+    "label": "Inuktitut"
+  },
+  {
+    "label": "Inupiaq"
+  },
+  {
+    "label": "Irish"
+  },
+  {
+    "label": "Italian"
+  },
+  {
+    "label": "Japanese"
+  },
+  {
+    "label": "Japanese Sign Language (JSL)"
+  },
+  {
+    "label": "Javanese"
+  },
+  {
+    "label": "Kabyle"
+  },
+  {
+    "label": "Kamba"
+  },
+  {
+    "label": "Kannada"
+  },
+  {
+    "label": "Kanuri"
+  },
+  {
+    "label": "Karakalpak"
+  },
+  {
+    "label": "Kashmiri"
+  },
+  {
+    "label": "Kazakh"
+  },
+  {
+    "label": "Khmer"
+  },
+  {
+    "label": "Kikuyu"
+  },
+  {
+    "label": "Kinyarwanda"
+  },
+  {
+    "label": "Kirundi"
+  },
+  {
+    "label": "Komi"
+  },
+  {
+    "label": "Kongo"
+  },
+  {
+    "label": "Konkani"
+  },
+  {
+    "label": "Korean"
+  },
+  {
+    "label": "Korean Sign Language (KSL)"
+  },
+  {
+    "label": "Kurdish (Kurmanji)"
+  },
+  {
+    "label": "Kyrgyz"
+  },
+  {
+    "label": "Lao"
+  },
+  {
+    "label": "Latin"
+  },
+  {
+    "label": "Latvian"
+  },
+  {
+    "label": "Lingala"
+  },
+  {
+    "label": "Lithuanian"
+  },
+  {
+    "label": "Lozi"
+  },
+  {
+    "label": "Luba-Katanga"
+  },
+  {
+    "label": "Luganda"
+  },
+  {
+    "label": "Luo"
+  },
+  {
+    "label": "Luxembourgish"
+  },
+  {
+    "label": "Macedonian"
+  },
+  {
+    "label": "Maithili"
+  },
+  {
+    "label": "Malagasy"
+  },
+  {
+    "label": "Malay"
+  },
+  {
+    "label": "Malayalam"
+  },
+  {
+    "label": "Maltese"
+  },
+  {
+    "label": "Mandarin Chinese"
+  },
+  {
+    "label": "Manipuri"
+  },
+  {
+    "label": "Manx"
+  },
+  {
+    "label": "Maori"
+  },
+  {
+    "label": "Mapudungun"
+  },
+  {
+    "label": "Marathi"
+  },
+  {
+    "label": "Marshallese"
+  },
+  {
+    "label": "Mauritian Creole"
+  },
+  {
+    "label": "Mizo"
+  },
+  {
+    "label": "Moldovan"
+  },
+  {
+    "label": "Mongolian"
+  },
+  {
+    "label": "Montenegrin"
+  },
+  {
+    "label": "Mossi"
+  },
+  {
+    "label": "Nauru"
+  },
+  {
+    "label": "Navajo"
+  },
+  {
+    "label": "Ndebele (Northern)"
+  },
+  {
+    "label": "Ndebele (Southern)"
+  },
+  {
+    "label": "Nepali"
+  },
+  {
+    "label": "Norwegian"
+  },
+  {
+    "label": "Norwegian Bokmal"
+  },
+  {
+    "label": "Norwegian Nynorsk"
+  },
+  {
+    "label": "Nuer"
+  },
+  {
+    "label": "Occitan"
+  },
+  {
+    "label": "Odia"
+  },
+  {
+    "label": "Ojibwe"
+  },
+  {
+    "label": "Oromo"
+  },
+  {
+    "label": "Ossetian"
+  },
+  {
+    "label": "Pashto"
+  },
+  {
+    "label": "Persian (Farsi)"
+  },
+  {
+    "label": "Polish"
+  },
+  {
+    "label": "Portuguese"
+  },
+  {
+    "label": "Portuguese (Brazilian)"
+  },
+  {
+    "label": "Portuguese (European)"
+  },
+  {
+    "label": "Punjabi"
+  },
+  {
+    "label": "Punjabi (Shahmukhi)"
+  },
+  {
+    "label": "Quechua"
+  },
+  {
+    "label": "Rohingya"
+  },
+  {
+    "label": "Romani"
+  },
+  {
+    "label": "Romanian"
+  },
+  {
+    "label": "Romansh"
+  },
+  {
+    "label": "Russian"
+  },
+  {
+    "label": "Russian Sign Language (RSL)"
+  },
+  {
+    "label": "Samoan"
+  },
+  {
+    "label": "Sango"
+  },
+  {
+    "label": "Sanskrit"
+  },
+  {
+    "label": "Santali"
+  },
+  {
+    "label": "Sardinian"
+  },
+  {
+    "label": "Scots Gaelic"
+  },
+  {
+    "label": "Serbian"
+  },
+  {
+    "label": "Sesotho"
+  },
+  {
+    "label": "Setswana"
+  },
+  {
+    "label": "Shan"
+  },
+  {
+    "label": "Shona"
+  },
+  {
+    "label": "Sindhi"
+  },
+  {
+    "label": "Sinhala"
+  },
+  {
+    "label": "Slovak"
+  },
+  {
+    "label": "Slovenian"
+  },
+  {
+    "label": "Somali"
+  },
+  {
+    "label": "Spanish"
+  },
+  {
+    "label": "Spanish (European)"
+  },
+  {
+    "label": "Spanish (Latin American)"
+  },
+  {
+    "label": "Spanish Sign Language (LSE)"
+  },
+  {
+    "label": "Sundanese"
+  },
+  {
+    "label": "Swahili"
+  },
+  {
+    "label": "Swati"
+  },
+  {
+    "label": "Swedish"
+  },
+  {
+    "label": "Swiss German"
+  },
+  {
+    "label": "Sylheti"
+  },
+  {
+    "label": "Syriac"
+  },
+  {
+    "label": "Tagalog"
+  },
+  {
+    "label": "Tahitian"
+  },
+  {
+    "label": "Tajik"
+  },
+  {
+    "label": "Tamazight"
+  },
+  {
+    "label": "Tamil"
+  },
+  {
+    "label": "Tatar"
+  },
+  {
+    "label": "Telugu"
+  },
+  {
+    "label": "Tetum"
+  },
+  {
+    "label": "Thai"
+  },
+  {
+    "label": "Tibetan"
+  },
+  {
+    "label": "Tigrinya"
+  },
+  {
+    "label": "Tok Pisin"
+  },
+  {
+    "label": "Tongan"
+  },
+  {
+    "label": "Tsonga"
+  },
+  {
+    "label": "Turkish"
+  },
+  {
+    "label": "Turkish Sign Language (TID)"
+  },
+  {
+    "label": "Turkmen"
+  },
+  {
+    "label": "Twi"
+  },
+  {
+    "label": "Ukrainian"
+  },
+  {
+    "label": "Urdu"
+  },
+  {
+    "label": "Uyghur"
+  },
+  {
+    "label": "Uzbek"
+  },
+  {
+    "label": "Valencian"
+  },
+  {
+    "label": "Venda"
+  },
+  {
+    "label": "Vietnamese"
+  },
+  {
+    "label": "Walloon"
+  },
+  {
+    "label": "Waray"
+  },
+  {
+    "label": "Welsh"
+  },
+  {
+    "label": "Wolof"
+  },
+  {
+    "label": "Xhosa"
+  },
+  {
+    "label": "Yiddish"
+  },
+  {
+    "label": "Yoruba"
+  },
+  {
+    "label": "Zhuang"
+  },
+  {
+    "label": "Zulu"
+  }
+]

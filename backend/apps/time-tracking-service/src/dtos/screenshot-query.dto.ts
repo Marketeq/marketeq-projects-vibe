@@ -13,7 +13,7 @@ import {
 export class ScreenshotQueryDto {
   @IsOptional()
   @IsString()
-  projectId?: string;
+  contractId?: string;
 
   @IsOptional()
   @IsString()

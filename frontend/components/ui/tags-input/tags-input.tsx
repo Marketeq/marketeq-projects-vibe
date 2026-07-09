@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
+import { createPortal } from "react-dom"
 import { cn, noop } from "@/utils/functions"
 import { useControllableState, useToggle, useUpdateEffect } from "@/utils/hooks"
 import { TagsInput, useTagsInputContext } from "@ark-ui/react"
@@ -49,9 +50,9 @@ export const TagsInputControl = React.forwardRef<
 >(({ className, invalid, ...props }, ref) => (
   <TagsInput.Control
     className={cn(
-      "min-h-11 bg-white border border-gray-300 focus-visible:outline-none py-2.5 px-3.5 flex flex-wrap gap-x-3 gap-y-1 items-center rounded-[5px]",
+      "min-h-11 bg-white border border-gray-300 shadow-xs focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50 focus-visible:outline-none py-2.5 px-3.5 flex flex-wrap gap-x-3 gap-y-1 items-center rounded-[5px]",
       {
-        "border-error-500 focus:border-error-500": invalid,
+        "border-error-300 focus-within:border-error-300 focus-within:ring-error-100": invalid,
       },
       className
     )}
@@ -122,19 +123,38 @@ export const TagsInputInput = React.forwardRef<
     options?: string[]
     onInputValueChange?: (value: string) => void
     allowCreateOption?: boolean
+    portalDropdown?: boolean
   }
 >(
   (
-    { className, options, onInputValueChange, allowCreateOption, ...props },
+    {
+      className,
+      options,
+      onInputValueChange,
+      allowCreateOption,
+      portalDropdown,
+      onKeyDown,
+      ...props
+    },
     ref
   ) => {
-    const { inputValue, setInputValue, addValue, clearInputValue, focus } =
-      useTagsInputContext()
+    const {
+      inputValue,
+      setInputValue,
+      addValue,
+      clearInputValue,
+      focus,
+      value: currentTags,
+    } = useTagsInputContext()
+    const onInputValueChangeRef = React.useRef(onInputValueChange)
     const [open, { off, on }] = useToggle(false)
     const isInputValueValid = inputValue !== ""
     const normalizedInputValue = inputValue.trim()
-    const filteredOptions = options?.filter((option) =>
-      option.toLowerCase().includes(inputValue.toLowerCase())
+    const currentTagsLower = new Set(currentTags.map((t) => t.toLowerCase()))
+    const filteredOptions = options?.filter(
+      (option) =>
+        option.toLowerCase().includes(inputValue.toLowerCase()) &&
+        !currentTagsLower.has(option.toLowerCase())
     )
     const canCreateOption =
       allowCreateOption &&
@@ -143,26 +163,114 @@ export const TagsInputInput = React.forwardRef<
       !options?.some(
         (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
       )
+    const exactMatchedOption = options?.find(
+      (option) => option.toLowerCase() === normalizedInputValue.toLowerCase()
+    )
+    const enterOptionValue =
+      exactMatchedOption ?? (canCreateOption ? normalizedInputValue : null)
 
     useUpdateEffect(() => {
       isInputValueValid ? on() : off()
     }, [isInputValueValid])
 
+    useUpdateEffect(() => {
+      onInputValueChangeRef.current = onInputValueChange
+    }, [onInputValueChange])
+
+    useUpdateEffect(() => {
+      onInputValueChangeRef.current?.(inputValue)
+    }, [inputValue])
+
+    const anchorRef = React.useRef<HTMLDivElement>(null)
+    const [dropdownPos, setDropdownPos] = React.useState<{
+      top: number
+      left: number
+    } | null>(null)
+
+    const updateDropdownPos = React.useCallback(() => {
+      const el = anchorRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      // Hide the portaled dropdown when the input is scrolled out of the
+      // viewport or clipped by any scrollable ancestor (e.g. a dialog body),
+      // otherwise the fixed-positioned dropdown floats detached from its input.
+      let visible = r.bottom > 0 && r.top < window.innerHeight
+      let p: HTMLElement | null = el.parentElement
+      while (p && visible) {
+        const oy = window.getComputedStyle(p).overflowY
+        if (oy === "auto" || oy === "scroll") {
+          const pr = p.getBoundingClientRect()
+          if (r.bottom < pr.top || r.top > pr.bottom) visible = false
+        }
+        p = p.parentElement
+      }
+      setDropdownPos(visible ? { top: r.bottom + 8, left: r.left } : null)
+    }, [])
+
+    React.useEffect(() => {
+      if (!portalDropdown || !open) return
+      updateDropdownPos()
+      window.addEventListener("scroll", updateDropdownPos, true)
+      window.addEventListener("resize", updateDropdownPos)
+      return () => {
+        window.removeEventListener("scroll", updateDropdownPos, true)
+        window.removeEventListener("resize", updateDropdownPos)
+      }
+    }, [portalDropdown, open, updateDropdownPos])
+
     return (
       <>
-        <div className="relative inline-block">
+        <div
+          ref={anchorRef}
+          className="relative inline-block flex-1 min-w-[120px]"
+        >
           <TagsInput.Input
             className={cn(
               "text-base leading-6 grow text-gray-900 placeholder:text-gray-500 font-normal focus-visible:outline-none border-0 focus:ring-0 p-0 h-max",
               className
             )}
+            onKeyDown={(event) => {
+              onKeyDown?.(event)
+              if (event.defaultPrevented) return
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return
+              if (!enterOptionValue) return
+
+              event.preventDefault()
+              addValue(enterOptionValue)
+              clearInputValue()
+              focus()
+              off()
+            }}
+            onBlur={() => {
+              setTimeout(() => off(), 150)
+            }}
             {...props}
             ref={ref}
           />
 
-          <ScaleOutIn show={open}>
-            <div className="absolute left-0 mt-2 w-[202px] px-0 pt-0 z-50 bg-white rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-              <Command>
+          {(() => {
+            const dropdown = (
+              <ScaleOutIn show={open}>
+                <div
+                  style={
+                    portalDropdown && dropdownPos
+                      ? {
+                          position: "fixed",
+                          top: dropdownPos.top,
+                          left: dropdownPos.left,
+                          width: 202,
+                          pointerEvents: "auto",
+                        }
+                      : undefined
+                  }
+                  className={cn(
+                    "px-0 pt-0 bg-white rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]",
+                    portalDropdown
+                      ? "z-[60]"
+                      : "absolute left-0 mt-2 w-[202px] z-50"
+                  )}
+                >
+                  <Command>
                 <CommandInput
                   placeholder="Search"
                   containerClassName="sr-only"
@@ -178,20 +286,40 @@ export const TagsInputInput = React.forwardRef<
                     <CommandEmpty>No results found.</CommandEmpty>
                   )}
                   <CommandGroup className="pt-0">
-                    {filteredOptions?.map((option) => (
-                      <CommandItem
-                        key={option}
-                        value={option}
-                        onSelect={(currentValue) => {
-                          addValue(currentValue)
-                          clearInputValue()
-                          focus()
-                          off()
-                        }}
-                      >
-                        {option}
-                      </CommandItem>
-                    ))}
+                    {filteredOptions?.map((option) => {
+                      const matchIndex = option
+                        .toLowerCase()
+                        .indexOf(inputValue.toLowerCase())
+                      return (
+                        <CommandItem
+                          key={option}
+                          value={option}
+                          onSelect={(currentValue) => {
+                            addValue(currentValue)
+                            clearInputValue()
+                            focus()
+                            off()
+                          }}
+                        >
+                          <span>
+                            {matchIndex >= 0 ? (
+                              <>
+                                {option.slice(0, matchIndex)}
+                                <span className="font-bold">
+                                  {option.slice(
+                                    matchIndex,
+                                    matchIndex + inputValue.length
+                                  )}
+                                </span>
+                                {option.slice(matchIndex + inputValue.length)}
+                              </>
+                            ) : (
+                              option
+                            )}
+                          </span>
+                        </CommandItem>
+                      )
+                    })}
                     {canCreateOption ? (
                       <CommandItem
                         className="text-primary-500 font-semibold data-[selected=true]:text-primary-500 data-[selected=true]:bg-primary-50"
@@ -208,9 +336,17 @@ export const TagsInputInput = React.forwardRef<
                     ) : null}
                   </CommandGroup>
                 </CommandList>
-              </Command>
-            </div>
-          </ScaleOutIn>
+                  </Command>
+                </div>
+              </ScaleOutIn>
+            )
+            if (portalDropdown) {
+              return open && dropdownPos && typeof document !== "undefined"
+                ? createPortal(dropdown, document.body)
+                : null
+            }
+            return dropdown
+          })()}
         </div>
       </>
     )

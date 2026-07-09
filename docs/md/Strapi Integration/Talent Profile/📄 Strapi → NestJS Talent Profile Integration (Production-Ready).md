@@ -277,12 +277,7 @@ isAvailable: boolean \| null;
 availabilityHoursPerWeek: number \| null;
 
 \@Column({ type: \'int\', nullable: true })
-
-rateMin: number \| null; // e.g., 85
-
-\@Column({ type: \'int\', nullable: true })
-
-rateMax: number \| null; // e.g., 120
+rate: number \| null; // e.g., 85
 
 \@Column({ type: \'numeric\', precision: 3, scale: 2, nullable: true })
 
@@ -435,9 +430,7 @@ isAvailable: toBool(a.isAvailable ?? a.availableForHire),
 availabilityHoursPerWeek: safeInt(a.availabilityHoursPerWeek ??
 a.availableHoursPerWeek),
 
-rateMin: safeInt(a.rateMin ?? a.rate_min),
-
-rateMax: safeInt(a.rateMax ?? a.rate_max),
+rate: safeInt(a.rate ?? a.rate_min ?? a.rate_max),
 
 rating: safeNumber(a.rating ?? a.averageRating),
 

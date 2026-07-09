@@ -1,0 +1,1430 @@
+[
+  {
+    "label": "3D Animator"
+  },
+  {
+    "label": "3D Artist"
+  },
+  {
+    "label": "3D Modeler"
+  },
+  {
+    "label": "Accessibility Specialist"
+  },
+  {
+    "label": "Account Executive"
+  },
+  {
+    "label": "Account Manager"
+  },
+  {
+    "label": "Accountant"
+  },
+  {
+    "label": "Actuary"
+  },
+  {
+    "label": "Administrative Assistant"
+  },
+  {
+    "label": "Advertising Manager"
+  },
+  {
+    "label": "Affiliate Marketing Manager"
+  },
+  {
+    "label": "Agile Coach"
+  },
+  {
+    "label": "AI Engineer"
+  },
+  {
+    "label": "AI Ethicist"
+  },
+  {
+    "label": "AI Product Manager"
+  },
+  {
+    "label": "AI Research Scientist"
+  },
+  {
+    "label": "AI Researcher"
+  },
+  {
+    "label": "Android Developer"
+  },
+  {
+    "label": "Animator"
+  },
+  {
+    "label": "API Developer"
+  },
+  {
+    "label": "Application Architect"
+  },
+  {
+    "label": "Application Security Engineer"
+  },
+  {
+    "label": "AR/VR Developer"
+  },
+  {
+    "label": "Art Director"
+  },
+  {
+    "label": "Audio Engineer"
+  },
+  {
+    "label": "Augmented Reality Developer"
+  },
+  {
+    "label": "Automation Engineer"
+  },
+  {
+    "label": "Backend Developer"
+  },
+  {
+    "label": "Backend Engineer"
+  },
+  {
+    "label": "Big Data Engineer"
+  },
+  {
+    "label": "Blockchain Developer"
+  },
+  {
+    "label": "Blockchain Engineer"
+  },
+  {
+    "label": "Bookkeeper"
+  },
+  {
+    "label": "Brand Designer"
+  },
+  {
+    "label": "Brand Manager"
+  },
+  {
+    "label": "Brand Strategist"
+  },
+  {
+    "label": "Budget Analyst"
+  },
+  {
+    "label": "Build Engineer"
+  },
+  {
+    "label": "Business Analyst"
+  },
+  {
+    "label": "Business Consultant"
+  },
+  {
+    "label": "Business Development Manager"
+  },
+  {
+    "label": "Business Development Representative"
+  },
+  {
+    "label": "Business Intelligence Analyst"
+  },
+  {
+    "label": "Business Intelligence Developer"
+  },
+  {
+    "label": "Business Operations Manager"
+  },
+  {
+    "label": "Business Process Analyst"
+  },
+  {
+    "label": "Business Strategist"
+  },
+  {
+    "label": "CEO (Chief Executive Officer)"
+  },
+  {
+    "label": "CFO (Chief Financial Officer)"
+  },
+  {
+    "label": "Change Management Consultant"
+  },
+  {
+    "label": "Chief Data Officer"
+  },
+  {
+    "label": "Chief Design Officer"
+  },
+  {
+    "label": "Chief Information Officer"
+  },
+  {
+    "label": "Chief Information Security Officer"
+  },
+  {
+    "label": "Chief Marketing Officer"
+  },
+  {
+    "label": "Chief Operating Officer"
+  },
+  {
+    "label": "Chief Product Officer"
+  },
+  {
+    "label": "Chief Revenue Officer"
+  },
+  {
+    "label": "Chief Technology Officer"
+  },
+  {
+    "label": "Civil Engineer"
+  },
+  {
+    "label": "Cloud Architect"
+  },
+  {
+    "label": "Cloud Consultant"
+  },
+  {
+    "label": "Cloud Engineer"
+  },
+  {
+    "label": "Cloud Infrastructure Engineer"
+  },
+  {
+    "label": "Cloud Security Engineer"
+  },
+  {
+    "label": "Cloud Solutions Architect"
+  },
+  {
+    "label": "CMS Developer"
+  },
+  {
+    "label": "Communications Director"
+  },
+  {
+    "label": "Communications Specialist"
+  },
+  {
+    "label": "Community Manager"
+  },
+  {
+    "label": "Compliance Analyst"
+  },
+  {
+    "label": "Compliance Officer"
+  },
+  {
+    "label": "Computer Vision Engineer"
+  },
+  {
+    "label": "Content Creator"
+  },
+  {
+    "label": "Content Designer"
+  },
+  {
+    "label": "Content Editor"
+  },
+  {
+    "label": "Content Manager"
+  },
+  {
+    "label": "Content Marketing Manager"
+  },
+  {
+    "label": "Content Marketing Specialist"
+  },
+  {
+    "label": "Content Strategist"
+  },
+  {
+    "label": "Content Writer"
+  },
+  {
+    "label": "Conversion Rate Optimization Specialist"
+  },
+  {
+    "label": "Copywriter"
+  },
+  {
+    "label": "Corporate Trainer"
+  },
+  {
+    "label": "Creative Director"
+  },
+  {
+    "label": "Creative Strategist"
+  },
+  {
+    "label": "CRM Administrator"
+  },
+  {
+    "label": "CRM Developer"
+  },
+  {
+    "label": "CRM Specialist"
+  },
+  {
+    "label": "Customer Experience Designer"
+  },
+  {
+    "label": "Customer Success Manager"
+  },
+  {
+    "label": "Customer Support Specialist"
+  },
+  {
+    "label": "Cyber Intelligence Analyst"
+  },
+  {
+    "label": "Cybersecurity Analyst"
+  },
+  {
+    "label": "Cybersecurity Consultant"
+  },
+  {
+    "label": "Cybersecurity Engineer"
+  },
+  {
+    "label": "Cybersecurity Specialist"
+  },
+  {
+    "label": "Data Analyst"
+  },
+  {
+    "label": "Data Architect"
+  },
+  {
+    "label": "Data Engineer"
+  },
+  {
+    "label": "Data Entry Specialist"
+  },
+  {
+    "label": "Data Governance Analyst"
+  },
+  {
+    "label": "Data Modeler"
+  },
+  {
+    "label": "Data Pipeline Engineer"
+  },
+  {
+    "label": "Data Product Manager"
+  },
+  {
+    "label": "Data Scientist"
+  },
+  {
+    "label": "Data Visualization Specialist"
+  },
+  {
+    "label": "Data Warehouse Engineer"
+  },
+  {
+    "label": "Database Administrator"
+  },
+  {
+    "label": "Database Developer"
+  },
+  {
+    "label": "Database Engineer"
+  },
+  {
+    "label": "Deep Learning Engineer"
+  },
+  {
+    "label": "Demand Generation Manager"
+  },
+  {
+    "label": "Design Director"
+  },
+  {
+    "label": "Design Engineer"
+  },
+  {
+    "label": "Design Researcher"
+  },
+  {
+    "label": "Design Systems Designer"
+  },
+  {
+    "label": "Desktop Support Technician"
+  },
+  {
+    "label": "DevOps Consultant"
+  },
+  {
+    "label": "DevOps Engineer"
+  },
+  {
+    "label": "DevSecOps Engineer"
+  },
+  {
+    "label": "Digital Analyst"
+  },
+  {
+    "label": "Digital Marketing Manager"
+  },
+  {
+    "label": "Digital Marketing Specialist"
+  },
+  {
+    "label": "Digital Product Designer"
+  },
+  {
+    "label": "Digital Product Manager"
+  },
+  {
+    "label": "Digital Strategist"
+  },
+  {
+    "label": "Director of Engineering"
+  },
+  {
+    "label": "Director of Marketing"
+  },
+  {
+    "label": "Director of Operations"
+  },
+  {
+    "label": "Director of Product"
+  },
+  {
+    "label": "Director of Sales"
+  },
+  {
+    "label": "Drupal Developer"
+  },
+  {
+    "label": "E-commerce Manager"
+  },
+  {
+    "label": "E-commerce Specialist"
+  },
+  {
+    "label": "ECommerce Developer"
+  },
+  {
+    "label": "Editor"
+  },
+  {
+    "label": "Electrical Engineer"
+  },
+  {
+    "label": "Email Marketing Specialist"
+  },
+  {
+    "label": "Embedded Systems Engineer"
+  },
+  {
+    "label": "Engineering Manager"
+  },
+  {
+    "label": "Enterprise Architect"
+  },
+  {
+    "label": "Environmental Consultant"
+  },
+  {
+    "label": "ERP Consultant"
+  },
+  {
+    "label": "ETL Developer"
+  },
+  {
+    "label": "Event Coordinator"
+  },
+  {
+    "label": "Event Planner"
+  },
+  {
+    "label": "Executive Assistant"
+  },
+  {
+    "label": "Fashion Designer"
+  },
+  {
+    "label": "Field Marketing Manager"
+  },
+  {
+    "label": "Film Editor"
+  },
+  {
+    "label": "Financial Advisor"
+  },
+  {
+    "label": "Financial Analyst"
+  },
+  {
+    "label": "Financial Consultant"
+  },
+  {
+    "label": "Financial Controller"
+  },
+  {
+    "label": "Financial Modeler"
+  },
+  {
+    "label": "Financial Planner"
+  },
+  {
+    "label": "Firmware Engineer"
+  },
+  {
+    "label": "Flutter Developer"
+  },
+  {
+    "label": "Freelance Writer"
+  },
+  {
+    "label": "Frontend Developer"
+  },
+  {
+    "label": "Frontend Engineer"
+  },
+  {
+    "label": "Full Stack Developer"
+  },
+  {
+    "label": "Full Stack Engineer"
+  },
+  {
+    "label": "Fundraising Consultant"
+  },
+  {
+    "label": "Game Designer"
+  },
+  {
+    "label": "Game Developer"
+  },
+  {
+    "label": "GIS Developer"
+  },
+  {
+    "label": "Go Developer"
+  },
+  {
+    "label": "Golang Engineer"
+  },
+  {
+    "label": "Grant Writer"
+  },
+  {
+    "label": "Graphic Designer"
+  },
+  {
+    "label": "Growth Engineer"
+  },
+  {
+    "label": "Growth Hacker"
+  },
+  {
+    "label": "Growth Marketer"
+  },
+  {
+    "label": "Growth Marketing Manager"
+  },
+  {
+    "label": "Growth Product Manager"
+  },
+  {
+    "label": "Hardware Engineer"
+  },
+  {
+    "label": "Head of Design"
+  },
+  {
+    "label": "Head of Engineering"
+  },
+  {
+    "label": "Head of Marketing"
+  },
+  {
+    "label": "Head of People"
+  },
+  {
+    "label": "Head of Product"
+  },
+  {
+    "label": "Head of Sales"
+  },
+  {
+    "label": "Help Desk Technician"
+  },
+  {
+    "label": "HR Business Partner"
+  },
+  {
+    "label": "HR Consultant"
+  },
+  {
+    "label": "HR Coordinator"
+  },
+  {
+    "label": "HR Manager"
+  },
+  {
+    "label": "Human Resources Specialist"
+  },
+  {
+    "label": "Illustrator"
+  },
+  {
+    "label": "Implementation Consultant"
+  },
+  {
+    "label": "Industrial Designer"
+  },
+  {
+    "label": "Information Architect"
+  },
+  {
+    "label": "Information Security Analyst"
+  },
+  {
+    "label": "Information Security Consultant"
+  },
+  {
+    "label": "Infrastructure Engineer"
+  },
+  {
+    "label": "Inside Sales Representative"
+  },
+  {
+    "label": "Instructional Designer"
+  },
+  {
+    "label": "Integration Engineer"
+  },
+  {
+    "label": "Interaction Designer"
+  },
+  {
+    "label": "Interior Designer"
+  },
+  {
+    "label": "Interpreter"
+  },
+  {
+    "label": "iOS Developer"
+  },
+  {
+    "label": "IoT Developer"
+  },
+  {
+    "label": "IoT Engineer"
+  },
+  {
+    "label": "IT Auditor"
+  },
+  {
+    "label": "IT Business Analyst"
+  },
+  {
+    "label": "IT Consultant"
+  },
+  {
+    "label": "IT Director"
+  },
+  {
+    "label": "IT Manager"
+  },
+  {
+    "label": "IT Project Manager"
+  },
+  {
+    "label": "IT Security Specialist"
+  },
+  {
+    "label": "IT Support Specialist"
+  },
+  {
+    "label": "Java Developer"
+  },
+  {
+    "label": "Java Engineer"
+  },
+  {
+    "label": "JavaScript Developer"
+  },
+  {
+    "label": "Journalist"
+  },
+  {
+    "label": "Junior Data Analyst"
+  },
+  {
+    "label": "Junior Designer"
+  },
+  {
+    "label": "Junior Developer"
+  },
+  {
+    "label": "Junior Software Engineer"
+  },
+  {
+    "label": "Kubernetes Administrator"
+  },
+  {
+    "label": "Kubernetes Engineer"
+  },
+  {
+    "label": "Laravel Developer"
+  },
+  {
+    "label": "Lead Backend Engineer"
+  },
+  {
+    "label": "Lead Data Engineer"
+  },
+  {
+    "label": "Lead Designer"
+  },
+  {
+    "label": "Lead DevOps Engineer"
+  },
+  {
+    "label": "Lead Frontend Engineer"
+  },
+  {
+    "label": "Lead Mobile Engineer"
+  },
+  {
+    "label": "Lead Product Designer"
+  },
+  {
+    "label": "Lead QA Engineer"
+  },
+  {
+    "label": "Lead Software Engineer"
+  },
+  {
+    "label": "Legal Consultant"
+  },
+  {
+    "label": "Lifecycle Marketing Manager"
+  },
+  {
+    "label": "Linux System Administrator"
+  },
+  {
+    "label": "Localization Specialist"
+  },
+  {
+    "label": "Logistics Analyst"
+  },
+  {
+    "label": "Logistics Coordinator"
+  },
+  {
+    "label": "Logistics Manager"
+  },
+  {
+    "label": "Machine Learning Engineer"
+  },
+  {
+    "label": "Management Consultant"
+  },
+  {
+    "label": "Managing Director"
+  },
+  {
+    "label": "Market Research Analyst"
+  },
+  {
+    "label": "Marketing Analyst"
+  },
+  {
+    "label": "Marketing Automation Specialist"
+  },
+  {
+    "label": "Marketing Consultant"
+  },
+  {
+    "label": "Marketing Coordinator"
+  },
+  {
+    "label": "Marketing Director"
+  },
+  {
+    "label": "Marketing Manager"
+  },
+  {
+    "label": "Marketing Operations Manager"
+  },
+  {
+    "label": "Marketing Specialist"
+  },
+  {
+    "label": "Marketing Strategist"
+  },
+  {
+    "label": "Mechanical Engineer"
+  },
+  {
+    "label": "Media Buyer"
+  },
+  {
+    "label": "Media Planner"
+  },
+  {
+    "label": "Medical Writer"
+  },
+  {
+    "label": "Middleware Engineer"
+  },
+  {
+    "label": "ML Ops Engineer"
+  },
+  {
+    "label": "Mobile App Designer"
+  },
+  {
+    "label": "Mobile Application Developer"
+  },
+  {
+    "label": "Mobile Developer"
+  },
+  {
+    "label": "Mobile Engineer"
+  },
+  {
+    "label": "Motion Designer"
+  },
+  {
+    "label": "Motion Graphics Artist"
+  },
+  {
+    "label": "Music Producer"
+  },
+  {
+    "label": "Natural Language Processing Engineer"
+  },
+  {
+    "label": "Network Administrator"
+  },
+  {
+    "label": "Network Architect"
+  },
+  {
+    "label": "Network Engineer"
+  },
+  {
+    "label": "Network Security Engineer"
+  },
+  {
+    "label": "Node.js Developer"
+  },
+  {
+    "label": "Office Manager"
+  },
+  {
+    "label": "Operations Analyst"
+  },
+  {
+    "label": "Operations Consultant"
+  },
+  {
+    "label": "Operations Manager"
+  },
+  {
+    "label": "Organizational Development Consultant"
+  },
+  {
+    "label": "Packaging Designer"
+  },
+  {
+    "label": "Paid Media Specialist"
+  },
+  {
+    "label": "Partnership Manager"
+  },
+  {
+    "label": "Penetration Tester"
+  },
+  {
+    "label": "Performance Engineer"
+  },
+  {
+    "label": "Performance Marketing Manager"
+  },
+  {
+    "label": "Perl Developer"
+  },
+  {
+    "label": "Personal Assistant"
+  },
+  {
+    "label": "Photographer"
+  },
+  {
+    "label": "PHP Developer"
+  },
+  {
+    "label": "Platform Engineer"
+  },
+  {
+    "label": "Podcast Producer"
+  },
+  {
+    "label": "Power BI Developer"
+  },
+  {
+    "label": "PR Manager"
+  },
+  {
+    "label": "PR Specialist"
+  },
+  {
+    "label": "Principal Data Engineer"
+  },
+  {
+    "label": "Principal Designer"
+  },
+  {
+    "label": "Principal Engineer"
+  },
+  {
+    "label": "Principal Product Manager"
+  },
+  {
+    "label": "Principal Software Engineer"
+  },
+  {
+    "label": "Product Analyst"
+  },
+  {
+    "label": "Product Designer"
+  },
+  {
+    "label": "Product Manager"
+  },
+  {
+    "label": "Product Marketing Manager"
+  },
+  {
+    "label": "Product Operations Manager"
+  },
+  {
+    "label": "Product Owner"
+  },
+  {
+    "label": "Product Strategist"
+  },
+  {
+    "label": "Production Artist"
+  },
+  {
+    "label": "Production Coordinator"
+  },
+  {
+    "label": "Production Manager"
+  },
+  {
+    "label": "Program Manager"
+  },
+  {
+    "label": "Project Coordinator"
+  },
+  {
+    "label": "Project Manager"
+  },
+  {
+    "label": "Prompt Engineer"
+  },
+  {
+    "label": "Proofreader"
+  },
+  {
+    "label": "Public Relations Specialist"
+  },
+  {
+    "label": "Python Developer"
+  },
+  {
+    "label": "Python Engineer"
+  },
+  {
+    "label": "QA Analyst"
+  },
+  {
+    "label": "QA Automation Engineer"
+  },
+  {
+    "label": "QA Engineer"
+  },
+  {
+    "label": "QA Lead"
+  },
+  {
+    "label": "QA Manager"
+  },
+  {
+    "label": "Quality Assurance Specialist"
+  },
+  {
+    "label": "Quality Assurance Tester"
+  },
+  {
+    "label": "Quantum Computing Researcher"
+  },
+  {
+    "label": "React Developer"
+  },
+  {
+    "label": "React Native Developer"
+  },
+  {
+    "label": "Receptionist"
+  },
+  {
+    "label": "Recruiter"
+  },
+  {
+    "label": "Release Manager"
+  },
+  {
+    "label": "Research Analyst"
+  },
+  {
+    "label": "Research Scientist"
+  },
+  {
+    "label": "Revenue Operations Manager"
+  },
+  {
+    "label": "Robotics Engineer"
+  },
+  {
+    "label": "Ruby Developer"
+  },
+  {
+    "label": "Ruby on Rails Developer"
+  },
+  {
+    "label": "Rust Developer"
+  },
+  {
+    "label": "Salesforce Administrator"
+  },
+  {
+    "label": "Salesforce Consultant"
+  },
+  {
+    "label": "Salesforce Developer"
+  },
+  {
+    "label": "SAP Consultant"
+  },
+  {
+    "label": "Scala Developer"
+  },
+  {
+    "label": "Scrum Master"
+  },
+  {
+    "label": "Search Engine Marketing Specialist"
+  },
+  {
+    "label": "Security Analyst"
+  },
+  {
+    "label": "Security Architect"
+  },
+  {
+    "label": "Security Consultant"
+  },
+  {
+    "label": "Security Engineer"
+  },
+  {
+    "label": "Security Operations Analyst"
+  },
+  {
+    "label": "Senior Backend Developer"
+  },
+  {
+    "label": "Senior Backend Engineer"
+  },
+  {
+    "label": "Senior Business Analyst"
+  },
+  {
+    "label": "Senior Cloud Engineer"
+  },
+  {
+    "label": "Senior Copywriter"
+  },
+  {
+    "label": "Senior Data Analyst"
+  },
+  {
+    "label": "Senior Data Engineer"
+  },
+  {
+    "label": "Senior Data Scientist"
+  },
+  {
+    "label": "Senior Designer"
+  },
+  {
+    "label": "Senior DevOps Engineer"
+  },
+  {
+    "label": "Senior Embedded Engineer"
+  },
+  {
+    "label": "Senior Financial Analyst"
+  },
+  {
+    "label": "Senior Frontend Developer"
+  },
+  {
+    "label": "Senior Frontend Engineer"
+  },
+  {
+    "label": "Senior Full Stack Developer"
+  },
+  {
+    "label": "Senior Full Stack Engineer"
+  },
+  {
+    "label": "Senior Graphic Designer"
+  },
+  {
+    "label": "Senior iOS Developer"
+  },
+  {
+    "label": "Senior Machine Learning Engineer"
+  },
+  {
+    "label": "Senior Mobile Developer"
+  },
+  {
+    "label": "Senior Mobile Engineer"
+  },
+  {
+    "label": "Senior Product Designer"
+  },
+  {
+    "label": "Senior Product Manager"
+  },
+  {
+    "label": "Senior Program Manager"
+  },
+  {
+    "label": "Senior Project Manager"
+  },
+  {
+    "label": "Senior QA Engineer"
+  },
+  {
+    "label": "Senior Security Engineer"
+  },
+  {
+    "label": "Senior Site Reliability Engineer"
+  },
+  {
+    "label": "Senior Software Developer"
+  },
+  {
+    "label": "Senior Software Engineer"
+  },
+  {
+    "label": "Senior Systems Engineer"
+  },
+  {
+    "label": "Senior Technical Writer"
+  },
+  {
+    "label": "Senior UI Designer"
+  },
+  {
+    "label": "Senior UX Designer"
+  },
+  {
+    "label": "Senior UX Researcher"
+  },
+  {
+    "label": "SEO Analyst"
+  },
+  {
+    "label": "SEO Consultant"
+  },
+  {
+    "label": "SEO Specialist"
+  },
+  {
+    "label": "ServiceNow Developer"
+  },
+  {
+    "label": "Shopify Developer"
+  },
+  {
+    "label": "Site Reliability Engineer"
+  },
+  {
+    "label": "Social Media Coordinator"
+  },
+  {
+    "label": "Social Media Manager"
+  },
+  {
+    "label": "Social Media Specialist"
+  },
+  {
+    "label": "Social Media Strategist"
+  },
+  {
+    "label": "Software Architect"
+  },
+  {
+    "label": "Software Developer"
+  },
+  {
+    "label": "Software Engineer"
+  },
+  {
+    "label": "Software Engineer in Test"
+  },
+  {
+    "label": "Solutions Architect"
+  },
+  {
+    "label": "Solutions Consultant"
+  },
+  {
+    "label": "Solutions Engineer"
+  },
+  {
+    "label": "Sound Designer"
+  },
+  {
+    "label": "Speech Writer"
+  },
+  {
+    "label": "SQL Developer"
+  },
+  {
+    "label": "Staff Backend Engineer"
+  },
+  {
+    "label": "Staff Data Engineer"
+  },
+  {
+    "label": "Staff Designer"
+  },
+  {
+    "label": "Staff DevOps Engineer"
+  },
+  {
+    "label": "Staff Engineer"
+  },
+  {
+    "label": "Staff Frontend Engineer"
+  },
+  {
+    "label": "Staff Machine Learning Engineer"
+  },
+  {
+    "label": "Staff Product Designer"
+  },
+  {
+    "label": "Staff Product Manager"
+  },
+  {
+    "label": "Staff Security Engineer"
+  },
+  {
+    "label": "Staff Site Reliability Engineer"
+  },
+  {
+    "label": "Staff Software Engineer"
+  },
+  {
+    "label": "Statistician"
+  },
+  {
+    "label": "Strategy Consultant"
+  },
+  {
+    "label": "Supply Chain Analyst"
+  },
+  {
+    "label": "Supply Chain Manager"
+  },
+  {
+    "label": "Swift Developer"
+  },
+  {
+    "label": "System Administrator"
+  },
+  {
+    "label": "Systems Analyst"
+  },
+  {
+    "label": "Systems Architect"
+  },
+  {
+    "label": "Systems Engineer"
+  },
+  {
+    "label": "Tableau Developer"
+  },
+  {
+    "label": "Talent Acquisition Specialist"
+  },
+  {
+    "label": "Tax Consultant"
+  },
+  {
+    "label": "Technical Account Manager"
+  },
+  {
+    "label": "Technical Architect"
+  },
+  {
+    "label": "Technical Consultant"
+  },
+  {
+    "label": "Technical Director"
+  },
+  {
+    "label": "Technical Lead"
+  },
+  {
+    "label": "Technical Product Manager"
+  },
+  {
+    "label": "Technical Program Manager"
+  },
+  {
+    "label": "Technical Project Manager"
+  },
+  {
+    "label": "Technical Recruiter"
+  },
+  {
+    "label": "Technical Support Engineer"
+  },
+  {
+    "label": "Technical Writer"
+  },
+  {
+    "label": "Test Automation Engineer"
+  },
+  {
+    "label": "Test Engineer"
+  },
+  {
+    "label": "Test Manager"
+  },
+  {
+    "label": "Translator"
+  },
+  {
+    "label": "TypeScript Developer"
+  },
+  {
+    "label": "UI Designer"
+  },
+  {
+    "label": "UI Developer"
+  },
+  {
+    "label": "UI Engineer"
+  },
+  {
+    "label": "Unity Developer"
+  },
+  {
+    "label": "Unreal Engine Developer"
+  },
+  {
+    "label": "User Researcher"
+  },
+  {
+    "label": "UX Consultant"
+  },
+  {
+    "label": "UX Designer"
+  },
+  {
+    "label": "UX Engineer"
+  },
+  {
+    "label": "UX Researcher"
+  },
+  {
+    "label": "UX Strategist"
+  },
+  {
+    "label": "UX Writer"
+  },
+  {
+    "label": "Video Editor"
+  },
+  {
+    "label": "Video Producer"
+  },
+  {
+    "label": "Videographer"
+  },
+  {
+    "label": "Virtual Assistant"
+  },
+  {
+    "label": "Virtual Reality Developer"
+  },
+  {
+    "label": "Visual Designer"
+  },
+  {
+    "label": "Voiceover Artist"
+  },
+  {
+    "label": "VP of Engineering"
+  },
+  {
+    "label": "VP of Finance"
+  },
+  {
+    "label": "VP of Marketing"
+  },
+  {
+    "label": "VP of Operations"
+  },
+  {
+    "label": "VP of People"
+  },
+  {
+    "label": "VP of Product"
+  },
+  {
+    "label": "VP of Sales"
+  },
+  {
+    "label": "Vue.js Developer"
+  },
+  {
+    "label": "Web Analyst"
+  },
+  {
+    "label": "Web Designer"
+  },
+  {
+    "label": "Web Developer"
+  },
+  {
+    "label": "Webflow Developer"
+  },
+  {
+    "label": "WordPress Developer"
+  },
+  {
+    "label": "Workflow Automation Specialist"
+  }
+]

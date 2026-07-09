@@ -6,6 +6,7 @@ export type SignUpParams = {
 export type LoginParams = {
   email: string
   password: string
+  rememberMe?: boolean
 }
 
 export type GoogleLoginParams = {

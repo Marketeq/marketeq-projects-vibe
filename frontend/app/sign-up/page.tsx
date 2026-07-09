@@ -9,7 +9,6 @@ import { hookFormHasError } from "@/utils/functions"
 import { Check } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
-import Cookies from "js-cookie"
 import { Controller, SubmitHandler, useForm } from "react-hook-form"
 import { z } from "zod"
 import { Spinner } from "@/components/ui/spinner/spinner"
@@ -18,21 +17,16 @@ import LinkedInLoginButton from "@/components/auth/LinkedInLoginButton"
 import { Logo } from "@/components/icons"
 import { MarketeqIcon1 } from "@/components/marketeq-icon-1"
 import NextLink from "@/components/next-link"
-import {
-  Button,
-  Checkbox,
-  ErrorMessage,
-  Input,
-  Label,
-  useToast,
-} from "@/components/ui"
+import { Button, Checkbox, ErrorMessage, Input, Label } from "@/components/ui"
 
 const signUpSchema = z.object({
   email: z
     .string()
     .min(1, "Please enter at least 1 character(s)")
     .email("Please enter a valid email"),
-  agreesToTermsPrivacyPolicy: z.boolean(),
+  agreesToTermsPrivacyPolicy: z.boolean().refine((value) => value, {
+    message: "Please accept Terms of Use and Privacy Policy",
+  }),
 })
 
 type SignUpFormValues = z.infer<typeof signUpSchema>
@@ -41,16 +35,18 @@ export default function SignUp() {
   const router = useRouter()
 
   const { setUser } = useAuth()
-  const { toast } = useToast()
 
   const [isLoading, setIsLoading] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const {
     register,
     formState: { errors },
     control,
+    clearErrors,
     handleSubmit,
     reset,
+    setError,
   } = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -61,26 +57,47 @@ export default function SignUp() {
 
   const onSubmit: SubmitHandler<SignUpFormValues> = ({ email }) => {
     setIsLoading(true)
+    setFormError(null)
+    clearErrors("email")
 
     AuthAPI.SignUpWithEmail({ email })
       .then((response) => {
         if (
           response?.status === 201 &&
-          response?.data?.access_token &&
           response?.data?.user
         ) {
-          Cookies.set("access_token", response?.data?.access_token)
           setUser(response?.data?.user)
           router.push("/onboarding")
           reset()
+        } else {
+          setFormError(
+            "Something went wrong while creating your account. Please try again."
+          )
         }
       })
       .catch((error) => {
-        if (error?.response?.data?.errors?.message) {
-          toast({
-            title: error?.response?.data?.errors?.message,
-            variant: "destructive",
+        const errorMessage =
+          error?.response?.data?.errors?.message ||
+          (Array.isArray(error?.response?.data?.message) &&
+          error?.response?.data?.message?.length > 0
+            ? error?.response?.data?.message?.[0]
+            : error?.response?.data?.message)
+
+        const isEmailError =
+          typeof errorMessage === "string" &&
+          /email|user already exists/i.test(errorMessage)
+
+        if (isEmailError) {
+          setError("email", {
+            type: "server",
+            message: errorMessage,
           })
+        } else {
+          setFormError(
+            typeof errorMessage === "string"
+              ? errorMessage
+              : "Something went wrong while creating your account. Please try again."
+          )
         }
       })
       .finally(() => {
@@ -134,27 +151,21 @@ export default function SignUp() {
           <MarketeqIcon1 className="absolute -bottom-[36.41px] left-[41.11px]" />
 
           <div className="flex items-start gap-y-5 flex-col relative">
-            {/* <Button
-              className="text-white"
-              visual="gray"
-              variant="link"
-              size="md"
-            >
-              Don’t have an account?
-            </Button> */}
             <p className="text-white text-sm font-medium">
-              Don’t have an account?
+              Already have an account?
             </p>
 
             <div className="inline-block relative">
+              <NextLink href="/sign-in">
               <Button
                 className="text-white hover:bg-white/10 border-white/20"
                 visual="gray"
                 variant="outlined"
                 size="lg"
               >
-                Join Us For Free
+                Sign In
               </Button>
+              </NextLink>
               <svg
                 className="size-[23px] absolute right-[15.33px] top-[34px] text-primary-500"
                 viewBox="0 0 23 23"
@@ -164,7 +175,7 @@ export default function SignUp() {
                 <path
                   d="M11.5955 2.21973C9.29477 -0.162931 5.28434 0.73532 4.42508 3.82574L0.744613 17.0629C-0.0339209 19.8629 2.59557 22.5434 5.50714 21.8913C6.71521 21.6207 7.65054 20.7109 8.62686 19.7017C10.1067 18.172 12.274 17.6503 14.3559 18.3132C14.4019 18.3279 14.4477 18.3425 14.4934 18.3571C15.9509 18.8218 17.2961 19.2508 18.5757 18.9642L19.049 18.8582C22.2152 18.149 23.3072 14.3487 21.0395 12.0001L11.5955 2.21973Z"
                   fill="currentColor"
-                  fill-opacity="0.5"
+                  fillOpacity="0.5"
                   stroke="currentColor"
                 />
               </svg>
@@ -196,6 +207,15 @@ export default function SignUp() {
             </div>
 
             <form className="mt-5 md:mt-6" onSubmit={handleSubmit(onSubmit)}>
+              {formError ? (
+                <div
+                  role="alert"
+                  className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700"
+                >
+                  {formError}
+                </div>
+              ) : null}
+
               <div className="flex flex-col gap-y-1.5">
                 <Label className="text-dark-blue-500" size="sm" htmlFor="email">
                   Email
@@ -236,7 +256,7 @@ export default function SignUp() {
                   className="text-[#939DA7] font-normal"
                   htmlFor="agrees-to-terms-privacy-policy"
                 >
-                  I agree to Markerteq’s{" "}
+                  I agree to Markerteq's{" "}
                   <Button
                     className="whitespace-normal font-normal"
                     size="sm"
@@ -255,9 +275,18 @@ export default function SignUp() {
                 </Label>
               </div>
 
+              <HookFormErrorMessage
+                errors={errors}
+                name="agreesToTermsPrivacyPolicy"
+                render={({ message }) => (
+                  <ErrorMessage size="sm">{message}</ErrorMessage>
+                )}
+              />
+
               <Button
                 className="mt-5 xs:max-md:text-sm xs:max-md:py-2 xs:max-md:px-[14px] xs:max-md:h-9 md:mt-6 w-full"
                 size="lg"
+                disabled={isLoading}
               >
                 {isLoading ? (
                   <Spinner

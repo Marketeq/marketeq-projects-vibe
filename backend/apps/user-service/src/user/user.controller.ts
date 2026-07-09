@@ -1,174 +1,59 @@
 import {
-  Controller, Get, Post, Put, Patch, Delete,
-  Param, Body, Query, HttpCode, HttpStatus,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
 } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
 import { UserService } from './user.service';
-import { User } from './entities/user.entity';
-import { Education } from '../education/entities/education.entity';
-import { Experience } from '../experience/entities/experience.entity';
-import { Skill } from '../skills/entities/skill.entity';
-import { Language } from '../languages/entities/language.entity';
-import { Certification } from '../certifications/entities/certification.entity';
-import { Industry } from '../industries/entities/industry.entity';
+import { CreateUserDto } from './dtos/create-user.dto';
+import { UpdateUserDto } from './dtos/update-user.dto';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-@Controller('v1/users')
+@ApiTags('User')
+@Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  // --- User core ---
+  @ApiOperation({ summary: 'Create user' })
   @Post()
-  create(@Body() dto: Partial<User>) {
-    return this.userService.create(dto);
+  createUser(@Body() dto: CreateUserDto) {
+    return this.userService.createUser(dto);
   }
 
+  @ApiOperation({ summary: 'List users' })
   @Get()
-  findAll(
+  listUsers(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    return this.userService.findAll(
-      limit ? parseInt(limit, 10) : 50,
-      offset ? parseInt(offset, 10) : 0,
-    );
+    const parsedLimit = Number(limit ?? '50');
+    const parsedOffset = Number(offset ?? '0');
+
+    return this.userService.listUsers(parsedLimit, parsedOffset);
   }
 
-  @Get('health')
-  health() {
-    return { status: 'ok', service: 'user-service' };
-  }
-
-  @Get('username/:username')
-  findByUsername(@Param('username') username: string) {
-    return this.userService.findByUsername(username);
-  }
-
+  @ApiOperation({ summary: 'Get user by id' })
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userService.findById(id);
+  getUser(@Param('id') id: string) {
+    return this.userService.getUserById(id);
   }
 
-  @Post('check-username')
-  checkUsername(@Body('username') username: string) {
-    return this.userService.checkUsername(username);
+  @ApiOperation({ summary: 'Update user by id' })
+  @Patch(':id')
+  updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    return this.userService.updateUser(id, dto);
   }
 
-  @Put(':id')
-  update(@Param('id') id: string, @Body() dto: Partial<User>) {
-    return this.userService.update(id, dto);
-  }
-
-  @Patch(':id/onboarding/dismiss')
-  @HttpCode(HttpStatus.OK)
-  dismissOnboarding(@Param('id') id: string) {
-    return this.userService.dismissOnboarding(id);
-  }
-
+  @ApiOperation({ summary: 'Delete user by id' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.userService.remove(id);
-  }
-
-  // --- Education ---
-  @Post(':id/education')
-  addEducation(@Param('id') id: string, @Body() dto: Partial<Education>) {
-    return this.userService.addEducation(id, dto);
-  }
-  @Put(':id/education/:eduId')
-  updateEducation(@Param('eduId') eduId: string, @Body() dto: Partial<Education>) {
-    return this.userService.updateEducation(eduId, dto);
-  }
-  @Delete(':id/education/:eduId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeEducation(@Param('eduId') eduId: string) {
-    return this.userService.removeEducation(eduId);
-  }
-
-  // --- Experience ---
-  @Post(':id/work')
-  addExperience(@Param('id') id: string, @Body() dto: Partial<Experience>) {
-    return this.userService.addExperience(id, dto);
-  }
-  @Put(':id/work/:workId')
-  updateExperience(@Param('workId') workId: string, @Body() dto: Partial<Experience>) {
-    return this.userService.updateExperience(workId, dto);
-  }
-  @Delete(':id/work/:workId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeExperience(@Param('workId') workId: string) {
-    return this.userService.removeExperience(workId);
-  }
-
-  // --- Skills ---
-  @Post(':id/skills')
-  addSkill(@Param('id') id: string, @Body() dto: Partial<Skill>) {
-    return this.userService.addSkill(id, dto);
-  }
-  @Put(':id/skills/:skillId')
-  updateSkill(@Param('skillId') skillId: string, @Body() dto: Partial<Skill>) {
-    return this.userService.updateSkill(skillId, dto);
-  }
-  @Delete(':id/skills/:skillId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeSkill(@Param('skillId') skillId: string) {
-    return this.userService.removeSkill(skillId);
-  }
-
-  // --- Languages ---
-  @Post(':id/languages')
-  addLanguage(@Param('id') id: string, @Body() dto: Partial<Language>) {
-    return this.userService.addLanguage(id, dto);
-  }
-  @Put(':id/languages/:langId')
-  updateLanguage(@Param('langId') langId: string, @Body() dto: Partial<Language>) {
-    return this.userService.updateLanguage(langId, dto);
-  }
-  @Delete(':id/languages/:langId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeLanguage(@Param('langId') langId: string) {
-    return this.userService.removeLanguage(langId);
-  }
-
-  // --- Certifications ---
-  @Post(':id/certifications')
-  addCertification(@Param('id') id: string, @Body() dto: Partial<Certification>) {
-    return this.userService.addCertification(id, dto);
-  }
-  @Put(':id/certifications/:certId')
-  updateCertification(@Param('certId') certId: string, @Body() dto: Partial<Certification>) {
-    return this.userService.updateCertification(certId, dto);
-  }
-  @Delete(':id/certifications/:certId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeCertification(@Param('certId') certId: string) {
-    return this.userService.removeCertification(certId);
-  }
-
-  // --- Industries ---
-  @Post(':id/industries')
-  addIndustry(@Param('id') id: string, @Body() dto: Partial<Industry>) {
-    return this.userService.addIndustry(id, dto);
-  }
-  @Delete(':id/industries/:industryId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeIndustry(@Param('industryId') industryId: string) {
-    return this.userService.removeIndustry(industryId);
-  }
-
-  // --- RabbitMQ message handlers ---
-  @MessagePattern('user.findById')
-  handleFindById(@Payload() data: { id: string }) {
-    return this.userService.findById(data.id);
-  }
-
-  @MessagePattern('user.findByEmail')
-  handleFindByEmail(@Payload() data: { email: string }) {
-    return this.userService.findByEmail(data.email);
-  }
-
-  @MessagePattern('user.create')
-  handleCreate(@Payload() dto: Partial<User>) {
-    return this.userService.create(dto);
+  deleteUser(@Param('id') id: string) {
+    return this.userService.deleteUser(id);
   }
 }

@@ -15,8 +15,8 @@ export class CheckoutSession {
   @Column({ nullable: true })
   projectId: string;
 
-  @Column({ nullable: true })
-  contractId: string;
+  @Column({ type: 'varchar', nullable: true })
+  contractId: string | null;
 
   @Column({ nullable: true })
   stripeSessionId: string;

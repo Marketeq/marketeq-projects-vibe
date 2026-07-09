@@ -1,22 +1,49 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { TypeOrmModule } from '@nestjs/typeorm'
 import { HttpModule } from '@nestjs/axios'
 import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
 import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
+import { TalentUploadController } from './controllers/talent-upload.controller'
+import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
+import { PublishMediaController } from './controllers/publish-media.controller'
+import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
+import { HomepageModule } from './homepage/homepage.module'
+import { BlogModule } from './blog/blog.module'
 import { JwtStrategy } from './guards/jwt-auth.guard'
+import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
+import { LoggingMiddleware } from './middleware/logging.middleware'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['apps/api-gateway/.env', '.env'],
+    }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres' as const,
+        url: config.get<string>('DATABASE_URL'),
+        autoLoadEntities: true,
+        synchronize: false,
+        ssl: (config.get<string>('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
+      }),
+    }),
     HttpModule.register({ timeout: 30000 }),
+    HomepageModule,
+    BlogModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const publicKey = config.get<string>('AUTH_JWT_PUBLIC_KEY');
+        const rawKey = config.get<string>('AUTH_JWT_PUBLIC_KEY');
+        const publicKey = rawKey?.replace(/\\n/g, '\n');
         if (publicKey) {
           return {
             publicKey,
@@ -32,10 +59,18 @@ import { JwtMiddleware } from './middleware/jwt.middleware'
     }),
   ],
   providers: [ProxyService, JwtStrategy],
-  controllers: [ProxyController],
+  controllers: [
+    TalentUploadController,
+    UserAvatarUploadController,
+    PublishMediaController,
+    PublishRichTextImageController,
+    ProxyController,
+  ],
 })
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(LoggingMiddleware).forRoutes('*')
+    consumer.apply(CsrfOriginMiddleware).forRoutes('*')
     consumer.apply(JwtMiddleware).forRoutes('*')
   }
 }

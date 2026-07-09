@@ -1,0 +1,429 @@
+"use client"
+
+/**
+ * /add-funds — Step-by-step flow for topping up the USD account balance
+ * shown in the top nav (e.g. "$ 1,540 USD"). Mirrors the checkout flow
+ * visually (same slim top bar with Logo3 + Lock + step indicators) but
+ * lives outside the marketplace `(group)` layout so it doesn't render
+ * the homepage nav — this is a dedicated, focused funding flow.
+ *
+ * Three steps:
+ *   1. Amount        — pick or enter a USD amount
+ *   2. Payment       — choose a saved card or add a new one
+ *   3. Confirm       — review + complete
+ */
+import * as React from "react"
+import { useRouter } from "next/navigation"
+import { cn } from "@/utils/functions"
+import { ArrowLeft, Check, Lock, Plus } from "@blend-metrics/icons"
+import { Logo3 } from "@/components/icons"
+import { Button, Input } from "@/components/ui"
+
+type StepId = 1 | 2 | 3
+
+const STEPS: { id: StepId; label: string }[] = [
+  { id: 1, label: "Amount" },
+  { id: 2, label: "Payment" },
+  { id: 3, label: "Confirm" },
+]
+
+const QUICK_AMOUNTS = [100, 250, 500, 1000, 2500, 5000]
+
+interface SavedCard {
+  id: string
+  brand: string
+  last4: string
+  expiry: string
+}
+
+const SAVED_CARDS: SavedCard[] = [
+  { id: "card_1", brand: "Visa", last4: "4242", expiry: "12/27" },
+  { id: "card_2", brand: "Mastercard", last4: "8321", expiry: "03/26" },
+]
+
+// ── Step indicator (ring + number, matches checkout) ───────────────────────
+const StepDot = ({
+  n,
+  state,
+}: {
+  n: number
+  state: "active" | "complete" | "upcoming"
+}) => (
+  <div
+    className={cn(
+      "size-[25px] rounded-full border-2 inline-flex justify-center items-center shrink-0 text-sm font-semibold",
+      state === "active" && "bg-primary-500 text-white border-primary-500",
+      state === "complete" && "bg-primary-500 text-white border-primary-500",
+      state === "upcoming" && "bg-gray-300 text-white border-gray-300"
+    )}
+  >
+    {state === "complete" ? <Check className="size-3.5" /> : n}
+  </div>
+)
+
+const StepPill = ({
+  n,
+  label,
+  current,
+}: {
+  n: number
+  label: string
+  current: StepId
+}) => {
+  const state: "active" | "complete" | "upcoming" =
+    current === n ? "active" : current > n ? "complete" : "upcoming"
+  return (
+    <div className="flex gap-x-3 items-center">
+      <StepDot n={n} state={state} />
+      <span
+        className={cn(
+          "text-sm shrink-0 whitespace-nowrap leading-none font-semibold",
+          state === "upcoming" ? "text-gray-300" : "text-dark-blue-400"
+        )}
+      >
+        {label}
+      </span>
+    </div>
+  )
+}
+
+// ── Top bar (mirrors checkout header) ──────────────────────────────────────
+const TopBar = ({ current, onLogoClick }: { current: StepId; onLogoClick: () => void }) => (
+  <div className="bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
+    <div className="max-w-[1140px] h-[64px] mx-auto px-6 flex items-center justify-between">
+      <div className="flex items-center gap-x-6">
+        <button onClick={onLogoClick} className="focus-visible:outline-none"><Logo3 className="w-[128px] h-[18.81px] shrink-0" /></button>
+        <span className="inline-block h-[18px] w-px shrink-0 bg-gray-200" />
+        <div className="inline-flex items-center gap-x-2">
+          <Lock className="size-[18px] text-gray-500" />
+          <span className="text-base font-semibold leading-none text-gray-500">
+            Add Funds
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-x-3">
+        {STEPS.map((s, i) => (
+          <React.Fragment key={s.id}>
+            <StepPill n={s.id} label={s.label} current={current} />
+            {i < STEPS.length - 1 && (
+              <span className="border-2 border-gray-300 border-dashed w-[35px] shrink-0" />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  </div>
+)
+
+// ── Step 1: Amount ─────────────────────────────────────────────────────────
+const AmountStep = ({
+  amount,
+  setAmount,
+}: {
+  amount: string
+  setAmount: (v: string) => void
+}) => {
+  const numeric = Number(amount)
+  const selected = QUICK_AMOUNTS.find((a) => a === numeric)
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
+      <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">
+        How much would you like to add?
+      </h2>
+      <p className="mt-2 text-sm font-light text-gray-500 leading-none">
+        Funds are added to your USD balance and available immediately.
+      </p>
+
+      <div className="mt-6 grid grid-cols-3 gap-3">
+        {QUICK_AMOUNTS.map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => setAmount(String(a))}
+            className={cn(
+              "h-14 rounded-lg border text-base font-semibold transition-colors",
+              selected === a
+                ? "border-primary-500 bg-primary-50 text-primary-600 ring-1 ring-primary-500"
+                : "border-gray-200 text-dark-blue-400 hover:border-gray-300 bg-white"
+            )}
+          >
+            ${a.toLocaleString()}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-6">
+        <label className="text-sm font-medium text-dark-blue-400 block mb-1.5">
+          Or enter a custom amount
+        </label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">
+            $
+          </span>
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={1}
+            step={1}
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="pl-7"
+          />
+        </div>
+        <p className="mt-2 text-xs text-gray-500 font-light">
+          Minimum $10.00 · Maximum $50,000.00 per transaction
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Step 2: Payment method ─────────────────────────────────────────────────
+const PaymentStep = ({
+  cardId,
+  setCardId,
+}: {
+  cardId: string | null
+  setCardId: (id: string | null) => void
+}) => (
+  <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
+    <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">
+      Choose a payment method
+    </h2>
+    <p className="mt-2 text-sm font-light text-gray-500 leading-none">
+      Your saved cards are encrypted and stored by Stripe.
+    </p>
+
+    <div className="mt-6 space-y-3">
+      {SAVED_CARDS.map((c) => {
+        const active = cardId === c.id
+        return (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => setCardId(c.id)}
+            className={cn(
+              "w-full flex items-center gap-x-4 p-4 rounded-lg border text-left transition-colors",
+              active
+                ? "border-primary-500 bg-primary-50 ring-1 ring-primary-500"
+                : "border-gray-200 hover:border-gray-300 bg-white"
+            )}
+          >
+            <div className="h-8 w-12 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600 shrink-0">
+              {c.brand.slice(0, 4).toUpperCase()}
+            </div>
+            <div className="flex-auto">
+              <div className="text-sm font-semibold text-dark-blue-400 leading-none">
+                {c.brand} ···· {c.last4}
+              </div>
+              <div className="mt-1 text-xs font-light text-gray-500 leading-none">
+                Expires {c.expiry}
+              </div>
+            </div>
+            <div
+              className={cn(
+                "size-5 rounded-full border-2 flex items-center justify-center shrink-0",
+                active
+                  ? "border-primary-500 bg-primary-500"
+                  : "border-gray-300 bg-white"
+              )}
+            >
+              {active && <Check className="size-3 text-white" />}
+            </div>
+          </button>
+        )
+      })}
+
+      <button
+        type="button"
+        className="w-full flex items-center gap-x-2 p-4 rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors text-sm font-medium"
+      >
+        <Plus className="size-4" /> Add a new payment method
+      </button>
+    </div>
+  </div>
+)
+
+// ── Step 3: Confirm ────────────────────────────────────────────────────────
+const ConfirmStep = ({
+  amount,
+  card,
+}: {
+  amount: string
+  card: SavedCard | null
+}) => {
+  const subtotal = Number(amount) || 0
+  const fee = Math.round(subtotal * 0.029 * 100) / 100 + 0.3
+  const total = Math.round((subtotal + fee) * 100) / 100
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
+      <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">
+        Review and confirm
+      </h2>
+      <p className="mt-2 text-sm font-light text-gray-500 leading-none">
+        You'll be charged once and funds will appear in your balance instantly.
+      </p>
+
+      <dl className="mt-6 divide-y divide-gray-200 border border-gray-200 rounded-lg">
+        <div className="flex items-center justify-between px-5 py-4">
+          <dt className="text-sm font-medium text-gray-500">Amount</dt>
+          <dd className="text-sm font-semibold text-dark-blue-400">
+            ${subtotal.toFixed(2)}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between px-5 py-4">
+          <dt className="text-sm font-medium text-gray-500">
+            Processing fee (2.9% + $0.30)
+          </dt>
+          <dd className="text-sm font-semibold text-dark-blue-400">
+            ${fee.toFixed(2)}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between px-5 py-4 bg-gray-50 rounded-b-lg">
+          <dt className="text-base font-bold text-dark-blue-400">Total</dt>
+          <dd className="text-base font-bold text-dark-blue-400">
+            ${total.toFixed(2)}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-6">
+        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Paying with
+        </div>
+        <div className="mt-2 text-sm font-semibold text-dark-blue-400">
+          {card ? `${card.brand} ···· ${card.last4}` : "No card selected"}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────
+export default function AddFundsPage() {
+  const router = useRouter()
+  const [step, setStep] = React.useState<StepId>(1)
+  const [amount, setAmount] = React.useState<string>("")
+  const [cardId, setCardId] = React.useState<string | null>(null)
+  const [submitting, setSubmitting] = React.useState(false)
+  const [done, setDone] = React.useState(false)
+
+  const card = SAVED_CARDS.find((c) => c.id === cardId) ?? null
+  const numericAmount = Number(amount)
+  const canContinueFromAmount = numericAmount >= 10 && numericAmount <= 50000
+  const canContinueFromPayment = cardId !== null
+
+  const next = () => setStep((s) => (s < 3 ? ((s + 1) as StepId) : s))
+  const back = () => setStep((s) => (s > 1 ? ((s - 1) as StepId) : s))
+
+  const submit = async () => {
+    setSubmitting(true)
+    // Placeholder — wire to billing / payments service when endpoint lands.
+    await new Promise((r) => setTimeout(r, 900))
+    setSubmitting(false)
+    setDone(true)
+  }
+
+  if (done) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TopBar current={3} onLogoClick={() => router.push("/")} />
+        <div className="px-6 py-[80px]">
+          <div className="max-w-[560px] mx-auto bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-10 text-center">
+            <div className="mx-auto size-14 rounded-full bg-green-100 flex items-center justify-center">
+              <Check className="size-7 text-green-600" />
+            </div>
+            <h1 className="mt-5 text-2xl font-bold text-dark-blue-400 leading-none">
+              Funds added
+            </h1>
+            <p className="mt-3 text-sm font-light text-gray-500">
+              ${Number(amount).toFixed(2)} has been added to your balance. A
+              receipt has been emailed to you.
+            </p>
+            <div className="mt-8 flex items-center justify-center gap-x-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => router.push("/")}
+              >
+                Back to home
+              </Button>
+              <Button
+                onClick={() => {
+                  setDone(false)
+                  setStep(1)
+                  setAmount("")
+                  setCardId(null)
+                }}
+              >
+                Add more funds
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <TopBar current={step} onLogoClick={() => router.push("/")} />
+
+      <div className="px-6 py-[50px]">
+        <div className="max-w-[720px] mx-auto">
+          <button
+            onClick={() => (step === 1 ? router.back() : back())}
+            className="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-700 transition-colors duration-300 mb-6"
+          >
+            <ArrowLeft className="size-4" />{" "}
+            {step === 1 ? "Back" : "Previous step"}
+          </button>
+
+          <h1 className="text-2xl leading-[.9] font-bold text-dark-blue-400">
+            Add funds to your balance
+          </h1>
+          <p className="mt-2 text-base font-light text-dark-blue-400 leading-none">
+            Step {step} of {STEPS.length} ·{" "}
+            <span className="font-normal">{STEPS[step - 1].label}</span>
+          </p>
+
+          <div className="mt-6">
+            {step === 1 && <AmountStep amount={amount} setAmount={setAmount} />}
+            {step === 2 && (
+              <PaymentStep cardId={cardId} setCardId={setCardId} />
+            )}
+            {step === 3 && <ConfirmStep amount={amount} card={card} />}
+          </div>
+
+          <div className="mt-6 flex items-center justify-end gap-x-3">
+            {step > 1 && (
+              <Button variant="outlined" visual="gray" onClick={back}>
+                Back
+              </Button>
+            )}
+            {step < 3 && (
+              <Button
+                onClick={next}
+                disabled={
+                  (step === 1 && !canContinueFromAmount) ||
+                  (step === 2 && !canContinueFromPayment)
+                }
+              >
+                Continue
+              </Button>
+            )}
+            {step === 3 && (
+              <Button onClick={submit} disabled={submitting}>
+                {submitting
+                  ? "Processing…"
+                  : `Pay $${Number(amount).toFixed(2)}`}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

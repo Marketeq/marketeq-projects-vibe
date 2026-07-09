@@ -1,11 +1,18 @@
 ﻿import type { APIRequestContext } from "@playwright/test"
 import { expect, test } from "@playwright/test"
-import path from "path"
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"
-const USER_URL = process.env.NEXT_PUBLIC_USER_URL ?? "http://localhost:3003"
+const USER_URL = process.env.NEXT_PUBLIC_USER_URL ?? "http://localhost:4000"
 const DASHBOARD_HOLD_MS = Number(process.env.DASHBOARD_HOLD_MS ?? "0")
+const AVATAR_FILE = {
+  name: "avatar.png",
+  mimeType: "image/png",
+  buffer: Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+    "base64"
+  ),
+}
 
 function isPlaceholderAvatar(src: string | null) {
   if (!src) return true
@@ -91,7 +98,9 @@ test("signup with username/password via API, complete onboarding, verify avatar"
     } catch {
       body = "<no-body>"
     }
-    apiLogs.push(`RES ${res.status()} ${method} ${url} :: ${body.slice(0, 300)}`)
+    apiLogs.push(
+      `RES ${res.status()} ${method} ${url} :: ${body.slice(0, 300)}`
+    )
   }
   const requestLogger = (req: any) => {
     const url = req.url()
@@ -118,12 +127,10 @@ test("signup with username/password via API, complete onboarding, verify avatar"
 
   await expect(page.getByText("Introduce yourself!")).toBeVisible()
 
-  const avatarPath = path.resolve(__dirname, "../../fixtures/avatar.jpg")
   const uploadButton = page.getByRole("button", { name: /upload picture/i })
   await expect(uploadButton).toBeVisible()
   await uploadButton.click({ force: true })
-  await page.waitForSelector('input[type="file"]', { timeout: 10000 })
-  await page.setInputFiles('input[type="file"]', avatarPath)
+  await page.locator('input[type="file"]').setInputFiles(AVATAR_FILE)
 
   const saveImageBtn = page.getByRole("button", { name: /^save$/i })
   if (await saveImageBtn.isVisible().catch(() => false)) {
@@ -134,38 +141,31 @@ test("signup with username/password via API, complete onboarding, verify avatar"
 
   await page.fill("#first-name", "Reka")
   await page.fill("#last-name", "N")
-  await page.getByRole("button", { name: /^continue$/i }).last().click()
-
-  await expect(page.getByText(/create your username/i)).toBeVisible()
-  await page.fill("input#username", `reka_${ts}`)
-
-  const continueAtUsername = page
+  await page
     .getByRole("button", { name: /^continue$/i })
     .last()
-  await page.waitForTimeout(1200)
+    .click()
 
-  if (await continueAtUsername.isEnabled().catch(() => false)) {
-    await continueAtUsername.click({ force: true })
-  } else {
-    const skipAtUsername = page.getByRole("button", { name: /^skip$/i }).last()
-    await expect(skipAtUsername).toBeVisible({ timeout: 10000 })
-    await skipAtUsername.click({ force: true })
+  await expect(page.getByText(/confirm your location/i)).toBeVisible()
+  const homeCountryButton = page.getByRole("button", {
+    name: /yes, this is my home country/i,
+  })
+  if (await homeCountryButton.isVisible().catch(() => false)) {
+    await homeCountryButton.click()
   }
-
-  await expect(page.getByText(/share your location/i)).toBeVisible()
-  await page.fill('input[placeholder="Enter your city or town"]', "New York")
   await page.fill('input[placeholder="Enter your languages"]', "English")
+  await page.locator('input[placeholder="Enter your languages"]').press("Enter")
   await clickContinue()
 
   await expect(page.getByText(/showcase your talent/i)).toBeVisible()
   await page.fill("#recent-job-title", "QA Engineer")
   await page.fill("#industries", "Software")
-  await page
-    .getByPlaceholder("Enter job titles related to your project")
-    .fill("React")
-  await page
-    .getByPlaceholder("Enter job titles related to your project")
-    .press("Enter")
+  await page.getByPlaceholder("e.g., react.js, css").fill("React")
+  await page.getByPlaceholder("e.g., react.js, css").press("Enter")
+  await clickContinue()
+
+  await expect(page.getByText(/create your username/i)).toBeVisible()
+  await page.fill("input#username", `reka_${ts}`)
   await clickContinue()
 
   await expect(page.getByText(/set your preferences/i)).toBeVisible()
@@ -203,18 +203,26 @@ test("signup with username/password via API, complete onboarding, verify avatar"
   await expect(page).toHaveURL(/\/talent-dashboard/, { timeout: 30000 })
 
   const emailButton = page.getByRole("button", { name: new RegExp(email, "i") })
-  const logo = page.locator("a[href='/marketplace']").first()
-  const topNavFallback = logo
-    .locator("xpath=ancestor::*[self::div or self::header][1]")
-    .locator("button")
+  const topNavFallback = page
+    .locator(
+      'button[class*="lg:inline-flex"][class*="items-center"][class*="gap-x-2"]'
+    )
     .last()
 
   let avatarButton = topNavFallback
-  if (await emailButton.first().isVisible().catch(() => false)) {
+  if (
+    await emailButton
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
     avatarButton = emailButton.first()
   }
 
-  await expect(avatarButton, "Top-right avatar button is not visible").toBeVisible({
+  await expect(
+    avatarButton,
+    "Top-right avatar button is not visible"
+  ).toBeVisible({
     timeout: 15000,
   })
 

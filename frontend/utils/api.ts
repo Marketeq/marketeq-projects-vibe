@@ -1,8 +1,9 @@
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
+
 export const fetchUserSkills = async (userId: string) => {
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}/talent/skills/${userId}`
-    )
+    const backendBase = getPublicBackendUrl()
+    const response = await fetch(`${backendBase}/talent/skills/${userId}`)
 
     if (!response.ok) {
       throw new Error(`Error fetching skills: ${response.statusText}`)

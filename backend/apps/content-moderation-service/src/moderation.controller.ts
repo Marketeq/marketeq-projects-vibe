@@ -1,66 +1,25 @@
-import {
-  Controller, Post, Get, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus,
-} from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
-import { ModerationService } from './moderation.service';
-import { ModerateContentDto, ModerateMediaDto, ReviewContentDto, LogsQueryDto, AddKeywordDto } from './dto/moderation.dto';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { ModerationLogService } from './moderation-log.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AdminGuard } from './guards/admin.guard';
 
-@Controller('moderate')
-@UseGuards(JwtAuthGuard)
+@Controller('api/moderate')
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class ModerationController {
-  constructor(private readonly svc: ModerationService) {}
-
-  @Post('content')
-  moderateContent(@Body() dto: ModerateContentDto) {
-    return this.svc.moderateContent(dto);
-  }
-
-  @Post('media')
-  moderateMedia(@Body() dto: ModerateMediaDto) {
-    return this.svc.moderateMedia(dto);
-  }
-
-  @Post('content/:id/approve')
-  approve(@Param('id') id: string, @Body() dto: ReviewContentDto) {
-    return this.svc.approve(id, dto);
-  }
-
-  @Post('content/:id/reject')
-  reject(@Param('id') id: string, @Body() dto: ReviewContentDto) {
-    return this.svc.reject(id, dto);
-  }
+  constructor(private readonly moderationLogService: ModerationLogService) {}
 
   @Get('logs')
-  getLogs(@Query() query: LogsQueryDto) {
-    return this.svc.getLogs(query);
-  }
-
-  @Post('keywords')
-  @HttpCode(HttpStatus.CREATED)
-  addKeyword(@Body() dto: AddKeywordDto) {
-    return this.svc.addKeyword(dto);
-  }
-
-  @Get('keywords')
-  getKeywords() {
-    return this.svc.getKeywords();
-  }
-
-  @Delete('keywords/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  removeKeyword(@Param('id') id: string) {
-    return this.svc.removeKeyword(id);
-  }
-
-  // RabbitMQ
-  @MessagePattern('moderation.content')
-  handleContent(@Payload() dto: ModerateContentDto) {
-    return this.svc.moderateContent(dto);
-  }
-
-  @MessagePattern('moderation.media')
-  handleMedia(@Payload() dto: ModerateMediaDto) {
-    return this.svc.moderateMedia(dto);
+  async getLogs(
+    @Query('status') status: string,
+    @Query('content_type') contentType: string,
+    @Query('page') page: number = 1,
+    @Query('per_page') perPage: number = 10,
+  ) {
+    return await this.moderationLogService.getLogs(
+      status,
+      contentType,
+      page,
+      perPage,
+    );
   }
 }

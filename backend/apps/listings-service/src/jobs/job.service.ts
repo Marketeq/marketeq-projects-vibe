@@ -1,15 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ujob } from './entities/job.entity';
+import { Job } from './entities/job.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 
 @Injectable()
-export class ujobsService {
+export class JobsService {
   constructor(
-    @InjectRepository(ujob)
-    private readonly repo: Repository<ujob>,
+    @InjectRepository(Job)
+    private readonly repo: Repository<Job>,
   ) {}
 
   findAll(status = ListingStatus.Published) {
@@ -18,16 +18,16 @@ export class ujobsService {
 
   async findOne(id: string) {
     const item = await this.repo.findOne({ where: { id } });
-    if (!item) throw new NotFoundException('ujob not found');
+    if (!item) throw new NotFoundException('Job not found');
     return item;
   }
 
-  async create(dto: Partial<ujob>, userId: string) {
-    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title) });
+  async create(dto: Partial<Job>, userId: string) {
+    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title!) });
     return this.repo.save(item);
   }
 
-  async update(id: string, dto: Partial<ujob>) {
+  async update(id: string, dto: Partial<Job>) {
     await this.repo.update(id, dto);
     return this.findOne(id);
   }

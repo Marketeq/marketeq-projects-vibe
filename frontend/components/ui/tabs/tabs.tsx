@@ -40,6 +40,7 @@ const Tabs = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root> & {
     unanimated?: boolean
+    layoutId?: string
   }
 >(
   (
@@ -48,6 +49,7 @@ const Tabs = React.forwardRef<
       onValueChange: onValueChangeProp,
       defaultValue,
       unanimated = false,
+      layoutId,
 
       ...props
     },
@@ -58,7 +60,8 @@ const Tabs = React.forwardRef<
       onChange: onValueChangeProp,
       defaultValue,
     })
-    const id = React.useId()
+    const generatedId = React.useId()
+    const id = layoutId ?? generatedId
     const ctxValue = React.useMemo(
       () => ({ value, onValueChange, id, unanimated }),
       [value, onValueChange, id, unanimated]
@@ -66,7 +69,12 @@ const Tabs = React.forwardRef<
 
     return (
       <TabsProvider value={ctxValue}>
-        <TabsPrimitive.Root ref={ref} {...props} />
+        <TabsPrimitive.Root
+          ref={ref}
+          value={value}
+          onValueChange={onValueChange}
+          {...props}
+        />
       </TabsProvider>
     )
   }
@@ -98,7 +106,7 @@ const tabsTriggerVariants = cva("group relative", {
   variants: {
     variant: {
       default:
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap px-1 pb-2 pt-px text-sm font-semibold text-gray-500 transition-colors  data-[state=active]:text-primary-500 focus-visible:outline-none disabled:opacity-50 disabled:data-[state=active]:text-gray-500",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap px-1 pb-2 pt-px text-sm font-semibold text-gray-500 transition-colors data-[state=active]:text-primary-500 focus-visible:outline-none disabled:opacity-50 disabled:data-[state=active]:text-gray-500",
       unstyled: "",
     },
   },
@@ -222,9 +230,7 @@ const TabsContent = React.forwardRef<
             {...props}
           >
             <motion.div
-              initial={
-                ctx.unanimated ? false : mounted ? "enter" : false
-              }
+              initial={ctx.unanimated ? false : mounted ? "enter" : false}
               animate={ctx.unanimated ? false : "ideal"}
               variants={contentVariants}
               transition={contentTransition}

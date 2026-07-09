@@ -1,12 +1,12 @@
 import React from "react"
 import { cn } from "@/utils/functions"
 import { mergeRefs } from "@/utils/react-utils"
-import { motion } from "framer-motion"
 import { useToggle } from "react-use"
 import { ShowMoreLessRoot, useShowMoreLessRootContext } from "./show-more-less"
 
 const rmWordsFromEndWithFullStop = (words: string[]) => {
   const lastWord = words[words.length - 1]
+  if (!lastWord) return words
   if (lastWord.endsWith(".") || lastWord.endsWith("?")) {
     return rmWordsFromEndWithFullStop(words.slice(0, -1))
   }
@@ -34,13 +34,13 @@ export const ReadMoreLess = ({
   ).join(" ")
   const [readMore, toggle] = useToggle(false)
   return (
-    <motion.div layout transition={{ ease: "easeInOut", duration: 0.3 }}>
+    <>
       {children?.({
         readMore,
         toggle,
         text: readMore ? text : truncatedTextWithEllipses,
       })}
-    </motion.div>
+    </>
   )
 }
 

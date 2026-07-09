@@ -1,0 +1,497 @@
+{
+  "info": {
+    "_postman_id": "ps07-pricing-service-collection",
+    "name": "Pricing Service Collection",
+    "description": "PS-07 — QA & Test Data. Run the seed script before executing any request. Flush Redis before stale/no_data tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3016",
+      "type": "string"
+    },
+    {
+      "key": "internalJwt",
+      "value": "",
+      "description": "Valid JWT from auth-service. Obtain from auth-service login endpoint.",
+      "type": "string"
+    },
+    {
+      "key": "freshRole",
+      "value": "UX Designer",
+      "description": "Role title with a fresh seed record.",
+      "type": "string"
+    },
+    {
+      "key": "staleRole",
+      "value": "DevOps Engineer",
+      "description": "Role title with a stale seed record (lastUpdated 48h ago).",
+      "type": "string"
+    },
+    {
+      "key": "noDataRole",
+      "value": "Quantum Architect",
+      "description": "Role title with no seed record.",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Rates",
+      "item": [
+        {
+          "name": "TC-RATE-01 — GET Rates — fresh data (all four params)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{freshRole}}&location=United+States&experience=mid&schedule=full_time",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" },
+                { "key": "location", "value": "United+States" },
+                { "key": "experience", "value": "mid" },
+                { "key": "schedule", "value": "full_time" }
+              ]
+            },
+            "description": "TC-RATE-01. Expects 200. hourlyMedianUsdCents:10000, hourlyLowUsdCents:7500, hourlyHighUsdCents:13500, is_stale:false, no_data:false, sampleSize:142."
+          }
+        },
+        {
+          "name": "TC-RATE-02 — GET Rates — cache hit on second request",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{freshRole}}&location=United+States&experience=mid&schedule=full_time",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" },
+                { "key": "location", "value": "United+States" },
+                { "key": "experience", "value": "mid" },
+                { "key": "schedule", "value": "full_time" }
+              ]
+            },
+            "description": "TC-RATE-02. Run immediately after TC-RATE-01. Expects 200. cache_hit:true. Values identical to first response."
+          }
+        },
+        {
+          "name": "TC-RATE-03 — GET Rates — no location filter",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{freshRole}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" }
+              ]
+            },
+            "description": "TC-RATE-03. Expects 200. Returns global average or nearest match. no_data:false."
+          }
+        },
+        {
+          "name": "TC-RATE-07 — GET Rates — stale record",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{staleRole}}&location=Southeast+Asia&experience=mid&schedule=full_time",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{staleRole}}" },
+                { "key": "location", "value": "Southeast+Asia" },
+                { "key": "experience", "value": "mid" },
+                { "key": "schedule", "value": "full_time" }
+              ]
+            },
+            "description": "TC-RATE-07. Flush Redis first. Expects 200. is_stale:true. stale_since populated. Rate values present. no_data:false."
+          }
+        },
+        {
+          "name": "TC-RATE-06 — GET Rates — no data (unknown combination)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{noDataRole}}&location=Antarctica",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{noDataRole}}" },
+                { "key": "location", "value": "Antarctica" }
+              ]
+            },
+            "description": "TC-RATE-06. Expects 200. no_data:true. All rate fields null. is_stale:false."
+          }
+        },
+        {
+          "name": "TC-RATE-08 — GET Rates — missing role param [expect 422]",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"]
+            },
+            "description": "TC-RATE-08. Expects 422. PS_VALIDATION_ERROR. role is required."
+          }
+        },
+        {
+          "name": "TC-RATE-09 — GET Rates — invalid experience value [expect 422]",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{freshRole}}&experience=expert",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" },
+                { "key": "experience", "value": "expert" }
+              ]
+            },
+            "description": "TC-RATE-09. Expects 422. PS_VALIDATION_ERROR. experience must be junior, mid, or senior."
+          }
+        },
+        {
+          "name": "TC-RATE-10 — GET Rates — invalid schedule value [expect 422]",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{freshRole}}&schedule=occasional",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" },
+                { "key": "schedule", "value": "occasional" }
+              ]
+            },
+            "description": "TC-RATE-10. Expects 422. PS_VALIDATION_ERROR. schedule must be full_time, part_time, or custom."
+          }
+        },
+        {
+          "name": "TC-RATE-11 — GET Rates — unauthenticated [expect 401]",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates?role={{freshRole}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" }
+              ]
+            },
+            "description": "TC-RATE-11. No JWT header. Expects 401. PS_UNAUTHORIZED."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Price Guide",
+      "item": [
+        {
+          "name": "TC-PG-01 — GET Price Guide — all three tiers present",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates/price-guide?role={{freshRole}}&location=United+States&experience=mid",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates", "price-guide"],
+              "query": [
+                { "key": "role", "value": "{{freshRole}}" },
+                { "key": "location", "value": "United+States" },
+                { "key": "experience", "value": "mid" }
+              ]
+            },
+            "description": "TC-PG-01. Expects 200. low:7500. median:10000. high:13500. no_data:false."
+          }
+        },
+        {
+          "name": "TC-PG-03 — GET Price Guide — no data",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates/price-guide?role={{noDataRole}}&location=Antarctica",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates", "price-guide"],
+              "query": [
+                { "key": "role", "value": "{{noDataRole}}" },
+                { "key": "location", "value": "Antarctica" }
+              ]
+            },
+            "description": "TC-PG-03. Expects 200. low:null. median:null. high:null. no_data:true."
+          }
+        },
+        {
+          "name": "TC-PG-04 — GET Price Guide — stale",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates/price-guide?role={{staleRole}}&location=Southeast+Asia&experience=mid",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates", "price-guide"],
+              "query": [
+                { "key": "role", "value": "{{staleRole}}" },
+                { "key": "location", "value": "Southeast+Asia" },
+                { "key": "experience", "value": "mid" }
+              ]
+            },
+            "description": "TC-PG-04. Flush Redis first. Expects 200. is_stale:true. Values present (not null)."
+          }
+        },
+        {
+          "name": "TC-PG-06 — GET Price Guide — missing role param [expect 422]",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rates/price-guide",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "rates", "price-guide"]
+            },
+            "description": "TC-PG-06. Expects 422. PS_VALIDATION_ERROR."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Budget",
+      "item": [
+        {
+          "name": "TC-BUD-01 — POST Calculate — single role",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    {\n      \"roleTitle\": \"UX Designer\",\n      \"location\": \"United States\",\n      \"experience\": \"mid\",\n      \"workSchedule\": \"full_time\",\n      \"estimatedHours\": 160\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/budget/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "budget", "calculate"]
+            },
+            "description": "TC-BUD-01. Expects 200. breakdown[0].subtotalUsdCents:1600000. totalUsdCents:1600000. has_missing_data:false."
+          }
+        },
+        {
+          "name": "TC-BUD-03 — POST Calculate — multiple roles",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    {\n      \"roleTitle\": \"UX Designer\",\n      \"location\": \"United States\",\n      \"experience\": \"mid\",\n      \"workSchedule\": \"full_time\",\n      \"estimatedHours\": 160\n    },\n    {\n      \"roleTitle\": \"Backend Developer\",\n      \"location\": \"Eastern Europe\",\n      \"experience\": \"senior\",\n      \"workSchedule\": \"full_time\",\n      \"estimatedHours\": 320\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/budget/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "budget", "calculate"]
+            },
+            "description": "TC-BUD-03. Expects 200. totalUsdCents:3840000 (1600000 + 2240000). breakdown has 2 entries."
+          }
+        },
+        {
+          "name": "TC-BUD-04 — POST Calculate — partial result (one role no data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    {\n      \"roleTitle\": \"UX Designer\",\n      \"location\": \"United States\",\n      \"experience\": \"mid\",\n      \"workSchedule\": \"full_time\",\n      \"estimatedHours\": 160\n    },\n    {\n      \"roleTitle\": \"Quantum Architect\",\n      \"location\": \"Antarctica\",\n      \"experience\": \"mid\",\n      \"workSchedule\": \"full_time\",\n      \"estimatedHours\": 80\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/budget/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "budget", "calculate"]
+            },
+            "description": "TC-BUD-04. Expects 200. has_missing_data:true. Quantum Architect subtotalUsdCents:null. totalUsdCents = UX Designer subtotal only."
+          }
+        },
+        {
+          "name": "TC-BUD-07 — POST Calculate — empty roles array [expect 422]",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/budget/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "budget", "calculate"]
+            },
+            "description": "TC-BUD-07. Expects 422. PS_VALIDATION_ERROR. roles must not be empty."
+          }
+        },
+        {
+          "name": "TC-BUD-08 — POST Calculate — estimatedHours below minimum [expect 422]",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    {\n      \"roleTitle\": \"UX Designer\",\n      \"location\": \"United States\",\n      \"experience\": \"mid\",\n      \"workSchedule\": \"full_time\",\n      \"estimatedHours\": 0\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/budget/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "budget", "calculate"]
+            },
+            "description": "TC-BUD-08. Expects 422. PS_VALIDATION_ERROR. estimatedHours Min(1)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Currency",
+      "item": [
+        {
+          "name": "TC-FX-01 — GET Convert — USD to EUR",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/currency/convert?amount=1000&from=USD&to=EUR",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "currency", "convert"],
+              "query": [
+                { "key": "amount", "value": "1000" },
+                { "key": "from", "value": "USD" },
+                { "key": "to", "value": "EUR" }
+              ]
+            },
+            "description": "TC-FX-01. Expects 200. converted = 1000 * cached EUR rate. is_stale:false. from:USD. to:EUR."
+          }
+        },
+        {
+          "name": "TC-FX-02 — GET Convert — same currency (USD to USD)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/currency/convert?amount=500&from=USD&to=USD",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "currency", "convert"],
+              "query": [
+                { "key": "amount", "value": "500" },
+                { "key": "from", "value": "USD" },
+                { "key": "to", "value": "USD" }
+              ]
+            },
+            "description": "TC-FX-02. Expects 200. converted:500. rate:1. is_stale:false."
+          }
+        },
+        {
+          "name": "TC-FX-08 — GET Convert — invalid from code [expect 422]",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/currency/convert?amount=100&from=USDT&to=EUR",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "currency", "convert"],
+              "query": [
+                { "key": "amount", "value": "100" },
+                { "key": "from", "value": "USDT" },
+                { "key": "to", "value": "EUR" }
+              ]
+            },
+            "description": "TC-FX-08. Expects 422. PS_VALIDATION_ERROR. from Length(3, 3)."
+          }
+        },
+        {
+          "name": "TC-RATES-01 — GET All Rates",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{internalJwt}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/currency/rates",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "currency", "rates"]
+            },
+            "description": "TC-RATES-01. Expects 200. base:USD. rates object contains at least EUR, GBP, CAD. fetched_at is ISO timestamp."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Expects 200. { status: 'ok' }. No JWT required."
+          }
+        }
+      ]
+    }
+  ]
+}

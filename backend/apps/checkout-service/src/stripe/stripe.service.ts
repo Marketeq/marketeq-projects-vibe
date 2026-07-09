@@ -6,8 +6,8 @@ export class StripeService {
   private readonly stripe: Stripe;
 
   constructor() {
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-06-20',
+    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: '2024-06-20' as any,
     });
   }
 
@@ -78,11 +78,80 @@ export class StripeService {
     return this.stripe.webhooks.constructEvent(
       payload,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET,
+      process.env.STRIPE_WEBHOOK_SECRET!,
     );
   }
 
   async cancelSubscription(subscriptionId: string) {
     return this.stripe.subscriptions.cancel(subscriptionId);
+  }
+
+  async createFinancialConnectionsSession(params: {
+    customerId: string;
+    permissions: Array<'balances' | 'ownership' | 'payment_method' | 'transactions'>;
+  }) {
+    return this.stripe.financialConnections.sessions.create({
+      account_holder: { type: 'customer', customer: params.customerId },
+      permissions: params.permissions,
+    });
+  }
+
+  async createPaymentMethodFromFinancialAccount(financialAccountId: string) {
+    return this.stripe.paymentMethods.create({
+      type: 'us_bank_account',
+      us_bank_account: { financial_connections_account: financialAccountId },
+    });
+  }
+
+  async detachPaymentMethod(paymentMethodId: string) {
+    return this.stripe.paymentMethods.detach(paymentMethodId);
+  }
+
+  async createPaymentIntent(params: {
+    amount: number;
+    currency?: string;
+    customerId?: string;
+    paymentMethodTypes?: string[];
+    paymentMethodOptions?: Stripe.PaymentIntentCreateParams.PaymentMethodOptions;
+    paymentMethodId?: string;
+    metadata?: Record<string, string>;
+    confirm?: boolean;
+    setupFutureUsage?: 'off_session' | 'on_session';
+  }) {
+    return this.stripe.paymentIntents.create({
+      amount: Math.round(params.amount * 100),
+      currency: params.currency || 'usd',
+      customer: params.customerId,
+      payment_method_types: params.paymentMethodTypes || ['card'],
+      payment_method_options: params.paymentMethodOptions,
+      payment_method: params.paymentMethodId,
+      confirm: params.confirm || false,
+      setup_future_usage: params.setupFutureUsage,
+      metadata: params.metadata || {},
+    });
+  }
+
+  async retrievePaymentIntent(paymentIntentId: string) {
+    return this.stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['payment_method'],
+    });
+  }
+
+  async retrievePaymentMethod(paymentMethodId: string) {
+    return this.stripe.paymentMethods.retrieve(paymentMethodId);
+  }
+
+  async createCustomer(params: {
+    userId: string;
+    email?: string;
+    name?: string;
+  }) {
+    return this.stripe.customers.create({
+      email: params.email,
+      name: params.name,
+      metadata: {
+        userId: params.userId,
+      },
+    });
   }
 }

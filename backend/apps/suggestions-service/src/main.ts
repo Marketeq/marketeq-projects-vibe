@@ -1,24 +1,36 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { SuggestionsServiceModule } from './suggestions-service.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(SuggestionsServiceModule);
+  const logger = new Logger('SuggestionsService');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'suggestions_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (rabbitmqUrl) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'suggestions_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+  } else {
+    logger.warn('RABBITMQ_URI not set; RMQ consumer disabled');
+  }
 
-  await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3020);
-  console.log(`suggestions-service running on port ${process.env.PORT || 3020}`);
+  const port = process.env.PORT || 3021;
+  await app.listen(port);
+  logger.log(`suggestions-service running on port ${port}`);
+
+  if (rabbitmqUrl) {
+    app.startAllMicroservices().catch((err) => {
+      logger.error('Failed to start RMQ microservice', err);
+    });
+  }
 }
 bootstrap();

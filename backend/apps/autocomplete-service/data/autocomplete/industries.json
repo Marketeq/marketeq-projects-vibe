@@ -1,0 +1,992 @@
+[
+    {
+        "label": "3D Printing"
+    },
+    {
+        "label": "Accounting"
+    },
+    {
+        "label": "Addiction Treatment"
+    },
+    {
+        "label": "AdTech"
+    },
+    {
+        "label": "Aerospace"
+    },
+    {
+        "label": "Aerospace Engineering"
+    },
+    {
+        "label": "Agriculture"
+    },
+    {
+        "label": "AgriTech"
+    },
+    {
+        "label": "AI Research"
+    },
+    {
+        "label": "Air Transportation"
+    },
+    {
+        "label": "Alternative Dispute Resolution"
+    },
+    {
+        "label": "Alternative Energy"
+    },
+    {
+        "label": "Alternative Medicine"
+    },
+    {
+        "label": "Animal Health"
+    },
+    {
+        "label": "Animation"
+    },
+    {
+        "label": "Apparel & Fashion"
+    },
+    {
+        "label": "Aquaculture"
+    },
+    {
+        "label": "Architecture"
+    },
+    {
+        "label": "Artificial Intelligence"
+    },
+    {
+        "label": "Arts & Crafts"
+    },
+    {
+        "label": "Augmented Reality (AR)"
+    },
+    {
+        "label": "Automotive"
+    },
+    {
+        "label": "Autonomous Vehicles"
+    },
+    {
+        "label": "Aviation"
+    },
+    {
+        "label": "Banking"
+    },
+    {
+        "label": "Battery Technology"
+    },
+    {
+        "label": "Beauty & Wellness"
+    },
+    {
+        "label": "Big Data"
+    },
+    {
+        "label": "Bioinformatics"
+    },
+    {
+        "label": "Biotech"
+    },
+    {
+        "label": "Blockchain"
+    },
+    {
+        "label": "Brewing & Distilling"
+    },
+    {
+        "label": "Broadcast Media"
+    },
+    {
+        "label": "Building Materials"
+    },
+    {
+        "label": "Business Intelligence"
+    },
+    {
+        "label": "Cannabis"
+    },
+    {
+        "label": "Capital Markets"
+    },
+    {
+        "label": "Carbon Capture"
+    },
+    {
+        "label": "Chemicals"
+    },
+    {
+        "label": "Child Care"
+    },
+    {
+        "label": "Civil Engineering"
+    },
+    {
+        "label": "CleanTech"
+    },
+    {
+        "label": "Climate Tech"
+    },
+    {
+        "label": "Clinical Research"
+    },
+    {
+        "label": "Cloud Computing"
+    },
+    {
+        "label": "Cloud Infrastructure"
+    },
+    {
+        "label": "Commercial Real Estate"
+    },
+    {
+        "label": "Community Development"
+    },
+    {
+        "label": "Compliance & Regulatory"
+    },
+    {
+        "label": "Computer Graphics"
+    },
+    {
+        "label": "Computer Hardware"
+    },
+    {
+        "label": "Computer Vision"
+    },
+    {
+        "label": "Conservation"
+    },
+    {
+        "label": "Construction"
+    },
+    {
+        "label": "ConstructionTech"
+    },
+    {
+        "label": "Consulting"
+    },
+    {
+        "label": "Consumer Electronics"
+    },
+    {
+        "label": "Consumer Goods"
+    },
+    {
+        "label": "Content Creation"
+    },
+    {
+        "label": "Corporate Training"
+    },
+    {
+        "label": "Cosmetics"
+    },
+    {
+        "label": "Coworking & Shared Spaces"
+    },
+    {
+        "label": "Credit & Lending"
+    },
+    {
+        "label": "Cryptocurrency"
+    },
+    {
+        "label": "Cybersecurity"
+    },
+    {
+        "label": "Dairy"
+    },
+    {
+        "label": "Data Analytics"
+    },
+    {
+        "label": "Data Engineering"
+    },
+    {
+        "label": "Data Science"
+    },
+    {
+        "label": "Database Management Systems"
+    },
+    {
+        "label": "Defense"
+    },
+    {
+        "label": "Defense & Military"
+    },
+    {
+        "label": "Dental"
+    },
+    {
+        "label": "Design"
+    },
+    {
+        "label": "DevOps"
+    },
+    {
+        "label": "DevSecOps"
+    },
+    {
+        "label": "Digital Health"
+    },
+    {
+        "label": "Digital Marketing"
+    },
+    {
+        "label": "Digital Marketing Tech"
+    },
+    {
+        "label": "Digital Media"
+    },
+    {
+        "label": "Digital Publishing"
+    },
+    {
+        "label": "Digital Transformation"
+    },
+    {
+        "label": "Digital Twins"
+    },
+    {
+        "label": "Drone Technology"
+    },
+    {
+        "label": "E-commerce"
+    },
+    {
+        "label": "E-commerce Technology"
+    },
+    {
+        "label": "Edge Computing"
+    },
+    {
+        "label": "EdTech"
+    },
+    {
+        "label": "Education"
+    },
+    {
+        "label": "Elder Care"
+    },
+    {
+        "label": "Electric Vehicles"
+    },
+    {
+        "label": "Electrical Engineering"
+    },
+    {
+        "label": "Emergency Services"
+    },
+    {
+        "label": "Energy"
+    },
+    {
+        "label": "Energy Storage"
+    },
+    {
+        "label": "Enterprise Software"
+    },
+    {
+        "label": "Entertainment"
+    },
+    {
+        "label": "Environmental Consulting"
+    },
+    {
+        "label": "Environmental Services"
+    },
+    {
+        "label": "Event Management"
+    },
+    {
+        "label": "Extended Reality (XR)"
+    },
+    {
+        "label": "Facilities Management"
+    },
+    {
+        "label": "Fashion"
+    },
+    {
+        "label": "Fashion Tech"
+    },
+    {
+        "label": "Film Production"
+    },
+    {
+        "label": "Finance"
+    },
+    {
+        "label": "Financial Planning"
+    },
+    {
+        "label": "Financial Services"
+    },
+    {
+        "label": "FinOps"
+    },
+    {
+        "label": "FinTech"
+    },
+    {
+        "label": "Fishing"
+    },
+    {
+        "label": "Fitness & Wellness"
+    },
+    {
+        "label": "Fleet Management"
+    },
+    {
+        "label": "Food & Beverage"
+    },
+    {
+        "label": "Food Delivery"
+    },
+    {
+        "label": "FoodTech"
+    },
+    {
+        "label": "Forestry"
+    },
+    {
+        "label": "Freight & Logistics"
+    },
+    {
+        "label": "Furniture"
+    },
+    {
+        "label": "Game Development"
+    },
+    {
+        "label": "Gaming"
+    },
+    {
+        "label": "Genetics & Genomics"
+    },
+    {
+        "label": "Geospatial Tech"
+    },
+    {
+        "label": "Geothermal Energy"
+    },
+    {
+        "label": "Government"
+    },
+    {
+        "label": "GovTech"
+    },
+    {
+        "label": "Graphic Design"
+    },
+    {
+        "label": "Green Building"
+    },
+    {
+        "label": "Green Energy Tech"
+    },
+    {
+        "label": "Hardware Engineering"
+    },
+    {
+        "label": "Healthcare"
+    },
+    {
+        "label": "Healthcare IT"
+    },
+    {
+        "label": "HealthTech"
+    },
+    {
+        "label": "Heavy Equipment"
+    },
+    {
+        "label": "High Performance Computing"
+    },
+    {
+        "label": "Higher Education"
+    },
+    {
+        "label": "Home Improvement"
+    },
+    {
+        "label": "Home Services"
+    },
+    {
+        "label": "Hospital & Health Care"
+    },
+    {
+        "label": "Hospitality"
+    },
+    {
+        "label": "Hotel & Resort"
+    },
+    {
+        "label": "HR Technology"
+    },
+    {
+        "label": "Human Resources"
+    },
+    {
+        "label": "Human-Computer Interaction"
+    },
+    {
+        "label": "Humanitarian Aid"
+    },
+    {
+        "label": "HVAC"
+    },
+    {
+        "label": "Hydropower"
+    },
+    {
+        "label": "Immigration Law"
+    },
+    {
+        "label": "Impact Investing"
+    },
+    {
+        "label": "Industrial Automation"
+    },
+    {
+        "label": "Industrial Design"
+    },
+    {
+        "label": "Industrial Manufacturing"
+    },
+    {
+        "label": "Information Security"
+    },
+    {
+        "label": "Information Technology"
+    },
+    {
+        "label": "Infrastructure"
+    },
+    {
+        "label": "Insurance"
+    },
+    {
+        "label": "InsurTech"
+    },
+    {
+        "label": "Intellectual Property"
+    },
+    {
+        "label": "Interior Design"
+    },
+    {
+        "label": "International Development"
+    },
+    {
+        "label": "International Trade"
+    },
+    {
+        "label": "Internet of Things (IoT)"
+    },
+    {
+        "label": "Investment Banking"
+    },
+    {
+        "label": "Investment Management"
+    },
+    {
+        "label": "IoT Platforms"
+    },
+    {
+        "label": "IT Consulting"
+    },
+    {
+        "label": "IT Security"
+    },
+    {
+        "label": "Jewelry"
+    },
+    {
+        "label": "Journalism"
+    },
+    {
+        "label": "K-12 Education"
+    },
+    {
+        "label": "Laboratory Services"
+    },
+    {
+        "label": "Landscaping"
+    },
+    {
+        "label": "Law Enforcement"
+    },
+    {
+        "label": "Legal"
+    },
+    {
+        "label": "Legal Services"
+    },
+    {
+        "label": "LegalTech"
+    },
+    {
+        "label": "Life Sciences"
+    },
+    {
+        "label": "Livestock"
+    },
+    {
+        "label": "Logistics"
+    },
+    {
+        "label": "Logistics Tech"
+    },
+    {
+        "label": "Luxury Goods"
+    },
+    {
+        "label": "Machine Learning"
+    },
+    {
+        "label": "Machine Vision"
+    },
+    {
+        "label": "Management Consulting"
+    },
+    {
+        "label": "Manufacturing"
+    },
+    {
+        "label": "Marine"
+    },
+    {
+        "label": "Maritime"
+    },
+    {
+        "label": "Market Research"
+    },
+    {
+        "label": "Marketing & Advertising"
+    },
+    {
+        "label": "MarTech"
+    },
+    {
+        "label": "Mechanical Engineering"
+    },
+    {
+        "label": "Media"
+    },
+    {
+        "label": "Media & Entertainment"
+    },
+    {
+        "label": "Medical Devices"
+    },
+    {
+        "label": "Medical Imaging"
+    },
+    {
+        "label": "Mental Health"
+    },
+    {
+        "label": "Mergers & Acquisitions"
+    },
+    {
+        "label": "Metals & Mining"
+    },
+    {
+        "label": "Middleware Solutions"
+    },
+    {
+        "label": "Military & Defense"
+    },
+    {
+        "label": "Mining"
+    },
+    {
+        "label": "Mobile App Development"
+    },
+    {
+        "label": "Mortgage & Lending"
+    },
+    {
+        "label": "Music"
+    },
+    {
+        "label": "Music Production"
+    },
+    {
+        "label": "Nanotechnology"
+    },
+    {
+        "label": "Natural Language Processing"
+    },
+    {
+        "label": "Natural Resources"
+    },
+    {
+        "label": "Network Engineering"
+    },
+    {
+        "label": "Neurotechnology"
+    },
+    {
+        "label": "Nonprofit"
+    },
+    {
+        "label": "Nuclear Energy"
+    },
+    {
+        "label": "Nursing"
+    },
+    {
+        "label": "Nutrition & Dietetics"
+    },
+    {
+        "label": "Occupational Health & Safety"
+    },
+    {
+        "label": "Oil & Gas"
+    },
+    {
+        "label": "Online Education"
+    },
+    {
+        "label": "Online Marketplace"
+    },
+    {
+        "label": "Open Source Software"
+    },
+    {
+        "label": "Optical Technology"
+    },
+    {
+        "label": "Organic Farming"
+    },
+    {
+        "label": "Outdoor Recreation"
+    },
+    {
+        "label": "Packaging"
+    },
+    {
+        "label": "Paper & Forest Products"
+    },
+    {
+        "label": "Patent Law"
+    },
+    {
+        "label": "Payment Processing"
+    },
+    {
+        "label": "Performing Arts"
+    },
+    {
+        "label": "Personal Finance"
+    },
+    {
+        "label": "Pet Care"
+    },
+    {
+        "label": "Petrochemicals"
+    },
+    {
+        "label": "Pharmaceuticals"
+    },
+    {
+        "label": "Philanthropy"
+    },
+    {
+        "label": "Photography"
+    },
+    {
+        "label": "Plastics"
+    },
+    {
+        "label": "Political Campaign"
+    },
+    {
+        "label": "Precision Agriculture"
+    },
+    {
+        "label": "Printing & Publishing"
+    },
+    {
+        "label": "Private Equity"
+    },
+    {
+        "label": "Professional Services"
+    },
+    {
+        "label": "Property Management"
+    },
+    {
+        "label": "PropTech"
+    },
+    {
+        "label": "Public Health"
+    },
+    {
+        "label": "Public Policy"
+    },
+    {
+        "label": "Public Relations"
+    },
+    {
+        "label": "Public Safety"
+    },
+    {
+        "label": "Public Transportation"
+    },
+    {
+        "label": "Publishing"
+    },
+    {
+        "label": "Quality Assurance"
+    },
+    {
+        "label": "Quantum Computing"
+    },
+    {
+        "label": "Quantum Software"
+    },
+    {
+        "label": "Railroad"
+    },
+    {
+        "label": "Real Estate"
+    },
+    {
+        "label": "Real Estate Development"
+    },
+    {
+        "label": "Real Estate Investment"
+    },
+    {
+        "label": "Recreational Vehicles"
+    },
+    {
+        "label": "Recruitment & Staffing"
+    },
+    {
+        "label": "Recycling & Waste Management"
+    },
+    {
+        "label": "Regulatory Affairs"
+    },
+    {
+        "label": "Religion & Spirituality"
+    },
+    {
+        "label": "Renewable Energy"
+    },
+    {
+        "label": "Research & Development"
+    },
+    {
+        "label": "Residential Real Estate"
+    },
+    {
+        "label": "Restaurant & Food Service"
+    },
+    {
+        "label": "Retail"
+    },
+    {
+        "label": "RetailTech"
+    },
+    {
+        "label": "Risk Management"
+    },
+    {
+        "label": "Robotics"
+    },
+    {
+        "label": "SaaS Platforms"
+    },
+    {
+        "label": "Security Analytics"
+    },
+    {
+        "label": "Security Services"
+    },
+    {
+        "label": "Semiconductor Industry"
+    },
+    {
+        "label": "Shared Mobility"
+    },
+    {
+        "label": "Shipbuilding"
+    },
+    {
+        "label": "Shipping"
+    },
+    {
+        "label": "Simulation Technology"
+    },
+    {
+        "label": "Smart City"
+    },
+    {
+        "label": "Smart Home Technology"
+    },
+    {
+        "label": "Social Enterprise"
+    },
+    {
+        "label": "Social Impact"
+    },
+    {
+        "label": "Social Media"
+    },
+    {
+        "label": "Software Development"
+    },
+    {
+        "label": "Solar Energy"
+    },
+    {
+        "label": "Space Exploration"
+    },
+    {
+        "label": "SpaceTech"
+    },
+    {
+        "label": "Speech Recognition"
+    },
+    {
+        "label": "Speech Technology"
+    },
+    {
+        "label": "Sports"
+    },
+    {
+        "label": "Sports Management"
+    },
+    {
+        "label": "Sports Technology"
+    },
+    {
+        "label": "Staffing & Recruiting"
+    },
+    {
+        "label": "Startup Incubator"
+    },
+    {
+        "label": "STEM Education"
+    },
+    {
+        "label": "Storage Solutions"
+    },
+    {
+        "label": "Subscription Services"
+    },
+    {
+        "label": "Supply Chain"
+    },
+    {
+        "label": "Supply Chain Tech"
+    },
+    {
+        "label": "Sustainability"
+    },
+    {
+        "label": "Tax & Accounting"
+    },
+    {
+        "label": "Telecommunications"
+    },
+    {
+        "label": "Telemedicine"
+    },
+    {
+        "label": "Television"
+    },
+    {
+        "label": "Textile"
+    },
+    {
+        "label": "Think Tanks"
+    },
+    {
+        "label": "Tobacco"
+    },
+    {
+        "label": "Tourism"
+    },
+    {
+        "label": "Translation & Localization"
+    },
+    {
+        "label": "Transportation"
+    },
+    {
+        "label": "Travel"
+    },
+    {
+        "label": "Travel Tech"
+    },
+    {
+        "label": "Trucking"
+    },
+    {
+        "label": "UI/UX Design"
+    },
+    {
+        "label": "Urban Planning"
+    },
+    {
+        "label": "Utilities"
+    },
+    {
+        "label": "Venture Capital"
+    },
+    {
+        "label": "Veterinary"
+    },
+    {
+        "label": "Video Production"
+    },
+    {
+        "label": "Virtual Reality (VR)"
+    },
+    {
+        "label": "Warehousing"
+    },
+    {
+        "label": "Waste Management"
+    },
+    {
+        "label": "Water Technology"
+    },
+    {
+        "label": "Wealth Management"
+    },
+    {
+        "label": "Wearable Tech"
+    },
+    {
+        "label": "Wearable Technology"
+    },
+    {
+        "label": "Web3 Development"
+    },
+    {
+        "label": "Wedding & Events"
+    },
+    {
+        "label": "Wind Energy"
+    },
+    {
+        "label": "Wine & Spirits"
+    },
+    {
+        "label": "Wireless Technology"
+    },
+    {
+        "label": "Women's Health"
+    },
+    {
+        "label": "Workplace Safety"
+    }
+]

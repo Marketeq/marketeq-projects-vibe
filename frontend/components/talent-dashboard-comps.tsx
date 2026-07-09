@@ -2,7 +2,18 @@
 
 import * as React from "react"
 import { SVGProps } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
+import { ProjectAPI } from "@/service/http/project"
+import { UserAPI } from "@/service/http/user"
+import {
+  type MyListing,
+  formatActivityDate,
+  formatRelativeTime,
+  statusToBadgeVisual,
+  useMyListings,
+} from "@/src/lib/my-listings"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
 import { useEditable } from "@ark-ui/react"
@@ -16,11 +27,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  CoinStack,
+  CurrencyDollar,
   FileCheck02,
   Home03,
   Mail01,
   MapPin,
-  MoreHorizontal,
   Plus,
   Search,
   Send,
@@ -30,17 +42,23 @@ import {
   Trash01,
   Trash02,
   UserCircle,
+  Users03,
   X,
 } from "@blend-metrics/icons"
-import { InstagramDefault } from "@blend-metrics/icons/social"
 import { GridVertical2 } from "@blend-metrics/icons/special"
 import { AnimatePresence, motion } from "framer-motion"
 import { useMount, useTimeoutFn, useToggle } from "react-use"
 import { Pagination } from "swiper/modules"
 import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
 import { Swiper } from "swiper/types"
+import { ROLE } from "@/types/user"
 import { ReorderGroup, ReorderItem } from "@/components/ui/reorder"
-import { Facebook, Linkedin, Logo, Logo3, XIcon } from "@/components/icons"
+import {
+  ClientAccountSidebar,
+  TalentAccountSidebar,
+} from "@/components/account-sidebars"
+import { DashboardFooter } from "@/components/dashboard-footer"
+import { Logo } from "@/components/icons"
 import { GridVertical6 } from "@/components/icons/grid-vertical-6"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -74,8 +92,6 @@ import {
   EditablePreview,
   EditableRoot,
 } from "@/components/ui"
-import { useAuth } from "@/contexts/auth"
-
 
 export const MoneyDollarCircleFill = ({
   className,
@@ -151,100 +167,25 @@ export const WalletBold = ({
   )
 }
 
-export const LeftSidebar = () => {
-  return (
-    <div className="w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]">
-      <div className="flex flex-col gap-y-2">
-        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-          Work
-        </span>
+export const LeftSidebar = ({
+  forceRole,
+}: { forceRole?: "TALENT" | "CLIENT" } = {}) => {
+  const { user } = useAuth()
+  const dashboardRole = forceRole ?? resolveDashboardRole(user)
+  const isTalent = dashboardRole === ROLE.TALENT
 
-        <div className="flex flex-col gap-y-1">
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-dashboard"
-          >
-            <Home03 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Home
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/search"
-          >
-            <Search className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Find Jobs
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
-          >
-            <Briefcase className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            My Projects
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/publish-project"
-          >
-            <Plus className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Create a Project
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/"
-          >
-            <BarChartSquare02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Stats & Trends
-          </NextLink>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-y-2">
-        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-          Account
-        </span>
-
-        <div className="flex flex-col gap-y-1">
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/talent-profile"
-          >
-            <UserCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Profile
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="/inbox"
-          >
-            <Mail01 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Inbox
-            <Badge className="rounded-full ml-auto" size="md" visual="error">
-              3
-            </Badge>
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
-          >
-            <AlertCircle className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Notifications
-            <Badge className="rounded-full ml-auto" size="md" visual="error">
-              2
-            </Badge>
-          </NextLink>
-          <NextLink
-            className="flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none hover:bg-gray-100 px-3"
-            href="#"
-          >
-            <Settings02 className="size-[18px] text-dark-blue-400/50 hover:text-dark-blue-400" />
-            Settings
-          </NextLink>
-        </div>
-      </div>
-    </div>
-  )
+  return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
 }
 
-export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
+export const RightDrawer = ({
+  className,
+  onCompleteProfile,
+  profileProgress = 0,
+}: {
+  className?: string
+  onCompleteProfile?: () => void
+  profileProgress?: number
+}) => {
   const { user } = useAuth()
   return (
     <div
@@ -259,7 +200,12 @@ export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 
             href="/talent-profile"
             className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline"
           >
-            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+            @
+            {user?.username ||
+              `${user?.firstName || ""}${user?.lastName || ""}`
+                .toLowerCase()
+                .replace(/\s+/g, "") ||
+              "my-profile"}
           </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
@@ -388,7 +334,15 @@ export const RightDrawer = ({ className, onCompleteProfile, profileProgress = 0 
   )
 }
 
-export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0 }: { className?: string; onCompleteProfile?: () => void; profileProgress?: number }) => {
+export const RightSidebar = ({
+  className,
+  onCompleteProfile,
+  profileProgress = 0,
+}: {
+  className?: string
+  onCompleteProfile?: () => void
+  profileProgress?: number
+}) => {
   const { user } = useAuth()
   return (
     <div
@@ -400,7 +354,12 @@ export const RightSidebar = ({ className, onCompleteProfile, profileProgress = 0
             href="/talent-profile"
             className="text-base leading-[19.36px] font-bold text-dark-blue-400 hover:text-primary-500 hover:underline block"
           >
-            @{user?.username || `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") || "my-profile"}
+            @
+            {user?.username ||
+              `${user?.firstName || ""}${user?.lastName || ""}`
+                .toLowerCase()
+                .replace(/\s+/g, "") ||
+              "my-profile"}
           </NextLink>
           <Button
             className="underline text-dark-blue-400 hover:text-primary-500"
@@ -575,11 +534,34 @@ interface Task {
   value: string
 }
 
-const defaultTasks: Task[] = []
+const TASKS_STORAGE_KEY = "marketeq-dashboard-tasks"
+
+const loadTasks = (): Task[] => {
+  try {
+    const saved = localStorage.getItem(TASKS_STORAGE_KEY)
+    return saved ? JSON.parse(saved) : []
+  } catch {
+    return []
+  }
+}
+
+const saveTasks = (tasks: Task[]) => {
+  try {
+    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
+  } catch {}
+}
 
 export const Tasks = () => {
-  const [tasks, setTasks] = React.useState<Task[]>(defaultTasks)
+  const [tasks, setTasks] = React.useState<Task[]>([])
   const [shouldClearAll, toggleShouldClearAll] = useToggle(false)
+
+  React.useEffect(() => {
+    setTasks(loadTasks())
+  }, [])
+
+  React.useEffect(() => {
+    saveTasks(tasks)
+  }, [tasks])
 
   React.useEffect(() => {
     if (shouldClearAll) {
@@ -921,6 +903,28 @@ export const StarsBFill = ({
 
 export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
   const { user } = useAuth()
+  const router = useRouter()
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
   return (
     <>
       <div className="md:contents flex flex-col gap-y-5">
@@ -942,6 +946,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
               className="bg-white text-dark-blue-400 xs:max-md:hidden"
               variant="outlined"
               visual="gray"
+              disabled={creatingDraft}
+              onClick={handleCreateProject}
             >
               <Plus className="size-[15px]" />
               Create a Project
@@ -953,6 +959,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
           className="bg-white text-dark-blue-400 md:hidden"
           variant="outlined"
           visual="gray"
+          disabled={creatingDraft}
+          onClick={handleCreateProject}
         >
           <Plus className="size-[15px]" />
           Create a Project
@@ -1113,216 +1121,286 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
   )
 }
 
-interface Project {
-  projectName: string
-  team: { image: string; alternativeText: string }[]
-  status: string
-  nextMilestone: string
-}
+const RecentListingsTableRow = ({ listing }: { listing: MyListing }) => {
+  const router = useRouter()
 
-export const TableRow = ({
-  projectName,
-  nextMilestone,
-  status,
-  team,
-}: Project) => {
   return (
-    <tr className="first:pt-3 last:pb-3">
-      <td className="px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400 inline-block truncate">
-        {projectName}
+    <tr
+      className="hover:bg-gray-50 cursor-pointer"
+      onClick={() => router.push(`/my-listings/${listing.id}`)}
+    >
+      <td className="px-6 py-4">
+        <NextLink
+          href={`/my-listings/${listing.id}`}
+          className="text-sm font-semibold text-dark-blue-400 hover:underline"
+        >
+          {listing.title}
+        </NextLink>
       </td>
-      <td className="px-6 py-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <AvatarGroup excess size="sm" max={3}>
-                {team.map((member, index) => (
-                  <Avatar
-                    key={index}
-                    className="border-2 border-white hover:ring-0 active:ring-0"
-                    size="sm"
-                  >
-                    <AvatarImage
-                      src={member.image}
-                      alt={member.alternativeText}
-                    />
-                    <AvatarFallback>
-                      {member.alternativeText.slice(0, 1).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </AvatarGroup>
-            </TooltipTrigger>
-
-            <TooltipContent className="p-0" size="md">
-              <ScrollArea viewportClassName="max-h-[192px]" className="p-3">
-                <div className="space-y-3">
-                  {team.map((member, index) => (
-                    <div className="flex items-center gap-x-2" key={index}>
-                      <Avatar className="hover:ring-0">
-                        <AvatarImage
-                          src={member.image}
-                          alt={member.alternativeText}
-                        />
-                        <AvatarFallback>
-                          {member.alternativeText.slice(0, 1).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs font-medium leading-5">
-                        {member.alternativeText}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+      <td className="px-6 py-4">
+        <span className="text-sm capitalize leading-5 text-gray-500">
+          {listing.type}
+        </span>
       </td>
-      <td className="px-6 py-[13px] items-center">
-        {status === "In Progress" ? (
-          <Badge visual="success">{status}</Badge>
-        ) : (
-          <Badge visual="gray">{status}</Badge>
-        )}
+      <td className="px-6 py-4">
+        <Badge size="md" visual={statusToBadgeVisual(listing.status)}>
+          {listing.status}
+        </Badge>
       </td>
-      <td className="pl-6 pr-8 py-3.5">
-        <div className="gap-x-14 flex items-center justify-between">
-          <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
-            {nextMilestone}
+      <td className="px-6 py-4">
+        <div className="flex flex-col">
+          <span className="text-sm leading-5 text-gray-500">
+            {formatActivityDate(listing.updatedAt)}
           </span>
-          <Button
-            className="h-auto px-1.5 py-1 text-dark-blue-400"
-            visual="gray"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-[15px]" />
-          </Button>
+          {listing.updatedAt ? (
+            <span className="text-xs leading-4 text-gray-400">
+              {formatRelativeTime(listing.updatedAt)}
+            </span>
+          ) : null}
         </div>
       </td>
     </tr>
   )
 }
 
-export const Table = () => {
-  return (
-    <table className="table-auto border-collapse w-full">
-      <thead>
-        <tr>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Project Name
-          </th>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Team
-          </th>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Status
-          </th>
-          <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-            Next Milestone
-          </th>
-        </tr>
-      </thead>
+export const RecentListings = () => {
+  const router = useRouter()
+  const { listings, isLoading } = useMyListings()
+  const recentListings = listings.slice(0, 5)
 
-      <tbody>
-        {data.projects.map((project, index) => (
-          <TableRow {...project} key={index} />
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-export const RecentProjects = () => {
   return (
     <div className="border bg-white border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <div className="flex justify-between items-start pt-5 px-6">
         <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
-          Recent Projects
+          Recent Listings
         </h1>
 
         <Button
           className="text-dark-blue-400 xs:max-md:hidden"
           variant="link"
           visual="gray"
+          onClick={() => router.push("/my-listings")}
         >
-          View All Projects <ArrowRight className="size-3.5" />
+          View All Listings <ArrowRight className="size-3.5" />
         </Button>
       </div>
 
-      <Tabs className="mt-1" defaultValue="All Projects">
-        <TabsList className="px-6 w-full justify-start">
-          <TabsTrigger className="pb-[11px]" value="All Projects">
-            All Projects
-          </TabsTrigger>
-          <TabsTrigger className="pb-[11px]" value="Created by Me">
-            Created by Me
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent className="overflow-x-hidden" value="All Projects">
+      {isLoading ? (
+        <div className="px-6 py-10 text-sm text-gray-500">
+          Loading recent listings...
+        </div>
+      ) : (
+        <>
           <div className="overflow-x-auto scrollbar-none">
-            <Table />
+            <table className="table-auto border-collapse w-full">
+              <thead>
+                <tr>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Listing Name
+                  </th>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Type
+                  </th>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Status
+                  </th>
+                  <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
+                    Last Activity
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {recentListings.map((listing) => (
+                  <RecentListingsTableRow key={listing.id} listing={listing} />
+                ))}
+              </tbody>
+            </table>
           </div>
+
           <div className="h-[49px] flex items-center md:hidden justify-center border-t border-gray-200">
-            <Button className="text-dark-blue-400" variant="link">
-              View All Projects <ArrowRight className="size-3.5" />
+            <Button
+              className="text-dark-blue-400"
+              variant="link"
+              onClick={() => router.push("/my-listings")}
+            >
+              View All Listings <ArrowRight className="size-3.5" />
             </Button>
           </div>
-        </TabsContent>
-        <TabsContent className="overflow-x-hidden" value="Created by Me">
-          <div className="overflow-x-auto scrollbar-none">
-            <Table />
-          </div>
-          <div className="h-[49px] flex items-center md:hidden justify-center border-t border-gray-200">
-            <Button className="text-dark-blue-400" variant="link">
-              View All Projects <ArrowRight className="size-3.5" />
-            </Button>
-          </div>
-        </TabsContent>
-      </Tabs>
+        </>
+      )}
     </div>
   )
 }
 
+const GETTING_STARTED_STEPS = [
+  {
+    title: "Complete Your Profile",
+    description:
+      "Add your bio, skills, work experience, education, and set your hourly rate. Clients are 4x more likely to hire talent with completed profiles.",
+    cta: "Complete Profile",
+    href: "/complete-profile",
+    time: "10 min",
+  },
+  {
+    title: "Build Your Portfolio",
+    description:
+      "Showcase your best work with case studies using the built-in editor. Add images, descriptions, and results to prove your expertise.",
+    cta: "Add Case Study",
+    href: "/talent-profile",
+    time: "15 min",
+  },
+  {
+    title: "Set Up Payments",
+    description:
+      "Connect a payout method so you're ready to get paid when contracts come in. Choose from bank transfer, PayPal, Wise, Payoneer, or crypto.",
+    cta: "Set Up Payments",
+    href: "#",
+    time: "3 min",
+  },
+  {
+    title: "Create Your Own Projects",
+    description:
+      "Turn your skills into profitable projects. Stand out by offering unique services that clients can purchase directly from you.",
+    cta: "Create a Project",
+    href: "/publish-project",
+    time: "5 min",
+  },
+  {
+    title: "Find & Apply to Jobs",
+    description:
+      "Browse the marketplace for projects that match your skills. Use search filters to find the right opportunities and start landing clients.",
+    cta: "Browse Jobs",
+    href: "/search",
+    time: "5 min",
+  },
+]
+
 export const CreateYourOwnProject = () => {
+  const { user } = useAuth()
+  const router = useRouter()
+  const totalSteps = GETTING_STARTED_STEPS.length
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
+  // Read persisted step from user; null means dismissed
+  const savedStep = user?.gettingStartedStep
+  const [currentStep, setCurrentStep] = React.useState(
+    savedStep != null ? savedStep : 0
+  )
+  const [dismissed, setDismissed] = React.useState(
+    savedStep != null && savedStep >= totalSteps
+  )
+
+  // Sync when user data loads
+  React.useEffect(() => {
+    if (savedStep != null) {
+      if (savedStep >= totalSteps) {
+        setDismissed(true)
+      } else {
+        setCurrentStep(savedStep)
+      }
+    }
+  }, [savedStep, totalSteps])
+
+  const persistStep = React.useCallback(
+    (nextStep: number) => {
+      if (!user?.id) return
+      UserAPI.updateProfile(user.id, { gettingStartedStep: nextStep }).catch(
+        () => {}
+      )
+    },
+    [user?.id]
+  )
+
+  const handleSkip = () => {
+    if (currentStep < totalSteps - 1) {
+      const next = currentStep + 1
+      setCurrentStep(next)
+      persistStep(next)
+    } else {
+      setDismissed(true)
+      persistStep(totalSteps)
+    }
+  }
+
+  if (dismissed) return null
+
+  const step = GETTING_STARTED_STEPS[currentStep]
+  const progressValue = ((currentStep + 1) / totalSteps) * 100
+  const isCreateProjectStep = step.href === "/publish-project"
+
   return (
     <div className="bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border rounded-lg border-gray-200 p-5 flex flex-col-reverse md:grid md:grid-cols-2 gap-5 min-[1024px]:gap-x-[100px]">
       <div>
         <div className="space-y-6">
           <h1 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-            Step 1/5
+            Step {currentStep + 1}/{totalSteps}
           </h1>
 
-          <Progress value={20} />
+          <Progress value={progressValue} />
 
           <div>
             <h3 className="text-base leading-[19.36px] font-bold text-dark-blue-400">
-              Create Your Own Projects
+              {step.title}
             </h3>
             <p className="text-sm leading-[16.94px] mt-3 text-dark-blue-400">
-              Turn your skills into profitable projects. Stand out by offering
-              unique services that clients can purchase directly from you.
+              {step.description}
             </p>
           </div>
         </div>
 
         <div className="mt-5 min-[1024px]:mt-[49px] flex flex-col items-start gap-y-3">
           <div className="flex items-center gap-x-3">
-            <Button
-              className="text-dark-blue-400"
-              size="sm"
-              variant="outlined"
-              visual="gray"
-            >
-              <Plus className="size-[15px]" /> Create a Project
-            </Button>
+            {isCreateProjectStep ? (
+              <Button
+                className="text-dark-blue-400"
+                size="sm"
+                variant="outlined"
+                visual="gray"
+                disabled={creatingDraft}
+                onClick={handleCreateProject}
+              >
+                <Plus className="size-[15px]" /> {step.cta}
+              </Button>
+            ) : (
+              <NextLink href={step.href}>
+                <Button
+                  className="text-dark-blue-400"
+                  size="sm"
+                  variant="outlined"
+                  visual="gray"
+                >
+                  <Plus className="size-[15px]" /> {step.cta}
+                </Button>
+              </NextLink>
+            )}
             <Button
               className="text-dark-blue-400"
               size="sm"
               variant="ghost"
               visual="gray"
+              onClick={handleSkip}
             >
-              Skip
+              {currentStep < totalSteps - 1 ? "Skip" : "Dismiss"}
             </Button>
           </div>
           <Button
@@ -1331,7 +1409,7 @@ export const CreateYourOwnProject = () => {
             size="sm"
             variant="ghost"
           >
-            <Clock className="size-[15px]" /> Takes 5 min
+            <Clock className="size-[15px]" /> Takes {step.time}
           </Button>
         </div>
       </div>
@@ -1341,81 +1419,114 @@ export const CreateYourOwnProject = () => {
   )
 }
 
-export const RecommendedForYouCard = () => {
+type RecommendedProject = {
+  id: string
+  slug: string
+  title: string
+  memberCount: number
+  memberAvatars: string[]
+  score: number
+}
+
+export const RecommendedForYouCard = ({
+  project,
+  onDismiss,
+}: {
+  project: RecommendedProject
+  onDismiss: (id: string) => void
+}) => {
   return (
     <article className="relative rounded-lg p-5 border border-[#122A4B]/[.15] shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-      <button className="focus-visible:outline-none absolute top-3 right-3 text-dark-blue-400/50 hover:text-dark-blue-400">
+      <button
+        className="focus-visible:outline-none absolute top-3 right-3 text-dark-blue-400/50 hover:text-dark-blue-400"
+        onClick={() => onDismiss(project.id)}
+      >
         <X className="size-[18px]" />
       </button>
       <div className="pt-[18px] pb-[54px]">
         <div className="flex items-center justify-center">
-          <AvatarGroup size="md" max={3} excess>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-          </AvatarGroup>
+          {project.memberCount > 0 ? (
+            <AvatarGroup size="md" max={3} excess>
+              {Array.from({ length: Math.min(project.memberCount, 6) }).map(
+                (_, i) => (
+                  <Avatar
+                    key={i}
+                    className="border-2 border-white hover:ring-0 active:ring-0"
+                    size="md"
+                  >
+                    {project.memberAvatars[i] && (
+                      <AvatarImage src={project.memberAvatars[i]} alt="" />
+                    )}
+                    <AvatarFallback>
+                      {project.title.charAt(i % project.title.length).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ),
+              )}
+            </AvatarGroup>
+          ) : (
+            <div className="flex items-center -space-x-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="size-10 rounded-full border-2 border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
+                >
+                  <Users03 className="size-4 text-gray-400" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <h1 className="text-sm leading-[16.94px] line-clamp-1 text-center text-dark-blue-400 mt-2.5 font-semibold">
-          Full E-commerce Website Setup for your store
+          {project.title}
         </h1>
         <p className="text-sm leading-[16.94px] mt-1 text-center text-gray-500">
-          5 people are working on this project
+          {project.memberCount > 0
+            ? `${project.memberCount} ${project.memberCount === 1 ? "person is" : "people are"} working on this project`
+            : "Be the first to claim this project"}
         </p>
       </div>
 
-      <Button
-        visual="gray"
-        variant="outlined"
-        className="w-full text-dark-blue-400"
-      >
-        <Send className="size-[15px]" /> Request to Join
-      </Button>
+      <NextLink href={`/project-details/${project.slug}`}>
+        <Button
+          visual="gray"
+          variant="outlined"
+          className="w-full text-dark-blue-400"
+        >
+          <Send className="size-[15px]" />{" "}
+          {project.memberCount > 0 ? "Request to Join" : "Claim this Project"}
+        </Button>
+      </NextLink>
     </article>
   )
 }
 
 export const RecommendedForYou = () => {
   const [carousel, setCarousel] = React.useState<Swiper>()
+  const [projects, setProjects] = React.useState<RecommendedProject[]>([])
+  const [dismissed, setDismissed] = React.useState<Set<string>>(new Set())
+  const { user } = useAuth()
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const profileRes = await UserAPI.getProfile(user?.id ?? "")
+        const skills: string[] = (profileRes?.data?.skills ?? []).map(
+          (s: { name: string }) => s.name,
+        )
+        const res = await ProjectAPI.getRecommended(skills, 10)
+        setProjects(res?.data ?? [])
+      } catch {
+        // silently fail
+      }
+    }
+    if (user?.id) load()
+  }, [user?.id])
+
+  const visible = projects.filter((p) => !dismissed.has(p.id))
+  const hasSkills = user?.id && projects.length > 0
+
   return (
     <div className="mt-3 md:mt-5">
       <div className="p-5 border bg-white border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
@@ -1424,21 +1535,25 @@ export const RecommendedForYou = () => {
             <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
               Recommended for you
             </h1>
-            <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
-              Improve your recommendations by{" "}
-              <NextLink
-                className="focus-visible:outline-none underline hover:text-primary-500"
-                href="/complete-profile"
-              >
-                adding skills
-              </NextLink>{" "}
-              to your profile.
-            </p>
+            {!hasSkills && (
+              <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
+                Improve your recommendations by{" "}
+                <NextLink
+                  className="focus-visible:outline-none underline hover:text-primary-500"
+                  href="/complete-profile"
+                >
+                  adding skills
+                </NextLink>{" "}
+                to your profile.
+              </p>
+            )}
           </div>
 
-          <Button variant="outlined" visual="gray">
-            View All
-          </Button>
+          <NextLink href="/c/research">
+            <Button variant="outlined" visual="gray">
+              View All
+            </Button>
+          </NextLink>
         </div>
 
         <Tabs defaultValue="Projects">
@@ -1454,21 +1569,16 @@ export const RecommendedForYou = () => {
                 onInit={setCarousel}
                 className="avatar-carousel"
               >
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
+                {visible.map((project) => (
+                  <SwiperSlide key={project.id}>
+                    <RecommendedForYouCard
+                      project={project}
+                      onDismiss={(id) =>
+                        setDismissed((prev) => new Set([...prev, id]))
+                      }
+                    />
+                  </SwiperSlide>
+                ))}
               </SwiperRoot>
 
               {carousel?.allowSlideNext && (
@@ -1497,6 +1607,28 @@ export const RecommendedForYou = () => {
 }
 
 export const BecomeTopSeller = () => {
+  const router = useRouter()
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
   return (
     <div className="mt-3 md:mt-5 p-5 bg-white rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
@@ -1544,6 +1676,8 @@ export const BecomeTopSeller = () => {
               className="text-dark-blue-400"
               variant="outlined"
               visual="gray"
+              disabled={creatingDraft}
+              onClick={handleCreateProject}
             >
               Create a Project Now
             </Button>
@@ -1902,47 +2036,5 @@ export const TakeCareersToNextLevel = () => {
 }
 
 export const Footer = () => {
-  return (
-    <div className="px-5 xs:max-md:pt-5 md:px-6 pb-5 flex flex-col md:flex-row items-center gap-5 md:justify-between">
-      <div className="flex md:flex-row flex-col items-center gap-5 md:gap-x-[57px]">
-        <NextLink className="focus-visible:outline-none" href="/">
-          <Logo3 className="shrink-0 w-[120px] h-[17.63px]" />
-        </NextLink>
-        <span className="text-[13px] leading-[15.73px] font-light text-dark-blue-400">
-          © 2011 - 2025 Marketeq Digital Inc. All Rights Reserved.
-        </span>
-      </div>
-
-      <div className="flex items-center gap-x-[16.6px]">
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Facebook className="fill-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <XIcon className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <InstagramDefault className="text-dark-blue-400 size-4" />
-        </IconButton>
-        <IconButton
-          className="size-[30px] rounded-full"
-          variant="outlined"
-          visual="gray"
-        >
-          <Linkedin className="text-dark-blue-400 size-4" />
-        </IconButton>
-      </div>
-    </div>
-  )
+  return <DashboardFooter className="px-5 xs:max-md:pt-5 pb-5 md:px-6" />
 }

@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { HealthController } from './health/health.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware';
 
 @Module({
   imports: [
@@ -20,11 +21,15 @@ import { AuthModule } from './auth/auth.module';
             url,
             autoLoadEntities: true,
             synchronize: process.env.NODE_ENV !== 'production',
+            migrationsRun: true,
+            migrations: [__dirname + '/migrations/*{.ts,.js}'],
             logging: process.env.NODE_ENV !== 'production',
             ssl:
-              process.env.NODE_ENV === 'production'
-                ? { rejectUnauthorized: false }
-                : false,
+              process.env.DATABASE_SSL === 'false'
+                ? false
+                : process.env.NODE_ENV === 'production'
+                  ? { rejectUnauthorized: false }
+                  : false,
           };
         }
 
@@ -37,11 +42,15 @@ import { AuthModule } from './auth/auth.module';
           database: cfg.get<string>('DATABASE_NAME'),
           autoLoadEntities: true,
           synchronize: process.env.NODE_ENV !== 'production',
+          migrationsRun: true,
+          migrations: [__dirname + '/migrations/*{.ts,.js}'],
           logging: process.env.NODE_ENV !== 'production',
           ssl:
-            process.env.NODE_ENV === 'production'
-              ? { rejectUnauthorized: false }
-              : false,
+            process.env.DATABASE_SSL === 'false'
+              ? false
+              : process.env.NODE_ENV === 'production'
+                ? { rejectUnauthorized: false }
+                : false,
         };
       },
     }),
@@ -50,4 +59,8 @@ import { AuthModule } from './auth/auth.module';
   controllers: [HealthController],
   providers: [],
 })
-export class AuthServiceModule {}
+export class AuthServiceModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CsrfOriginMiddleware).forRoutes('*');
+  }
+}

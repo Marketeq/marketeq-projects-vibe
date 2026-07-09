@@ -1,32 +1,19 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
-import { ContractsService } from '../services/contracts.service';
-import { BearerGuard } from '../guards/bearer.guard';
+import { Controller, Post, Body } from '@nestjs/common';
+import { WebhooksService } from '../services/webhooks.service';
 
 @Controller('webhooks')
-@UseGuards(BearerGuard)
 export class WebhooksController {
-  constructor(private readonly svc: ContractsService) {}
+  constructor(private readonly webhooksService: WebhooksService) {}
 
+  // Deposit cleared from Checkout Service
   @Post('checkout/deposit-cleared')
-  depositCleared(@Body() payload: { groupId: string; paymentRef: string }) {
-    return this.svc.activateGroup(payload.groupId, payload.paymentRef);
+  async depositCleared(@Body() payload: any) {
+    return this.webhooksService.handleDepositCleared(payload);
   }
 
-  @Post('checkout/deposit-failed')
-  depositFailed(@Body() payload: { groupId: string; reason: string }) {
-    return {
-      groupId: payload.groupId,
-      status: 'deposit_failed',
-      message: 'Contracts remain pending. Retry window active.',
-    };
-  }
-
+  // Billing finalized from Billing Service
   @Post('billing/finalized')
-  billingFinalized(@Body() payload: { contractId: string; invoiceId: string; finalAmount: number }) {
-    return {
-      contractId: payload.contractId,
-      invoiceId: payload.invoiceId,
-      status: 'billing_confirmed',
-    };
+  async billingFinalized(@Body() payload: any) {
+    return this.webhooksService.handleBillingFinalized(payload);
   }
 }

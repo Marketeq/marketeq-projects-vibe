@@ -1,0 +1,121 @@
+{
+  "repo": "Marketeq/marketeq-projects-vibe",
+  "protectedBranches": [
+    "dev-main",
+    "staging",
+    "live-mvp"
+  ],
+  "n8n": {
+    "workflowId": "PPUT0GooYV2jbwMC",
+    "workflowName": "Marketeq Vercel Staging Orchestrator",
+    "webhookId": "c71d70d8-67aa-4391-8011-580b819d0d7e",
+    "webhookPath": "marketeq-vibe-deploy",
+    "runnerGistId": "9d941b835aebce2651ab892f13f23b6c",
+    "runnerSourcePath": "scripts/devops/marketeq_orchestrator_node.js",
+    "runnerRawUrl": "https://gist.githubusercontent.com/CTorres9800/9d941b835aebce2651ab892f13f23b6c/raw/marketeq_orchestrator_node.js",
+    "runtimeEnvFilePath": "/home/node/.n8n/marketeq-devops.env",
+    "stagingEnvBaselinePath": "scripts/devops/marketeq-staging-env-baseline.json",
+    "runtimeSecretKeys": [
+      "GH_TOKEN",
+      "VERCEL_TOKEN",
+      "RENDER_TOKEN",
+      "SMOKE_USER_EMAIL",
+      "SMOKE_USER_PASSWORD",
+      "RENDER_ENV_DATABASE_URL",
+      "RENDER_ENV_INTERNAL_SERVICE_TOKEN",
+      "RENDER_ENV_AUTH_REFRESH_SECRET",
+      "RENDER_ENV_AUTH_JWT_PRIVATE_KEY",
+      "RENDER_ENV_AUTH_JWT_PUBLIC_KEY",
+      "RENDER_ENV_AUTH_JWT_TOKEN_EXPIRES_IN",
+      "RENDER_ENV_AUTH_REFRESH_TOKEN_EXPIRES_IN",
+      "RENDER_ENV_E2EE_SERVER_SECRET",
+      "RENDER_ENV_GOOGLE_CLIENT_ID",
+      "RENDER_ENV_GOOGLE_CLIENT_SECRET",
+      "RENDER_ENV_LINKEDIN_CLIENT_ID",
+      "RENDER_ENV_LINKEDIN_CLIENT_SECRET",
+      "RENDER_ENV_CLOUDFLARE_ACCOUNT_ID",
+      "RENDER_ENV_CLOUDFLARE_R2_ACCESS_KEY",
+      "RENDER_ENV_CLOUDFLARE_R2_SECRET_KEY",
+      "RENDER_ENV_CLOUDFLARE_R2_BUCKET",
+      "RENDER_ENV_CLOUDFLARE_R2_ENDPOINT",
+      "RENDER_ENV_CLOUDFLARE_PUBLIC_URL",
+      "RENDER_ENV_BREVO_API_KEY",
+      "RENDER_ENV_BREVO_FROM_EMAIL",
+      "RENDER_ENV_BREVO_FROM_NAME"
+    ]
+  },
+  "render": {
+    "serviceId": "srv-d76r48nafjfc73e1djf0",
+    "url": "https://marketeq-backend.onrender.com",
+    "allowedServiceIds": ["srv-d76r48nafjfc73e1djf0"],
+    "ownerId": "tea-d0r57undiees73bn5npg"
+  },
+  "vercel": {
+    "teamId": "team_t2RzlUaGU3p6OALpArhrWXh0",
+    "teamSlug": "marketeq-projects-d993fac5",
+    "projects": {
+      "dev-main": {
+        "name": "marketeq-projects-dev",
+        "projectId": "prj_IuUgufT5MaEY03bNmdb3lFcr51WC",
+        "hookUrl": "https://api.vercel.com/v1/integrations/deploy/prj_IuUgufT5MaEY03bNmdb3lFcr51WC/DnIKP7dVUY",
+        "hostname": "https://dev-marketeq-projects.vercel.app",
+        "statusContext": "Vercel – marketeq-projects-dev",
+        "smokeContext": "Smoke – marketeq-projects-dev"
+      },
+      "staging": {
+        "name": "marketeq-projects-staging",
+        "projectId": "prj_zxwZ4cEzY1kRsMbPst6nAoMWTxTG",
+        "hookUrl": "https://api.vercel.com/v1/integrations/deploy/prj_zxwZ4cEzY1kRsMbPst6nAoMWTxTG/Bi7aBdOndl",
+        "hostname": "https://staging-marketeq-projects.vercel.app",
+        "statusContext": "Vercel – marketeq-projects-staging",
+        "smokeContext": "Smoke – marketeq-projects-staging"
+      },
+      "live-mvp": {
+        "name": "marketeq-projects-live-mvp",
+        "projectId": "prj_vvtSNsNsVxyMteDejCo32rh2CEiD",
+        "hookUrl": "https://api.vercel.com/v1/integrations/deploy/prj_vvtSNsNsVxyMteDejCo32rh2CEiD/tRsZvywpt4",
+        "hostname": "https://live-marketeq-projects.vercel.app",
+        "statusContext": "Vercel – marketeq-projects-live-mvp",
+        "smokeContext": "Smoke – marketeq-projects-live-mvp"
+      }
+    }
+  },
+  "envContracts": {
+    "frontendRequiredKeys": [
+      "NEXT_PUBLIC_BACKEND_URL",
+      "NEXT_PUBLIC_API_BASE_URL",
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AUTH_URL",
+      "NEXT_PUBLIC_USER_URL",
+      "NEXT_PUBLIC_LISTINGS_URL",
+      "NEXT_PUBLIC_WS_URL",
+      "NEXT_PUBLIC_AUTH_MODE",
+      "NEXT_PUBLIC_COOKIE_SAMESITE",
+      "NEXT_PUBLIC_COOKIE_SECURE",
+      "NEXT_PUBLIC_COOKIE_DOMAIN"
+    ],
+    "backendRequiredKeys": [
+      "NODE_ENV",
+      "APP_ENV",
+      "PORT",
+      "CORS_ORIGIN",
+      "CORS_CREDENTIALS",
+      "COOKIE_DOMAIN",
+      "COOKIE_SAMESITE",
+      "COOKIE_SECURE",
+      "JWT_ISSUER",
+      "JWT_AUDIENCE",
+      "JWT_ACCESS_TOKEN_TTL",
+      "JWT_REFRESH_TOKEN_TTL",
+      "DATABASE_URL",
+      "DATABASE_SSL",
+      "DATABASE_SSL_ENABLED",
+      "RABBITMQ_URL",
+      "RABBITMQ_REQUIRED",
+      "E2EE_SERVER_SECRET",
+      "ABLY_API_KEY",
+      "R2_BUCKET",
+      "R2_CDN_BASE"
+    ]
+  }
+}

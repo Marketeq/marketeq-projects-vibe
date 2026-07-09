@@ -1,6 +1,7 @@
 # App Folder Structure Documentation
 
 ## Overview
+
 This document provides a comprehensive breakdown of the folder structure within the `app` directory, specifically focusing on the nested group structure: `app/(group)/(group)/level-1`, `level-2`, and `level-3`.
 
 ## Folder Hierarchy
@@ -54,9 +55,11 @@ app/
 ### Root Level Files
 
 #### `app/layout.tsx`
+
 **Purpose**: Root layout component that wraps the entire application.
 
 **Key Features**:
+
 - Sets up global providers (GoogleOAuthProvider, AuthProvider, QueryProvider)
 - Configures global styles and fonts
 - Includes third-party integrations (Google Analytics, Google Tag Manager)
@@ -64,6 +67,7 @@ app/
 - Defines metadata for SEO (title, description, icons)
 
 **Dependencies**:
+
 - React Suspense for code splitting
 - Next.js Metadata API
 - Authentication context
@@ -75,14 +79,17 @@ app/
 ### First Group Level
 
 #### `app/(group)/layout.tsx`
+
 **Purpose**: Layout wrapper for the first route group, providing the topmost header component.
 
 **Key Features**:
+
 - Renders `TopMostHeader` component
 - Wraps all child routes within this group
 - Provides consistent header navigation across group routes
 
 **Components Used**:
+
 - `TopMostHeader`: Main navigation header component
 
 ---
@@ -90,9 +97,11 @@ app/
 ### Second Group Level
 
 #### `app/(group)/(group)/layout.tsx`
+
 **Purpose**: Marketplace layout component that provides the main structure for marketplace pages.
 
 **Key Features**:
+
 - Renders marketplace-specific navigation bar
 - Includes category sidebar with filtering options
 - Provides footer component with links and social media
@@ -101,20 +110,24 @@ app/
 - Responsive design with mobile/desktop variations
 
 **Components Included**:
+
 - **Sidebar**: Category selection dialog with scrollable list
 - **Footer**: Footer with company links, social media, and newsletter signup
 - **Navigation Bar**: Top navigation with category filters (Research, Design, Development, Testing, Security, Maintenance, Digital Marketing)
 - **Team Members Display**: Shows current team member count with dropdown
 
 **Route Protection**:
+
 - Currently has `AuthenticatedRoute` commented out (can be enabled for authentication)
 
 ---
 
 #### `app/(group)/(group)/page.tsx`
+
 **Purpose**: Main marketplace landing page (if exists).
 
 **Functionality**:
+
 - Serves as the entry point for the marketplace section
 - May display featured content, categories, or navigation to level pages
 
@@ -125,9 +138,11 @@ app/
 ### `app/(group)/(group)/level-1/`
 
 #### `level-1/all/page.tsx`
+
 **Purpose**: Displays all items (projects, services, talent, teams) for Level 1 category.
 
 **Features**:
+
 - Comprehensive listing of all available items
 - Filtering and sorting capabilities
 - Search functionality
@@ -137,9 +152,11 @@ app/
 ---
 
 #### `level-1/projects/page.tsx`
+
 **Purpose**: Projects listing page specifically for Level 1 category.
 
 **Key Features**:
+
 - **Hero Section**: Large banner image with category title and description
 - **Category Browsing**: Grid of project categories (Front-end Development, etc.)
 - **Featured Projects Tab**: Displays top projects with filtering options:
@@ -169,12 +186,14 @@ app/
 - **Newsletter Signup**: Email subscription form
 
 **Data Fetching**:
+
 - Uses `getCategoryPage` API function
 - Fetches data from category API endpoint
 - Displays loading states during data fetch
 - Handles empty states when no projects found
 
 **Components Used**:
+
 - NextImage for optimized images
 - NextLink for client-side navigation
 - Tabs from Radix UI
@@ -185,9 +204,11 @@ app/
 ---
 
 #### `level-1/projects/api-wrapper.tsx`
+
 **Purpose**: API wrapper component for handling project-related API calls.
 
 **Functionality**:
+
 - Encapsulates API logic for projects
 - Provides reusable API functions
 - Handles error states
@@ -197,9 +218,11 @@ app/
 ---
 
 #### `level-1/services/page.tsx`
+
 **Purpose**: Services listing page for Level 1 category.
 
 **Key Features**:
+
 - Similar structure to projects page but focused on services
 - Service cards with:
   - Service thumbnail
@@ -214,6 +237,7 @@ app/
 - Newsletter signup section
 
 **Layout**:
+
 - Hero banner with category information
 - Grid layout for service cards
 - Filtering and sorting options
@@ -222,9 +246,11 @@ app/
 ---
 
 #### `level-1/talent/page.tsx`
+
 **Purpose**: Talent/individuals listing page for Level 1 category.
 
 **Key Features**:
+
 - Talent profile cards displaying:
   - Profile picture/avatar
   - Name and username
@@ -247,6 +273,7 @@ app/
 - Newsletter signup
 
 **Components**:
+
 - Avatar components for profile pictures
 - Star ratings
 - Location markers
@@ -256,9 +283,11 @@ app/
 ---
 
 #### `level-1/teams/page.tsx`
+
 **Purpose**: Teams listing page for Level 1 category.
 
 **Key Features**:
+
 - Team profile cards showing:
   - Team logo/thumbnail
   - Team name and description
@@ -280,6 +309,7 @@ app/
 - Newsletter signup
 
 **Components**:
+
 - AvatarGroup for displaying multiple team members
 - Brand icons (Adobe, etc.)
 - Team portfolio showcases
@@ -292,9 +322,11 @@ app/
 ### `app/(group)/(group)/level-2/`
 
 #### `level-2/all/page.tsx`
+
 **Purpose**: Displays all items for Level 2 category.
 
 **Features**:
+
 - Similar to level-1/all but with Level 2 specific data
 - May have different filtering or sorting options
 - Level 2 category-specific content
@@ -302,9 +334,11 @@ app/
 ---
 
 #### `level-2/projects/page.tsx`
+
 **Purpose**: Projects listing page for Level 2 category.
 
 **Key Differences from Level 1**:
+
 - Server-side rendered (no 'use client' directive)
 - May have different project categories
 - Different featured projects
@@ -312,6 +346,7 @@ app/
 - Similar UI structure but with Level 2 data
 
 **Features**:
+
 - Hero banner
 - Category browsing
 - Featured projects tabs
@@ -325,9 +360,11 @@ app/
 ---
 
 #### `level-2/services/page.tsx`
+
 **Purpose**: Services listing page for Level 2 category.
 
 **Features**:
+
 - Level 2 specific services
 - Service cards with pricing
 - Service category filtering
@@ -337,9 +374,11 @@ app/
 ---
 
 #### `level-2/talent/page.tsx`
+
 **Purpose**: Talent listing page for Level 2 category.
 
 **Features**:
+
 - Level 2 specific talent profiles
 - Talent search and filtering
 - Featured talent section
@@ -349,9 +388,11 @@ app/
 ---
 
 #### `level-2/teams/page.tsx`
+
 **Purpose**: Teams listing page for Level 2 category.
 
 **Features**:
+
 - Level 2 specific team profiles
 - Team filtering options
 - Featured teams
@@ -365,9 +406,11 @@ app/
 ### `app/(group)/(group)/level-3/`
 
 #### `level-3/all/page.tsx`
+
 **Purpose**: Displays all items for Level 3 category.
 
 **Features**:
+
 - Most specific category level
 - All items aggregated view
 - Level 3 specific filtering
@@ -375,9 +418,11 @@ app/
 ---
 
 #### `level-3/projects/page.tsx`
+
 **Purpose**: Projects listing page for Level 3 category.
 
 **Key Features**:
+
 - **Sidebar Integration**: Includes search sidebar component
 - **Grid/List View Toggle**: Users can switch between grid and list views
 - **Filter Dropdown**: Advanced filtering options
@@ -385,12 +430,14 @@ app/
 - Similar structure to other levels but with sidebar navigation
 
 **Unique Components**:
+
 - `Sidebar` component from search route
 - `ToggleGroup` for view switching (Grid/List)
 - `Filter` icon component
 - `DropdownIcon` for filter dropdowns
 
 **Layout**:
+
 - Two-column layout with sidebar
 - Main content area with projects
 - Filter controls at top
@@ -399,9 +446,11 @@ app/
 ---
 
 #### `level-3/talent/page.tsx`
+
 **Purpose**: Talent listing page for Level 3 category.
 
 **Features**:
+
 - Most specific talent category
 - Level 3 specific talent profiles
 - Advanced filtering
@@ -411,9 +460,11 @@ app/
 ---
 
 #### `level-3/teams/page.tsx`
+
 **Purpose**: Teams listing page for Level 3 category.
 
 **Features**:
+
 - Most specific team category
 - Level 3 specific team profiles
 - Advanced team filtering
@@ -425,7 +476,9 @@ app/
 ## Common Patterns Across All Levels
 
 ### Shared Components
+
 All level pages share common UI components:
+
 - **Hero Banners**: Category-specific hero images with titles
 - **Tabs**: For filtering and categorization (Featured, Newest, Most Popular, etc.)
 - **Cards**: Consistent card design for items (projects, services, talent, teams)
@@ -437,6 +490,7 @@ All level pages share common UI components:
 - **Links**: Next.js Link components for navigation
 
 ### Shared Features
+
 - **Search Functionality**: All pages support searching
 - **Filtering**: Multiple filter options (category, type, budget, etc.)
 - **Sorting**: Various sorting options (newest, popular, trending)
@@ -447,6 +501,7 @@ All level pages share common UI components:
 - **Related Content**: Blog posts and guides
 
 ### Data Fetching Patterns
+
 - Client-side data fetching with `useState` and `useEffect`
 - API wrapper components for reusable logic
 - Loading states with skeleton screens
@@ -454,6 +509,7 @@ All level pages share common UI components:
 - Empty state handling
 
 ### Styling
+
 - Tailwind CSS for styling
 - Consistent color scheme (dark-blue-400, primary-500, etc.)
 - Responsive design (mobile, tablet, desktop)
@@ -465,11 +521,13 @@ All level pages share common UI components:
 ## Route Structure
 
 ### URL Patterns
+
 - Level 1: `/level-1/projects`, `/level-1/services`, `/level-1/talent`, `/level-1/teams`, `/level-1/all`
 - Level 2: `/level-2/projects`, `/level-2/services`, `/level-2/talent`, `/level-2/teams`, `/level-2/all`
 - Level 3: `/level-3/projects`, `/level-3/talent`, `/level-3/teams`, `/level-3/all`
 
 ### Next.js Route Groups
+
 - `(group)` folders are Next.js route groups that don't affect the URL structure
 - They allow for organizing routes without adding segments to the URL
 - Used for layout organization and code splitting
@@ -492,6 +550,7 @@ All level pages share common UI components:
 ## Future Enhancements
 
 Potential improvements for the folder structure:
+
 1. Extract common page components into shared components
 2. Create reusable hooks for data fetching
 3. Implement proper TypeScript types for all data structures
@@ -516,6 +575,7 @@ Potential improvements for the folder structure:
 # Source Code Structure (`src/` Directory)
 
 ## Overview
+
 The `src/` directory contains the core business logic, API integrations, data fetching utilities, and shared features that power the application. This section documents how these modules connect to and support the app folder structure, particularly the level-1, level-2, and level-3 pages.
 
 ## Folder Hierarchy
@@ -553,9 +613,11 @@ src/
 ## `src/lib/` - Core Library Utilities
 
 ### `src/lib/api.ts`
+
 **Purpose**: Base API fetch utility providing a simple wrapper around the native `fetch` API.
 
 **Key Features**:
+
 - Configurable base URL via `NEXT_PUBLIC_API_BASE_URL` environment variable
 - Automatic JSON serialization/deserialization
 - Content-Type header management
@@ -563,25 +625,30 @@ src/
 - Type-safe generic responses
 
 **Function**:
+
 ```typescript
 apiFetch<T>(path: string, options?: FetchOpts): Promise<T>
 ```
 
 **Usage**:
+
 - Used by other API modules as a foundation
 - Provides consistent error handling across API calls
 - Used in `src/api/user.ts` for user-related API calls
 
 **Connection to App Levels**:
+
 - Indirectly used through higher-level API modules
 - Provides the foundation for all API communication
 
 ---
 
 ### `src/lib/http.ts`
+
 **Purpose**: HTTP client factory that creates a configurable HTTP client with authentication support.
 
 **Key Features**:
+
 - **Configurable Base URL**: Uses `NEXT_PUBLIC_API_BASE_URL` or defaults to `http://localhost:3002/api`
 - **Token Management**: Optional token getter function for authentication
 - **Automatic Headers**: Sets Content-Type and Authorization headers
@@ -590,14 +657,17 @@ apiFetch<T>(path: string, options?: FetchOpts): Promise<T>
 - **Credentials**: Includes credentials for cookie-based auth
 
 **Exported Functions**:
+
 - `createHttp(config?)`: Factory function to create HTTP client instances
 - `http`: Default HTTP client instance (singleton)
 
 **Type Safety**:
+
 - Generic type parameters for request/response types
 - TypeScript interfaces for configuration
 
 **Connection to App Levels**:
+
 - **Primary HTTP Client**: Used by `src/features/category-pages/api.ts` for all category page API calls
 - **Level-Specific Endpoints**: Supports different endpoints for L1, L2, L3:
   - L1: `/category-pages/{l1}`
@@ -605,6 +675,7 @@ apiFetch<T>(path: string, options?: FetchOpts): Promise<T>
   - L3: `/category-pages/{l1}/{l2}/{l3}`
 
 **Example Usage**:
+
 ```typescript
 // Used in CategoryPagesAPI
 http.get<CategoryPageData>(`/category-pages/${l1}`)
@@ -613,40 +684,48 @@ http.get<CategoryPageData>(`/category-pages/${l1}`)
 ---
 
 ### `src/lib/jwt.ts`
+
 **Purpose**: JWT token parsing utility for extracting payload data from JWT tokens.
 
 **Key Features**:
+
 - Parses JWT without verification (client-side only)
 - Handles Base64-URL encoding/decoding
 - UTF-8 decoding for payload
 - Type-safe payload extraction
 
 **Function**:
+
 ```typescript
 parseJwt<T>(token: string): T
 ```
 
 **Usage**:
+
 - Used for extracting user information from authentication tokens
 - Can be used in authentication contexts
 - Extracts claims and user data from JWT payloads
 
 **Connection to App Levels**:
+
 - Used in authentication flows
 - May be used to determine user permissions for accessing different levels
 
 ---
 
 ### `src/lib/api/category-pages.ts` (Legacy)
+
 **Purpose**: Legacy category pages API implementation using Axios.
 
 **Key Features**:
+
 - **Axios-based**: Uses Axios instead of native fetch
 - **Direct API Calls**: Makes direct calls to backend API
 - **Type Definitions**: Defines `BlockItem`, `ContentBlock`, and `CategoryPageResponse` interfaces
 - **Error Handling**: Returns `null` on error with console logging
 
 **Interfaces**:
+
 - `BlockItem`: Represents individual items (projects, services, talent, teams)
   - Contains: id, title, slug, type, thumbnail, description, creator, rating, reviews, tags, price, deliveryTime
 - `ContentBlock`: Represents a block of content with items
@@ -655,24 +734,31 @@ parseJwt<T>(token: string): T
   - Contains: category, breadcrumbs, parent, children, siblings, relatedCategories, tags, blocks
 
 **Function**:
+
 ```typescript
 getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
 ```
 
 **API Endpoint**:
+
 - `GET ${API_BASE_URL}/category-pages/${slug}`
 - Default base URL: `http://localhost:3002/api`
 
 **Connection to App Levels**:
-- **Currently Used In**: 
+
+- **Currently Used In**:
   - `app/(group)/(group)/level-1/projects/page.tsx` - Direct import and usage
   - `app/(group)/(group)/level-1/projects/api-wrapper.tsx` - Used in wrapper component
-- **Usage Pattern**: 
+- **Usage Pattern**:
   ```typescript
-  import { getCategoryPage, type BlockItem } from '../../../../../src/lib/api/category-pages';
-  const data = await getCategoryPage('creative');
+  import {
+    type BlockItem,
+    getCategoryPage,
+  } from "../../../../../src/lib/api/category-pages"
+
+  const data = await getCategoryPage("creative")
   ```
-- **Data Flow**: 
+- **Data Flow**:
   1. Component calls `getCategoryPage('creative')`
   2. Function makes Axios GET request
   3. Returns category page data with blocks
@@ -685,15 +771,18 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
 ## `src/features/` - Feature-Based Modules
 
 ### `src/features/category-pages/api.ts`
+
 **Purpose**: Modern category pages API client with level-specific methods.
 
 **Key Features**:
+
 - **Level-Specific Methods**: Separate methods for L1, L2, L3
 - **Query Parameters**: Supports filtering via query params (kind, cursor, limit)
 - **Type-Safe**: Full TypeScript type definitions
 - **Uses HTTP Client**: Built on top of `src/lib/http.ts`
 
 **Type Definitions**:
+
 - `CategoryPageData`: Comprehensive type definition including:
   - `category`: Category information with UUID, name, slug, SEO data
   - `breadcrumbs`: Navigation breadcrumb array
@@ -725,11 +814,13 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
    - Used for: Level 3 category pages
 
 **Query Parameters**:
+
 - `kind`: Filter by item type (projects, services, talent, teams)
 - `cursor`: Pagination cursor for infinite scroll
 - `limit`: Number of items to return
 
 **Connection to App Levels**:
+
 - **Designed for**: All three levels (L1, L2, L3)
 - **Ready for Integration**: Can be used in level-1, level-2, level-3 pages
 - **Current Status**: Available but not yet fully integrated (legacy API still in use)
@@ -737,15 +828,18 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
 ---
 
 ### `src/features/category-pages/hook.ts`
+
 **Purpose**: React Query hooks for category pages with caching and state management.
 
 **Key Features**:
+
 - **React Query Integration**: Uses `@tanstack/react-query` for data fetching
 - **Automatic Caching**: Query keys ensure proper cache invalidation
 - **Level-Specific Hooks**: Separate hooks for each level
 - **Type Safety**: Full TypeScript support
 
 **Query Keys Structure**:
+
 - L1: `["category-page", "l1", l1, params]`
 - L2: `["category-page", "l2", l1, l2, params]`
 - L3: `["category-page", "l3", l1, l2, l3, params]`
@@ -771,6 +865,7 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
    - Usage: For Level 3 pages
 
 **Benefits**:
+
 - **Automatic Loading States**: `isLoading`, `isError`, `isSuccess` flags
 - **Caching**: Prevents unnecessary API calls
 - **Refetching**: Automatic refetch on window focus (configurable)
@@ -778,36 +873,44 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
 - **Type Safety**: Full TypeScript inference
 
 **Connection to App Levels**:
+
 - **Recommended Usage**: Should replace direct API calls in level pages
 - **Integration Example**:
   ```typescript
   // In level-1/projects/page.tsx
-  const { data, isLoading, error } = useCategoryPageL1('creative', { kind: 'projects' });
+  const { data, isLoading, error } = useCategoryPageL1("creative", {
+    kind: "projects",
+  })
   ```
 - **Future Migration**: All level pages should migrate to using these hooks
 
 ---
 
 ### `src/features/shared/query-provider.tsx`
+
 **Purpose**: React Query provider component that wraps the application for data fetching.
 
 **Key Features**:
+
 - **QueryClient Setup**: Creates and manages React Query client
 - **Default Options**: Configures retry logic and refetch behavior
 - **Singleton Pattern**: Creates client once and reuses it
 - **Global Configuration**: Sets app-wide query defaults
 
 **Configuration**:
+
 - `retry: 2`: Retries failed queries twice
 - `refetchOnWindowFocus: false`: Prevents refetch on window focus
 
 **Connection to App Levels**:
+
 - **Used In**: `app/layout.tsx` - Wraps entire application
 - **Provides**: Query context for all level pages
 - **Enables**: React Query hooks to work throughout the app
 - **Required For**: `useCategoryPageL1`, `useCategoryPageL2`, `useCategoryPageL3` hooks
 
 **Usage**:
+
 ```typescript
 // In app/layout.tsx
 <QueryProvider>
@@ -820,24 +923,29 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
 ## `src/api/` - API Functions
 
 ### `src/api/user.ts`
+
 **Purpose**: User-related API functions, specifically for messaging and encryption.
 
 **Key Features**:
+
 - **Public Key Retrieval**: Fetches recipient's public key for encryption
 - **Uses Base API**: Built on `src/lib/api.ts` (`apiFetch`)
 - **Authentication**: Supports Bearer token authentication
 - **Type Safety**: TypeScript types for request/response
 
 **Function**:
+
 ```typescript
 getRecipientPublicKey(userId: string, token: string): Promise<string>
 ```
 
 **API Endpoint**:
+
 - `GET /api/messaging/keys/{userId}/public-key`
 - Headers: `Authorization: Bearer {token}`
 
 **Connection to App Levels**:
+
 - **Used In**: Messaging/chat features (inbox functionality)
 - **Not Directly Related**: To level-1, level-2, level-3 pages
 - **Purpose**: Supports end-to-end encryption for user communications
@@ -847,42 +955,51 @@ getRecipientPublicKey(userId: string, token: string): Promise<string>
 ## `src/crypto/` - Encryption Utilities
 
 ### Overview
+
 The `src/crypto/` directory contains utilities for end-to-end encryption (E2EE) functionality, primarily used for secure messaging.
 
 ### `src/crypto/e2ee.ts`
+
 **Purpose**: End-to-end encryption functions for message encryption/decryption.
 
 **Key Features**:
+
 - **RSA-OAEP Encryption**: Uses RSA-OAEP algorithm for encryption
 - **Message Encryption**: Encrypts plain text with recipient's public key
 - **Message Decryption**: Decrypts cipher text with private key
 - **Key Wrapping**: Wraps/unwraps AES keys with RSA keys
 
 **Functions**:
+
 - `encryptMessage(plainText, recipientPublicKey)`: Encrypts a message
 - `decryptMessage(cipherText, privateKey)`: Decrypts a message
 - `encryptWithPublicKey(data, publicKeyPem)`: Encrypts with PEM public key
 - `decryptWithPrivateKey(cipherText, privateKeyPem)`: Decrypts with PEM private key
 
 **Connection to App Levels**:
+
 - **Not Directly Related**: To level-1, level-2, level-3 pages
 - **Used In**: Messaging/chat features for secure communication
 
 ---
 
 ### `src/crypto/storage.ts`
+
 **Purpose**: Local storage utilities for persisting encryption keys.
 
 **Key Features**:
+
 - **Key Persistence**: Saves AES keys to localStorage
 - **Key Retrieval**: Loads keys from localStorage
 - **Conversation-Specific**: Keys are stored per conversation ID
 
 **Functions**:
+
 - `saveKey(convId, rawKeyB64)`: Saves Base64-encoded AES key
 - `loadKey(convId)`: Loads and decodes AES key
 
 **Connection to App Levels**:
+
 - **Not Directly Related**: To level-1, level-2, level-3 pages
 - **Used In**: Messaging features for key management
 
@@ -891,15 +1008,18 @@ The `src/crypto/` directory contains utilities for end-to-end encryption (E2EE) 
 ## `src/hooks/` - Custom React Hooks
 
 ### `src/hooks/useConversationKey.ts`
+
 **Purpose**: React hook for managing conversation encryption keys.
 
 **Key Features**:
+
 - **Key Unwrapping**: Unwraps encrypted conversation keys
 - **Key Storage**: Automatically saves keys to IndexedDB
 - **State Management**: Manages key state in component
 - **Effect-Based**: Uses useEffect for key initialization
 
 **Connection to App Levels**:
+
 - **Not Directly Related**: To level-1, level-2, level-3 pages
 - **Used In**: Messaging/chat features
 
@@ -910,6 +1030,7 @@ The `src/crypto/` directory contains utilities for end-to-end encryption (E2EE) 
 ### Current Implementation (Level 1)
 
 **Flow Diagram**:
+
 ```
 app/(group)/(group)/level-1/projects/page.tsx
     ↓ (imports)
@@ -927,22 +1048,27 @@ Project cards in UI
 **Step-by-Step**:
 
 1. **Component Import**:
+
    ```typescript
    // In level-1/projects/page.tsx
-   import { getCategoryPage, type BlockItem } from '../../../../../src/lib/api/category-pages';
+   import {
+     type BlockItem,
+     getCategoryPage,
+   } from "../../../../../src/lib/api/category-pages"
    ```
 
 2. **Data Fetching**:
+
    ```typescript
    useEffect(() => {
      async function fetchData() {
-       const data = await getCategoryPage('creative');
+       const data = await getCategoryPage("creative")
        // Extract items from blocks
-       const allItems = data.blocks.flatMap(block => block.items);
-       setProjects(allItems);
+       const allItems = data.blocks.flatMap((block) => block.items)
+       setProjects(allItems)
      }
-     fetchData();
-   }, []);
+     fetchData()
+   }, [])
    ```
 
 3. **API Call**:
@@ -965,6 +1091,7 @@ Project cards in UI
 ### Recommended Implementation (All Levels)
 
 **Flow Diagram**:
+
 ```
 app/(group)/(group)/level-{1,2,3}/projects/page.tsx
     ↓ (uses hook)
@@ -986,19 +1113,20 @@ UI renders with data
 **Step-by-Step**:
 
 1. **Component Setup**:
+
    ```typescript
    // In level-1/projects/page.tsx
    import { useCategoryPageL1 } from '@/features/category-pages/hook';
-   
+
    export default function Projects() {
-     const { data, isLoading, error } = useCategoryPageL1('creative', { 
+     const { data, isLoading, error } = useCategoryPageL1('creative', {
        kind: 'projects',
-       limit: 20 
+       limit: 20
      });
-     
+
      if (isLoading) return <Loading />;
      if (error) return <Error />;
-     
+
      // Use data.blocks to render items
    }
    ```
@@ -1023,18 +1151,21 @@ UI renders with data
 ### Level-Specific API Endpoints
 
 **Level 1**:
+
 - **Endpoint**: `/category-pages/{l1}`
 - **Example**: `/category-pages/creative`
 - **Method**: `CategoryPagesAPI.getL1('creative')`
 - **Hook**: `useCategoryPageL1('creative')`
 
 **Level 2**:
+
 - **Endpoint**: `/category-pages/{l1}/{l2}`
 - **Example**: `/category-pages/creative/web-design`
 - **Method**: `CategoryPagesAPI.getL2('creative', 'web-design')`
 - **Hook**: `useCategoryPageL2('creative', 'web-design')`
 
 **Level 3**:
+
 - **Endpoint**: `/category-pages/{l1}/{l2}/{l3}`
 - **Example**: `/category-pages/creative/web-design/responsive`
 - **Method**: `CategoryPagesAPI.getL3('creative', 'web-design', 'responsive')`
@@ -1059,11 +1190,12 @@ All levels support the same query parameters:
   - Example: `{ limit: 20 }`
 
 **Usage Example**:
+
 ```typescript
-useCategoryPageL1('creative', {
-  kind: 'projects',
-  cursor: 'next-page-token',
-  limit: 20
+useCategoryPageL1("creative", {
+  kind: "projects",
+  cursor: "next-page-token",
+  limit: 20,
 })
 ```
 
@@ -1072,6 +1204,7 @@ useCategoryPageL1('creative', {
 ## Data Structure Flow
 
 ### Request Flow
+
 ```
 Component (Level Page)
   → Hook (useCategoryPageL1/L2/L3)
@@ -1081,6 +1214,7 @@ Component (Level Page)
 ```
 
 ### Response Flow
+
 ```
 Backend API
   → HTTP Client (parses JSON)
@@ -1091,6 +1225,7 @@ Backend API
 ```
 
 ### Data Transformation
+
 ```
 CategoryPageData
   ├── category (category info)
@@ -1106,15 +1241,17 @@ CategoryPageData
 ## Migration Path: Legacy to Modern API
 
 ### Current State (Legacy)
+
 - **Used In**: `level-1/projects/page.tsx`, `level-1/projects/api-wrapper.tsx`
 - **Implementation**: Direct import of `getCategoryPage` from `src/lib/api/category-pages.ts`
-- **Issues**: 
+- **Issues**:
   - No caching
   - Manual loading state management
   - No automatic refetching
   - Axios dependency
 
 ### Target State (Modern)
+
 - **Should Use**: `useCategoryPageL1/L2/L3` hooks from `src/features/category-pages/hook.ts`
 - **Benefits**:
   - Automatic caching
@@ -1124,6 +1261,7 @@ CategoryPageData
   - Uses modern fetch API
 
 ### Migration Steps:
+
 1. Replace direct API calls with hooks
 2. Remove manual `useState`/`useEffect` for data fetching
 3. Use React Query's loading/error states
@@ -1135,17 +1273,20 @@ CategoryPageData
 ## Summary: Key Connections
 
 ### Direct Connections
+
 1. **Level 1 Projects** → `src/lib/api/category-pages.ts` (legacy, currently used)
 2. **All Levels** → `src/features/category-pages/hook.ts` (recommended, ready to use)
 3. **HTTP Client** → `src/lib/http.ts` (used by modern API)
 4. **Query Provider** → `src/features/shared/query-provider.tsx` (required for hooks)
 
 ### Indirect Connections
+
 1. **Authentication** → `src/lib/jwt.ts` (for user context)
 2. **Base API** → `src/lib/api.ts` (foundation for other APIs)
 3. **Messaging** → `src/crypto/`, `src/hooks/` (not related to levels)
 
 ### Best Practices
+
 1. **Use Hooks**: Prefer `useCategoryPageL1/L2/L3` over direct API calls
 2. **Type Safety**: Use TypeScript types from API modules
 3. **Error Handling**: Leverage React Query's error states
@@ -1163,4 +1304,3 @@ CategoryPageData
 5. **Optimistic Updates**: Implement optimistic updates for mutations
 6. **Infinite Scroll**: Add infinite scroll support using cursor pagination
 7. **Real-time Updates**: Consider WebSocket integration for real-time data
-

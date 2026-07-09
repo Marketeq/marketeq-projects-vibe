@@ -1,22 +1,24 @@
-import { Controller, Post, Get, Param, Body, Request, UseGuards } from '@nestjs/common';
-import { ContractsService } from '../services/contracts.service';
+import { Controller, Post, Get, Param, Body } from '@nestjs/common';
+import { GroupsService } from '../services/groups.service';
 import { CreateGroupDto } from '../dtos/create-group.dto';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
+import { ContractGroup } from '../entities/contract-group.entity';
+import { Contract } from '../entities/contract.entity';
 
 @Controller('contract-groups')
-@UseGuards(JwtAuthGuard)
 export class GroupsController {
-  constructor(private readonly svc: ContractsService) {}
+  constructor(private readonly groupsService: GroupsService) {}
 
-  @UseGuards(RolesGuard('client'))
+  // Create a new group with N contracts
   @Post()
-  createGroup(@Body() dto: CreateGroupDto, @Request() req: any) {
-    return this.svc.createGroup(dto, req.user);
+  async createGroup(
+    @Body() dto: CreateGroupDto,
+  ): Promise<{ group: ContractGroup; contracts: Contract[] }> {
+    return this.groupsService.createGroup(dto);
   }
 
+  // Get one group and all contracts
   @Get(':id')
-  getGroup(@Param('id') id: string) {
-    return this.svc.getGroup(id);
+  async getGroup(@Param('id') id: string) {
+    return this.groupsService.getGroup(id);
   }
 }

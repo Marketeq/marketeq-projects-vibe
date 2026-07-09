@@ -12,16 +12,17 @@ export class UserPreferences {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text', unique: true })
+  @Column({ name: 'user_id', type: 'text', unique: true })
   userId: string;
 
   @Column({ type: 'text', default: 'UTC' })
   timezone: string;
 
-  @Column({ type: 'text', default: 'MM/DD/YYYY' })
+  @Column({ name: 'date_format', type: 'text', default: 'MM/DD/YYYY' })
   dateFormat: string;
 
   @Column({
+    name: 'start_of_week',
     type: 'enum',
     enum: ['Sunday', 'Monday'],
     default: 'Sunday',
@@ -29,12 +30,13 @@ export class UserPreferences {
   startOfWeek: 'Sunday' | 'Monday';
 
   @Column({
+    name: 'time_format',
     type: 'enum',
     enum: ['12h', '24h'],
     default: '12h',
   })
   timeFormat: '12h' | '24h';
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

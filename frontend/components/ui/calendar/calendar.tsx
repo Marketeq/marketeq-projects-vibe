@@ -8,6 +8,7 @@ import { CalendarDate, parseDate } from "@internationalized/date"
 import { RadioGroup, RadioGroupItem } from "@radix-ui/react-radio-group"
 import { SelectTrigger } from "@radix-ui/react-select"
 import {
+  addMonths,
   format,
   isToday,
   isValid,
@@ -76,6 +77,15 @@ function Calendar({
         onFocusedValueChange?.(value)
       }
     },
+    shouldUpdate: (prev, next) => {
+      if (!prev && !next) return false
+      if (!prev || !next) return true
+      return (
+        prev.getFullYear() !== next.getFullYear() ||
+        prev.getMonth() !== next.getMonth() ||
+        prev.getDate() !== next.getDate()
+      )
+    },
   })
   const [state, setState] = useControllableState<Date | undefined>({
     value,
@@ -86,6 +96,15 @@ function Calendar({
       }
     },
     defaultValue: new Date(),
+    shouldUpdate: (prev, next) => {
+      if (!prev && !next) return false
+      if (!prev || !next) return true
+      return (
+        prev.getFullYear() !== next.getFullYear() ||
+        prev.getMonth() !== next.getMonth() ||
+        prev.getDate() !== next.getDate()
+      )
+    },
   })
 
   const onSelectChange = (value: string) => {
@@ -146,12 +165,12 @@ function Calendar({
   }
 
   const onFocusChange = (value: CalendarDate) => {
-    const date = new Date(value.toString())
+    const date = new Date(value.year, value.month - 1, value.day)
     setFocusedValueState(date)
   }
 
   const handleChange = (value: CalendarDate) => {
-    const date = new Date(value.toString())
+    const date = new Date(value.year, value.month - 1, value.day)
     setState(date)
   }
 
@@ -309,48 +328,47 @@ const RangeCalendar = ({
   onValueChange?: (value: RangeValue) => void
   className?: string
 }) => {
-  const [focusedValueState, setFocusedValueState] = useControllableState<
-    Date | undefined
-  >({
-    value: focusedValue,
-    onChange: (value) => {
-      if (value) {
-        onFocusedValueChange?.(value)
-      }
+  // Store callbacks in refs so AriaRangeCalendar always sees the same function identity.
+  // A new identity causes react-aria to re-fire onChange → infinite "Maximum update depth" loop.
+  const onValueChangeRef = React.useRef(onValueChange)
+  onValueChangeRef.current = onValueChange
+  const onFocusedValueChangeRef = React.useRef(onFocusedValueChange)
+  onFocusedValueChangeRef.current = onFocusedValueChange
+
+  const onChange = React.useCallback(
+    (value: RangeValue<CalendarDate> | null) => {
+      if (!value) return
+      onValueChangeRef.current?.({
+        start: new Date(value.start.toString()),
+        end: new Date(value.end.toString()),
+      })
     },
-  })
-  const [state, setState] = useControllableState<RangeValue | undefined>({
-    value,
-    onChange: (value) => {
-      if (value) {
-        onValueChange?.(value)
-      }
-    },
-  })
+    []
+  )
 
-  const onFocusChange = (value: CalendarDate) => {
-    const date = new Date(value.toString())
-    setFocusedValueState(date)
-  }
+  const onFocusChange = React.useCallback((value: CalendarDate) => {
+    onFocusedValueChangeRef.current?.(new Date(value.toString()))
+  }, [])
 
-  const onChange = (value: RangeValue<CalendarDate> | null) => {
-    if (!value) return
-
-    const date = {
-      start: new Date(value.start.toString()),
-      end: new Date(value.end.toString()),
-    }
-    setState(date)
-  }
+  // Memoize so AriaRangeCalendar receives stable object references when dates haven't changed.
+  // Recreating CalendarDate objects every render triggers react-aria's internal effects every
+  // render → setState every render → "Maximum update depth exceeded".
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const calendarValue = React.useMemo(
+    () => convertToRangeValue(value),
+    [value?.start?.getTime(), value?.end?.getTime()]
+  )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const calendarFocusedValue = React.useMemo(
+    () =>
+      focusedValue ? parseDate(format(focusedValue, "yyyy-MM-dd")) : undefined,
+    [focusedValue?.getTime()]
+  )
 
   return (
     <AriaRangeCalendar
-      focusedValue={
-        focusedValueState
-          ? parseDate(format(focusedValueState, "yyyy-MM-dd"))
-          : undefined
-      }
-      value={convertToRangeValue(state)}
+      focusedValue={calendarFocusedValue}
+      value={calendarValue}
       onFocusChange={onFocusChange}
       onChange={onChange}
       className={cn("w-[328px] py-5 px-6", className)}
@@ -406,12 +424,16 @@ const DualCalendar = ({
   onFocusedValueChange,
   value,
   onValueChange,
+  onCancel,
+  onApply,
 }: {
   left?: () => React.ReactNode
   focusedValue?: Date
   onFocusedValueChange?: (value: Date) => void
   value?: RangeValue
   onValueChange?: (value: RangeValue) => void
+  onCancel?: () => void
+  onApply?: (value: RangeValue | undefined) => void
 }) => {
   const [date, setDate] = React.useState<{
     start: string
@@ -430,18 +452,28 @@ const DualCalendar = ({
       }
     },
   })
-  const [state, setState] = useControllableState<RangeValue | undefined>({
-    value,
-    onChange: (value) => {
-      if (value) {
-        onValueChange?.(value)
-        setDate({
-          end: format(value.end, "LLL d, yyyy"),
-          start: format(value.start, "LLL d, yyyy"),
-        })
-      }
-    },
-  })
+  // Plain useState — not useControllableState. Using useControllableState with a
+  // `value` prop (controlled mode) puts `value` in useCallbackRef deps, causing setState
+  // to get a new identity on every parent re-render, which makes AriaRangeCalendar
+  // re-fire onChange, creating an infinite loop.
+  const [state, setState] = React.useState<RangeValue | undefined>(value)
+
+  const onValueChangeRef = React.useRef(onValueChange)
+  onValueChangeRef.current = onValueChange
+
+  const handleSelectionChange = React.useCallback((newValue: RangeValue) => {
+    setState(newValue)
+    onValueChangeRef.current?.(newValue)
+    setDate({
+      end: format(newValue.end, "LLL d, yyyy"),
+      start: format(newValue.start, "LLL d, yyyy"),
+    })
+  }, [])
+
+  // Second calendar starts one month ahead and manages its own focused month independently
+  const [secondFocusedMonth, setSecondFocusedMonth] = React.useState<Date>(() =>
+    addMonths(focusedValueState ?? new Date(), 1)
+  )
 
   const onStartDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { target } = event
@@ -460,7 +492,7 @@ const DualCalendar = ({
         start: parsedStartDate,
         end: parsedEndDate,
       }
-      setState(nextState)
+      handleSelectionChange(nextState)
       setFocusedValueState(nextState.start)
     }
   }
@@ -483,7 +515,7 @@ const DualCalendar = ({
         start: parsedStartDate,
         end: parsedEndDate,
       }
-      setState(nextState)
+      handleSelectionChange(nextState)
       setFocusedValueState(nextState.end)
     }
   }
@@ -495,12 +527,17 @@ const DualCalendar = ({
         <div className="flex h-[392px]">
           <RangeCalendar
             value={state}
-            onValueChange={setState}
+            onValueChange={handleSelectionChange}
             focusedValue={focusedValueState}
             onFocusedValueChange={setFocusedValueState}
             className="border-r border-gray-200"
           />
-          <RangeCalendar />
+          <RangeCalendar
+            value={state}
+            onValueChange={handleSelectionChange}
+            focusedValue={secondFocusedMonth}
+            onFocusedValueChange={setSecondFocusedMonth}
+          />
         </div>
 
         <div className="border-t flex items-center justify-between px-4 h-[72px] border-gray-200">
@@ -519,10 +556,18 @@ const DualCalendar = ({
           </div>
 
           <div className="inline-flex items-center gap-x-3">
-            <Button size="md" variant="outlined" visual="gray">
+            <Button
+              type="button"
+              size="md"
+              variant="outlined"
+              visual="gray"
+              onClick={onCancel}
+            >
               Cancel
             </Button>
-            <Button size="md">Apply</Button>
+            <Button type="button" size="md" onClick={() => onApply?.(state)}>
+              Apply
+            </Button>
           </div>
         </div>
       </div>

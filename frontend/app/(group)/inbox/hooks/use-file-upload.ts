@@ -1,28 +1,33 @@
 "use client"
 
 import { encryptAES } from "@/src/crypto/e2ee"
-import { saveKey } from "@/src/crypto/indexedDb"
-import { loadKey } from "@/src/crypto/storage"
+import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
 interface FileUploadResponse {
   message: {
     id: string
-    conversationId: string
+    threadId?: string
+    conversationId?: string
     senderId: string
-    type: "file"
-    ciphertext: string
+    messageType?: "file"
+    ciphertext?: string | null
+    content?: string
     createdAt: string
     updatedAt: string
-    isRead: boolean
-    isPinned: boolean
-    isDeleted: boolean
+    status?: string
+    attachments?: Array<{
+      id: string
+      fileUrl: string
+      fileName?: string | null
+      fileType: string
+      fileSize?: number | null
+    }>
   }
   attachment: {
     id: string
     messageId: string
-    conversationId: string
-    senderId: string
     fileUrl: string
     fileName: string
     fileType: string
@@ -31,10 +36,10 @@ interface FileUploadResponse {
   }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3007"
+const API_BASE_URL = getPublicBackendUrl() || "http://localhost:3002/api"
 
 export function useFileUpload(
-  token: string,
+  _token: string,
   privateKey: CryptoKey | null,
   isGroup: boolean = false
 ) {
@@ -43,7 +48,7 @@ export function useFileUpload(
     file: File,
     textMessage?: string
   ): Promise<FileUploadResponse> {
-    if (!conversationId || !token || !file) {
+    if (!conversationId || !file) {
       throw new Error("Missing required parameters for file upload")
     }
 
@@ -67,8 +72,7 @@ export function useFileUpload(
       }
 
       const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-        `${API_BASE_URL}/api/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`
       )
 
       // Decrypt the wrapped key
@@ -116,11 +120,9 @@ export function useFileUpload(
     // }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messaging/upload`, {
+      const response = await fetch(`${API_BASE_URL}/messaging/upload`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
         body: formData,
       })
 

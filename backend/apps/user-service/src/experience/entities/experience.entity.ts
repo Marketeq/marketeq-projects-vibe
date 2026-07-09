@@ -9,7 +9,7 @@ export class Experience {
   @Column({ type: 'uuid' })
   userId: string;
 
-  @ManyToOne(() => User, (u) => u.experience, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (u) => u.experiences, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 

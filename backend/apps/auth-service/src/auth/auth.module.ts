@@ -8,7 +8,10 @@ import type { StringValue } from 'ms';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { SessionValidationGuard } from './guards/session-validation.guard';
+import { BrevoService } from '../brevo/brevo.service';
 import { User } from '../user/entities/user.entity';
+import { Session } from '../session/entities/session.entity';
 
 const normalizeKey = (value?: string) =>
   value ? value.replace(/\\n/g, '\n') : value;
@@ -20,7 +23,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
   imports: [
     ConfigModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Session]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -54,7 +57,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, SessionValidationGuard, BrevoService],
   exports: [PassportModule, JwtModule],
 })
 export class AuthModule {}

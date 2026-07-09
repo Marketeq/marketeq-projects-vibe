@@ -1,0 +1,59 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [dev-main, staging, live-mvp]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.ts' '*.tsx' '*.json' ':!package-lock.json' ':!**/dist/**' | head -c 50000)
+          echo "diff<<DIFF_EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "DIFF_EOF" >> $GITHUB_OUTPUT
+
+      - name: AI Code Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REVIEW=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg diff "${{ steps.diff.outputs.diff }}" \
+              --arg title "${{ github.event.pull_request.title }}" \
+              --arg branch "${{ github.event.pull_request.base.ref }}" \
+              '{
+                model: "claude-sonnet-4-6",
+                max_tokens: 4096,
+                messages: [{
+                  role: "user",
+                  content: ("You are a senior code reviewer for a NestJS + Next.js freelance marketplace platform (Marketeq). Review this PR diff targeting the " + $branch + " branch.\n\nPR Title: " + $title + "\n\nDiff:\n```\n" + $diff + "\n```\n\nReview for:\n1. **Security** - injection, XSS, auth issues, exposed secrets\n2. **Bugs** - logic errors, null refs, race conditions\n3. **Standards** - TypeScript strict mode, class-validator DTOs, NestJS guards, proper error handling\n4. **Breaking changes** - anything that could break existing functionality\n\nFormat your response as:\n## Summary\nOne sentence overall assessment.\n\n## Issues Found\nList each issue with severity (🔴 Critical, 🟡 Warning, 🔵 Info) and file/line reference.\n\n## Approved\nYes/No with reason.\n\nIf the code looks good, say so briefly. Do not nitpick style or add unnecessary suggestions.")
+                }]
+              }')" | jq -r '.content[0].text')
+
+          # Post review as PR comment
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "## 🤖 AI Code Review
+
+          $REVIEW
+
+          ---
+          *Automated review by Claude — not a substitute for manual QA*"

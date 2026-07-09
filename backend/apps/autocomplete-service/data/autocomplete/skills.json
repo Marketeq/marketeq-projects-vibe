@@ -1,0 +1,2132 @@
+[
+  {
+    "label": "3D Animation"
+  },
+  {
+    "label": "3D Modeling"
+  },
+  {
+    "label": "3D Printing"
+  },
+  {
+    "label": "3D Rendering"
+  },
+  {
+    "label": "A/B Testing"
+  },
+  {
+    "label": "Accessibility (WCAG)"
+  },
+  {
+    "label": "Account Management"
+  },
+  {
+    "label": "Accounting"
+  },
+  {
+    "label": "Active Directory"
+  },
+  {
+    "label": "ActiveMQ"
+  },
+  {
+    "label": "Ada"
+  },
+  {
+    "label": "Adobe After Effects"
+  },
+  {
+    "label": "Adobe Animate"
+  },
+  {
+    "label": "Adobe Audition"
+  },
+  {
+    "label": "Adobe Creative Suite"
+  },
+  {
+    "label": "Adobe Illustrator"
+  },
+  {
+    "label": "Adobe InDesign"
+  },
+  {
+    "label": "Adobe Lightroom"
+  },
+  {
+    "label": "Adobe Photoshop"
+  },
+  {
+    "label": "Adobe Premiere Pro"
+  },
+  {
+    "label": "Adobe XD"
+  },
+  {
+    "label": "Affiliate Marketing"
+  },
+  {
+    "label": "Agile Methodology"
+  },
+  {
+    "label": "AI Ethics"
+  },
+  {
+    "label": "AI Prompt Engineering"
+  },
+  {
+    "label": "Airflow"
+  },
+  {
+    "label": "Airtable"
+  },
+  {
+    "label": "AJAX"
+  },
+  {
+    "label": "Akka"
+  },
+  {
+    "label": "Alexa Skills Development"
+  },
+  {
+    "label": "Algorithm Design"
+  },
+  {
+    "label": "Amazon DynamoDB"
+  },
+  {
+    "label": "Amazon EC2"
+  },
+  {
+    "label": "Amazon ECS"
+  },
+  {
+    "label": "Amazon EKS"
+  },
+  {
+    "label": "Amazon Lambda"
+  },
+  {
+    "label": "Amazon RDS"
+  },
+  {
+    "label": "Amazon Redshift"
+  },
+  {
+    "label": "Amazon S3"
+  },
+  {
+    "label": "Amazon SageMaker"
+  },
+  {
+    "label": "Amazon SNS"
+  },
+  {
+    "label": "Amazon SQS"
+  },
+  {
+    "label": "Anaconda"
+  },
+  {
+    "label": "Android Development"
+  },
+  {
+    "label": "Angular"
+  },
+  {
+    "label": "AngularJS"
+  },
+  {
+    "label": "Ansible"
+  },
+  {
+    "label": "Apache Cassandra"
+  },
+  {
+    "label": "Apache Flink"
+  },
+  {
+    "label": "Apache Hadoop"
+  },
+  {
+    "label": "Apache Hive"
+  },
+  {
+    "label": "Apache Kafka"
+  },
+  {
+    "label": "Apache NiFi"
+  },
+  {
+    "label": "Apache Spark"
+  },
+  {
+    "label": "Apache Tomcat"
+  },
+  {
+    "label": "Apex (Salesforce)"
+  },
+  {
+    "label": "API Design"
+  },
+  {
+    "label": "API Development"
+  },
+  {
+    "label": "API Gateway"
+  },
+  {
+    "label": "API Integration"
+  },
+  {
+    "label": "API Testing"
+  },
+  {
+    "label": "App Store Optimization (ASO)"
+  },
+  {
+    "label": "AppDynamics"
+  },
+  {
+    "label": "AR/VR Development"
+  },
+  {
+    "label": "Arduino"
+  },
+  {
+    "label": "Artificial Intelligence"
+  },
+  {
+    "label": "ASP.NET"
+  },
+  {
+    "label": "Astro"
+  },
+  {
+    "label": "Atlassian Suite"
+  },
+  {
+    "label": "Attention to Detail"
+  },
+  {
+    "label": "Audio Engineering"
+  },
+  {
+    "label": "Audio Mixing"
+  },
+  {
+    "label": "Audio Production"
+  },
+  {
+    "label": "Augmented Reality"
+  },
+  {
+    "label": "AutoCAD"
+  },
+  {
+    "label": "Automation Testing"
+  },
+  {
+    "label": "AWS"
+  },
+  {
+    "label": "AWS CDK"
+  },
+  {
+    "label": "AWS CloudFormation"
+  },
+  {
+    "label": "AWS CloudWatch"
+  },
+  {
+    "label": "AWS Cognito"
+  },
+  {
+    "label": "AWS Glue"
+  },
+  {
+    "label": "AWS IAM"
+  },
+  {
+    "label": "AWS Step Functions"
+  },
+  {
+    "label": "Azure"
+  },
+  {
+    "label": "Azure Active Directory"
+  },
+  {
+    "label": "Azure DevOps"
+  },
+  {
+    "label": "Azure Functions"
+  },
+  {
+    "label": "Azure Kubernetes Service"
+  },
+  {
+    "label": "Babel"
+  },
+  {
+    "label": "Backbone.js"
+  },
+  {
+    "label": "Backend Development"
+  },
+  {
+    "label": "Bash Scripting"
+  },
+  {
+    "label": "Bayesian Statistics"
+  },
+  {
+    "label": "Behavior-Driven Development (BDD)"
+  },
+  {
+    "label": "BigQuery"
+  },
+  {
+    "label": "Bitbucket"
+  },
+  {
+    "label": "Blockchain Development"
+  },
+  {
+    "label": "Blog Writing"
+  },
+  {
+    "label": "Bluetooth Low Energy (BLE)"
+  },
+  {
+    "label": "Bookkeeping"
+  },
+  {
+    "label": "Bootstrap"
+  },
+  {
+    "label": "Brand Identity Design"
+  },
+  {
+    "label": "Brand Strategy"
+  },
+  {
+    "label": "Branding"
+  },
+  {
+    "label": "Budget Management"
+  },
+  {
+    "label": "Bug Tracking"
+  },
+  {
+    "label": "Buildkite"
+  },
+  {
+    "label": "Bulma CSS"
+  },
+  {
+    "label": "Bun"
+  },
+  {
+    "label": "Business Analysis"
+  },
+  {
+    "label": "Business Development"
+  },
+  {
+    "label": "Business Intelligence"
+  },
+  {
+    "label": "Business Process Automation"
+  },
+  {
+    "label": "Business Strategy"
+  },
+  {
+    "label": "Business Writing"
+  },
+  {
+    "label": "C"
+  },
+  {
+    "label": "C#"
+  },
+  {
+    "label": "C++"
+  },
+  {
+    "label": "CakePHP"
+  },
+  {
+    "label": "Canva"
+  },
+  {
+    "label": "Capacitor"
+  },
+  {
+    "label": "Celery"
+  },
+  {
+    "label": "Chai"
+  },
+  {
+    "label": "Change Management"
+  },
+  {
+    "label": "ChatGPT API"
+  },
+  {
+    "label": "Chef"
+  },
+  {
+    "label": "CI/CD Pipelines"
+  },
+  {
+    "label": "CircleCI"
+  },
+  {
+    "label": "Cisco Networking"
+  },
+  {
+    "label": "Client Communication"
+  },
+  {
+    "label": "Clojure"
+  },
+  {
+    "label": "Cloud Architecture"
+  },
+  {
+    "label": "Cloud Computing"
+  },
+  {
+    "label": "Cloud Migration"
+  },
+  {
+    "label": "Cloud Security"
+  },
+  {
+    "label": "CloudFront"
+  },
+  {
+    "label": "COBOL"
+  },
+  {
+    "label": "CocoaPods"
+  },
+  {
+    "label": "Code Review"
+  },
+  {
+    "label": "CodeIgniter"
+  },
+  {
+    "label": "CoffeeScript"
+  },
+  {
+    "label": "Color Grading"
+  },
+  {
+    "label": "Color Theory"
+  },
+  {
+    "label": "Communication"
+  },
+  {
+    "label": "Community Management"
+  },
+  {
+    "label": "Competitive Analysis"
+  },
+  {
+    "label": "Compliance Management"
+  },
+  {
+    "label": "Composer"
+  },
+  {
+    "label": "Computer Networking"
+  },
+  {
+    "label": "Computer Vision"
+  },
+  {
+    "label": "Conflict Resolution"
+  },
+  {
+    "label": "Confluence"
+  },
+  {
+    "label": "Consul"
+  },
+  {
+    "label": "Content Creation"
+  },
+  {
+    "label": "Content Management Systems (CMS)"
+  },
+  {
+    "label": "Content Marketing"
+  },
+  {
+    "label": "Content Moderation"
+  },
+  {
+    "label": "Content Strategy"
+  },
+  {
+    "label": "Content Writing"
+  },
+  {
+    "label": "Continuous Delivery"
+  },
+  {
+    "label": "Continuous Integration"
+  },
+  {
+    "label": "Conversion Rate Optimization (CRO)"
+  },
+  {
+    "label": "Copyediting"
+  },
+  {
+    "label": "Copywriting"
+  },
+  {
+    "label": "CorelDRAW"
+  },
+  {
+    "label": "CouchDB"
+  },
+  {
+    "label": "Creative Direction"
+  },
+  {
+    "label": "Creative Writing"
+  },
+  {
+    "label": "Critical Thinking"
+  },
+  {
+    "label": "Cross-Browser Compatibility"
+  },
+  {
+    "label": "Cross-Platform Development"
+  },
+  {
+    "label": "Crowdfunding Strategy"
+  },
+  {
+    "label": "Crystal Reports"
+  },
+  {
+    "label": "CSS"
+  },
+  {
+    "label": "CSS Grid"
+  },
+  {
+    "label": "CSS Modules"
+  },
+  {
+    "label": "CSS-in-JS"
+  },
+  {
+    "label": "Customer Experience (CX)"
+  },
+  {
+    "label": "Customer Journey Mapping"
+  },
+  {
+    "label": "Customer Relationship Management (CRM)"
+  },
+  {
+    "label": "Customer Success"
+  },
+  {
+    "label": "Customer Support"
+  },
+  {
+    "label": "Cypress"
+  },
+  {
+    "label": "D3.js"
+  },
+  {
+    "label": "Dart"
+  },
+  {
+    "label": "Data Analysis"
+  },
+  {
+    "label": "Data Cleaning"
+  },
+  {
+    "label": "Data Engineering"
+  },
+  {
+    "label": "Data Entry"
+  },
+  {
+    "label": "Data Governance"
+  },
+  {
+    "label": "Data Lake Architecture"
+  },
+  {
+    "label": "Data Mining"
+  },
+  {
+    "label": "Data Modeling"
+  },
+  {
+    "label": "Data Pipelines"
+  },
+  {
+    "label": "Data Science"
+  },
+  {
+    "label": "Data Visualization"
+  },
+  {
+    "label": "Data Warehousing"
+  },
+  {
+    "label": "Database Administration"
+  },
+  {
+    "label": "Database Design"
+  },
+  {
+    "label": "Databricks"
+  },
+  {
+    "label": "Datadog"
+  },
+  {
+    "label": "dbt (Data Build Tool)"
+  },
+  {
+    "label": "Debugging"
+  },
+  {
+    "label": "Decision Making"
+  },
+  {
+    "label": "Deep Learning"
+  },
+  {
+    "label": "Delphi"
+  },
+  {
+    "label": "Deno"
+  },
+  {
+    "label": "Design Patterns"
+  },
+  {
+    "label": "Design Systems"
+  },
+  {
+    "label": "Design Thinking"
+  },
+  {
+    "label": "Desktop Application Development"
+  },
+  {
+    "label": "DevOps"
+  },
+  {
+    "label": "DevSecOps"
+  },
+  {
+    "label": "Digital Advertising"
+  },
+  {
+    "label": "Digital Illustration"
+  },
+  {
+    "label": "Digital Marketing"
+  },
+  {
+    "label": "Digital Strategy"
+  },
+  {
+    "label": "Discord Bot Development"
+  },
+  {
+    "label": "Distributed Systems"
+  },
+  {
+    "label": "Django"
+  },
+  {
+    "label": "Django REST Framework"
+  },
+  {
+    "label": "Docker"
+  },
+  {
+    "label": "Docker Compose"
+  },
+  {
+    "label": "Document Management"
+  },
+  {
+    "label": "Documentation"
+  },
+  {
+    "label": "Domain-Driven Design (DDD)"
+  },
+  {
+    "label": "Drizzle ORM"
+  },
+  {
+    "label": "Drupal"
+  },
+  {
+    "label": "E-commerce Development"
+  },
+  {
+    "label": "Eclipse IDE"
+  },
+  {
+    "label": "Editing"
+  },
+  {
+    "label": "Elastic Stack (ELK)"
+  },
+  {
+    "label": "Elasticsearch"
+  },
+  {
+    "label": "Electron"
+  },
+  {
+    "label": "Elixir"
+  },
+  {
+    "label": "Elm"
+  },
+  {
+    "label": "Email Automation"
+  },
+  {
+    "label": "Email Design"
+  },
+  {
+    "label": "Email Marketing"
+  },
+  {
+    "label": "Embedded Systems"
+  },
+  {
+    "label": "Ember.js"
+  },
+  {
+    "label": "Emotional Intelligence"
+  },
+  {
+    "label": "Encryption"
+  },
+  {
+    "label": "Enterprise Architecture"
+  },
+  {
+    "label": "Entity Framework"
+  },
+  {
+    "label": "Envoy Proxy"
+  },
+  {
+    "label": "Erlang"
+  },
+  {
+    "label": "ESLint"
+  },
+  {
+    "label": "ETL (Extract Transform Load)"
+  },
+  {
+    "label": "Event Planning"
+  },
+  {
+    "label": "Event-Driven Architecture"
+  },
+  {
+    "label": "Excel"
+  },
+  {
+    "label": "Express.js"
+  },
+  {
+    "label": "F#"
+  },
+  {
+    "label": "Facebook Ads"
+  },
+  {
+    "label": "FastAPI"
+  },
+  {
+    "label": "Fastify"
+  },
+  {
+    "label": "Feature Engineering"
+  },
+  {
+    "label": "Figma"
+  },
+  {
+    "label": "Financial Analysis"
+  },
+  {
+    "label": "Financial Modeling"
+  },
+  {
+    "label": "Firebase"
+  },
+  {
+    "label": "Firewall Management"
+  },
+  {
+    "label": "Flask"
+  },
+  {
+    "label": "Flexbox"
+  },
+  {
+    "label": "Flutter"
+  },
+  {
+    "label": "Fortran"
+  },
+  {
+    "label": "Framer"
+  },
+  {
+    "label": "Framer Motion"
+  },
+  {
+    "label": "Freelance Consulting"
+  },
+  {
+    "label": "Frontend Development"
+  },
+  {
+    "label": "Full-Stack Development"
+  },
+  {
+    "label": "Functional Programming"
+  },
+  {
+    "label": "Fundraising"
+  },
+  {
+    "label": "Game Design"
+  },
+  {
+    "label": "Game Development"
+  },
+  {
+    "label": "Gatsby"
+  },
+  {
+    "label": "GCP (Google Cloud Platform)"
+  },
+  {
+    "label": "GDPR Compliance"
+  },
+  {
+    "label": "Generative AI"
+  },
+  {
+    "label": "Ghostwriting"
+  },
+  {
+    "label": "GIMP"
+  },
+  {
+    "label": "Git"
+  },
+  {
+    "label": "GitHub"
+  },
+  {
+    "label": "GitHub Actions"
+  },
+  {
+    "label": "GitLab"
+  },
+  {
+    "label": "GitLab CI/CD"
+  },
+  {
+    "label": "Go (Golang)"
+  },
+  {
+    "label": "Google Ads"
+  },
+  {
+    "label": "Google Analytics"
+  },
+  {
+    "label": "Google Apps Script"
+  },
+  {
+    "label": "Google Cloud Functions"
+  },
+  {
+    "label": "Google Cloud Storage"
+  },
+  {
+    "label": "Google Data Studio"
+  },
+  {
+    "label": "Google Kubernetes Engine (GKE)"
+  },
+  {
+    "label": "Google Maps API"
+  },
+  {
+    "label": "Google Sheets"
+  },
+  {
+    "label": "Google Tag Manager"
+  },
+  {
+    "label": "Grafana"
+  },
+  {
+    "label": "Grant Writing"
+  },
+  {
+    "label": "Graph Databases"
+  },
+  {
+    "label": "Graphic Design"
+  },
+  {
+    "label": "GraphQL"
+  },
+  {
+    "label": "Groovy"
+  },
+  {
+    "label": "Growth Hacking"
+  },
+  {
+    "label": "Growth Marketing"
+  },
+  {
+    "label": "Grunt"
+  },
+  {
+    "label": "Gulp"
+  },
+  {
+    "label": "HAML"
+  },
+  {
+    "label": "Handlebars"
+  },
+  {
+    "label": "Hardware Design"
+  },
+  {
+    "label": "Haskell"
+  },
+  {
+    "label": "Helm Charts"
+  },
+  {
+    "label": "Heroku"
+  },
+  {
+    "label": "Hibernate"
+  },
+  {
+    "label": "High Availability Systems"
+  },
+  {
+    "label": "HIPAA Compliance"
+  },
+  {
+    "label": "HTML"
+  },
+  {
+    "label": "HTML5"
+  },
+  {
+    "label": "HTTP/HTTPS"
+  },
+  {
+    "label": "HubSpot"
+  },
+  {
+    "label": "Hugging Face"
+  },
+  {
+    "label": "Hugo"
+  },
+  {
+    "label": "Human Resources"
+  },
+  {
+    "label": "Hybrid App Development"
+  },
+  {
+    "label": "IBM Cloud"
+  },
+  {
+    "label": "Icon Design"
+  },
+  {
+    "label": "Identity Management"
+  },
+  {
+    "label": "Illustration"
+  },
+  {
+    "label": "Image Processing"
+  },
+  {
+    "label": "Incident Response"
+  },
+  {
+    "label": "InfluxDB"
+  },
+  {
+    "label": "Information Architecture"
+  },
+  {
+    "label": "Information Security"
+  },
+  {
+    "label": "Infrastructure as Code (IaC)"
+  },
+  {
+    "label": "IntelliJ IDEA"
+  },
+  {
+    "label": "Interaction Design"
+  },
+  {
+    "label": "Interior Design Visualization"
+  },
+  {
+    "label": "Internet of Things (IoT)"
+  },
+  {
+    "label": "Interpersonal Skills"
+  },
+  {
+    "label": "InVision"
+  },
+  {
+    "label": "Ionic"
+  },
+  {
+    "label": "iOS Development"
+  },
+  {
+    "label": "ISO 27001"
+  },
+  {
+    "label": "IT Consulting"
+  },
+  {
+    "label": "IT Support"
+  },
+  {
+    "label": "ITIL"
+  },
+  {
+    "label": "Jakarta EE"
+  },
+  {
+    "label": "Jasmine"
+  },
+  {
+    "label": "Java"
+  },
+  {
+    "label": "JavaFX"
+  },
+  {
+    "label": "JavaScript"
+  },
+  {
+    "label": "Jekyll"
+  },
+  {
+    "label": "Jenkins"
+  },
+  {
+    "label": "Jest"
+  },
+  {
+    "label": "Jinja2"
+  },
+  {
+    "label": "JIRA"
+  },
+  {
+    "label": "JMeter"
+  },
+  {
+    "label": "jQuery"
+  },
+  {
+    "label": "JSON"
+  },
+  {
+    "label": "Julia"
+  },
+  {
+    "label": "Jupyter Notebooks"
+  },
+  {
+    "label": "JWT (JSON Web Tokens)"
+  },
+  {
+    "label": "Kanban"
+  },
+  {
+    "label": "Keras"
+  },
+  {
+    "label": "Keynote"
+  },
+  {
+    "label": "Kibana"
+  },
+  {
+    "label": "Kotlin"
+  },
+  {
+    "label": "Kubernetes"
+  },
+  {
+    "label": "LangChain"
+  },
+  {
+    "label": "Laravel"
+  },
+  {
+    "label": "LaTeX"
+  },
+  {
+    "label": "Lead Generation"
+  },
+  {
+    "label": "Leadership"
+  },
+  {
+    "label": "Lean Methodology"
+  },
+  {
+    "label": "Less CSS"
+  },
+  {
+    "label": "Linear Algebra"
+  },
+  {
+    "label": "LinkedIn Ads"
+  },
+  {
+    "label": "LinkedIn Marketing"
+  },
+  {
+    "label": "Linux Administration"
+  },
+  {
+    "label": "Linux Server Management"
+  },
+  {
+    "label": "Lisp"
+  },
+  {
+    "label": "LLM Fine-Tuning"
+  },
+  {
+    "label": "Load Balancing"
+  },
+  {
+    "label": "Load Testing"
+  },
+  {
+    "label": "Localization"
+  },
+  {
+    "label": "Logo Design"
+  },
+  {
+    "label": "Logstash"
+  },
+  {
+    "label": "Looker"
+  },
+  {
+    "label": "Lua"
+  },
+  {
+    "label": "Machine Learning"
+  },
+  {
+    "label": "macOS Development"
+  },
+  {
+    "label": "Magento"
+  },
+  {
+    "label": "Mailchimp"
+  },
+  {
+    "label": "Make (Integromat)"
+  },
+  {
+    "label": "Malware Analysis"
+  },
+  {
+    "label": "MapReduce"
+  },
+  {
+    "label": "MariaDB"
+  },
+  {
+    "label": "Market Research"
+  },
+  {
+    "label": "Marketing Automation"
+  },
+  {
+    "label": "Marketing Strategy"
+  },
+  {
+    "label": "Material UI (MUI)"
+  },
+  {
+    "label": "MATLAB"
+  },
+  {
+    "label": "Matplotlib"
+  },
+  {
+    "label": "Maven"
+  },
+  {
+    "label": "Memcached"
+  },
+  {
+    "label": "Mercurial"
+  },
+  {
+    "label": "Metabase"
+  },
+  {
+    "label": "Metadata Management"
+  },
+  {
+    "label": "Microcontrollers"
+  },
+  {
+    "label": "Microservices Architecture"
+  },
+  {
+    "label": "Microsoft 365"
+  },
+  {
+    "label": "Microsoft Azure"
+  },
+  {
+    "label": "Microsoft Power Automate"
+  },
+  {
+    "label": "Microsoft Teams Development"
+  },
+  {
+    "label": "Middleware Development"
+  },
+  {
+    "label": "MLflow"
+  },
+  {
+    "label": "MLOps"
+  },
+  {
+    "label": "Mobile App Design"
+  },
+  {
+    "label": "Mobile App Development"
+  },
+  {
+    "label": "Mobile Responsive Design"
+  },
+  {
+    "label": "Mocha"
+  },
+  {
+    "label": "Monday.com"
+  },
+  {
+    "label": "MongoDB"
+  },
+  {
+    "label": "Monitoring & Observability"
+  },
+  {
+    "label": "Motion Design"
+  },
+  {
+    "label": "Motion Graphics"
+  },
+  {
+    "label": "MQTT"
+  },
+  {
+    "label": "MSSQL Server"
+  },
+  {
+    "label": "Multithreading"
+  },
+  {
+    "label": "MySQL"
+  },
+  {
+    "label": "n8n"
+  },
+  {
+    "label": "Natural Language Processing (NLP)"
+  },
+  {
+    "label": "Negotiation"
+  },
+  {
+    "label": "Neo4j"
+  },
+  {
+    "label": "NestJS"
+  },
+  {
+    "label": "Netlify"
+  },
+  {
+    "label": "Network Administration"
+  },
+  {
+    "label": "Network Security"
+  },
+  {
+    "label": "Next.js"
+  },
+  {
+    "label": "Nginx"
+  },
+  {
+    "label": "Node.js"
+  },
+  {
+    "label": "NoSQL Databases"
+  },
+  {
+    "label": "Notion"
+  },
+  {
+    "label": "npm"
+  },
+  {
+    "label": "NumPy"
+  },
+  {
+    "label": "Nuxt.js"
+  },
+  {
+    "label": "OAuth"
+  },
+  {
+    "label": "Object-Oriented Programming (OOP)"
+  },
+  {
+    "label": "Objective-C"
+  },
+  {
+    "label": "OCR (Optical Character Recognition)"
+  },
+  {
+    "label": "OKR Planning"
+  },
+  {
+    "label": "OpenAI API"
+  },
+  {
+    "label": "OpenCV"
+  },
+  {
+    "label": "OpenGL"
+  },
+  {
+    "label": "OpenShift"
+  },
+  {
+    "label": "OpenTelemetry"
+  },
+  {
+    "label": "Operations Management"
+  },
+  {
+    "label": "Oracle Database"
+  },
+  {
+    "label": "Organizational Skills"
+  },
+  {
+    "label": "OWASP Security"
+  },
+  {
+    "label": "Package Design"
+  },
+  {
+    "label": "Package Management"
+  },
+  {
+    "label": "Pandas"
+  },
+  {
+    "label": "Payment Gateway Integration"
+  },
+  {
+    "label": "PCI DSS Compliance"
+  },
+  {
+    "label": "PDF Generation"
+  },
+  {
+    "label": "Penetration Testing"
+  },
+  {
+    "label": "Performance Marketing"
+  },
+  {
+    "label": "Performance Optimization"
+  },
+  {
+    "label": "Performance Testing"
+  },
+  {
+    "label": "Perl"
+  },
+  {
+    "label": "Persona Development"
+  },
+  {
+    "label": "Phoenix Framework"
+  },
+  {
+    "label": "PHP"
+  },
+  {
+    "label": "Pinterest Marketing"
+  },
+  {
+    "label": "PL/SQL"
+  },
+  {
+    "label": "Playwright"
+  },
+  {
+    "label": "PLCs (Programmable Logic Controllers)"
+  },
+  {
+    "label": "Podcast Production"
+  },
+  {
+    "label": "PostCSS"
+  },
+  {
+    "label": "PostgreSQL"
+  },
+  {
+    "label": "Postman"
+  },
+  {
+    "label": "Power BI"
+  },
+  {
+    "label": "PowerPoint"
+  },
+  {
+    "label": "PowerShell"
+  },
+  {
+    "label": "Presentation Design"
+  },
+  {
+    "label": "Prettier"
+  },
+  {
+    "label": "Pricing Strategy"
+  },
+  {
+    "label": "Print Design"
+  },
+  {
+    "label": "Prisma ORM"
+  },
+  {
+    "label": "Problem Solving"
+  },
+  {
+    "label": "Process Improvement"
+  },
+  {
+    "label": "Product Design"
+  },
+  {
+    "label": "Product Management"
+  },
+  {
+    "label": "Product Marketing"
+  },
+  {
+    "label": "Product Strategy"
+  },
+  {
+    "label": "Programming"
+  },
+  {
+    "label": "Project Estimation"
+  },
+  {
+    "label": "Project Management"
+  },
+  {
+    "label": "Project Planning"
+  },
+  {
+    "label": "Prometheus"
+  },
+  {
+    "label": "Proofreading"
+  },
+  {
+    "label": "Protobuf"
+  },
+  {
+    "label": "Prototyping"
+  },
+  {
+    "label": "Public Relations (PR)"
+  },
+  {
+    "label": "Public Speaking"
+  },
+  {
+    "label": "Pulumi"
+  },
+  {
+    "label": "Puppet"
+  },
+  {
+    "label": "Puppeteer"
+  },
+  {
+    "label": "PySpark"
+  },
+  {
+    "label": "Python"
+  },
+  {
+    "label": "PyTorch"
+  },
+  {
+    "label": "QA Engineering"
+  },
+  {
+    "label": "Quality Assurance"
+  },
+  {
+    "label": "Quantum Computing"
+  },
+  {
+    "label": "Quarkus"
+  },
+  {
+    "label": "R"
+  },
+  {
+    "label": "RabbitMQ"
+  },
+  {
+    "label": "Raspberry Pi"
+  },
+  {
+    "label": "React"
+  },
+  {
+    "label": "React Native"
+  },
+  {
+    "label": "React Query"
+  },
+  {
+    "label": "Recommendation Systems"
+  },
+  {
+    "label": "Redis"
+  },
+  {
+    "label": "Redux"
+  },
+  {
+    "label": "Regex (Regular Expressions)"
+  },
+  {
+    "label": "Reinforcement Learning"
+  },
+  {
+    "label": "Relational Databases"
+  },
+  {
+    "label": "Remote Team Management"
+  },
+  {
+    "label": "Reporting"
+  },
+  {
+    "label": "Responsive Web Design"
+  },
+  {
+    "label": "REST API Development"
+  },
+  {
+    "label": "Retool"
+  },
+  {
+    "label": "Risk Management"
+  },
+  {
+    "label": "Robotics"
+  },
+  {
+    "label": "ROS (Robot Operating System)"
+  },
+  {
+    "label": "Ruby"
+  },
+  {
+    "label": "Ruby on Rails"
+  },
+  {
+    "label": "Rust"
+  },
+  {
+    "label": "SaaS Development"
+  },
+  {
+    "label": "Sales"
+  },
+  {
+    "label": "Salesforce"
+  },
+  {
+    "label": "Salesforce Administration"
+  },
+  {
+    "label": "Salesforce Development"
+  },
+  {
+    "label": "SaltStack"
+  },
+  {
+    "label": "SAP"
+  },
+  {
+    "label": "SAS"
+  },
+  {
+    "label": "Sass/SCSS"
+  },
+  {
+    "label": "Scala"
+  },
+  {
+    "label": "Scikit-learn"
+  },
+  {
+    "label": "Scrapy"
+  },
+  {
+    "label": "Scrum"
+  },
+  {
+    "label": "Search Engine Marketing (SEM)"
+  },
+  {
+    "label": "Search Engine Optimization (SEO)"
+  },
+  {
+    "label": "Security Auditing"
+  },
+  {
+    "label": "Security Information and Event Management (SIEM)"
+  },
+  {
+    "label": "Security Operations Center (SOC)"
+  },
+  {
+    "label": "Selenium"
+  },
+  {
+    "label": "Semantic HTML"
+  },
+  {
+    "label": "Sentry"
+  },
+  {
+    "label": "Serverless Architecture"
+  },
+  {
+    "label": "Service Mesh"
+  },
+  {
+    "label": "ServiceNow"
+  },
+  {
+    "label": "Shell Scripting"
+  },
+  {
+    "label": "Shopify"
+  },
+  {
+    "label": "Shopify Development"
+  },
+  {
+    "label": "Signal Processing"
+  },
+  {
+    "label": "Single Page Applications (SPA)"
+  },
+  {
+    "label": "Sketch"
+  },
+  {
+    "label": "Slack Bot Development"
+  },
+  {
+    "label": "Smart Contract Development"
+  },
+  {
+    "label": "Snowflake"
+  },
+  {
+    "label": "SOAP"
+  },
+  {
+    "label": "Social Media Management"
+  },
+  {
+    "label": "Social Media Marketing"
+  },
+  {
+    "label": "Socket.io"
+  },
+  {
+    "label": "Software Architecture"
+  },
+  {
+    "label": "Software Development Life Cycle (SDLC)"
+  },
+  {
+    "label": "Software Testing"
+  },
+  {
+    "label": "Solidity"
+  },
+  {
+    "label": "SolidJS"
+  },
+  {
+    "label": "SonarQube"
+  },
+  {
+    "label": "Sound Design"
+  },
+  {
+    "label": "Sound Editing"
+  },
+  {
+    "label": "Speech Recognition"
+  },
+  {
+    "label": "Splunk"
+  },
+  {
+    "label": "Spring Boot"
+  },
+  {
+    "label": "Spring Framework"
+  },
+  {
+    "label": "SPSS"
+  },
+  {
+    "label": "SQL"
+  },
+  {
+    "label": "SQLAlchemy"
+  },
+  {
+    "label": "SQLite"
+  },
+  {
+    "label": "Squarespace"
+  },
+  {
+    "label": "Stakeholder Management"
+  },
+  {
+    "label": "Stata"
+  },
+  {
+    "label": "Statistical Analysis"
+  },
+  {
+    "label": "Storybook"
+  },
+  {
+    "label": "Storytelling"
+  },
+  {
+    "label": "Strategic Planning"
+  },
+  {
+    "label": "Streaming Architecture"
+  },
+  {
+    "label": "Stripe Integration"
+  },
+  {
+    "label": "Styled Components"
+  },
+  {
+    "label": "Supabase"
+  },
+  {
+    "label": "Supply Chain Management"
+  },
+  {
+    "label": "Svelte"
+  },
+  {
+    "label": "SvelteKit"
+  },
+  {
+    "label": "SVG Animation"
+  },
+  {
+    "label": "Swagger/OpenAPI"
+  },
+  {
+    "label": "Swift"
+  },
+  {
+    "label": "SwiftUI"
+  },
+  {
+    "label": "Symfony"
+  },
+  {
+    "label": "System Administration"
+  },
+  {
+    "label": "System Design"
+  },
+  {
+    "label": "System Integration"
+  },
+  {
+    "label": "Tableau"
+  },
+  {
+    "label": "Tailwind CSS"
+  },
+  {
+    "label": "Team Building"
+  },
+  {
+    "label": "Team Management"
+  },
+  {
+    "label": "Technical Architecture"
+  },
+  {
+    "label": "Technical Consulting"
+  },
+  {
+    "label": "Technical Documentation"
+  },
+  {
+    "label": "Technical SEO"
+  },
+  {
+    "label": "Technical Support"
+  },
+  {
+    "label": "Technical Writing"
+  },
+  {
+    "label": "Telegram Bot Development"
+  },
+  {
+    "label": "TensorFlow"
+  },
+  {
+    "label": "Terraform"
+  },
+  {
+    "label": "Test Automation"
+  },
+  {
+    "label": "Test-Driven Development (TDD)"
+  },
+  {
+    "label": "Three.js"
+  },
+  {
+    "label": "TikTok Marketing"
+  },
+  {
+    "label": "Time Management"
+  },
+  {
+    "label": "Time Series Analysis"
+  },
+  {
+    "label": "Trello"
+  },
+  {
+    "label": "Troubleshooting"
+  },
+  {
+    "label": "Turbo (Hotwire)"
+  },
+  {
+    "label": "Twilio"
+  },
+  {
+    "label": "Twitter/X Marketing"
+  },
+  {
+    "label": "TypeORM"
+  },
+  {
+    "label": "TypeScript"
+  },
+  {
+    "label": "Typography"
+  },
+  {
+    "label": "Ubuntu"
+  },
+  {
+    "label": "UI Design"
+  },
+  {
+    "label": "UI Development"
+  },
+  {
+    "label": "UML Diagrams"
+  },
+  {
+    "label": "Unit Testing"
+  },
+  {
+    "label": "Unity"
+  },
+  {
+    "label": "Unix/Linux"
+  },
+  {
+    "label": "Unreal Engine"
+  },
+  {
+    "label": "Usability Testing"
+  },
+  {
+    "label": "User Acceptance Testing (UAT)"
+  },
+  {
+    "label": "User Interface Design"
+  },
+  {
+    "label": "User Research"
+  },
+  {
+    "label": "UX Design"
+  },
+  {
+    "label": "UX Research"
+  },
+  {
+    "label": "UX Writing"
+  },
+  {
+    "label": "Vagrant"
+  },
+  {
+    "label": "VBA (Visual Basic for Applications)"
+  },
+  {
+    "label": "Vector Databases"
+  },
+  {
+    "label": "Vercel"
+  },
+  {
+    "label": "Version Control"
+  },
+  {
+    "label": "Video Editing"
+  },
+  {
+    "label": "Video Production"
+  },
+  {
+    "label": "Video Scripting"
+  },
+  {
+    "label": "Virtual Reality"
+  },
+  {
+    "label": "Virtualization"
+  },
+  {
+    "label": "Visual Basic .NET"
+  },
+  {
+    "label": "Visual Studio Code"
+  },
+  {
+    "label": "Vite"
+  },
+  {
+    "label": "VMware"
+  },
+  {
+    "label": "Voice Over"
+  },
+  {
+    "label": "VPN Configuration"
+  },
+  {
+    "label": "Vue.js"
+  },
+  {
+    "label": "Vuex"
+  },
+  {
+    "label": "Vulnerability Assessment"
+  },
+  {
+    "label": "Web Accessibility"
+  },
+  {
+    "label": "Web Analytics"
+  },
+  {
+    "label": "Web Application Security"
+  },
+  {
+    "label": "Web Design"
+  },
+  {
+    "label": "Web Development"
+  },
+  {
+    "label": "Web Performance Optimization"
+  },
+  {
+    "label": "Web Scraping"
+  },
+  {
+    "label": "Web3"
+  },
+  {
+    "label": "WebAssembly (WASM)"
+  },
+  {
+    "label": "WebGL"
+  },
+  {
+    "label": "Webhooks"
+  },
+  {
+    "label": "WebRTC"
+  },
+  {
+    "label": "WebSocket"
+  },
+  {
+    "label": "Windows Administration"
+  },
+  {
+    "label": "Windows Server"
+  },
+  {
+    "label": "Wireframing"
+  },
+  {
+    "label": "WooCommerce"
+  },
+  {
+    "label": "WordPress"
+  },
+  {
+    "label": "WordPress Development"
+  },
+  {
+    "label": "Workflow Automation"
+  },
+  {
+    "label": "Writing"
+  },
+  {
+    "label": "Xamarin"
+  },
+  {
+    "label": "XML"
+  },
+  {
+    "label": "XPath"
+  },
+  {
+    "label": "YAML"
+  },
+  {
+    "label": "Yarn"
+  },
+  {
+    "label": "YouTube Marketing"
+  },
+  {
+    "label": "Zapier"
+  },
+  {
+    "label": "Zend Framework"
+  },
+  {
+    "label": "Zero Trust Security"
+  },
+  {
+    "label": "Zig"
+  },
+  {
+    "label": "Zoho CRM"
+  },
+  {
+    "label": "Zustand"
+  }
+]

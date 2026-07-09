@@ -1,28 +1,45 @@
 "use client"
 
-import React, { useCallback, useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
-import type { UserProfile } from "@/types/user"
+import { ClientAPI } from "@/service/http/client"
+import {
+  getCertificationBrandFromUrl,
+  getCompanyBrandFromName,
+} from "@/src/lib/certification-brand"
+import { getCurrentUser } from "@/utils/auth"
 import { getComputedStyle } from "@/utils/dom-utils"
-import { cn, toPxIfNumber } from "@/utils/functions"
+import { capitalize, cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
   ArrowRight,
+  Briefcase,
   Check,
   CheckCircle,
   ChevronDown,
   ChevronUp,
   Clock,
+  Edit03,
+  Eye,
+  EyeOff,
   FileText,
   Heart,
+  Image01,
   MapPin,
   MarkerPin02,
   MessageSquare01,
   MessageTextSquare01,
-  Edit03,
-  Eye,
+  Monitor,
+  PackagePlus,
   Plus,
   Plus2,
   RefreshCw,
@@ -33,39 +50,354 @@ import {
   Share07,
   Star,
   Trash03,
+  Upload,
   User,
   X,
   XCircle,
 } from "@blend-metrics/icons"
-import { AdobeBrand, WordpressBrand } from "@blend-metrics/icons/brands"
-import { GoogleDefault } from "@blend-metrics/icons/social"
 import * as RadixTabs from "@radix-ui/react-tabs"
 import { TooltipArrow } from "@radix-ui/react-tooltip"
 import { Variants, motion } from "framer-motion"
 import { TbStar, TbStarHalfFilled } from "react-icons/tb"
 import { useToggle } from "react-use"
-import { Adobe } from "@/components/icons/adobe"
-import { Dropbox } from "@/components/icons/dropbox"
-import { Microsoft } from "@/components/icons/microsoft"
-import { Nasdaq } from "@/components/icons/nasdaq"
+import type { UserProfile } from "@/types/user"
 import {
   AboutMeDialog,
+  AffiliatedTeamsDialog,
   AvailabilityDialog,
   CertificationsDialog,
   EducationDialog,
   IndustryExpertiseDialog,
   LanguagesDialog,
   MoreInfoDialog,
-  MyOffersDialog,
   SkillsDialog,
   WorkExperienceDialog,
-  AffiliatedTeamsDialog,
 } from "@/components/edit-profile-modals"
+import { HireMeButton } from "@/components/hire-me-button"
+import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
+import dynamic from "next/dynamic"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+const CaseStudyBuilder = dynamic(
+  () => import("@/components/case-study-builder"),
+  { ssr: false }
+)
+
+const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
+
+const getInitials = (name?: string | null): string => {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return "?"
+  const first = parts[0].charAt(0)
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : ""
+  return (first + last).toUpperCase() || "?"
+}
+
+interface SimilarProfile {
+  id: string
+  name: string
+  username: string | null
+  avatarUrl: string | null
+  jobTitle: string | null
+  hourlyRate: number
+  rateMin: number | null
+  rateMax: number | null
+  rating: number
+}
+
+type PortfolioCardState = "filled" | "hidden" | "empty"
+interface PortfolioCardItem {
+  id: string
+  state: PortfolioCardState
+  img?: string
+}
+
+const SortablePortfolioCard = ({
+  card,
+  onOpenBuilder,
+  onToggleHide,
+  onDelete,
+}: {
+  card: PortfolioCardItem
+  onOpenBuilder: () => void
+  onToggleHide: () => void
+  onDelete: () => void
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: card.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+  const stop =
+    (fn: () => void) => (e: React.MouseEvent) => {
+      e.stopPropagation()
+      fn()
+    }
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "group relative h-[200px] select-none touch-none overflow-hidden rounded-lg border border-gray-200 bg-gray-100 cursor-grab active:cursor-grabbing",
+        isDragging && "z-10 opacity-70 shadow-lg"
+      )}
+    >
+      {card.state === "empty" ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+          <Image01 className="size-10 text-gray-300" />
+        </div>
+      ) : (
+        <img
+          src={card.img}
+          alt="Portfolio"
+          draggable={false}
+          className={cn(
+            "h-full w-full object-cover",
+            card.state === "hidden" && "opacity-40"
+          )}
+        />
+      )}
+
+      <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+        {card.state === "empty" ? (
+          <Button
+            type="button"
+            visual="gray"
+            className="bg-white"
+            onClick={stop(onOpenBuilder)}
+          >
+            <Upload className="size-[15px]" /> Add Case Study
+          </Button>
+        ) : (
+          <>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
+              onClick={stop(onOpenBuilder)}
+            >
+              <Edit03 className="size-4" />
+            </IconButton>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
+              onClick={stop(onToggleHide)}
+            >
+              {card.state === "hidden" ? (
+                <Eye className="size-4" />
+              ) : (
+                <EyeOff className="size-4" />
+              )}
+            </IconButton>
+            <IconButton
+              type="button"
+              variant="ghost"
+              visual="gray"
+              className="rounded-full bg-white/90 text-error-500 hover:bg-white"
+              onClick={stop(onDelete)}
+            >
+              <Trash03 className="size-4" />
+            </IconButton>
+          </>
+        )}
+      </div>
+      {card.state !== "empty" && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <svg
+            viewBox="0 0 46 6"
+            className="w-11"
+            fill="#ffffff"
+            fillOpacity="0.65"
+            aria-hidden="true"
+          >
+            {[1, 5].map((cy) =>
+              Array.from({ length: 12 }, (_, i) => 1 + i * 4).map((cx) => (
+                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.3" />
+              ))
+            )}
+          </svg>
+        </div>
+      )}
+    </article>
+  )
+}
+
+const PortfolioAddCard = ({
+  onOpenBuilder,
+}: {
+  onOpenBuilder: () => void
+}) => (
+  <article className="group relative h-[200px] overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+      <Image01 className="size-10 text-gray-300" />
+    </div>
+    <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+      <Button
+        type="button"
+        visual="gray"
+        className="bg-white"
+        onClick={onOpenBuilder}
+      >
+        <Upload className="size-[15px]" /> Add Case Study
+      </Button>
+    </div>
+  </article>
+)
+
+const PortfolioCards = ({
+  portfolio,
+  onOpenBuilder,
+}: {
+  portfolio?: { id: string | number; imageUrl?: string | null }[]
+  onOpenBuilder: () => void
+}) => {
+  const [cards, setCards] = useState<PortfolioCardItem[]>(() =>
+    portfolio && portfolio.length > 0
+      ? portfolio.map((item) => ({
+          id: String(item.id),
+          state: "filled" as const,
+          img: item.imageUrl ?? PORTFOLIO_SAMPLE_IMG,
+        }))
+      : [
+          { id: "p1", state: "filled", img: PORTFOLIO_SAMPLE_IMG },
+          { id: "p2", state: "hidden", img: PORTFOLIO_SAMPLE_IMG },
+          { id: "p3", state: "empty" },
+        ]
+  )
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e
+    if (over && active.id !== over.id) {
+      setCards((prev) => {
+        const movable = prev.filter((c) => c.state !== "empty")
+        const fixed = prev.filter((c) => c.state === "empty")
+        const oldIndex = movable.findIndex((c) => c.id === active.id)
+        const newIndex = movable.findIndex((c) => c.id === over.id)
+        if (oldIndex === -1 || newIndex === -1) return prev
+        return [...arrayMove(movable, oldIndex, newIndex), ...fixed]
+      })
+    }
+  }
+
+  const sortableCards = cards.filter((c) => c.state !== "empty")
+  const emptyCards = cards.filter((c) => c.state === "empty")
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={sortableCards.map((c) => c.id)}
+        strategy={rectSortingStrategy}
+      >
+        <ShowMoreLessRoot>
+          {({ isShowing, setIsShowing, ref, scrollHeight }) => (
+            <>
+              <div
+                ref={ref}
+                className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
+                style={{
+                  height: isShowing
+                    ? "auto"
+                    : scrollHeight
+                      ? toPxIfNumber(scrollHeight)
+                      : "auto",
+                }}
+              >
+                <ShowMoreLess max={3}>
+                  {[
+                    ...sortableCards.map((card) => (
+                      <SortablePortfolioCard
+                        key={card.id}
+                        card={card}
+                        onOpenBuilder={onOpenBuilder}
+                        onToggleHide={() =>
+                          setCards((prev) =>
+                            prev.map((c) =>
+                              c.id === card.id
+                                ? {
+                                    ...c,
+                                    state:
+                                      c.state === "hidden"
+                                        ? "filled"
+                                        : "hidden",
+                                  }
+                                : c
+                            )
+                          )
+                        }
+                        onDelete={() =>
+                          setCards((prev) =>
+                            prev.filter((c) => c.id !== card.id)
+                          )
+                        }
+                      />
+                    )),
+                    ...emptyCards.map((card) => (
+                      <PortfolioAddCard
+                        key={card.id}
+                        onOpenBuilder={onOpenBuilder}
+                      />
+                    )),
+                  ]}
+                </ShowMoreLess>
+              </div>
+
+              {cards.length > 3 && (
+                <div className="my-6">
+                  <div className="flex items-center gap-x-1">
+                    <span className="flex-auto inline-block h-px bg-gray-200" />
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      onClick={() => setIsShowing((prev) => !prev)}
+                    >
+                      {isShowing ? "View Less" : "View More"}
+                    </Button>
+                    <span className="flex-auto inline-block h-px bg-gray-200" />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </ShowMoreLessRoot>
+      </SortableContext>
+    </DndContext>
+  )
+}
 import NextLink from "@/components/next-link"
-import { ReadMoreLess } from "@/components/read-more-less"
+import {
+  ReadMoreLess,
+  ReadMoreLessComp,
+  ReadMoreLessRoot,
+} from "@/components/read-more-less"
+import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -74,7 +406,6 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarFallbackIcon,
   AvatarGroup,
   AvatarImage,
   Badge,
@@ -85,7 +416,9 @@ import {
   CarouselNextTrigger,
   CarouselPreviousTrigger,
   Dialog,
+  DialogClose,
   DialogContent,
+  DialogDescription,
   DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
@@ -97,6 +430,7 @@ import {
   Favorite,
   FavoriteRoot,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftElement,
@@ -127,72 +461,6 @@ import {
   tabsListVariants,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
-
-const SaveButton = () => {
-  const [isOpen, toggleIsOpen] = useToggle(false)
-  const [value, setValue] = React.useState("")
-
-  return (
-    <div className="flex items-center">
-      <Toggle
-        className={buttonVariants({
-          className:
-            "group border-r-0 xs:max-lg:gap-x-[5.1px] xs:max-lg:leading-[12.75px] xs:max-lg:text-[8.93px] xs:max-lg:h-[25.75px] rounded-r-none",
-          variant: "outlined",
-          visual: "gray",
-          size: "md",
-        })}
-      >
-        <Star className="size-[12.75px] lg:size-5 text-gray-300 transition duration-300 group-hover:text-gray-500 group-hover:group-data-[state=on]:text-primary-500 group-data-[state=on]:text-primary-500  group-data-[state=on]:fill-primary-500" />
-        <span className="group-data-[state=off]:inline-block hidden">Save</span>
-        <span className="hidden group-data-[state=on]:inline-block">Saved</span>
-      </Toggle>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconButton
-            className="group rounded-l-none xs:max-lg:size-[25.5px] text-gray-500"
-            variant="outlined"
-            visual="gray"
-            size="md"
-          >
-            <ChevronDown className="duration transition group-data-[state=open]:-rotate-180 size-[12.75px] lg:size-5" />
-          </IconButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="bottom">
-          <DropdownMenuRadioGroup value={value} onValueChange={setValue}>
-            <DropdownMenuRadioTrigger value="Digital Marketing">
-              Digital Marketing
-            </DropdownMenuRadioTrigger>
-            <DropdownMenuRadioTrigger value="Customer Service">
-              Customer Service
-            </DropdownMenuRadioTrigger>
-            <DropdownMenuRadioTrigger value="Email Marketing">
-              Email Marketing
-            </DropdownMenuRadioTrigger>
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => toggleIsOpen()}
-            className="text-primary-500"
-          >
-            <Plus className="size-4" /> Create New List
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-        <DialogContent>
-          <DialogTitle className="sr-only">Save to List</DialogTitle>
-          <form className="flex items-center gap-x-3">
-            <Input placeholder="Enter List Name" className="flex-auto" />
-            <Button size="lg">Save</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
 
 const variants: Variants = {
   expanded: {
@@ -254,47 +522,389 @@ const SectionSearchBar = () => {
 }
 
 const Shimmer = ({ className }: { className?: string }) => (
-  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+  <div
+    className={cn("relative bg-gray-100 rounded overflow-hidden", className)}
+  >
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
 
-export default function Default() {
+const LazySection = ({
+  children,
+  minHeight = 200,
+}: {
+  children: React.ReactNode
+  minHeight?: number
+}) => {
+  const [isVisible, setIsVisible] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: "200px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  if (isVisible) return <>{children}</>
+  return <div ref={ref} style={{ minHeight }} />
+}
+
+const lineClampClass: Record<number, string> = {
+  2: "line-clamp-2",
+  3: "line-clamp-3",
+  4: "line-clamp-4",
+  5: "line-clamp-5",
+  6: "line-clamp-6",
+}
+
+function LineClampText({
+  text,
+  lines,
+  className,
+  toggleClassName,
+  expandLabel = "...Read More",
+  collapseLabel = "Read Less",
+  inline = false,
+}: {
+  text: string
+  lines: number
+  className?: string
+  toggleClassName?: string
+  expandLabel?: string
+  collapseLabel?: string
+  inline?: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [clamped, setClamped] = useState(false)
+  const [collapsedHeight, setCollapsedHeight] = useState<number>(0)
+  const textRef = useRef<HTMLParagraphElement>(null)
+
+  useEffect(() => {
+    const el = textRef.current
+    if (el) {
+      setClamped(el.scrollHeight > el.clientHeight)
+      if (!expanded) setCollapsedHeight(el.clientHeight)
+    }
+  }, [text, expanded])
+
+  const clampCls = lineClampClass[lines] || "line-clamp-3"
+
+  if (inline) {
+    return (
+      <div
+        className="overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
+        style={{
+          height: expanded
+            ? "auto"
+            : collapsedHeight
+              ? `${collapsedHeight}px`
+              : "auto",
+        }}
+      >
+        <p ref={textRef} className={cn(className, !expanded && clampCls)}>
+          {text}
+          {clamped && !expanded && (
+            <button
+              className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+              onClick={() => setExpanded(true)}
+            >
+              {expandLabel}
+            </button>
+          )}
+          {expanded && collapseLabel && (
+            <button
+              className="inline text-sm font-semibold text-gray-700 hover:text-gray-900 ml-1"
+              onClick={() => setExpanded(false)}
+            >
+              {collapseLabel}
+            </button>
+          )}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div
+        className="overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-300"
+        style={{
+          height: expanded
+            ? "auto"
+            : collapsedHeight
+              ? `${collapsedHeight}px`
+              : "auto",
+        }}
+      >
+        <p ref={textRef} className={cn(className, !expanded && clampCls)}>
+          {text}
+        </p>
+      </div>
+      {clamped && !expanded && (
+        <Button
+          className={toggleClassName}
+          variant="link"
+          visual="gray"
+          onClick={() => setExpanded(true)}
+        >
+          {expandLabel}
+        </Button>
+      )}
+      {expanded && collapseLabel && (
+        <Button
+          className={toggleClassName}
+          variant="link"
+          visual="gray"
+          onClick={() => setExpanded(false)}
+        >
+          {collapseLabel}
+        </Button>
+      )}
+    </>
+  )
+}
+
+export default function TalentProfilePage() {
+  return (
+    <Suspense>
+      <Default />
+    </Suspense>
+  )
+}
+
+function Default() {
   const { user } = useAuth()
+  const { toggle: openInviteWindow } = useInviteWindowStore()
+  const router = useRouter()
+  const handleShareProfile = () => {
+    const base =
+      typeof window !== "undefined" ? window.location.origin : ""
+    const url = profile?.username
+      ? `${base}/talent-profile?username=${encodeURIComponent(profile.username)}`
+      : `${base}/talent-profile`
+    openInviteWindow(true, "Share Profile", url)
+  }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
+  // Use auth user data immediately for hero while full profile loads
   useEffect(() => {
-    setIsProfileLoading(true)
-    if (usernameParam) {
-      UserAPI.getByUsername(usernameParam)
-        .then((res) => {
-          if (res?.data) setProfile(res.data)
-        })
-        .catch(() => {})
-        .finally(() => setIsProfileLoading(false))
-    } else if (user?.id) {
-      UserAPI.getProfile(user.id)
-        .then((res) => {
-          if (res?.data) setProfile(res.data)
-        })
-        .catch(() => {})
-        .finally(() => setIsProfileLoading(false))
-    } else {
+    if (!usernameParam && user && !profile) {
+      setProfile(user as any)
       setIsProfileLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadProfile = async () => {
+      if (usernameParam) {
+        setIsProfileLoading(true)
+        try {
+          const res = await UserAPI.getByUsername(usernameParam)
+          if (isActive && res?.data) {
+            setProfile(res.data)
+          }
+          return
+        } catch (err: any) {
+          const status = err?.response?.status
+
+          // Username may be stale or unavailable; fall back to the signed-in user's profile.
+          if (status === 404 && user?.id) {
+            try {
+              const fallbackRes = await UserAPI.getProfile(user.id)
+              if (isActive && fallbackRes?.data) {
+                setProfile(fallbackRes.data)
+              }
+            } catch (fallbackErr: any) {
+              console.error(
+                "[profile] getProfile fallback error:",
+                fallbackErr?.response?.status,
+                fallbackErr?.message
+              )
+            }
+          } else if (status !== 404) {
+            console.error(
+              "[profile] getByUsername error:",
+              status,
+              err?.message
+            )
+          }
+        } finally {
+          if (isActive) setIsProfileLoading(false)
+        }
+        return
+      }
+
+      if (user?.id) {
+        // Load full profile in background (hero already showing from auth user)
+        setIsProfileLoading(true)
+        UserAPI.getProfile(user.id)
+          .then((res) => {
+            if (isActive && res?.data) setProfile(res.data)
+          })
+          .catch((err) => {
+            console.error(
+              "[profile] getProfile error:",
+              err?.response?.status,
+              err?.message
+            )
+          })
+          .finally(() => {
+            if (isActive) setIsProfileLoading(false)
+          })
+        return
+      }
+
+      // No user yet from auth — try /user/me directly as fallback
+      setIsProfileLoading(true)
+      UserAPI.me()
+        .then((res) => {
+          const data = res?.data?.user ?? res?.data?.data?.user ?? res?.data
+          if (isActive && data && typeof data === "object" && data.id) {
+            setProfile(data)
+          }
+        })
+        .catch((err) => {
+          console.error(
+            "[profile] me() fallback error:",
+            err?.response?.status,
+            err?.message
+          )
+        })
+        .finally(() => {
+          if (isActive) setIsProfileLoading(false)
+        })
+    }
+
+    void loadProfile()
+
+    return () => {
+      isActive = false
     }
   }, [user?.id, usernameParam])
 
-  const isOwnProfile = Boolean(user?.id && profile?.id && user.id === profile.id)
+  const [similarProfiles, setSimilarProfiles] = useState<SimilarProfile[]>([])
+
+  useEffect(() => {
+    let isActive = true
+    if (!profile?.id) {
+      setSimilarProfiles([])
+      return
+    }
+    UserAPI.getSimilarProfiles(profile.id)
+      .then((res) => {
+        const data = Array.isArray(res?.data) ? res.data : []
+        if (isActive) setSimilarProfiles(data)
+      })
+      .catch(() => {
+        if (isActive) setSimilarProfiles([])
+      })
+    return () => {
+      isActive = false
+    }
+  }, [profile?.id])
+
+  const isOwnProfile = Boolean(
+    user?.id && profile?.id && user.id === profile.id
+  )
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
     UserAPI.getProfile(profile.id)
-      .then((res) => { if (res?.data) setProfile(res.data) })
+      .then((res) => {
+        if (res?.data) setProfile(res.data)
+      })
       .catch(() => {})
   }, [profile?.id])
+
+  const handleAvatarUpload = useCallback(
+    async (file: File) => {
+      await ClientAPI.UploadAvatar(file)
+      refreshProfile()
+    },
+    [refreshProfile]
+  )
+
+  const handleRemoveAvatar = useCallback(async () => {
+    if (!profile?.id) return
+    try {
+      await UserAPI.updateProfile(profile.id, { avatarUrl: "" })
+      refreshProfile()
+    } catch {
+      /* noop */
+    }
+  }, [profile?.id, refreshProfile])
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: "experience" | "education"
+    id: string
+    label: string
+  } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const handleDeleteWorkExperience = useCallback(
+    (expId: string) => {
+      const exp = profile?.experience?.find(
+        (e: any) => String(e.id) === String(expId)
+      )
+      setDeleteError(null)
+      setDeleteConfirm({
+        type: "experience",
+        id: expId,
+        label: exp?.title || "",
+      })
+    },
+    [profile?.experience]
+  )
+
+  const handleDeleteEducation = useCallback(
+    (eduId: string) => {
+      const edu = profile?.education?.find(
+        (e: any) => String(e.id) === String(eduId)
+      )
+      setDeleteError(null)
+      setDeleteConfirm({
+        type: "education",
+        id: eduId,
+        label: edu?.school || "",
+      })
+    },
+    [profile?.education]
+  )
+
+  const confirmDelete = useCallback(async () => {
+    if (!profile?.id || !deleteConfirm) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      if (deleteConfirm.type === "experience") {
+        await UserAPI.removeExperience(deleteConfirm.id)
+      } else {
+        await UserAPI.removeEducation(deleteConfirm.id)
+      }
+      refreshProfile()
+      setIsDeleting(false)
+      setDeleteConfirm(null)
+    } catch {
+      setIsDeleting(false)
+      setDeleteError("Couldn't delete this entry. Please try again.")
+    }
+  }, [profile?.id, deleteConfirm, refreshProfile])
 
   const [isEditMode, setIsEditMode] = useState(true)
 
@@ -302,14 +912,44 @@ export default function Default() {
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [overviewOpen, setOverviewOpen] = useState(false)
-  const [offersOpen, setOffersOpen] = useState(false)
+  const [listingsModalStep, setListingsModalStep] = useState<
+    "closed" | "empty" | "chooser"
+  >("closed")
+  const goToPublishProject = useCallback(
+    (type: "project" | "service") => {
+      setListingsModalStep("closed")
+      router.push(`/publish-project?type=${type}`)
+    },
+    [router]
+  )
   const [jobTitleOpen, setJobTitleOpen] = useState(false)
   const [languagesOpen, setLanguagesOpen] = useState(false)
   const [industriesOpen, setIndustriesOpen] = useState(false)
   const [certificationsOpen, setCertificationsOpen] = useState(false)
   const [workExperienceOpen, setWorkExperienceOpen] = useState(false)
   const [educationOpen, setEducationOpen] = useState(false)
+  const [workExpEditIdx, setWorkExpEditIdx] = useState<string | undefined>()
+  const [eduEditIdx, setEduEditIdx] = useState<string | undefined>()
+  const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
+  const [caseStudyOpen, setCaseStudyOpen] = useState(false)
+  const [featuredTab, setFeaturedTab] = useState("Featured Clients")
+  const WORK_EXPERIENCE_LIMIT = 30
+  const atWorkExperienceLimit =
+    (profile?.experience?.length ?? 0) >= WORK_EXPERIENCE_LIMIT
+
+  // Deduplicate skills by name (case-insensitive) and drop blanks before display.
+  const dedupedSkills = useMemo(() => {
+    const seen = new Set<string>()
+    return (profile?.skills ?? [])
+      .map((s: any) => (typeof s === "string" ? { id: s, name: s } : s))
+      .filter((s: any) => {
+        const key = (s?.name ?? "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }, [profile?.skills])
 
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
@@ -329,7 +969,8 @@ export default function Default() {
     useState<string>("Work Experience")
   const [activeTab, setActiveTab] = useState<string>("Portfolio")
   const [showLanguageSection, setShowLanguageSection] = useState<boolean>(true)
-  const [lastScrollY, setLastScrollY] = useState<number>(0)
+  const lastScrollYRef = useRef<number>(0)
+
   useEffect(() => {
     const element = cardRef.current
 
@@ -376,15 +1017,15 @@ export default function Default() {
     const handleScroll = () => {
       const currentScrollY = window.scrollY
 
-      if (currentScrollY > lastScrollY && currentScrollY > 100) {
+      if (currentScrollY > lastScrollYRef.current && currentScrollY > 100) {
         // Scrolling down and past 100px
         setShowLanguageSection(false)
-      } else if (currentScrollY < lastScrollY) {
+      } else if (currentScrollY < lastScrollYRef.current) {
         // Scrolling up
         setShowLanguageSection(true)
       }
 
-      setLastScrollY(currentScrollY)
+      lastScrollYRef.current = currentScrollY
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true })
@@ -392,7 +1033,7 @@ export default function Default() {
     return () => {
       window.removeEventListener("scroll", handleScroll)
     }
-  }, [lastScrollY])
+  }, [])
   // Auto-expand sections when navigated to via hash
   useEffect(() => {
     const handleHashChange = () => {
@@ -517,6 +1158,53 @@ export default function Default() {
     }
   }, [])
 
+  const isClientView = !(isEditMode && isOwnProfile)
+
+  const hasPortfolio = (profile?.portfolio?.length ?? 0) > 0
+  const hasSkills = dedupedSkills.length > 0
+  const hasBio = Boolean(profile?.bio || profile?.overview)
+  const hasCertifications = (profile?.certifications?.length ?? 0) > 0
+  const hasIndustries = (profile?.industries?.length ?? 0) > 0
+  const hasWorkExperience = (profile?.experience?.length ?? 0) > 0
+  const hasEducation = (profile?.education?.length ?? 0) > 0
+  const hasLanguages = (profile?.languages?.length ?? 0) > 0
+  const hasTimezone = Boolean(profile?.timezone)
+
+  const showOverviewSection =
+    !isClientView || hasBio || hasCertifications || hasIndustries
+  const showOverviewBio = !isClientView || hasBio
+  const showOverviewFeatured =
+    !isClientView || hasCertifications || hasIndustries
+  const showBackgroundSection =
+    !isClientView || hasWorkExperience || hasEducation
+  const showLanguagesBox = !isClientView || hasLanguages || hasTimezone
+
+  const visibleFeaturedTabs = (
+    isClientView
+      ? [
+          hasCertifications && "Certifications",
+          hasIndustries && "Industry Expertise",
+        ]
+      : ["Featured Clients", "Certifications", "Industry Expertise"]
+  ).filter(Boolean) as string[]
+  const effectiveFeaturedTab = visibleFeaturedTabs.includes(featuredTab)
+    ? featuredTab
+    : visibleFeaturedTabs[0]
+
+  const visibleBackgroundTabs = (
+    isClientView
+      ? [
+          hasWorkExperience && "Work Experience",
+          hasEducation && "Education",
+        ]
+      : ["Work Experience", "Education"]
+  ).filter(Boolean) as string[]
+  const effectiveBackgroundTab = visibleBackgroundTabs.includes(
+    backgroundActiveTab
+  )
+    ? backgroundActiveTab
+    : visibleBackgroundTabs[0]
+
   return (
     <>
       <div className="py-[50px]">
@@ -526,7 +1214,7 @@ export default function Default() {
               /* Skeleton loading state */
               <>
                 <div className="p-10 flex items-start gap-x-10">
-                  <Shimmer className="size-[318px] rounded-lg shrink-0" />
+                  <Shimmer className="size-[318px] rounded-full shrink-0" />
                   <div className="flex-auto space-y-4 pt-2">
                     <Shimmer className="h-8 w-64" />
                     <Shimmer className="h-6 w-48" />
@@ -548,7 +1236,10 @@ export default function Default() {
                 </div>
                 <div className="py-3 px-8 border-t border-gray-200 grid grid-cols-5 divide-x divide-gray-200 bg-[#122A4B]/[.02]">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex gap-x-2 justify-center items-center py-1">
+                    <div
+                      key={i}
+                      className="flex gap-x-2 justify-center items-center py-1"
+                    >
                       <Shimmer className="h-4 w-16" />
                       <Shimmer className="h-5 w-12" />
                     </div>
@@ -556,28 +1247,340 @@ export default function Default() {
                 </div>
               </>
             ) : (
-            <>
-            <div className="p-10 flex items-start gap-x-10">
-              <Avatar className="size-[318px]">
-                <AvatarImage src={profile?.avatarUrl ?? "/man.jpg"} alt={profile?.firstName ?? "User"} />
-                <AvatarFallback>{profile?.firstName?.charAt(0) ?? ""}</AvatarFallback>
-              </Avatar>
+              <>
+                <div className="p-10 flex items-start gap-x-10">
+                  {(() => {
+                    const initials =
+                      `${profile?.firstName?.charAt(0) ?? ""}${
+                        profile?.lastName?.charAt(0) ?? ""
+                      }`.toUpperCase() || "?"
+                    const renderAvatar = (
+                      src: string | null,
+                      style?: Record<string, string | number>
+                    ) => (
+                      <Avatar className="size-[318px]">
+                        <AvatarImage
+                          src={src ?? ""}
+                          alt={profile?.firstName ?? "User"}
+                          style={style}
+                        />
+                        <AvatarFallback>
+                          <span className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-7xl font-semibold text-gray-300">
+                            {initials}
+                          </span>
+                        </AvatarFallback>
+                      </Avatar>
+                    )
 
-              <div className="flex-auto">
-                <div className="flex items-start">
+                    if (!(isOwnProfile && isEditMode)) {
+                      return renderAvatar(profile?.avatarUrl ?? null)
+                    }
+
+                    return (
+                      <ImageEditor
+                        variant="avatar"
+                        editDialogTitle="Edit Profile Image"
+                        defaultDataUrl={profile?.avatarUrl ?? null}
+                        fallbackInitials={initials}
+                        onSaveImage={handleAvatarUpload}
+                        startingPoint={({ open }) => {
+                          const hasImage = Boolean(profile?.avatarUrl)
+                          return (
+                            <div className="group relative size-[318px] shrink-0">
+                              {renderAvatar(profile?.avatarUrl ?? null)}
+                              <div className="absolute inset-0 rounded-full flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+                                {hasImage ? (
+                                  <>
+                                    <IconButton
+                                      type="button"
+                                      variant="filled"
+                                      visual="gray"
+                                      className="rounded-full bg-white text-error-500 hover:bg-error-50"
+                                      onClick={() => handleRemoveAvatar()}
+                                    >
+                                      <Trash03 className="size-5" />
+                                    </IconButton>
+                                    <IconButton
+                                      type="button"
+                                      variant="filled"
+                                      visual="gray"
+                                      className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
+                                      onClick={open}
+                                    >
+                                      <Edit03 className="size-5" />
+                                    </IconButton>
+                                  </>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="filled"
+                                    visual="gray"
+                                    className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
+                                    onClick={open}
+                                  >
+                                    <Upload className="size-[15px]" /> Upload
+                                    Image
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        }}
+                      />
+                    )
+                  })()}
+
                   <div className="flex-auto">
-                    <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                      {profile?.firstName ?? "Talent"}
-                      {profile?.username && (
-                        <span className="text-[26px] font-extralight">
-                          {" "}@{profile.username}
-                        </span>
-                      )}
-                    </h1>
-                    <div className="flex items-center gap-x-1 mt-1">
-                      <h2 className="text-[22px] leading-[27px] text-dark-blue-400 font-medium">
-                        {profile?.role || "Unknown"}
-                      </h2>
+                    <div className="flex items-start">
+                      <div className="flex-auto">
+                        <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
+                          {capitalize(profile?.firstName ?? "") || "Talent"}
+                          {profile?.username && (
+                            <span className="text-[26px] font-extralight">
+                              {" "}
+                              @{profile.username}
+                            </span>
+                          )}
+                        </h1>
+                        <div className="flex items-center gap-x-1 mt-1">
+                          {(() => {
+                            const jobTitle =
+                              (profile as any)?.jobTitles?.find(
+                                (j: any) => j.saveAsDefault
+                              )?.jobTitle ||
+                              (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                              profile?.recentJobTitle
+                            return (
+                              <h2
+                                className={cn(
+                                  "text-[22px] leading-[27px] font-medium",
+                                  jobTitle
+                                    ? "text-dark-blue-400"
+                                    : "text-gray-600"
+                                )}
+                              >
+                                {jobTitle || "Add Job Title"}
+                              </h2>
+                            )
+                          })()}
+                          {isEditMode && isOwnProfile && (
+                            <IconButton
+                              className="rounded-full text-gray-500 hover:text-gray-800"
+                              variant="ghost"
+                              visual="gray"
+                              onClick={() => setJobTitleOpen(true)}
+                            >
+                              <Edit03 className="size-4" />
+                            </IconButton>
+                          )}
+                        </div>
+
+                        <p className="mt-2 text-sm leading-none text-gray-500">
+                          {(() => {
+                            const dates: Date[] = []
+                            const endDates: Date[] = []
+                            // Gather start/end dates from work experience
+                            profile?.experience?.forEach((e) => {
+                              if (e.startDate) dates.push(new Date(e.startDate))
+                              if (e.endDate) endDates.push(new Date(e.endDate))
+                              else endDates.push(new Date()) // present
+                            })
+                            // TODO: gather start/end dates from project history when available
+                            if (dates.length === 0) return ""
+                            const earliest = dates.reduce((a, b) =>
+                              a < b ? a : b
+                            )
+                            const latest = endDates.reduce((a, b) =>
+                              a > b ? a : b
+                            )
+                            const months =
+                              (latest.getFullYear() - earliest.getFullYear()) *
+                                12 +
+                              (latest.getMonth() - earliest.getMonth())
+                            if (months < 12)
+                              return `${Math.max(1, months)} month${months === 1 ? "" : "s"} of experience`
+                            const years = Math.round(months / 12)
+                            return `${years} year${years === 1 ? "" : "s"} of experience`
+                          })()}
+                        </p>
+
+                        <div className="mt-6">
+                          <div className="flex items-center gap-x-[9px]">
+                            <MapPin className="size-4" />
+                            <p className="text-sm leading-none font-medium text-dark-blue-400">
+                              {profile?.location ?? "Location not set"}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center mt-3 gap-x-2">
+                            <Clock className="size-4" />
+                            <p className="text-sm leading-none font-extralight text-dark-blue-400">
+                              {isEditMode && isOwnProfile
+                                ? "You are"
+                                : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
+                              currently{" "}
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  profile?.availability
+                                    ? "text-success-600"
+                                    : "text-gray-500"
+                                )}
+                              >
+                                {profile?.availability
+                                  ? "available"
+                                  : "not available"}
+                              </span>{" "}
+                              for hire
+                            </p>
+                            {isEditMode && isOwnProfile && (
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => setAvailabilityOpen(true)}
+                              >
+                                <Edit03 className="size-4" />
+                              </IconButton>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-x-3">
+                        {isOwnProfile ? (
+                          <>
+                            {isEditMode ? (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                onClick={() => setIsEditMode(false)}
+                              >
+                                <Eye className="size-[15px]" />
+                                View as Client
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                onClick={() => setIsEditMode(true)}
+                              >
+                                <Edit03 className="size-[15px]" />
+                                Edit Profile
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <HireMeButton profile={profile} />
+
+                            <SaveTalentButton userId={profile?.id} />
+                          </>
+                        )}
+
+                        <IconButton
+                          className="text-gray-500"
+                          variant="outlined"
+                          visual="gray"
+                          size="md"
+                          onClick={handleShareProfile}
+                        >
+                          <Share06 className="size-[20px]" />
+                        </IconButton>
+                      </div>
+                    </div>
+
+                    {(dedupedSkills.length > 0 ||
+                      (isEditMode && isOwnProfile)) && (
+                      <div className="mt-[54px]">
+                        {dedupedSkills.length > 0 && (
+                          <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+                            What I do
+                          </h1>
+                        )}
+
+                        <div className="flex items-start mt-3 gap-x-3">
+                          <div className="flex gap-3 flex-wrap">
+                            {dedupedSkills.length > 0 ? (
+                              <ShowMoreLessRoot>
+                                <ShowMoreLess
+                                  trigger={(extraChildrenCount) => (
+                                    <Badge
+                                      className="text-gray-700 cursor-pointer"
+                                      visual="gray"
+                                      size="lg"
+                                      onClick={() => {
+                                        setActiveTab("Skills")
+                                        setAutoExpandSkills(true)
+                                        setTimeout(() => {
+                                          const el =
+                                            document.getElementById("skills")
+                                          if (el)
+                                            el.scrollIntoView({
+                                              behavior: "smooth",
+                                              block: "start",
+                                            })
+                                        }, 100)
+                                      }}
+                                    >
+                                      <Plus2 className="h-3 w-3" />{" "}
+                                      {extraChildrenCount} more...
+                                    </Badge>
+                                  )}
+                                  max={5}
+                                >
+                                  {dedupedSkills.map((skill) => (
+                                    <Badge
+                                      key={skill.id}
+                                      className="text-gray-700"
+                                      visual="gray"
+                                      size="lg"
+                                    >
+                                      {skill.name}
+                                    </Badge>
+                                  ))}
+                                </ShowMoreLess>
+                              </ShowMoreLessRoot>
+                            ) : (
+                              <Button
+                                variant="link"
+                                visual="gray"
+                                className="font-semibold text-dark-blue-400 hover:text-dark-blue-500"
+                                onClick={() => setSkillsOpen(true)}
+                              >
+                                <Plus className="size-[15px]" /> Add Skills
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="py-3 px-8 border-t border-gray-200 flex items-center justify-between gap-x-8 bg-[#122A4B]/[.02]">
+                  <div className="flex items-center gap-x-10">
+                    <div className="flex gap-x-2 items-center">
+                      <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                        Rate
+                      </span>
+                      <span className="text-xl font-bold leading-none text-dark-blue-400">
+                        {profile?.rateMin || profile?.rateMax ? (
+                          <>
+                            {profile.rateMin &&
+                            profile.rateMax &&
+                            Math.round(profile.rateMin) !==
+                              Math.round(profile.rateMax)
+                              ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
+                              : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
+                            <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                              /hr
+                            </span>
+                          </>
+                        ) : (
+                          "Unknown"
+                        )}
+                      </span>
                       {isEditMode && isOwnProfile && (
                         <IconButton
                           className="rounded-full text-gray-500 hover:text-gray-800"
@@ -589,275 +1592,74 @@ export default function Default() {
                         </IconButton>
                       )}
                     </div>
-
-                    <p className="mt-2 text-sm leading-none text-gray-500">
-                      {(() => {
-                        const dates: Date[] = []
-                        const endDates: Date[] = []
-                        // Gather start/end dates from work experience
-                        profile?.experience?.forEach((e) => {
-                          if (e.startDate) dates.push(new Date(e.startDate))
-                          if (e.endDate) endDates.push(new Date(e.endDate))
-                          else endDates.push(new Date()) // present
-                        })
-                        // TODO: gather start/end dates from project history when available
-                        if (dates.length === 0) return ""
-                        const earliest = dates.reduce((a, b) => (a < b ? a : b))
-                        const latest = endDates.reduce((a, b) => (a > b ? a : b))
-                        const months = (latest.getFullYear() - earliest.getFullYear()) * 12 + (latest.getMonth() - earliest.getMonth())
-                        if (months < 12) return `${Math.max(1, months)} month${months === 1 ? "" : "s"} of experience`
-                        const years = Math.round(months / 12)
-                        return `${years} year${years === 1 ? "" : "s"} of experience`
-                      })()}
-                    </p>
-
-                    <div className="mt-6 flex items-center gap-x-3">
-                      <Badge
-                        className="bg-primary-500 text-white rounded-[4px]"
-                        visual="primary"
-                      >
-                        <Star className="size-3 fill-white" /> 4.5
-                      </Badge>
-
-                      <span className="text-xs leading-none text-gray-500">
-                        24 reviews
-                      </span>
-                    </div>
-
-                    <div className="mt-6">
-                      <div className="flex items-center gap-x-[9px]">
-                        <MapPin className="size-4" />
-                        <p className="text-sm leading-none font-medium text-dark-blue-400">
-                          {profile?.location ?? "Location not set"}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center mt-3 gap-x-2">
-                        <Clock className="size-4" />
-                        <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                          {isEditMode && isOwnProfile ? "You are" : `${profile?.firstName ?? "Talent"} is`}{" "}
-                          currently{" "}
-                          <span className="text-success-600 font-medium">
-                            {profile?.availability ?? "available"}
-                          </span>{" "}
-                          for hire
-                        </p>
-                        {isEditMode && isOwnProfile && (
-                          <IconButton
-                            className="rounded-full text-gray-500 hover:text-gray-800"
-                            variant="ghost"
-                            visual="gray"
-                            onClick={() => setAvailabilityOpen(true)}
-                          >
-                            <Edit03 className="size-4" />
-                          </IconButton>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-x-3">
-                    {isOwnProfile ? (
-                      <>
-                        {isEditMode ? (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setIsEditMode(false)}
-                          >
-                            <Eye className="size-[15px]" />
-                            View as Client
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            onClick={() => setIsEditMode(true)}
-                          >
-                            <Edit03 className="size-[15px]" />
-                            Edit Profile
-                          </Button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <TooltipProvider delayDuration={0}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="md">
-                                <Plus className="size-[15px]" />
-                                Hire Me
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              visual="white"
-                              size="md"
-                              className="group text-gray-700 p-6 max-w-[344px] border border-gray-200 shadow-[0px_24px_48px_-12px_rgba(16,24,40,.18)]"
-                              sideOffset={14}
-                              side="bottom"
-                            >
-                              <div className="flex items-center mt-3 gap-x-2">
-                                <Clock className="size-4" />
-                                <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                                  {profile?.firstName ?? "This talent"}{" "}
-                                  <span className="font-medium">
-                                    is not currently available
-                                  </span>{" "}
-                                  for hire
-                                </p>
-                              </div>
-
-                              <Button
-                                className="mt-3 group"
-                                size="md"
-                                variant="link"
-                              >
-                                View similar talent{" "}
-                                <ArrowRight className="size-3 transition duration-300 group-hover:translate-x-[4px]" />
-                              </Button>
-
-                              <span className="absolute inline-block size-4 border-b border-r border-gray-200 bg-white rotate-45 group-data-[side=bottom]:border-r-0 group-data-[side=bottom]:border-b-0 group-data-[side=bottom]:border-l group-data-[side=bottom]:border-t inset-x-0 mx-auto group-data-[side=top]:-bottom-2 group-data-[side=bottom]:-top-2" />
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-
-                        <SaveButton />
-                      </>
-                    )}
-
-                    <IconButton
-                      className="text-gray-500"
-                      variant="outlined"
-                      visual="gray"
-                      size="md"
-                    >
-                      <Share06 className="size-[20px]" />
-                    </IconButton>
-                  </div>
-                </div>
-
-                <div className="mt-[54px]">
-                  <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                    What I do
-                  </h1>
-
-                  <>
-                    <ShowMoreLessRoot>
-                      {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                        <div
-                          className="mt-3 flex gap-3 overflow-hidden flex-wrap [interpolate-size:allow-keywords] transition-[height] duration-300"
-                          ref={ref}
-                          style={{
-                            height: isShowing
-                              ? "auto"
-                              : scrollHeight
-                                ? toPxIfNumber(scrollHeight)
-                                : "auto",
-                          }}
-                        >
-                          <ShowMoreLess max={5}>
-                            {(profile?.skills && profile.skills.length > 0)
-                              ? profile.skills.map((skill) => (
-                                  <Badge
-                                    key={skill.id}
-                                    className="text-gray-700"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    {skill.name}
-                                  </Badge>
-                                ))
-                              : (
-                                <>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Typescript</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">React.js</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Tailwind CSS</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Next.js</Badge>
-                                  <NextLink href="#skills" onClick={() => setActiveTab("Skills")}>
-                                    <Badge className="text-gray-700 cursor-pointer" visual="gray" size="lg">
-                                      <Plus2 className="h-3 w-3" /> 6 more...
-                                    </Badge>
-                                  </NextLink>
-                                </>
-                              )
-                            }
-                          </ShowMoreLess>
+                    {(profile?.totalProjectsCompleted ?? 0) >= 2 &&
+                      profile?.clientSuccessRating != null && (
+                        <div className="flex gap-x-2 items-center">
+                          <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                            Client success rating
+                          </span>
+                          <span className="text-sm font-bold leading-none text-dark-blue-400">
+                            {`${Math.round(profile.clientSuccessRating * 100)}%`}
+                          </span>
                         </div>
                       )}
-                    </ShowMoreLessRoot>
-                  </>
-                </div>
-              </div>
-            </div>
-
-            <div className="py-3 px-8 border-t border-gray-200 grid grid-cols-5 divide-x divide-gray-200 bg-[#122A4B]/[.02]">
-              <div className="flex gap-x-2 justify-center items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Rate
-                </span>
-                <span className="text-xl font-bold leading-none text-dark-blue-400">
-                  {profile?.rateMin || profile?.rateMax
-                    ? <>
-                        {profile.rateMin && profile.rateMax && Math.round(profile.rateMin) !== Math.round(profile.rateMax)
-                          ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
-                          : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
+                    {(profile?.totalProjectsCompleted ?? 0) >= 1 && (
+                      <div className="flex gap-x-2 items-center">
                         <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                          /hr
+                          Total projects completed
                         </span>
-                      </>
-                    : "Unknown"
-                  }
-                </span>
-                {isEditMode && isOwnProfile && (
-                  <IconButton
-                    className="rounded-full text-gray-500 hover:text-gray-800"
-                    variant="ghost"
-                    visual="gray"
-                    onClick={() => setJobTitleOpen(true)}
-                  >
-                    <Edit03 className="size-4" />
-                  </IconButton>
-                )}
-              </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Client success rating
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  95%
-                </span>
-              </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Total projects completed
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  1450
-                </span>
-              </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Member since
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  September 19, 2024
-                </span>
-              </div>
-              <div className="flex gap-x-2 justify-center  items-center">
-                <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                  Repeat hire rate
-                </span>
-                <span className="text-sm font-bold leading-none text-dark-blue-400">
-                  85%
-                </span>
-              </div>
-            </div>
-            </>
+                        <span className="text-sm font-bold leading-none text-dark-blue-400">
+                          {(profile?.totalProjectsCompleted ?? 0).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-x-10">
+                    <div className="flex gap-x-2 items-center">
+                      <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                        Member since
+                      </span>
+                      <span className="text-sm font-bold leading-none text-dark-blue-400">
+                        {profile?.createdAt
+                          ? new Date(profile.createdAt).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )
+                          : "\u2014"}
+                      </span>
+                    </div>
+                    {profile?.repeatHireRate != null && (
+                      <div className="flex gap-x-2 items-center">
+                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                          Repeat hire rate
+                        </span>
+                        <span className="text-sm font-bold leading-none text-dark-blue-400">
+                          {`${profile.repeatHireRate}%`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
 
-        <Tabs className="mt-6" value={activeTab} onValueChange={setActiveTab}>
+        <Tabs
+          className="mt-6"
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val)
+            if (val === "Education") setBackgroundActiveTab("Education")
+            if (val === "Work Experience")
+              setBackgroundActiveTab("Work Experience")
+          }}
+        >
           <TabsList
             className="group/list p-0 bg-transparent data-[status=stuck]:border-b data-[status=stuck]:border-gray-200 z-50 transition duration-300 top-0 sticky block data-[status=stuck]:bg-white border-0"
             data-status={isTabsListStuck ? "stuck" : "unstuck"}
@@ -871,18 +1673,33 @@ export default function Default() {
                       className="hover:ring-0 active:ring-primary-100"
                       size="lg"
                     >
-                      <AvatarImage src={profile?.avatarUrl ?? "/man.jpg"} alt={profile?.firstName ?? "User"} />
-                      <AvatarFallbackIcon />
+                      <AvatarImage
+                        src={profile?.avatarUrl ?? ""}
+                        alt={profile?.firstName ?? "User"}
+                      />
+                      <AvatarFallback>
+                        {getInitials(
+                          `${profile?.firstName ?? ""} ${
+                            profile?.lastName ?? ""
+                          }`
+                        )}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-y-0.5">
                       <span className="text-lg leading-none font-bold text-dark-blue-400">
-                        {profile?.firstName ?? "User"}{" "}
+                        {capitalize(profile?.firstName ?? "") || "User"}{" "}
                         <span className="text-base font-extralight">
                           @{profile?.username ?? ""}
                         </span>
                       </span>
+
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        Expert React Developer
+                        {(profile as any)?.jobTitles?.find(
+                          (j: any) => j.saveAsDefault
+                        )?.jobTitle ||
+                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                          profile?.recentJobTitle ||
+                          ""}
                       </span>
                     </div>
                   </div>
@@ -894,29 +1711,43 @@ export default function Default() {
                       })
                     )}
                   >
-                    <TabsTrigger value="Portfolio" asChild>
-                      <NextLink href="#portfolio">Portfolio</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Skills" asChild>
-                      <NextLink href="#skills">Skills</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Overview" asChild>
-                      <NextLink href="#overview">Overview</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Offers" asChild>
-                      <NextLink href="#offers">Offers</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Work Experience" asChild>
-                      <NextLink href="#background">Work Experience</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Education" asChild>
-                      <NextLink href="#education">Education</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Project History" asChild>
-                      <NextLink href="#project-history">
-                        Project History
-                      </NextLink>
-                    </TabsTrigger>
+                    {(!isClientView || hasPortfolio) && (
+                      <TabsTrigger value="Portfolio" asChild>
+                        <NextLink href="#portfolio">Portfolio</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasSkills) && (
+                      <TabsTrigger value="Skills" asChild>
+                        <NextLink href="#skills">Skills</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {showOverviewSection && (
+                      <TabsTrigger value="Overview" asChild>
+                        <NextLink href="#overview">Overview</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {!isClientView && (
+                      <TabsTrigger value="Offers" asChild>
+                        <NextLink href="#offers">Offers</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasWorkExperience) && (
+                      <TabsTrigger value="Work Experience" asChild>
+                        <NextLink href="#background">Work Experience</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {(!isClientView || hasEducation) && (
+                      <TabsTrigger value="Education" asChild>
+                        <NextLink href="#education">Education</NextLink>
+                      </TabsTrigger>
+                    )}
+                    {!isClientView && (
+                      <TabsTrigger value="Project History" asChild>
+                        <NextLink href="#project-history">
+                          Project History
+                        </NextLink>
+                      </TabsTrigger>
+                    )}
                   </div>
                 </div>
 
@@ -948,46 +1779,9 @@ export default function Default() {
                       </>
                     ) : (
                       <>
-                        <TooltipProvider delayDuration={0}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="md">
-                                <Plus className="size-[15px]" />
-                                Hire Me
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              visual="white"
-                              size="md"
-                              className="text-gray-700 p-6 max-w-[344px] border border-gray-200 shadow-[0px_24px_48px_-12px_rgba(16,24,40,.18)]"
-                              sideOffset={14}
-                              side="bottom"
-                            >
-                              <TooltipArrow className="fill-white" />
-                              <div className="flex items-center mt-3 gap-x-[9px]">
-                                <Clock className="size-4" />
-                                <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                                  {profile?.firstName ?? "This talent"}{" "}
-                                  <span className="font-medium">
-                                    is not currently available
-                                  </span>{" "}
-                                  for hire
-                                </p>
-                              </div>
+                        <HireMeButton profile={profile} />
 
-                              <Button
-                                className="mt-3 group"
-                                size="md"
-                                variant="link"
-                              >
-                                View similar talent{" "}
-                                <ArrowRight className="size-3 transition duration-300 group-hover:translate-x-[4px]" />
-                              </Button>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-
-                        <SaveButton />
+                        <SaveTalentButton userId={profile?.id} />
                       </>
                     )}
 
@@ -996,6 +1790,7 @@ export default function Default() {
                       variant="outlined"
                       visual="gray"
                       size="md"
+                      onClick={handleShareProfile}
                     >
                       <Share06 className="size-[20px]" />
                     </IconButton>
@@ -1004,12 +1799,21 @@ export default function Default() {
                   <div className="flex items-center mt-3 gap-x-[9px]">
                     <Clock className="size-4" />
                     <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
-                      {isEditMode && isOwnProfile ? "You are" : `${profile?.firstName ?? "Talent"} is`}{" "}
+                      {isEditMode && isOwnProfile
+                        ? "You are"
+                        : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
                       currently{" "}
-                      <span className="text-success-600 font-bold">
-                        {profile?.availability ?? "available"}
+                      <span
+                        className={cn(
+                          "font-bold",
+                          profile?.availability
+                            ? "text-success-600"
+                            : "text-gray-500"
+                        )}
+                      >
+                        {profile?.availability ? "available" : "not available"}
                       </span>{" "}
-                      for <span className="font-bold">40 hrs</span> /week
+                      for hire
                     </p>
                   </div>
                 </div>
@@ -1021,584 +1825,180 @@ export default function Default() {
             id="portfolio"
           >
             <div className="pt-6 flex gap-x-8">
-              <div className="flex-auto">
-                {isEditMode && isOwnProfile && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="flex items-start">
-                      <div className="flex-auto">
-                        <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
-                          Ready to Get Hired?
-                        </h1>
-                        <p className="text-base font-light mt-1 text-dark-blue-400">
-                          Clients are 4x more likely to hire users with
-                          completed profiles!
-                        </p>
-                      </div>
-                      <IconButton
-                        className="rounded-full"
-                        variant="ghost"
-                        visual="gray"
-                      >
-                        <X className="size-4" />
-                      </IconButton>
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-x-3">
-                      <div className="text-sm leading-5 font-medium text-dark-blue-400">
-                        100%
-                      </div>
-                      <div className="flex flex-auto items-center gap-x-1">
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                        <Progress
-                          className="first:rounded-l-1 last:first:rounded-r-1 flex-auto rounded-r-0"
-                          bubble={false}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-                        <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
-                          <User className="size-5" />
+              <div className="flex-auto min-w-0">
+                {isEditMode &&
+                  isOwnProfile &&
+                  (() => {
+                    const steps = [
+                      {
+                        label: "Add Your Bio",
+                        description:
+                          "Share what drives you and let clients connect on a personal level.",
+                        done: !!(profile?.bio || profile?.overview),
+                        action: () => setOverviewOpen(true),
+                      },
+                      {
+                        label: "Add Your Skills",
+                        description: "Let clients know what you're great at.",
+                        done: (profile?.skills?.length ?? 0) > 0,
+                        action: () => setSkillsOpen(true),
+                      },
+                      {
+                        label: "Add Work Experience",
+                        description: "Show clients your professional history.",
+                        done: (profile?.experience?.length ?? 0) > 0,
+                        action: () => {
+                          setActiveTab("Work Experience")
+                          setBackgroundActiveTab("Work Experience")
+                          setWorkExperienceOpen(true)
+                        },
+                      },
+                      {
+                        label: "Add Education",
+                        description: "Share your academic background.",
+                        done: (profile?.education?.length ?? 0) > 0,
+                        action: () => {
+                          setActiveTab("Education")
+                          setBackgroundActiveTab("Education")
+                          setEducationOpen(true)
+                        },
+                      },
+                      {
+                        label: "Add Your Languages",
+                        description: "Tell clients which languages you speak.",
+                        done: (profile?.languages?.length ?? 0) > 0,
+                        action: () => setLanguagesOpen(true),
+                      },
+                      {
+                        label: "Set Your Rate",
+                        description: "Help clients understand your pricing.",
+                        done: !!(profile?.rateMin || profile?.rateMax),
+                        action: () => setJobTitleOpen(true),
+                      },
+                    ]
+                    const completedCount = steps.filter((s) => s.done).length
+                    const completionPercent = Math.round(
+                      (completedCount / steps.length) * 100
+                    )
+                    const nextStep = steps.find((s) => !s.done)
+                    if (completionPercent === 100) return null
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                        <div className="flex items-start">
+                          <div className="flex-auto">
+                            <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
+                              Ready to Get Hired?
+                            </h1>
+                            <p className="text-base font-light mt-1 text-dark-blue-400">
+                              Clients are 4x more likely to hire users with
+                              completed profiles!
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-auto">
-                          <h1 className="text-base leading-6 font-bold text-dark-blue-400">
-                            Next up: Add Your Bio
-                          </h1>
-                          <p className="text-xs leading-none text-gray-500">
-                            Share what drives you and let clients connect on a
-                            personal level.
-                          </p>
+
+                        <div className="mt-3 flex items-center gap-x-3">
+                          <div className="text-sm leading-5 font-medium text-dark-blue-400">
+                            {completionPercent}%
+                          </div>
+                          <div className="flex flex-auto items-center gap-x-1">
+                            {steps.map((_, i) => (
+                              <Progress
+                                key={i}
+                                className="flex-auto first:rounded-l-full last:rounded-r-full [&:not(:first-child)]:rounded-l-none [&:not(:last-child)]:rounded-r-none"
+                                indicatorClassName={cn(
+                                  i === 0 && "rounded-l-full rounded-r-none",
+                                  i === steps.length - 1 &&
+                                    "rounded-r-full rounded-l-none",
+                                  i !== 0 &&
+                                    i !== steps.length - 1 &&
+                                    "rounded-none"
+                                )}
+                                value={i < completedCount ? 100 : 0}
+                                bubble={false}
+                              />
+                            ))}
+                          </div>
                         </div>
-                        <Button className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white">
-                          Finish This Step
-                        </Button>
+
+                        {nextStep && (
+                          <div className="mt-3">
+                            <div className="rounded-lg px-4 py-3 flex items-center gap-x-3 bg-white border border-gray-300 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                              <div className="rounded-full border border-gray-300 size-11 shrink-0 inline-flex items-center justify-center">
+                                <User className="size-5" />
+                              </div>
+                              <div className="flex-auto">
+                                <h1 className="text-base leading-6 font-bold text-dark-blue-400">
+                                  Next up: {nextStep.label}
+                                </h1>
+                                <p className="text-xs leading-none text-gray-500">
+                                  {nextStep.description}
+                                </p>
+                              </div>
+                              <Button
+                                className="text-xs leading-5 font-semibold text-primary-500 border border-primary-500 bg-transparent rounded-full hover:bg-primary-500 hover:text-white"
+                                onClick={nextStep.action}
+                              >
+                                Finish This Step
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </div>
+                    )
+                  })()}
+
+                {(!isClientView || hasPortfolio) && (
+                  <PortfolioCards
+                    key={profile?.portfolio?.length ? "real" : "demo"}
+                    portfolio={profile?.portfolio}
+                    onOpenBuilder={() => setCaseStudyOpen(true)}
+                  />
                 )}
 
-                <ShowMoreLessRoot
-                  value={autoExpandPortfolio}
-                  onValueChange={setAutoExpandPortfolio}
-                >
-                  {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                    <>
-                      <div
-                        className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
-                        ref={ref}
-                        style={{
-                          height: isShowing
-                            ? "auto"
-                            : scrollHeight
-                              ? toPxIfNumber(scrollHeight)
-                              : "auto",
-                        }}
-                      >
-                        <ShowMoreLess max={3}>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                          <article className="group relative rounded-lg overflow-hidden h-[200px]">
-                            <NextImage
-                              className="object-cover"
-                              src="/dashboard.png"
-                              alt="Dashboard"
-                              fill
-                              sizes="33vw"
-                            />
-                            <div className="p-[15px] group-hover:opacity-100 opacity-0 inset-0 absolute flex justify-end items-start flex-col hover:bg-black/50 transition duration-300">
-                              <h1 className="text-sm leading-none font-medium text-white">
-                                Mobile Finance Application
-                              </h1>
-
-                              <div className="mt-2 flex flex-wrap gap-[6.79px]">
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                                <Badge
-                                  className="text-white bg-white/20"
-                                  visual="gray"
-                                >
-                                  UI/UX design
-                                </Badge>
-                              </div>
-                            </div>
-                          </article>
-                        </ShowMoreLess>
-                      </div>
-
-                      <div className="my-6">
-                        <div className="flex items-center gap-x-1">
-                          <span className="flex-auto inline-block h-px bg-gray-200" />
-                          <Button
-                            variant="link"
-                            visual="gray"
-                            onClick={() => setIsShowing((prev) => !prev)}
-                          >
-                            {isShowing ? "View Less" : "View More"}
-                          </Button>
-                          <span className="flex-auto inline-block h-px bg-gray-200" />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </ShowMoreLessRoot>
-
-                <div
-                  className="p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
-                  id="skills"
-                >
-                  <div className="flex items-center justify-between">
-                    <h1 className="text-xl leading-none font-bold text-dark-blue-400">
-                      Skills
-                    </h1>
-                    {isEditMode && isOwnProfile && (
-                      <IconButton
-                        className="rounded-full text-gray-500 hover:text-gray-800"
-                        variant="ghost"
-                        visual="gray"
-                        onClick={() => setSkillsOpen(true)}
-                      >
-                        <Edit03 className="size-4" />
-                      </IconButton>
-                    )}
-                  </div>
-
-                  <ShowMoreLessRoot
-                    value={autoExpandSkills}
-                    onValueChange={setAutoExpandSkills}
+                {(!isClientView || hasSkills) && (
+                <LazySection minHeight={300}>
+                  <div
+                    className="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
+                    id="skills"
                   >
-                    {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                      <>
-                        <div
-                          ref={ref}
-                          className="[interpolate-size:allow-keywords] flex gap-3 mt-6 flex-wrap overflow-hidden transition-[height] duration-300"
-                          style={{
-                            height: isShowing
-                              ? "auto"
-                              : scrollHeight
-                                ? toPxIfNumber(scrollHeight)
-                                : "auto",
-                          }}
-                        >
-                          <ShowMoreLess max={22}>
-                            {(profile?.skills && profile.skills.length > 0)
-                              ? profile.skills.map((skill) => (
+                    <div className="flex items-center justify-between">
+                      <h1 className="text-xl leading-none font-bold text-dark-blue-400">
+                        Skills
+                      </h1>
+                      {isEditMode &&
+                        isOwnProfile &&
+                        dedupedSkills.length > 0 && (
+                          <IconButton
+                            className="rounded-full text-gray-500 hover:text-gray-800"
+                            variant="ghost"
+                            visual="gray"
+                            onClick={() => setSkillsOpen(true)}
+                          >
+                            <Edit03 className="size-4" />
+                          </IconButton>
+                        )}
+                    </div>
+
+                    {dedupedSkills.length > 0 ? (
+                      <ShowMoreLessRoot
+                        value={autoExpandSkills}
+                        onValueChange={setAutoExpandSkills}
+                      >
+                        {({ isShowing, setIsShowing, ref, scrollHeight }) => (
+                          <>
+                            <div
+                              ref={ref}
+                              className="[interpolate-size:allow-keywords] flex gap-3 mt-6 flex-wrap overflow-hidden transition-[height] duration-300"
+                              style={{
+                                height: isShowing
+                                  ? "auto"
+                                  : scrollHeight
+                                    ? toPxIfNumber(scrollHeight)
+                                    : "auto",
+                              }}
+                            >
+                              <ShowMoreLess max={22}>
+                                {dedupedSkills.map((skill) => (
                                   <Badge
                                     key={skill.id}
                                     className="text-gray-700"
@@ -1607,6434 +2007,2529 @@ export default function Default() {
                                   >
                                     {skill.name}
                                   </Badge>
-                                ))
-                              : (
-                                <>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Typescript</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">React.js</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Tailwind CSS</Badge>
-                                  <Badge className="text-gray-700" visual="gray" size="lg">Next.js</Badge>
-                                </>
-                              )
-                            }
-                          </ShowMoreLess>
-                        </div>
+                                ))}
+                              </ShowMoreLess>
+                            </div>
 
-                        <div className="mt-6 flex items-center justify-center">
+                            {dedupedSkills.length > 22 && (
+                              <div className="mt-6 flex items-center justify-center">
+                                <Button
+                                  variant="link"
+                                  visual="gray"
+                                  onClick={() => setIsShowing((prev) => !prev)}
+                                >
+                                  {isShowing ? "View Less" : "View More"}
+                                </Button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </ShowMoreLessRoot>
+                    ) : (
+                      <div className="mt-2 flex items-start justify-between gap-x-4">
+                        <div className="flex-auto min-w-0">
+                          <p className="text-sm font-light text-gray-600 leading-relaxed">
+                            Showcase your expertise and the strengths that set
+                            you apart. Highlight the skills that define your work
+                            so the right clients can recognize your value and
+                            find you faster.
+                          </p>
+                        </div>
+                        {isEditMode && isOwnProfile && (
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            className="shrink-0 bg-white -mt-7"
+                            onClick={() => setSkillsOpen(true)}
+                          >
+                            <Plus className="size-[15px]" /> Add Skills
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </LazySection>
+                )}
+
+                {showOverviewSection && (
+                <LazySection minHeight={300}>
+                  <div className="mt-6 scroll-mt-[137.5px]" id="overview">
+                    {showOverviewBio && (
+                    <div
+                      className={cn(
+                        "p-6 bg-white border border-gray-200 space-y-6",
+                        showOverviewFeatured ? "rounded-t-lg" : "rounded-lg"
+                      )}
+                    >
+                      {(() => {
+                        const bioText = profile?.bio || profile?.overview
+                        const hasBio = Boolean(bioText)
+                        return (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <h1 className="text-xl font-bold text-dark-blue-400 leading-none">
+                                Overview
+                              </h1>
+                              {isEditMode &&
+                                isOwnProfile &&
+                                (hasBio ? (
+                                  <IconButton
+                                    className="rounded-full text-gray-500 hover:text-gray-800"
+                                    variant="ghost"
+                                    visual="gray"
+                                    onClick={() => setOverviewOpen(true)}
+                                  >
+                                    <Edit03 className="size-4" />
+                                  </IconButton>
+                                ) : (
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => setOverviewOpen(true)}
+                                  >
+                                    <Plus className="size-[15px]" /> Add Bio
+                                  </Button>
+                                ))}
+                            </div>
+
+                            {hasBio ? (
+                              <LineClampText
+                                text={bioText as string}
+                                lines={3}
+                                className="text-sm font-extralight text-gray-700 leading-relaxed"
+                                toggleClassName="mt-6"
+                                expandLabel="View More"
+                                collapseLabel="View Less"
+                              />
+                            ) : (
+                              <p className="text-sm font-light text-gray-600 leading-relaxed">
+                                Build a strong &ldquo;About Me&rdquo; that helps
+                                clients understand who you are, what you do, and
+                                the value you bring. This is your space to create
+                                a real connection and show what makes you worth
+                                working with.
+                              </p>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
+                    )}
+
+                    {showOverviewFeatured && (
+                    <Tabs
+                      value={effectiveFeaturedTab}
+                      onValueChange={setFeaturedTab}
+                      className={cn(
+                        "p-6 min-h-[134px] border-x border-b border-gray-200 bg-white",
+                        showOverviewBio
+                          ? "rounded-b-lg"
+                          : "rounded-lg border-t"
+                      )}
+                    >
+                      {(!isClientView || visibleFeaturedTabs.length > 1) && (
+                      <RadixTabs.List className="flex items-center gap-x-3">
+                        {!isClientView && (
+                        <TabsTrigger
+                          variant="unstyled"
+                          showUnderline={false}
+                          value="Featured Clients"
+                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                        >
+                          Featured Clients
+                        </TabsTrigger>
+                        )}
+                        {(!isClientView || hasCertifications) && (
+                        <TabsTrigger
+                          variant="unstyled"
+                          showUnderline={false}
+                          value="Certifications"
+                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                        >
+                          Certifications
+                        </TabsTrigger>
+                        )}
+                        {(!isClientView || hasIndustries) && (
+                        <TabsTrigger
+                          variant="unstyled"
+                          showUnderline={false}
+                          value="Industry Expertise"
+                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                        >
+                          Industry Expertise
+                        </TabsTrigger>
+                        )}
+                        {isEditMode &&
+                          isOwnProfile &&
+                          featuredTab === "Industry Expertise" &&
+                          profile?.industries &&
+                          profile.industries.length > 0 && (
+                            <div className="ml-auto flex items-center gap-x-1">
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => setIndustriesOpen(true)}
+                              >
+                                <Plus className="size-4" />
+                              </IconButton>
+                              <IconButton
+                                className="rounded-full text-gray-500 hover:text-gray-800"
+                                variant="ghost"
+                                visual="gray"
+                                onClick={() => setIndustriesOpen(true)}
+                              >
+                                <Edit03 className="size-4" />
+                              </IconButton>
+                            </div>
+                          )}
+                        {isEditMode &&
+                          isOwnProfile &&
+                          featuredTab === "Certifications" &&
+                          profile?.certifications &&
+                          profile.certifications.length > 0 && (
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              className="ml-auto shrink-0 bg-white"
+                              onClick={() => {
+                                setCertEditIdx(undefined)
+                                setCertificationsOpen(true)
+                              }}
+                            >
+                              <Plus className="size-[15px]" /> Add Certification
+                            </Button>
+                          )}
+                      </RadixTabs.List>
+                      )}
+
+                      {!isClientView && (
+                      <TabsContent value="Featured Clients">
+                        <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                          <div className="flex items-start justify-between gap-x-4">
+                            <div className="flex-auto min-w-0">
+                              <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                Featured Clients
+                              </h2>
+                              <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                Your featured clients will appear here as you
+                                start working on projects, services, and add
+                                work history to your profile. These clients are
+                                automatically generated based on your past
+                                projects, services, and roles, and aren&apos;t
+                                directly editable.
+                              </p>
+                            </div>
+                            {isEditMode && isOwnProfile && (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                className="shrink-0 bg-white"
+                                onClick={() => setWorkExperienceOpen(true)}
+                                disabled={atWorkExperienceLimit}
+                                title={
+                                  atWorkExperienceLimit
+                                    ? "You've reached the 30-entry limit for work experience."
+                                    : undefined
+                                }
+                              >
+                                <Plus className="size-[15px]" /> Add Work History
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </TabsContent>
+                      )}
+                      <TabsContent value="Certifications">
+                        {profile?.certifications &&
+                        profile.certifications.length > 0 ? (
+                          <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
+                            {profile.certifications.map((cert) => {
+                              const brand = getCertificationBrandFromUrl(
+                                cert.credentialUrl
+                              )
+                              return (
+                                <div
+                                  key={cert.id}
+                                  className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-2"
+                                >
+                                  {brand?.type === "component" && (
+                                    <brand.Icon className="size-6 shrink-0" />
+                                  )}
+                                  {brand?.type === "remote-svg" && (
+                                    <img
+                                      src={brand.url}
+                                      alt={brand.name}
+                                      width={24}
+                                      height={24}
+                                      className="size-6 shrink-0"
+                                      loading="lazy"
+                                      data-fallback="0"
+                                      onError={(e) => {
+                                        const el = e.currentTarget
+                                        if (el.dataset.fallback === "0") {
+                                          el.dataset.fallback = "1"
+                                          el.src = brand.faviconUrl
+                                        } else {
+                                          el.style.display = "none"
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                  <span className="capitalize">
+                                    {cert.name}
+                                  </span>
+                                  {isEditMode && isOwnProfile && (
+                                    <IconButton
+                                      className="rounded-full text-gray-400 hover:text-gray-600"
+                                      variant="ghost"
+                                      visual="gray"
+                                      onClick={() => {
+                                        setCertEditIdx(String(cert.id))
+                                        setCertificationsOpen(true)
+                                      }}
+                                    >
+                                      <Edit03 className="size-4" />
+                                    </IconButton>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                            <div className="flex items-start justify-between gap-x-4">
+                              <div className="flex-auto min-w-0">
+                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                  Certifications
+                                </h2>
+                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                  Add the certifications that validate your
+                                  expertise so clients can trust your
+                                  qualifications.
+                                </p>
+                              </div>
+                              {isEditMode && isOwnProfile && (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="shrink-0 bg-white"
+                                  onClick={() => {
+                                    setCertEditIdx(undefined)
+                                    setCertificationsOpen(true)
+                                  }}
+                                >
+                                  <Plus className="size-[15px]" /> Add
+                                  Certification
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </TabsContent>
+                      <TabsContent value="Industry Expertise">
+                        {profile?.industries &&
+                        profile.industries.length > 0 ? (
+                          <div className="pt-6 flex items-center flex-wrap gap-3">
+                            {profile.industries.map((ind) => (
+                              <Badge key={ind.id} size="lg" visual="gray">
+                                {ind.industry}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                            <div className="flex items-start justify-between gap-x-4">
+                              <div className="flex-auto min-w-0">
+                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                  Industry Expertise
+                                </h2>
+                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                  Highlight the industries you specialize in so
+                                  clients in those spaces can find you.
+                                </p>
+                              </div>
+                              {isEditMode && isOwnProfile && (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="shrink-0 bg-white"
+                                  onClick={() => setIndustriesOpen(true)}
+                                >
+                                  <Plus className="size-[15px]" /> Add Industry
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                    )}
+                  </div>
+                </LazySection>
+                )}
+
+                {!isClientView && (
+                <LazySection minHeight={400}>
+                  <div
+                    className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
+                    id="offers"
+                  >
+                    <h1 className="text-xl font-bold leading-none text-dark-blue-400">
+                      My Offers
+                    </h1>
+
+                    <Tabs defaultValue="Projects" className="mt-6">
+                      <div className="flex items-center justify-between">
+                        <RadixTabs.List className="inline-flex items-center gap-x-3">
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Projects"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Projects
+                          </TabsTrigger>
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Services"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Services
+                          </TabsTrigger>
+                        </RadixTabs.List>
+
+                        {isEditMode && isOwnProfile && (
                           <Button
                             variant="link"
                             visual="gray"
-                            onClick={() => setIsShowing((prev) => !prev)}
+                            onClick={() => setListingsModalStep("empty")}
                           >
-                            {isShowing ? "View Less" : "View More"}
+                            <Edit03 className="size-[15px]" /> Edit Listings
                           </Button>
-                        </div>
-                      </>
-                    )}
-                  </ShowMoreLessRoot>
-                </div>
+                        )}
+                      </div>
 
-                <div className="mt-6 scroll-mt-[137.5px]" id="overview">
-                  <div className="p-6 rounded-t-lg bg-white border border-gray-200 space-y-6">
+                      <TabsContent value="Projects">
+                        <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                          <div className="flex items-start justify-between gap-x-4">
+                            <div className="flex-auto min-w-0">
+                              <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                Projects
+                              </h2>
+                              <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                Your project offers will be displayed here as you create your own listings or join existing projects in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
+                              </p>
+                            </div>
+                            {isEditMode && isOwnProfile && (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                className="shrink-0 bg-white"
+                                onClick={() => goToPublishProject("project")}
+                              >
+                                <Plus className="size-[15px]" /> Add Project
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="Services">
+                        <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                          <div className="flex items-start justify-between gap-x-4">
+                            <div className="flex-auto min-w-0">
+                              <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                Services
+                              </h2>
+                              <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                Your service offers will be displayed here as you create your own listings or join existing services in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
+                              </p>
+                            </div>
+                            {isEditMode && isOwnProfile && (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                className="shrink-0 bg-white"
+                                onClick={() => goToPublishProject("service")}
+                              >
+                                <Plus className="size-[15px]" /> Add Service
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </LazySection>
+                )}
+
+                {showBackgroundSection && (
+                <LazySection minHeight={400}>
+                  <div
+                    className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
+                    id="background"
+                  >
                     <div className="flex items-center justify-between">
-                      <h1 className="text-xl font-bold text-dark-blue-400 leading-none">
-                        Overview
+                      <h1 className="text-xl leading-none font-bold text-dark-blue-400">
+                        Background
                       </h1>
                       {isEditMode && isOwnProfile && (
                         <IconButton
                           className="rounded-full text-gray-500 hover:text-gray-800"
                           variant="ghost"
                           visual="gray"
-                          onClick={() => setOverviewOpen(true)}
+                          onClick={() =>
+                            backgroundActiveTab === "Education"
+                              ? setEducationOpen(true)
+                              : setWorkExperienceOpen(true)
+                          }
                         >
                           <Edit03 className="size-4" />
                         </IconButton>
                       )}
                     </div>
 
-                    <ReadMoreLess text={profile?.bio || profile?.overview || "Front-end Technologies & Web Accessibility | Exploring Human Interface Design I’m passionate about crafting intuitive, user-friendly digital experiences with a strong focus on accessibility and human-centered design. With expertise in HTML, CSS, JavaScript, and modern frameworks, I create seamless interfaces that enhance usability for all users, including those with disabilities. I believe technology should be inclusive, aesthetically engaging, and functionally efficient."}>
-                      {({ text, readMore, toggle }) => (
-                        <>
-                          <p className="mt-6 text-sm font-extralight text-gray-700">
-                            {readMore ? text : `${text}...`}
-                          </p>
-
-                          <Button
-                            className="mt-6"
-                            variant="link"
-                            visual="gray"
-                            onClick={toggle}
-                          >
-                            {readMore ? "View Less" : "View More"}
-                          </Button>
-                        </>
-                      )}
-                    </ReadMoreLess>
-                  </div>
-
-                  <Tabs
-                    defaultValue="Featured Clients"
-                    className="p-6 h-[134px] border-x border-b rounded-b-lg border-gray-200 bg-white"
-                  >
-                    <RadixTabs.List className="flex items-center gap-x-3">
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Featured Clients"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Featured Clients
-                      </TabsTrigger>
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Certifications"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Certifications
-                      </TabsTrigger>
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Industry Expertise"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Industry Expertise
-                      </TabsTrigger>
-                    </RadixTabs.List>
-
-                    <TabsContent value="Featured Clients">
-                      <div className="pt-6 flex items-center gap-x-6">
-                        <Dropbox />
-                        <Microsoft />
-                        <Adobe />
-                        <Nasdaq />
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="Certifications">
-                      <div className="pt-6 flex items-center gap-x-6">
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <AdobeBrand className="size-7" />
-                          Adobe Certified Professional
-                        </div>
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <GoogleDefault className="size-6" />
-                          Google UX Design Certificate
-                        </div>
-                        <div className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-1.5">
-                          <WordpressBrand className="size-7" />
-                          Certified Wordpress Developer
-                        </div>
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="Industry Expertise">
-                      <div className="pt-6 flex items-center gap-x-3">
-                        <Badge size="lg" visual="gray">
-                          Real Estate
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Finance
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Accounting
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Insurance
-                        </Badge>
-                        <Badge size="lg" visual="gray">
-                          Music
-                        </Badge>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-
-                <div className="mt-6 scroll-mt-[137.5px]" id="offers">
-                  <h1 className="text-xl font-bold leading-none text-dark-blue-400">
-                    My Offers
-                  </h1>
-
-                  <Tabs defaultValue="Projects" className="mt-6">
-                    <div className="flex items-center justify-between">
-                      <TabsList className="inline-flex items-center gap-x-3">
+                    <Tabs
+                      value={effectiveBackgroundTab}
+                      onValueChange={setBackgroundActiveTab}
+                      className="mt-6"
+                    >
+                      {(!isClientView || visibleBackgroundTabs.length > 1) && (
+                      <RadixTabs.List className="inline-flex items-center gap-x-3">
+                        {(!isClientView || hasWorkExperience) && (
                         <TabsTrigger
                           variant="unstyled"
                           showUnderline={false}
-                          value="Projects"
+                          value="Work Experience"
                           className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
                         >
-                          Projects
+                          Work Experience
                         </TabsTrigger>
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Services"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Services
-                        </TabsTrigger>
-                      </TabsList>
-
-                      <div className="inline-flex items-center gap-x-6">
-                        {isEditMode && isOwnProfile && (
-                          <Button variant="link" visual="gray" onClick={() => setOffersOpen(true)}>
-                            <Edit03 className="size-[15px]" /> Edit Offers
-                          </Button>
                         )}
-                        <TabsList className="inline-flex items-center gap-x-3">
-                          <TabsTrigger
-                            variant="unstyled"
-                            showUnderline={false}
-                            value="Frontend"
-                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                          >
-                            Frontend
-                          </TabsTrigger>
-                          <TabsTrigger
-                            variant="unstyled"
-                            showUnderline={false}
-                            value="Backend"
-                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                          >
-                            Backend
-                          </TabsTrigger>
-                          <TabsTrigger
-                            variant="unstyled"
-                            showUnderline={false}
-                            value="Database"
-                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                          >
-                            Database
-                          </TabsTrigger>
-                        </TabsList>
+                        {(!isClientView || hasEducation) && (
+                        <TabsTrigger
+                          variant="unstyled"
+                          showUnderline={false}
+                          value="Education"
+                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                        >
+                          Education
+                        </TabsTrigger>
+                        )}
+                      </RadixTabs.List>
+                      )}
 
-                        <Button className="group" variant="link" visual="gray">
-                          View All{" "}
-                          <ArrowRight className="size-[15px] transition duration-300 group-hover:translate-x-[4px]" />
+                      <TabsContent value="Work Experience">
+                        <ShowMoreLessRoot
+                          value={autoExpandWorkExperience}
+                          onValueChange={setAutoExpandWorkExperience}
+                        >
+                          {({ isShowing, setIsShowing, scrollHeight, ref }) => (
+                            <>
+                              <div
+                                ref={ref}
+                                className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
+                                style={{
+                                  height: isShowing
+                                    ? "auto"
+                                    : scrollHeight
+                                      ? toPxIfNumber(scrollHeight)
+                                      : "auto",
+                                }}
+                              >
+                                <ShowMoreLessComp max={4}>
+                                  {profile?.experience &&
+                                  profile.experience.length > 0 ? (
+                                    [...profile.experience]
+                                      .sort((a: any, b: any) => {
+                                        const aCurrent =
+                                          a.isCurrentRole || !a.endDate
+                                        const bCurrent =
+                                          b.isCurrentRole || !b.endDate
+                                        if (aCurrent !== bCurrent)
+                                          return aCurrent ? -1 : 1
+                                        return (b.startDate || "").localeCompare(
+                                          a.startDate || ""
+                                        )
+                                      })
+                                      .map((exp: any, idx: number) => {
+                                        const months = [
+                                          "January",
+                                          "February",
+                                          "March",
+                                          "April",
+                                          "May",
+                                          "June",
+                                          "July",
+                                          "August",
+                                          "September",
+                                          "October",
+                                          "November",
+                                          "December",
+                                        ]
+                                        const fmtDate = (d: string | null) => {
+                                          if (!d) return "Present"
+                                          const [y, m] = d.split("-")
+                                          return `${months[parseInt(m, 10) - 1]} ${y}`
+                                        }
+                                        const toDate = (d: string) => {
+                                          const [y, m, day] = d.split("-")
+                                          return new Date(
+                                            Number(y),
+                                            Number(m) - 1,
+                                            Number(day || 1)
+                                          )
+                                        }
+                                        const calcDuration = (
+                                          start: string,
+                                          end: string | null
+                                        ) => {
+                                          const s = toDate(start)
+                                          const e = end ? toDate(end) : new Date()
+                                          let totalMonths =
+                                            (e.getFullYear() -
+                                              s.getFullYear()) *
+                                              12 +
+                                            (e.getMonth() - s.getMonth())
+                                          const yrs = Math.floor(
+                                            totalMonths / 12
+                                          )
+                                          const mos = totalMonths % 12
+                                          const parts = []
+                                          if (yrs > 0)
+                                            parts.push(
+                                              `${yrs} yr${yrs > 1 ? "s" : ""}`
+                                            )
+                                          if (mos > 0)
+                                            parts.push(
+                                              `${mos} mo${mos > 1 ? "s" : ""}`
+                                            )
+                                          return parts.join(" ") || "< 1 mo"
+                                        }
+                                        return (
+                                          <div
+                                            key={exp.id || idx}
+                                            className="flex gap-x-6"
+                                          >
+                                            <div className="relative flex flex-col items-center">
+                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden relative">
+                                                <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                  {exp.company?.charAt(0) ||
+                                                    "W"}
+                                                </span>
+                                                {(() => {
+                                                  if (exp.companyLogoUrl) {
+                                                    return (
+                                                      <NextImage
+                                                        key={exp.companyLogoUrl}
+                                                        src={exp.companyLogoUrl}
+                                                        alt={exp.company || ""}
+                                                        width={45}
+                                                        height={45}
+                                                        className="object-contain relative"
+                                                      />
+                                                    )
+                                                  }
+                                                  const brand =
+                                                    getCompanyBrandFromName(
+                                                      exp.company
+                                                    )
+                                                  if (
+                                                    brand?.type === "component"
+                                                  ) {
+                                                    return (
+                                                      <brand.Icon className="size-9 relative bg-gray-50" />
+                                                    )
+                                                  }
+                                                  if (
+                                                    brand?.type === "remote-svg"
+                                                  ) {
+                                                    return (
+                                                      <img
+                                                        key={brand.url}
+                                                        src={brand.url}
+                                                        alt={
+                                                          exp.company ||
+                                                          brand.name
+                                                        }
+                                                        width={36}
+                                                        height={36}
+                                                        className="object-contain size-9 relative bg-gray-50"
+                                                        loading="lazy"
+                                                        data-fallback="0"
+                                                        onError={(e) => {
+                                                          const el =
+                                                            e.currentTarget
+                                                          if (
+                                                            el.dataset
+                                                              .fallback === "0"
+                                                          ) {
+                                                            el.dataset.fallback =
+                                                              "1"
+                                                            el.src =
+                                                              brand.faviconUrl
+                                                          } else {
+                                                            el.style.display =
+                                                              "none"
+                                                          }
+                                                        }}
+                                                      />
+                                                    )
+                                                  }
+                                                  return null
+                                                })()}
+                                              </div>
+
+                                              {idx <
+                                                (profile.experience?.length ??
+                                                  0) -
+                                                  1 && (
+                                                <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
+                                                  <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            <div className="flex-auto min-w-0">
+                                              <div className="pb-8">
+                                                <div className="flex items-center justify-between">
+                                                  <h1 className="text-base font-bold text-dark-blue-400 leading-none">
+                                                    {exp.title}
+                                                  </h1>
+                                                  {isEditMode &&
+                                                    isOwnProfile && (
+                                                      <div className="flex items-center">
+                                                        <IconButton
+                                                          variant="ghost"
+                                                          visual="gray"
+                                                          className="rounded-full text-gray-400 hover:text-gray-800"
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setWorkExpEditIdx(
+                                                              String(exp.id)
+                                                            )
+                                                            setWorkExperienceOpen(
+                                                              true
+                                                            )
+                                                          }}
+                                                        >
+                                                          <Edit03 className="size-4" />
+                                                        </IconButton>
+                                                        <IconButton
+                                                          variant="ghost"
+                                                          visual="gray"
+                                                          className="rounded-full text-error-500 hover:bg-error-100"
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleDeleteWorkExperience(
+                                                              exp.id
+                                                            )
+                                                          }
+                                                        >
+                                                          <Trash03 className="size-4" />
+                                                        </IconButton>
+                                                      </div>
+                                                    )}
+                                                </div>
+                                                <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
+                                                  {exp.company}
+                                                </p>
+                                                <div className="mt-1.5 inline-flex items-center gap-x-2">
+                                                  <span className="text-xs leading-none text-dark-blue-400">
+                                                    {fmtDate(exp.startDate)} -{" "}
+                                                    {fmtDate(exp.endDate)}
+                                                  </span>
+                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                  <span className="text-xs leading-none font-semibold text-dark-blue-400">
+                                                    {calcDuration(
+                                                      exp.startDate,
+                                                      exp.endDate
+                                                    )}
+                                                  </span>
+                                                </div>
+
+                                                {exp.description && (
+                                                  <ReadMoreLessRoot>
+                                                    <ReadMoreLessComp
+                                                      max={52}
+                                                      text={exp.description}
+                                                    >
+                                                      {({
+                                                        readMore,
+                                                        text,
+                                                        toggle,
+                                                      }) => (
+                                                        <>
+                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
+                                                            {text}{" "}
+                                                            <Button
+                                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
+                                                              size="sm"
+                                                              variant="link"
+                                                              visual="gray"
+                                                              onClick={toggle}
+                                                            >
+                                                              {readMore
+                                                                ? null
+                                                                : "...Read More"}
+                                                            </Button>
+                                                          </p>
+                                                        </>
+                                                      )}
+                                                    </ReadMoreLessComp>
+                                                  </ReadMoreLessRoot>
+                                                )}
+                                                {Array.isArray(exp.skills) && exp.skills.length > 0 && (
+                                                  <div className="mt-3 flex flex-wrap gap-2">
+                                                    {exp.skills.map((skill: string, sIdx: number) => (
+                                                      <Badge
+                                                        key={`${exp.id || idx}-${sIdx}`}
+                                                        className="text-gray-700"
+                                                        visual="gray"
+                                                        size="sm"
+                                                      >
+                                                        {skill}
+                                                      </Badge>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )
+                                      })
+                                  ) : (
+                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                      <div className="flex items-start justify-between gap-x-4">
+                                        <div className="flex-auto min-w-0">
+                                          <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                            Work Experience
+                                          </h2>
+                                          <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                            Add your work experience to show
+                                            where you&apos;ve worked and the
+                                            impact you&apos;ve made. This gives
+                                            clients more context around your
+                                            background and expertise.
+                                          </p>
+                                        </div>
+                                        {isEditMode && isOwnProfile && (
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                            className="shrink-0 bg-white"
+                                            onClick={() =>
+                                              setWorkExperienceOpen(true)
+                                            }
+                                            disabled={atWorkExperienceLimit}
+                                            title={
+                                              atWorkExperienceLimit
+                                                ? "You've reached the 30-entry limit for work experience."
+                                                : undefined
+                                            }
+                                          >
+                                            <Plus className="size-[15px]" /> Add
+                                            Work Experience
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </ShowMoreLessComp>
+                              </div>
+
+                              {(profile?.experience?.length ?? 0) > 4 && (
+                                <div className="flex mt-6 items-center justify-center">
+                                  <Button
+                                    variant="link"
+                                    visual="gray"
+                                    onClick={() =>
+                                      setIsShowing((prev) => !prev)
+                                    }
+                                  >
+                                    {isShowing
+                                      ? "View Less"
+                                      : `${(profile?.experience?.length ?? 0) - 4} More...`}
+                                  </Button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </ShowMoreLessRoot>
+                      </TabsContent>
+
+                      <TabsContent value="Education">
+                        <ShowMoreLessRoot
+                          value={autoExpandEducation}
+                          onValueChange={setAutoExpandEducation}
+                        >
+                          {({ isShowing, setIsShowing, scrollHeight, ref }) => (
+                            <>
+                              <div
+                                ref={ref}
+                                className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
+                                style={{
+                                  height: isShowing
+                                    ? "auto"
+                                    : scrollHeight
+                                      ? toPxIfNumber(scrollHeight)
+                                      : "auto",
+                                }}
+                              >
+                                <ShowMoreLessComp max={4}>
+                                  {profile?.education &&
+                                  profile.education.length > 0 ? (
+                                    [...profile.education]
+                                      .sort((a: any, b: any) => {
+                                        const aCurrent =
+                                          a.currentlyStudying || !a.endYear
+                                        const bCurrent =
+                                          b.currentlyStudying || !b.endYear
+                                        if (aCurrent !== bCurrent)
+                                          return aCurrent ? -1 : 1
+                                        return (
+                                          (b.startYear ?? 0) -
+                                            (a.startYear ?? 0) ||
+                                          (b.startMonth ?? 0) -
+                                            (a.startMonth ?? 0)
+                                        )
+                                      })
+                                      .map((edu: any, idx: number) => {
+                                        const months = [
+                                          "January",
+                                          "February",
+                                          "March",
+                                          "April",
+                                          "May",
+                                          "June",
+                                          "July",
+                                          "August",
+                                          "September",
+                                          "October",
+                                          "November",
+                                          "December",
+                                        ]
+                                        const fmtYearMonth = (
+                                          year?: number | null,
+                                          month?: number | null
+                                        ) => {
+                                          if (!year) return "Present"
+                                          if (!month) return String(year)
+                                          return `${months[month - 1]} ${year}`
+                                        }
+                                        return (
+                                          <div
+                                            key={edu.id || idx}
+                                            className="flex pb-5 items-start gap-x-6"
+                                          >
+                                            <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                                              <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                {edu.school?.charAt(0) || "E"}
+                                              </span>
+                                              {(() => {
+                                                if (edu.institutionLogoUrl) {
+                                                  return (
+                                                    <NextImage
+                                                      key={edu.institutionLogoUrl}
+                                                      src={
+                                                        edu.institutionLogoUrl
+                                                      }
+                                                      alt={edu.school || ""}
+                                                      fill
+                                                      sizes="55px"
+                                                      className="object-contain p-1 relative"
+                                                    />
+                                                  )
+                                                }
+                                                const brand =
+                                                  getCompanyBrandFromName(
+                                                    edu.school,
+                                                    { faviconTld: "edu" }
+                                                  )
+                                                if (
+                                                  brand?.type === "component"
+                                                ) {
+                                                  return (
+                                                    <brand.Icon className="size-9 relative bg-gray-50" />
+                                                  )
+                                                }
+                                                if (
+                                                  brand?.type === "remote-svg"
+                                                ) {
+                                                  return (
+                                                    <img
+                                                      key={brand.url}
+                                                      src={brand.url}
+                                                      alt={
+                                                        edu.school ||
+                                                        brand.name
+                                                      }
+                                                      width={36}
+                                                      height={36}
+                                                      className="object-contain size-9 relative bg-gray-50"
+                                                      loading="lazy"
+                                                      data-fallback="0"
+                                                      onError={(e) => {
+                                                        const el =
+                                                          e.currentTarget
+                                                        if (
+                                                          el.dataset
+                                                            .fallback === "0"
+                                                        ) {
+                                                          el.dataset.fallback =
+                                                            "1"
+                                                          el.src =
+                                                            brand.faviconUrl
+                                                        } else {
+                                                          el.style.display =
+                                                            "none"
+                                                        }
+                                                      }}
+                                                    />
+                                                  )
+                                                }
+                                                return null
+                                              })()}
+                                            </div>
+
+                                            <div className="flex-auto">
+                                              <div className="flex items-start justify-between">
+                                                <h1 className="text-base leading-none font-bold text-dark-blue-400">
+                                                  {edu.school}
+                                                </h1>
+                                                {isEditMode && isOwnProfile && (
+                                                  <div className="flex items-center">
+                                                    <IconButton
+                                                      variant="ghost"
+                                                      visual="gray"
+                                                      className="rounded-full text-gray-400 hover:text-gray-800"
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setEduEditIdx(
+                                                          String(edu.id)
+                                                        )
+                                                        setEducationOpen(true)
+                                                      }}
+                                                    >
+                                                      <Edit03 className="size-4" />
+                                                    </IconButton>
+                                                    <IconButton
+                                                      variant="ghost"
+                                                      visual="gray"
+                                                      className="rounded-full text-error-500 hover:bg-error-100"
+                                                      type="button"
+                                                      onClick={() =>
+                                                        handleDeleteEducation(
+                                                          edu.id
+                                                        )
+                                                      }
+                                                    >
+                                                      <Trash03 className="size-4" />
+                                                    </IconButton>
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div className="mt-1.5 flex items-center gap-x-2">
+                                                {edu.degree && (
+                                                  <span className="text-dark-blue-400 text-xs leading-none">
+                                                    {edu.degree}
+                                                  </span>
+                                                )}
+                                                {edu.degree && edu.fieldOfStudy && (
+                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                )}
+                                                {edu.fieldOfStudy && (
+                                                  <span className="text-dark-blue-400 font-semibold text-xs leading-none">
+                                                    {edu.fieldOfStudy}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="mt-1.5">
+                                                <span className="text-dark-blue-400 text-xs leading-none">
+                                                  {fmtYearMonth(edu.startYear, edu.startMonth)} -{" "}
+                                                  {edu.currentlyStudying
+                                                    ? "Present"
+                                                    : fmtYearMonth(edu.endYear, edu.endMonth)}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )
+                                      })
+                                  ) : (
+                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                      <div className="flex items-start justify-between gap-x-4">
+                                        <div className="flex-auto min-w-0">
+                                          <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                            Education
+                                          </h2>
+                                          <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                            Add your education to highlight your
+                                            academic background and the
+                                            qualifications that support your
+                                            expertise.
+                                          </p>
+                                        </div>
+                                        {isEditMode && isOwnProfile && (
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                            className="shrink-0 bg-white"
+                                            onClick={() =>
+                                              setEducationOpen(true)
+                                            }
+                                          >
+                                            <Plus className="size-[15px]" /> Add
+                                            Education
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </ShowMoreLessComp>
+                              </div>
+
+                              <div
+                                className={cn(
+                                  "flex items-center justify-start",
+                                  isShowing && "justify-center"
+                                )}
+                              >
+                                {(profile?.education?.length ?? 0) > 4 && (
+                                  <Button
+                                    size="sm"
+                                    variant="link"
+                                    visual="gray"
+                                    onClick={() =>
+                                      setIsShowing((prev) => !prev)
+                                    }
+                                  >
+                                    {isShowing
+                                      ? "View Less"
+                                      : `${(profile?.education?.length ?? 0) - 4} More...`}
+                                  </Button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </ShowMoreLessRoot>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </LazySection>
+                )}
+
+                {/* Project History + Reviews — hidden until backed by real data */}
+                {false && (
+                <LazySection minHeight={400}>
+                  <div
+                    className="mt-6 scroll-mt-[137.5px]"
+                    id="project-history"
+                  >
+                    <div className="border border-gray-200 rounded-t-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] py-5 pl-5 pr-6">
+                      <Carousel
+                        opts={{
+                          align: "start",
+                        }}
+                        className="w-full"
+                      >
+                        <CarouselContent>
+                          {Array.from({ length: 7 }).map((_, index) => (
+                            <CarouselItem
+                              key={index}
+                              className="basis-[20%] h-[108px]"
+                            >
+                              <div className="p-1 size-full bg-gray-200 relative rounded-lg overflow-hidden">
+                                <NextImage
+                                  src="/cpu.png"
+                                  alt="CPU"
+                                  fill
+                                  sizes="(max-width: 768px) 40vw, 20vw"
+                                />
+                              </div>
+                            </CarouselItem>
+                          ))}
+                        </CarouselContent>
+
+                        <CarouselPreviousTrigger />
+                        <CarouselNextTrigger />
+                      </Carousel>
+
+                      <div className="flex items-center justify-between mt-3">
+                        <span className="text-xs leading-none font-extralight text-dark-blue-400">
+                          Client project images
+                        </span>
+
+                        <Button variant="link" visual="gray">
+                          View All
                         </Button>
                       </div>
                     </div>
 
-                    <TabsContent value="Frontend">
-                      <ShowMoreLessRoot
-                        value={autoExpandOffers}
-                        onValueChange={setAutoExpandOffers}
-                      >
-                        {({ setIsShowing, isShowing, ref, scrollHeight }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300 grid grid-cols-3 gap-5"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
+                    <div className="p-8 border-x gap-x-[50px] border-b flex items-start rounded-b-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="flex flex-col flex-1 gap-y-1.5 basis-[147px]">
+                        <h1 className="text-xl leading-none text-nowrap font-bold text-dark-blue-400">
+                          Project History
+                        </h1>
+
+                        <RatingGroupRoot
+                          className="flex-row gap-x-1.5 mt-1.5"
+                          allowHalf
+                          count={5}
+                          defaultValue={4}
+                          disabled
+                        >
+                          <RatingGroupLabel size="sm">4.9</RatingGroupLabel>
+                          <RatingGroupControl>
+                            <RatingGroupContext>
+                              {({ items }) =>
+                                items.map((item) => (
+                                  <RatingGroupItem key={item} index={item}>
+                                    <RatingGroupItemContext>
+                                      {({ half }) =>
+                                        half ? <TbStarHalfFilled /> : <TbStar />
+                                      }
+                                    </RatingGroupItemContext>
+                                  </RatingGroupItem>
+                                ))
+                              }
+                            </RatingGroupContext>
+                            <RatingGroupHiddenInput />
+                          </RatingGroupControl>
+                        </RatingGroupRoot>
+
+                        <NextLink
+                          href="#"
+                          className="focus-visible:outline-none text-xs leading-6 transition duration-300 hover:underline text-dark-blue-400"
+                        >
+                          23 ratings
+                        </NextLink>
+                      </div>
+
+                      <div className="flex flex-col flex-1 gap-y-1 basis-[304px]">
+                        <div className="flex items-center gap-x-2">
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
+                          >
+                            5
+                          </NextLink>
+                          <Progress className="flex-auto" value={100} />
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
+                          >
+                            100% <span className="font-extralight">(100)</span>
+                          </NextLink>
+                        </div>
+                        <div className="flex items-center gap-x-2">
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
+                          >
+                            4
+                          </NextLink>
+                          <Progress className="flex-auto" value={75} />
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
+                          >
+                            75% <span className="font-extralight">(75)</span>
+                          </NextLink>
+                        </div>
+                        <div className="flex items-center gap-x-2">
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
+                          >
+                            3
+                          </NextLink>
+                          <Progress className="flex-auto" value={50} />
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
+                          >
+                            50% <span className="font-extralight">(50)</span>
+                          </NextLink>
+                        </div>
+                        <div className="flex items-center gap-x-2">
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
+                          >
+                            2
+                          </NextLink>
+                          <Progress className="flex-auto" value={25} />
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
+                          >
+                            25% <span className="font-extralight">(25)</span>
+                          </NextLink>
+                        </div>
+                        <div className="flex items-center gap-x-2">
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
+                          >
+                            1
+                          </NextLink>
+                          <Progress className="flex-auto" value={0} />
+                          <NextLink
+                            href="#"
+                            className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
+                          >
+                            0% <span className="font-extralight">(0)</span>
+                          </NextLink>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-1 flex-col basis-[304px]">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <NextLink
+                              href="#"
+                              className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
                             >
-                              <ShowMoreLessComp max={3}>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Frontend Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
+                              Communication Level
+                            </NextLink>
 
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      React Dashboard Development
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.8{" "}
-                                        <span className="font-extralight">
-                                          (12)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Modern React dashboard with TypeScript,
-                                    Tailwind CSS, and advanced data
-                                    visualization components.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 8 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $35,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sarah
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @frontendsarah
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Frontend Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $85{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        4.8k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Frontend Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      Vue.js E-commerce Platform
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.7{" "}
-                                        <span className="font-extralight">
-                                          (20)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Complete e-commerce solution built with
-                                    Vue.js 3, Nuxt.js, and modern payment
-                                    integration.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 10 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $45,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sarah
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @frontendsarah
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Frontend Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $85{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        3.2k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Frontend Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      Angular Enterprise App
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (8)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Large-scale Angular application with NgRx
-                                    state management and enterprise-grade
-                                    architecture.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 14 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $60,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sarah
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @frontendsarah
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Frontend Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $85{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        2.1k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-                              </ShowMoreLessComp>
+                            <div className="flex items-center gap-x-1">
+                              <Star className="size-3.5 text-primary-500 fill-primary-500" />
+                              <span className="text-[13px] leading-none font-medium">
+                                4.3
+                              </span>
                             </div>
+                          </div>
 
-                            <div className="mt-5 flex justify-center">
-                              <Button
-                                size="md"
-                                visual="gray"
-                                variant="outlined"
-                                className="bg-white"
-                                onClick={() => setIsShowing(!isShowing)}
+                          <div className="flex items-center justify-between">
+                            <NextLink
+                              href="#"
+                              className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
+                            >
+                              Responsiveness
+                            </NextLink>
+
+                            <div className="flex items-center gap-x-1">
+                              <Star className="size-3.5 text-primary-500 fill-primary-500" />
+                              <span className="text-[13px] leading-none font-medium">
+                                4.3
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <NextLink
+                              href="#"
+                              className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
+                            >
+                              Quality of Delivery
+                            </NextLink>
+
+                            <div className="flex items-center gap-x-1">
+                              <Star className="size-3.5 text-primary-500 fill-primary-500" />
+                              <span className="text-[13px] leading-none font-medium">
+                                4.3
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <NextLink
+                              href="#"
+                              className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
+                            >
+                              Value of Delivery
+                            </NextLink>
+
+                            <div className="flex items-center gap-x-1">
+                              <Star className="size-3.5 text-primary-500 fill-primary-500" />
+                              <span className="text-[13px] leading-none font-medium">
+                                4.3
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <NextLink
+                              href="#"
+                              className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
+                            >
+                              Value of Delivery
+                            </NextLink>
+
+                            <div className="flex items-center gap-x-1">
+                              <Star className="size-3.5 text-primary-500 fill-primary-500" />
+                              <span className="text-[13px] leading-none font-medium">
+                                4.9
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <Tabs defaultValue="Completed">
+                      <RadixTabs.List className="flex items-center justify-between">
+                        <div className="flex items-center gap-x-3">
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Completed"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Completed (24)
+                          </TabsTrigger>
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Ongoing"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Ongoing (7)
+                          </TabsTrigger>
+                        </div>
+
+                        <div className="inline-flex items-center gap-x-3">
+                          <SectionSearchBar />
+
+                          <Listbox
+                            className="shrink-0 w-max"
+                            defaultValue="Most Recent"
+                          >
+                            <ListboxButton className="w-max text-sm h-10" />
+                            <ListboxOptions className="w-[177px] right-0">
+                              {[
+                                "Most Recent",
+                                "Oldest",
+                                "Highest Rating",
+                                "Lowest Rating",
+                              ].map((option) => (
+                                <ListboxOption
+                                  className="ui-active:text-gray-700 ui-active:font-medium text-gray-500"
+                                  key={option}
+                                  value={option}
+                                >
+                                  {option}
+                                </ListboxOption>
+                              ))}
+                            </ListboxOptions>
+                          </Listbox>
+                        </div>
+                      </RadixTabs.List>
+                      <TabsContent value="Completed">
+                        <ShowMoreLessRoot
+                          value={autoExpandProjectHistory}
+                          onValueChange={setAutoExpandProjectHistory}
+                        >
+                          {({ isShowing, setIsShowing, scrollHeight, ref }) => (
+                            <>
+                              <div
+                                ref={ref}
+                                className="mt-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
+                                style={{
+                                  height: isShowing
+                                    ? "auto"
+                                    : scrollHeight
+                                      ? toPxIfNumber(scrollHeight)
+                                      : "auto",
+                                }}
                               >
-                                {isShowing ? "Show Less" : "Show More"}
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
+                                <ShowMoreLessComp max={2}>
+                                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                                    <div className="flex items-center pt-6 px-6">
+                                      <div className="flex-1 w-[394px] space-y-3">
+                                        <div className="flex items-start gap-x-3">
+                                          <Avatar size="md">
+                                            <AvatarImage
+                                              src="/man.jpg"
+                                              alt="Man"
+                                            />
+                                            <AvatarFallback>M</AvatarFallback>
+                                          </Avatar>
 
-                    <TabsContent value="Backend">
-                      <ShowMoreLessRoot
-                        value={autoExpandOffers}
-                        onValueChange={setAutoExpandOffers}
-                      >
-                        {({ setIsShowing, isShowing, ref, scrollHeight }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300 grid grid-cols-3 gap-5"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={3}>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Backend Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      Node.js API Development
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (15)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    RESTful API development with Node.js,
-                                    Express, and MongoDB. Includes
-                                    authentication and real-time features.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 10 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $40,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Man"
-                                              />
-                                              <AvatarFallback>M</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/man.jpg"
-                                                      alt="Man"
-                                                    />
-                                                    <AvatarFallback>
-                                                      M
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Mike
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @backendmike
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Backend Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $90{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
+                                          <div className="space-y-3">
+                                            <div className="flex flex-col">
+                                              <div className="inline-flex items-center gap-x-1">
+                                                <span className="text-base leading-6 font-semibold text-dark-blue-400">
+                                                  Emily
+                                                </span>
+                                                <span className="text-base leading-6 text-dark-blue-400">
+                                                  @emily.j
                                                 </span>
                                               </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
 
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        3.8k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Backend Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      Python Django Framework
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.7{" "}
-                                        <span className="font-extralight">
-                                          (18)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Full-stack web application development using
-                                    Django framework with PostgreSQL database
-                                    integration.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 12 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Man"
-                                              />
-                                              <AvatarFallback>M</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/man.jpg"
-                                                      alt="Man"
-                                                    />
-                                                    <AvatarFallback>
-                                                      M
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Mike
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @backendmike
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Backend Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $90{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        2.9k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Backend Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      Microservices Architecture
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.8{" "}
-                                        <span className="font-extralight">
-                                          (22)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Scalable microservices architecture design
-                                    and implementation with Docker, Kubernetes,
-                                    and service mesh.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 16 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $75,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Man"
-                                              />
-                                              <AvatarFallback>M</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/man.jpg"
-                                                      alt="Man"
-                                                    />
-                                                    <AvatarFallback>
-                                                      M
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Mike
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @backendmike
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Backend Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $90{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        4.5k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-                              </ShowMoreLessComp>
-                            </div>
-
-                            <div className="mt-5 flex justify-center">
-                              <Button
-                                size="md"
-                                visual="gray"
-                                variant="outlined"
-                                className="bg-white"
-                                onClick={() => setIsShowing(!isShowing)}
-                              >
-                                {isShowing ? "Show Less" : "Show More"}
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
-
-                    <TabsContent value="Database">
-                      <ShowMoreLessRoot
-                        value={autoExpandOffers}
-                        onValueChange={setAutoExpandOffers}
-                      >
-                        {({ setIsShowing, isShowing, ref, scrollHeight }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300 grid grid-cols-3 gap-5"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={3}>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Database Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      PostgreSQL Database Design
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (25)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Professional database design and
-                                    optimization for PostgreSQL. Includes
-                                    performance tuning and backup strategies.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 8 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $30,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman2.jpg"
-                                                alt="Woman2"
-                                              />
-                                              <AvatarFallback>A</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman2.jpg"
-                                                      alt="Woman2"
-                                                    />
-                                                    <AvatarFallback>
-                                                      A
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Anna
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @databaseanna
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Database Engineer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $95{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        3.2k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Database Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      MongoDB NoSQL Solutions
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.6{" "}
-                                        <span className="font-extralight">
-                                          (19)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    NoSQL database design and implementation
-                                    with MongoDB. Includes data modeling and
-                                    aggregation pipeline optimization.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 6 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $25,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman2.jpg"
-                                                alt="Woman2"
-                                              />
-                                              <AvatarFallback>A</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman2.jpg"
-                                                      alt="Woman2"
-                                                    />
-                                                    <AvatarFallback>
-                                                      A
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Anna
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @databaseanna
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Database Engineer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $95{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        2.7k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Database Development"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      Redis Cache Implementation
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.8{" "}
-                                        <span className="font-extralight">
-                                          (14)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    High-performance caching solutions using
-                                    Redis. Includes session management and
-                                    real-time data processing.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 4 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $18,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman2.jpg"
-                                                alt="Woman2"
-                                              />
-                                              <AvatarFallback>A</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman2.jpg"
-                                                      alt="Woman2"
-                                                    />
-                                                    <AvatarFallback>
-                                                      A
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Anna
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @databaseanna
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Database Engineer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $95{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <div className="inline-flex items-center gap-x-[6.4px]">
-                                      <Heart className="size-[15px] text-red-500 fill-red-500" />
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        1.8k interested
-                                      </span>
-                                    </div>
-                                  </div>
-                                </article>
-                              </ShowMoreLessComp>
-                            </div>
-
-                            <div className="mt-5 flex justify-center">
-                              <Button
-                                size="md"
-                                visual="gray"
-                                variant="outlined"
-                                className="bg-white"
-                                onClick={() => setIsShowing(!isShowing)}
-                              >
-                                {isShowing ? "Show Less" : "Show More"}
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
-
-                    <TabsContent value="Projects">
-                      <ShowMoreLessRoot
-                        value={autoExpandOffers}
-                        onValueChange={setAutoExpandOffers}
-                      >
-                        {({ setIsShowing, isShowing, ref, scrollHeight }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300 grid grid-cols-3 gap-5"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={3}>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 12 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
+                                              <span className="text-[13px] leading-6 text-dark-blue-400">
+                                                Product Manager
                                               </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
+                                            </div>
+
+                                            <div className="inline-flex items-center gap-x-2">
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                December 2020 - Present
+                                              </span>
+                                              <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                5 yrs 2 mos
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <div className="inline-flex items-center gap-x-[2.35px]">
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                          </div>
+
+                                          <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
+                                            4.8
+                                          </span>
+
+                                          <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
+                                            Posted a week ago
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 px-6">
+                                      <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
+                                        Best Experience with a Backend
+                                        Engineer!!!!
+                                      </h1>
+                                      <LineClampText
+                                        text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
+                                        lines={2}
+                                        className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                        expandLabel="...Read More"
+                                        collapseLabel=""
+                                        inline
+                                      />
+
+                                      <div className="mt-3 flex items-center justify-between">
+                                        <div className="items-center inline-flex gap-x-2.5">
+                                          {!isOwnProfile && (
+                                            <>
+                                              <span className="text-xs font-medium leading-none text-dark-blue-400">
+                                                Helpful
+                                              </span>
+                                              <LikeDislike />
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
+                                      <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
+                                        <NextImage
+                                          className="object-cover"
+                                          src="/dashboard.png"
+                                          alt="Dashboard"
+                                          fill
+                                          sizes="25vw"
+                                        />
+                                      </div>
+
+                                      <div className="flex-auto space-y-3">
+                                        <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
+                                          Seniority Mobile App
+                                        </h1>
+
+                                        <div className="flex gap-x-8 items-center">
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                                    <div className="flex items-center pt-6 px-6">
+                                      <div className="flex-1 w-[394px] space-y-3">
+                                        <div className="flex items-start gap-x-3">
+                                          <Avatar size="md">
+                                            <AvatarImage
+                                              src="/man.jpg"
+                                              alt="Man"
+                                            />
+                                            <AvatarFallback>M</AvatarFallback>
+                                          </Avatar>
+
+                                          <div className="space-y-3">
+                                            <div className="flex flex-col">
+                                              <div className="inline-flex items-center gap-x-1">
+                                                <span className="text-base leading-6 font-semibold text-dark-blue-400">
+                                                  Emily
                                                 </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
+                                                <span className="text-base leading-6 text-dark-blue-400">
+                                                  @emily.j
+                                                </span>
+                                              </div>
 
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
+                                              <span className="text-[13px] leading-6 text-dark-blue-400">
+                                                Product Manager
+                                              </span>
+                                            </div>
 
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
+                                            <div className="inline-flex items-center gap-x-2">
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                December 2020 - Present
+                                              </span>
+                                              <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                5 yrs 2 mos
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <div className="inline-flex items-center gap-x-[2.35px]">
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                          </div>
+
+                                          <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
+                                            4.8
+                                          </span>
+
+                                          <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
+                                            Posted a week ago
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
 
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
+                                    <div className="mt-3 px-6">
+                                      <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
+                                        Best Experience with a Backend
+                                        Engineer!!!!
+                                      </h1>
+                                      <LineClampText
+                                        text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
+                                        lines={2}
+                                        className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                        expandLabel="...Read More"
+                                        collapseLabel=""
+                                        inline
+                                      />
 
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 12 weeks
-                                      </span>
+                                      <div className="mt-3 flex items-center justify-between">
+                                        <div className="items-center inline-flex gap-x-2.5">
+                                          {!isOwnProfile && (
+                                            <>
+                                              <span className="text-xs font-medium leading-none text-dark-blue-400">
+                                                Helpful
+                                              </span>
+                                              <LikeDislike />
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
 
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
+                                    <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
+                                      <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
+                                        <NextImage
+                                          className="object-cover"
+                                          src="/dashboard.png"
+                                          alt="Dashboard"
+                                          fill
+                                          sizes="25vw"
+                                        />
+                                      </div>
 
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
+                                      <div className="flex-auto space-y-3">
+                                        <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
+                                          Seniority Mobile App
+                                        </h1>
+
+                                        <div className="flex gap-x-8 items-center">
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
 
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
+                                    <div className="p-6 bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border-t">
+                                      <div className="flex items-center gap-x-3">
+                                        <Avatar
+                                          className="hover:ring-0 active:ring-primary-100"
                                           size="md"
                                         >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
+                                          <AvatarImage
+                                            src="/man.jpg"
+                                            alt="Man"
+                                          />
+                                          <AvatarFallback>M</AvatarFallback>
+                                        </Avatar>
 
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
+                                        <div className="flex flex-col flex-1">
+                                          <div className="inline-flex items-center gap-x-1">
+                                            <span className="text-sm leading-6 font-bold text-dark-blue-400">
+                                              Company Response
+                                            </span>
+                                            <span className="text-sm leading-6 text-dark-blue-400">
+                                              @Acme Inc.
+                                            </span>
+                                          </div>
 
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
+                                          <div className="inline-flex items-center mt-[1.5px] gap-x-2">
+                                            <span className="text-xs leading-none text-dark-blue-400">
+                                              90 days project
+                                            </span>
+                                            <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
+                                            <span className="text-xs leading-none text-dark-blue-400">
+                                              March 2023
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
 
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
+                                      <LineClampText
+                                        text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
+                                        lines={2}
+                                        className="text-sm leading-relaxed mt-3 text-gray-700 font-extralight"
+                                        expandLabel="...Read More"
+                                        collapseLabel=""
+                                        inline
+                                      />
 
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
+                                      <div className="mt-3 flex items-center justify-between">
+                                        <div className="items-center inline-flex gap-x-2.5">
+                                          {!isOwnProfile && (
+                                            <>
+                                              <span className="text-xs font-medium leading-none text-dark-blue-400">
+                                                Helpful
                                               </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
+                                              <LikeDislike />
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
 
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
+                                  <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                                    <div className="flex items-center pt-6 px-6">
+                                      <div className="flex-1 w-[394px] space-y-3">
+                                        <div className="flex items-start gap-x-3">
+                                          <Avatar size="md">
+                                            <AvatarImage
+                                              src="/man.jpg"
+                                              alt="Man"
+                                            />
+                                            <AvatarFallback>M</AvatarFallback>
+                                          </Avatar>
 
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 12 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
+                                          <div className="space-y-3">
+                                            <div className="flex flex-col">
+                                              <div className="inline-flex items-center gap-x-1">
+                                                <span className="text-base leading-6 font-semibold text-dark-blue-400">
+                                                  Emily
+                                                </span>
+                                                <span className="text-base leading-6 text-dark-blue-400">
+                                                  @emily.j
                                                 </span>
                                               </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
 
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
+                                              <span className="text-[13px] leading-6 text-dark-blue-400">
+                                                Product Manager
                                               </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 12 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
                                             </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
 
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
+                                            <div className="inline-flex items-center gap-x-2">
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                December 2020 - Present
                                               </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        Starting from 12 weeks
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
+                                              <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                5 yrs 2 mos
+                                              </span>
                                             </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
+                                          </div>
+                                        </div>
 
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
+                                        <div className="flex items-center gap-x-2">
+                                          <div className="inline-flex items-center gap-x-[2.35px]">
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                          </div>
+
+                                          <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
+                                            4.8
+                                          </span>
+
+                                          <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
+                                            Posted a week ago
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 px-6">
+                                      <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
+                                        Best Experience with a Backend
+                                        Engineer!!!!
+                                      </h1>
+                                      <LineClampText
+                                        text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
+                                        lines={2}
+                                        className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                        expandLabel="...Read More"
+                                        collapseLabel=""
+                                        inline
+                                      />
+
+                                      <div className="mt-3 flex items-center justify-between">
+                                        <div className="items-center inline-flex gap-x-2.5">
+                                          {!isOwnProfile && (
+                                            <>
+                                              <span className="text-xs font-medium leading-none text-dark-blue-400">
+                                                Helpful
                                               </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-                              </ShowMoreLessComp>
-                            </div>
+                                              <LikeDislike />
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
 
-                            <div className="my-6">
-                              <div className="flex items-center gap-x-1">
-                                <span className="flex-auto inline-block h-px bg-gray-200" />
+                                    <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
+                                      <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
+                                        <NextImage
+                                          className="object-cover"
+                                          src="/dashboard.png"
+                                          alt="Dashboard"
+                                          fill
+                                          sizes="25vw"
+                                        />
+                                      </div>
+
+                                      <div className="flex-auto space-y-3">
+                                        <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
+                                          Seniority Mobile App
+                                        </h1>
+
+                                        <div className="flex gap-x-8 items-center">
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                                    <div className="flex items-center pt-6 px-6">
+                                      <div className="flex-1 w-[394px] space-y-3">
+                                        <div className="flex items-start gap-x-3">
+                                          <Avatar size="md">
+                                            <AvatarImage
+                                              src="/man.jpg"
+                                              alt="Man"
+                                            />
+                                            <AvatarFallback>M</AvatarFallback>
+                                          </Avatar>
+
+                                          <div className="space-y-3">
+                                            <div className="flex flex-col">
+                                              <div className="inline-flex items-center gap-x-1">
+                                                <span className="text-base leading-6 font-semibold text-dark-blue-400">
+                                                  Emily
+                                                </span>
+                                                <span className="text-base leading-6 text-dark-blue-400">
+                                                  @emily.j
+                                                </span>
+                                              </div>
+
+                                              <span className="text-[13px] leading-6 text-dark-blue-400">
+                                                Product Manager
+                                              </span>
+                                            </div>
+
+                                            <div className="inline-flex items-center gap-x-2">
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                December 2020 - Present
+                                              </span>
+                                              <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
+                                              <span className="text-xs leading-none text-dark-blue-400">
+                                                5 yrs 2 mos
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <div className="inline-flex items-center gap-x-[2.35px]">
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                            <Favorite
+                                              defaultPressed
+                                              className="size-[15px]"
+                                            />
+                                          </div>
+
+                                          <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
+                                            4.8
+                                          </span>
+
+                                          <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
+                                            Posted a week ago
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-x-[6.4px]">
+                                          <CheckCircle className="size-[18px] text-success-500" />
+                                          <span className="text-sm text-dark-blue-400 leading-none font-medium">
+                                            Would Recommend
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 px-6">
+                                      <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
+                                        Best Experience with a Backend
+                                        Engineer!!!!
+                                      </h1>
+                                      <LineClampText
+                                        text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
+                                        lines={2}
+                                        className="text-sm leading-relaxed mt-1 text-gray-700 font-extralight"
+                                        expandLabel="...Read More"
+                                        collapseLabel=""
+                                        inline
+                                      />
+
+                                      <div className="mt-3 flex items-center justify-between">
+                                        <div className="items-center inline-flex gap-x-2.5">
+                                          {!isOwnProfile && (
+                                            <>
+                                              <span className="text-xs font-medium leading-none text-dark-blue-400">
+                                                Helpful
+                                              </span>
+                                              <LikeDislike />
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
+                                      <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
+                                        <NextImage
+                                          className="object-cover"
+                                          src="/dashboard.png"
+                                          alt="Dashboard"
+                                          fill
+                                          sizes="25vw"
+                                        />
+                                      </div>
+
+                                      <div className="flex-auto space-y-3">
+                                        <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
+                                          Seniority Mobile App
+                                        </h1>
+
+                                        <div className="flex gap-x-8 items-center">
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                          <div className="inline-flex items-center gap-x-3">
+                                            <span className="text-sm text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                            <span className="text-sm font-bold text-dark-blue-400 leading-6">
+                                              Project Cost
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-x-2">
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                          <Badge size="sm" visual="gray">
+                                            Team player
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </ShowMoreLessComp>
+                              </div>
+
+                              <div className="flex items-center justify-end mt-6">
                                 <Button
-                                  variant="link"
+                                  size="md"
                                   visual="gray"
+                                  variant="outlined"
+                                  className="bg-white"
                                   onClick={() => setIsShowing((prev) => !prev)}
                                 >
-                                  {isShowing ? "View Less" : "View More"}
+                                  {isShowing ? (
+                                    <>
+                                      View Less{" "}
+                                      <ChevronUp className="size-[15px]" />
+                                    </>
+                                  ) : (
+                                    "Show More Feedback (1)"
+                                  )}
                                 </Button>
-                                <span className="flex-auto inline-block h-px bg-gray-200" />
+                              </div>
+                            </>
+                          )}
+                        </ShowMoreLessRoot>
+                      </TabsContent>
+
+                      <TabsContent value="Ongoing">
+                        <div className="mt-6 space-y-6">
+                          <article className="border p-6 rounded-lg bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="flex items-start gap-x-4">
+                              <div className="relative overflow-hidden rounded-md shrink-0 w-[134px] h-[86px]">
+                                <NextImage
+                                  src="/dashboard.png"
+                                  alt="Dashboard"
+                                  fill
+                                  sizes="25vw"
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-x-2">
+                                  <h1 className="text-sm font-bold text-dark-blue-400">
+                                    Seniority Mobile App
+                                  </h1>
+                                  <Badge
+                                    className="border rounded-[3.15px] bg-white border-gray-300"
+                                    visual="gray"
+                                    variant="rounded"
+                                  >
+                                    <FileText className="size-[9.46px] text-primary-500" />{" "}
+                                    Under NDA
+                                  </Badge>
+                                </div>
+
+                                <div className="mt-2 flex items-center gap-x-6">
+                                  <div className="flex gap-x-3">
+                                    <span className="text-xs leading-6 text-dark-blue-400">
+                                      Estimated Project Cost
+                                    </span>
+                                    <span className="font-bold text-sm leading-6 text-dark-blue-400">
+                                      $25,000
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-x-3">
+                                    <span className="text-xs leading-6 text-dark-blue-400">
+                                      Project Type
+                                    </span>
+                                    <span className="font-bold text-sm leading-6 text-dark-blue-400">
+                                      Cloud Software
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-x-3">
+                                    <span className="text-xs leading-6 text-dark-blue-400">
+                                      Current Phase
+                                    </span>
+                                    <span className="font-bold text-sm leading-6 text-dark-blue-400">
+                                      Development
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="mt-2 flex items-center gap-x-2">
+                                  <Badge>API-Driven</Badge>
+                                  <Badge>Agile Workflow</Badge>
+                                  <Badge>Cross-Platform</Badge>
+                                  <Badge>Cloud-Based</Badge>
+                                  <Badge>Mobile-Optimized</Badge>
+                                  <Badge>FinTech</Badge>
+                                  <Badge>SaaS</Badge>
+                                </div>
                               </div>
                             </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
 
-                    <TabsContent value="Services">
-                      <ShowMoreLessRoot
-                        value={autoExpandOffers}
-                        onValueChange={setAutoExpandOffers}
-                      >
-                        {({ setIsShowing, isShowing, scrollHeight, ref }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300 grid grid-cols-3 gap-5"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={3}>
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                    <div className="px-1.5 h-5 text-primary-200 gap-x-1 inline-flex items-center bg-black/50 rounded-[5px] absolute top-[11px] right-[11.3px]">
-                                      <RefreshCw className="size-[10.8px]" />{" "}
-                                      <span className="text-white font-bold text-[10px] leading-none">
-                                        Service
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                    <div className="px-1.5 h-5 text-primary-200 gap-x-1 inline-flex items-center bg-black/50 rounded-[5px] absolute top-[11px] right-[11.3px]">
-                                      <RefreshCw className="size-[10.8px]" />{" "}
-                                      <span className="text-white font-bold text-[10px] leading-none">
-                                        Service
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                    <div className="px-1.5 h-5 text-primary-200 gap-x-1 inline-flex items-center bg-black/50 rounded-[5px] absolute top-[11px] right-[11.3px]">
-                                      <RefreshCw className="size-[10.8px]" />{" "}
-                                      <span className="text-white font-bold text-[10px] leading-none">
-                                        Service
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                    <div className="px-1.5 h-5 text-primary-200 gap-x-1 inline-flex items-center bg-black/50 rounded-[5px] absolute top-[11px] right-[11.3px]">
-                                      <RefreshCw className="size-[10.8px]" />{" "}
-                                      <span className="text-white font-bold text-[10px] leading-none">
-                                        Service
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-
-                                <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                                    <NextImage
-                                      className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                      src="/dashboard.png"
-                                      alt="Dashboard"
-                                      fill
-                                      sizes="33vw"
-                                    />
-                                    <div className="px-1.5 h-5 text-primary-200 gap-x-1 inline-flex items-center bg-black/50 rounded-[5px] absolute top-[11px] right-[11.3px]">
-                                      <RefreshCw className="size-[10.8px]" />{" "}
-                                      <span className="text-white font-bold text-[10px] leading-none">
-                                        Service
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 flex items-start gap-x-3">
-                                    <NextLink
-                                      href="#"
-                                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                                    >
-                                      The Ultimate Mobile App Experience
-                                    </NextLink>
-
-                                    <div className="inline-flex items-center gap-x-1">
-                                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                        4.9{" "}
-                                        <span className="font-extralight">
-                                          (5)
-                                        </span>
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                    Brief Description of the project. Lorem
-                                    ipsum dolor sit amet, consectetur adipiscing
-                                    elit, sed do eiusmod tempor incididunt.
-                                  </p>
-
-                                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                    <div className="flex items-center gap-x-[6.4px]">
-                                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                        $50,000 budget
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5 flex items-end justify-between">
-                                    <TooltipProvider delayDuration={0}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <AvatarGroup
-                                            max={5}
-                                            size="sm"
-                                            excess
-                                            excessClassName="border-gray-300 text-gray-500"
-                                          >
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                            <Avatar
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          </AvatarGroup>
-                                        </TooltipTrigger>
-
-                                        <TooltipContent
-                                          className="p-0 max-w-[262px]"
-                                          size="md"
-                                        >
-                                          <ScrollArea
-                                            className="h-[192px] p-3"
-                                            scrollBar={
-                                              <ScrollBar
-                                                className="w-4 p-1"
-                                                thumbClassName="bg-white/20"
-                                              />
-                                            }
-                                          >
-                                            <div className="space-y-3 pr-5">
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-x-[18px]">
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </ScrollArea>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-
-                                    <FavoriteRoot>
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={0}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  </div>
-                                </article>
-                              </ShowMoreLessComp>
-                            </div>
-
-                            <div className="my-6">
-                              <div className="flex items-center gap-x-1">
-                                <span className="flex-auto inline-block h-px bg-gray-200" />
-                                <Button
-                                  variant="link"
-                                  visual="gray"
-                                  onClick={() => setIsShowing((prev) => !prev)}
+                            <div className="flex items-center gap-x-3 mt-3">
+                              <div className="flex items-center gap-x-4">
+                                <AvatarGroup
+                                  excessClassName="border-gray-300 text-gray-500"
+                                  excess
                                 >
-                                  {isShowing ? "View Less" : "View More"}
-                                </Button>
-                                <span className="flex-auto inline-block h-px bg-gray-200" />
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                </AvatarGroup>
+
+                                <span className="text-xs text-dark-blue-400">
+                                  Senior Front-End Developer
+                                </span>
                               </div>
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
-                  </Tabs>
-                </div>
 
-                <div
-                  className="p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
-                  id="background"
-                >
-                  <div className="flex items-center justify-between">
-                    <h1 className="text-xl leading-none font-bold text-dark-blue-400">
-                      Background
-                    </h1>
-                    {isEditMode && isOwnProfile && (
-                      <Button variant="outlined" visual="gray" onClick={() => setWorkExperienceOpen(true)}>
-                        <Plus className="size-[15px]" />
-                        Add work experience
-                      </Button>
-                    )}
-                  </div>
+                              <span className="shrink-0 size-1 bg-gray-300 rounded-full" />
 
-                  <Tabs
-                    value={backgroundActiveTab}
-                    onValueChange={setBackgroundActiveTab}
-                    className="mt-6"
-                  >
-                    <RadixTabs.List className="inline-flex items-center gap-x-3">
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Work Experience"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Work Experience
-                      </TabsTrigger>
-                      <TabsTrigger
-                        variant="unstyled"
-                        showUnderline={false}
-                        value="Education"
-                        className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                      >
-                        Education
-                      </TabsTrigger>
-                    </RadixTabs.List>
-
-                    <TabsContent value="Work Experience">
-                      <ShowMoreLessRoot
-                        value={autoExpandWorkExperience}
-                        onValueChange={setAutoExpandWorkExperience}
-                      >
-                        {({ isShowing, setIsShowing, scrollHeight, ref }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={3}>
-                                {(profile?.experience && profile.experience.length > 0) ? profile.experience
-                                  .sort((a: any, b: any) => (b.startDate || "").localeCompare(a.startDate || ""))
-                                  .map((exp: any, idx: number) => {
-                                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
-                                    const fmtDate = (d: string | null) => {
-                                      if (!d) return "Present"
-                                      const [y, m] = d.split("-")
-                                      return `${months[parseInt(m, 10) - 1]} ${y}`
-                                    }
-                                    const calcDuration = (start: string, end: string | null) => {
-                                      const s = new Date(start + "-01")
-                                      const e = end ? new Date(end + "-01") : new Date()
-                                      let totalMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
-                                      const yrs = Math.floor(totalMonths / 12)
-                                      const mos = totalMonths % 12
-                                      const parts = []
-                                      if (yrs > 0) parts.push(`${yrs} yr${yrs > 1 ? "s" : ""}`)
-                                      if (mos > 0) parts.push(`${mos} mo${mos > 1 ? "s" : ""}`)
-                                      return parts.join(" ") || "< 1 mo"
-                                    }
-                                    return (
-                                <div key={exp.id || idx} className="flex gap-x-6">
-                                  <div className="relative flex flex-col items-center">
-                                    <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden">
-                                      {exp.companyLogoUrl ? (
-                                        <NextImage src={exp.companyLogoUrl} alt={exp.company || ""} width={45} height={45} className="object-contain" />
-                                      ) : (
-                                        <span className="text-lg font-bold text-gray-400">{exp.company?.charAt(0) || "W"}</span>
-                                      )}
-                                    </div>
-
-                                    {idx < (profile.experience?.length ?? 0) - 1 && (
-                                    <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
-                                      <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
-                                    </div>
-                                    )}
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <div className="pb-8">
-                                      <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                        {exp.role}
-                                      </h1>
-                                      <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                        {exp.company}
-                                      </p>
-                                      <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                        <span className="text-xs leading-none text-dark-blue-400">
-                                          {fmtDate(exp.startDate)} - {fmtDate(exp.endDate)}
-                                        </span>
-                                        <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                        <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                          {calcDuration(exp.startDate, exp.endDate)}
-                                        </span>
-                                      </div>
-
-                                      {exp.description && (
-                                      <ReadMoreLess
-                                        max={52}
-                                        text={exp.description}
-                                      >
-                                        {({ readMore, text, toggle }) => (
-                                          <>
-                                            <p className="mt-3 text-sm leading-none font-extralight   text-gray-700">
-                                              {text}{" "}
-                                              <Button
-                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                size="sm"
-                                                variant="link"
-                                                visual="gray"
-                                                onClick={toggle}
-                                              >
-                                                {readMore
-                                                  ? null
-                                                  : "...Read More"}
-                                              </Button>
-                                            </p>
-                                          </>
-                                        )}
-                                      </ReadMoreLess>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                                    )
-                                  }) : (
-                                <div className="mt-6 text-sm text-gray-500">No work experience added yet.</div>
-                                  )}
-                              </ShowMoreLessComp>
-                            </div>
-
-                            <div className="flex mt-6 items-center justify-center">
-                              <Button
-                                variant="link"
-                                visual="gray"
-                                onClick={() => setIsShowing((prev) => !prev)}
-                              >
-                                {isShowing ? "View Less" : "View More"}
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
-
-                    <TabsContent value="Education">
-                      <ShowMoreLessRoot
-                        value={autoExpandEducation}
-                        onValueChange={setAutoExpandEducation}
-                      >
-                        {({ isShowing, setIsShowing, scrollHeight, ref }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={4}>
-                                {(profile?.education && profile.education.length > 0) ? profile.education
-                                  .sort((a: any, b: any) => (b.startDate || "").localeCompare(a.startDate || ""))
-                                  .map((edu: any, idx: number) => {
-                                    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
-                                    const fmtDate = (d: string | null) => {
-                                      if (!d) return "Present"
-                                      const [y, m] = d.split("-")
-                                      return `${months[parseInt(m, 10) - 1]} ${y}`
-                                    }
-                                    return (
-                                <div key={edu.id || idx} className="flex pb-5 items-start gap-x-6">
-                                  <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
-                                    {edu.institutionLogoUrl ? (
-                                      <NextImage src={edu.institutionLogoUrl} alt={edu.institution || ""} fill sizes="55px" className="object-contain p-1" />
-                                    ) : (
-                                      <span className="text-lg font-bold text-gray-400">{edu.institution?.charAt(0) || "E"}</span>
-                                    )}
-                                  </div>
-
-                                  <div className="flex-auto">
-                                    <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                      {edu.institution}
-                                    </h1>
-                                    <div className="mt-1.5 flex items-center gap-x-2">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        {edu.degree}
-                                      </span>
-                                      <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                      <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                        {edu.field}
-                                      </span>
-                                    </div>
-                                    <div className="mt-1.5">
-                                      <span className="text-dark-blue-400 text-xs leading-none">
-                                        {fmtDate(edu.startDate)} - {fmtDate(edu.endDate)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                    )
-                                  }) : (
-                                <div className="mt-6 text-sm text-gray-500">No education added yet.</div>
-                                  )}
-                              </ShowMoreLessComp>
-                            </div>
-
-                            <div
-                              className={cn(
-                                "flex items-center justify-start",
-                                isShowing && "justify-center"
-                              )}
-                            >
-                              {(profile?.education?.length ?? 0) > 4 && (
-                              <Button
-                                size="sm"
-                                variant="link"
-                                visual="gray"
-                                onClick={() => setIsShowing((prev) => !prev)}
-                              >
-                                {isShowing ? "View Less" : `${(profile?.education?.length ?? 0) - 4} More...`}
-                              </Button>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-
-                <div className="mt-6 scroll-mt-[137.5px]" id="project-history">
-                  <div className="border border-gray-200 rounded-t-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] py-5 pl-5 pr-6">
-                    <Carousel
-                      opts={{
-                        align: "start",
-                      }}
-                      className="w-full"
-                    >
-                      <CarouselContent>
-                        {Array.from({ length: 7 }).map((_, index) => (
-                          <CarouselItem
-                            key={index}
-                            className="basis-[20%] h-[108px]"
-                          >
-                            <div className="p-1 size-full bg-gray-200 relative rounded-lg overflow-hidden">
-                              <NextImage src="/cpu.png" alt="CPU" fill />
-                            </div>
-                          </CarouselItem>
-                        ))}
-                      </CarouselContent>
-
-                      <CarouselPreviousTrigger />
-                      <CarouselNextTrigger />
-                    </Carousel>
-
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs leading-none font-extralight text-dark-blue-400">
-                        Client project images
-                      </span>
-
-                      <Button variant="link" visual="gray">
-                        View All
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="p-8 border-x gap-x-[50px] border-b flex items-start rounded-b-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="flex flex-col flex-1 gap-y-1.5 basis-[147px]">
-                      <h1 className="text-xl leading-none text-nowrap font-bold text-dark-blue-400">
-                        Project History
-                      </h1>
-
-                      <RatingGroupRoot
-                        className="flex-row gap-x-1.5 mt-1.5"
-                        allowHalf
-                        count={5}
-                        defaultValue={4}
-                        disabled
-                      >
-                        <RatingGroupLabel size="sm">4.9</RatingGroupLabel>
-                        <RatingGroupControl>
-                          <RatingGroupContext>
-                            {({ items }) =>
-                              items.map((item) => (
-                                <RatingGroupItem key={item} index={item}>
-                                  <RatingGroupItemContext>
-                                    {({ half }) =>
-                                      half ? <TbStarHalfFilled /> : <TbStar />
-                                    }
-                                  </RatingGroupItemContext>
-                                </RatingGroupItem>
-                              ))
-                            }
-                          </RatingGroupContext>
-                          <RatingGroupHiddenInput />
-                        </RatingGroupControl>
-                      </RatingGroupRoot>
-
-                      <NextLink
-                        href="#"
-                        className="focus-visible:outline-none text-xs leading-6 transition duration-300 hover:underline text-dark-blue-400"
-                      >
-                        23 ratings
-                      </NextLink>
-                    </div>
-
-                    <div className="flex flex-col flex-1 gap-y-1 basis-[304px]">
-                      <div className="flex items-center gap-x-2">
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
-                        >
-                          5
-                        </NextLink>
-                        <Progress className="flex-auto" value={100} />
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
-                        >
-                          100% <span className="font-extralight">(100)</span>
-                        </NextLink>
-                      </div>
-                      <div className="flex items-center gap-x-2">
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
-                        >
-                          4
-                        </NextLink>
-                        <Progress className="flex-auto" value={75} />
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
-                        >
-                          75% <span className="font-extralight">(75)</span>
-                        </NextLink>
-                      </div>
-                      <div className="flex items-center gap-x-2">
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
-                        >
-                          3
-                        </NextLink>
-                        <Progress className="flex-auto" value={50} />
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
-                        >
-                          50% <span className="font-extralight">(50)</span>
-                        </NextLink>
-                      </div>
-                      <div className="flex items-center gap-x-2">
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
-                        >
-                          2
-                        </NextLink>
-                        <Progress className="flex-auto" value={25} />
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
-                        >
-                          25% <span className="font-extralight">(25)</span>
-                        </NextLink>
-                      </div>
-                      <div className="flex items-center gap-x-2">
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold text-dark-blue-400"
-                        >
-                          1
-                        </NextLink>
-                        <Progress className="flex-auto" value={0} />
-                        <NextLink
-                          href="#"
-                          className="hover:underline focus-visible:outline-none text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400"
-                        >
-                          0% <span className="font-extralight">(0)</span>
-                        </NextLink>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-1 flex-col basis-[304px]">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
-                          >
-                            Communication Level
-                          </NextLink>
-
-                          <div className="flex items-center gap-x-1">
-                            <Star className="size-3.5 text-primary-500 fill-primary-500" />
-                            <span className="text-[13px] leading-none font-medium">
-                              4.3
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
-                          >
-                            Responsiveness
-                          </NextLink>
-
-                          <div className="flex items-center gap-x-1">
-                            <Star className="size-3.5 text-primary-500 fill-primary-500" />
-                            <span className="text-[13px] leading-none font-medium">
-                              4.3
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
-                          >
-                            Quality of Delivery
-                          </NextLink>
-
-                          <div className="flex items-center gap-x-1">
-                            <Star className="size-3.5 text-primary-500 fill-primary-500" />
-                            <span className="text-[13px] leading-none font-medium">
-                              4.3
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
-                          >
-                            Value of Delivery
-                          </NextLink>
-
-                          <div className="flex items-center gap-x-1">
-                            <Star className="size-3.5 text-primary-500 fill-primary-500" />
-                            <span className="text-[13px] leading-none font-medium">
-                              4.3
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none text-xs leading-5 font-semibold underline text-gray-500 hover:text-gray-600"
-                          >
-                            Value of Delivery
-                          </NextLink>
-
-                          <div className="flex items-center gap-x-1">
-                            <Star className="size-3.5 text-primary-500 fill-primary-500" />
-                            <span className="text-[13px] leading-none font-medium">
-                              4.9
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6">
-                  <Tabs defaultValue="Completed">
-                    <RadixTabs.List className="flex items-center justify-between">
-                      <div className="flex items-center gap-x-3">
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Completed"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Completed (24)
-                        </TabsTrigger>
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Ongoing"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Ongoing (7)
-                        </TabsTrigger>
-                      </div>
-
-                      <div className="inline-flex items-center gap-x-3">
-                        <SectionSearchBar />
-
-                        <Listbox
-                          className="shrink-0 w-max"
-                          defaultValue="Most Recent"
-                        >
-                          <ListboxButton className="w-max text-sm h-10" />
-                          <ListboxOptions className="w-[177px] right-0">
-                            {[
-                              "Most Recent",
-                              "Oldest",
-                              "Highest Rating",
-                              "Lowest Rating",
-                            ].map((option) => (
-                              <ListboxOption
-                                className="ui-active:text-gray-700 ui-active:font-medium text-gray-500"
-                                key={option}
-                                value={option}
-                              >
-                                {option}
-                              </ListboxOption>
-                            ))}
-                          </ListboxOptions>
-                        </Listbox>
-                      </div>
-                    </RadixTabs.List>
-                    <TabsContent value="Completed">
-                      <ShowMoreLessRoot
-                        value={autoExpandProjectHistory}
-                        onValueChange={setAutoExpandProjectHistory}
-                      >
-                        {({ isShowing, setIsShowing, scrollHeight, ref }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="mt-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLessComp max={2}>
-                                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="flex items-center pt-6 px-6">
-                                    <div className="flex-1 w-[394px] space-y-3">
-                                      <div className="flex items-start gap-x-3">
-                                        <Avatar size="md">
-                                          <AvatarImage
-                                            src="/man.jpg"
-                                            alt="Man"
-                                          />
-                                          <AvatarFallback>M</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="space-y-3">
-                                          <div className="flex flex-col">
-                                            <div className="inline-flex items-center gap-x-1">
-                                              <span className="text-base leading-6 font-semibold text-dark-blue-400">
-                                                Emily
-                                              </span>
-                                              <span className="text-base leading-6 text-dark-blue-400">
-                                                @emily.j
-                                              </span>
-                                            </div>
-
-                                            <span className="text-[13px] leading-6 text-dark-blue-400">
-                                              Product Manager
-                                            </span>
-                                          </div>
-
-                                          <div className="inline-flex items-center gap-x-2">
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              December 2020 - Present
-                                            </span>
-                                            <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              5 yrs 2 mos
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <div className="inline-flex items-center gap-x-[2.35px]">
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                        </div>
-
-                                        <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
-                                          4.8
-                                        </span>
-
-                                        <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
-                                          Posted a week ago
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 px-6">
-                                    <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
-                                      Best Experience with a Backend
-                                      Engineer!!!!
-                                    </h1>
-                                    <ReadMoreLess
-                                      max={32}
-                                      text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
-
-                                    <div className="mt-3 flex items-center justify-between">
-                                      <div className="items-center inline-flex gap-x-2.5">
-                                        {!isOwnProfile && (
-                                          <>
-                                            <span className="text-xs font-medium leading-none text-dark-blue-400">
-                                              Helpful
-                                            </span>
-                                            <LikeDislike />
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
-                                    <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
-                                      <NextImage
-                                        className="object-cover"
-                                        src="/dashboard.png"
-                                        alt="Dashboard"
-                                        fill
-                                        sizes="25vw"
-                                      />
-                                    </div>
-
-                                    <div className="flex-auto space-y-3">
-                                      <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
-                                        Seniority Mobile App
-                                      </h1>
-
-                                      <div className="flex gap-x-8 items-center">
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="flex items-center pt-6 px-6">
-                                    <div className="flex-1 w-[394px] space-y-3">
-                                      <div className="flex items-start gap-x-3">
-                                        <Avatar size="md">
-                                          <AvatarImage
-                                            src="/man.jpg"
-                                            alt="Man"
-                                          />
-                                          <AvatarFallback>M</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="space-y-3">
-                                          <div className="flex flex-col">
-                                            <div className="inline-flex items-center gap-x-1">
-                                              <span className="text-base leading-6 font-semibold text-dark-blue-400">
-                                                Emily
-                                              </span>
-                                              <span className="text-base leading-6 text-dark-blue-400">
-                                                @emily.j
-                                              </span>
-                                            </div>
-
-                                            <span className="text-[13px] leading-6 text-dark-blue-400">
-                                              Product Manager
-                                            </span>
-                                          </div>
-
-                                          <div className="inline-flex items-center gap-x-2">
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              December 2020 - Present
-                                            </span>
-                                            <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              5 yrs 2 mos
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <div className="inline-flex items-center gap-x-[2.35px]">
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                        </div>
-
-                                        <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
-                                          4.8
-                                        </span>
-
-                                        <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
-                                          Posted a week ago
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 px-6">
-                                    <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
-                                      Best Experience with a Backend
-                                      Engineer!!!!
-                                    </h1>
-                                    <ReadMoreLess
-                                      max={32}
-                                      text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
-
-                                    <div className="mt-3 flex items-center justify-between">
-                                      <div className="items-center inline-flex gap-x-2.5">
-                                        {!isOwnProfile && (
-                                          <>
-                                            <span className="text-xs font-medium leading-none text-dark-blue-400">
-                                              Helpful
-                                            </span>
-                                            <LikeDislike />
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
-                                    <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
-                                      <NextImage
-                                        className="object-cover"
-                                        src="/dashboard.png"
-                                        alt="Dashboard"
-                                        fill
-                                        sizes="25vw"
-                                      />
-                                    </div>
-
-                                    <div className="flex-auto space-y-3">
-                                      <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
-                                        Seniority Mobile App
-                                      </h1>
-
-                                      <div className="flex gap-x-8 items-center">
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="p-6 bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border-t">
-                                    <div className="flex items-center gap-x-3">
-                                      <Avatar
-                                        className="hover:ring-0 active:ring-primary-100"
-                                        size="md"
-                                      >
-                                        <AvatarImage src="/man.jpg" alt="Man" />
-                                        <AvatarFallbackIcon />
-                                      </Avatar>
-
-                                      <div className="flex flex-col flex-1">
-                                        <div className="inline-flex items-center gap-x-1">
-                                          <span className="text-sm leading-6 font-bold text-dark-blue-400">
-                                            Company Response
-                                          </span>
-                                          <span className="text-sm leading-6 text-dark-blue-400">
-                                            @Acme Inc.
-                                          </span>
-                                        </div>
-
-                                        <div className="inline-flex items-center mt-[1.5px] gap-x-2">
-                                          <span className="text-xs leading-none text-dark-blue-400">
-                                            90 days project
-                                          </span>
-                                          <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
-                                          <span className="text-xs leading-none text-dark-blue-400">
-                                            March 2023
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <ReadMoreLess
-                                      max={32}
-                                      text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-3 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
-
-                                    <div className="mt-3 flex items-center justify-between">
-                                      <div className="items-center inline-flex gap-x-2.5">
-                                        {!isOwnProfile && (
-                                          <>
-                                            <span className="text-xs font-medium leading-none text-dark-blue-400">
-                                              Helpful
-                                            </span>
-                                            <LikeDislike />
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="flex items-center pt-6 px-6">
-                                    <div className="flex-1 w-[394px] space-y-3">
-                                      <div className="flex items-start gap-x-3">
-                                        <Avatar size="md">
-                                          <AvatarImage
-                                            src="/man.jpg"
-                                            alt="Man"
-                                          />
-                                          <AvatarFallback>M</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="space-y-3">
-                                          <div className="flex flex-col">
-                                            <div className="inline-flex items-center gap-x-1">
-                                              <span className="text-base leading-6 font-semibold text-dark-blue-400">
-                                                Emily
-                                              </span>
-                                              <span className="text-base leading-6 text-dark-blue-400">
-                                                @emily.j
-                                              </span>
-                                            </div>
-
-                                            <span className="text-[13px] leading-6 text-dark-blue-400">
-                                              Product Manager
-                                            </span>
-                                          </div>
-
-                                          <div className="inline-flex items-center gap-x-2">
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              December 2020 - Present
-                                            </span>
-                                            <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              5 yrs 2 mos
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <div className="inline-flex items-center gap-x-[2.35px]">
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                        </div>
-
-                                        <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
-                                          4.8
-                                        </span>
-
-                                        <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
-                                          Posted a week ago
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 px-6">
-                                    <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
-                                      Best Experience with a Backend
-                                      Engineer!!!!
-                                    </h1>
-                                    <ReadMoreLess
-                                      max={32}
-                                      text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
-
-                                    <div className="mt-3 flex items-center justify-between">
-                                      <div className="items-center inline-flex gap-x-2.5">
-                                        {!isOwnProfile && (
-                                          <>
-                                            <span className="text-xs font-medium leading-none text-dark-blue-400">
-                                              Helpful
-                                            </span>
-                                            <LikeDislike />
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
-                                    <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
-                                      <NextImage
-                                        className="object-cover"
-                                        src="/dashboard.png"
-                                        alt="Dashboard"
-                                        fill
-                                        sizes="25vw"
-                                      />
-                                    </div>
-
-                                    <div className="flex-auto space-y-3">
-                                      <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
-                                        Seniority Mobile App
-                                      </h1>
-
-                                      <div className="flex gap-x-8 items-center">
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                  <div className="flex items-center pt-6 px-6">
-                                    <div className="flex-1 w-[394px] space-y-3">
-                                      <div className="flex items-start gap-x-3">
-                                        <Avatar size="md">
-                                          <AvatarImage
-                                            src="/man.jpg"
-                                            alt="Man"
-                                          />
-                                          <AvatarFallback>M</AvatarFallback>
-                                        </Avatar>
-
-                                        <div className="space-y-3">
-                                          <div className="flex flex-col">
-                                            <div className="inline-flex items-center gap-x-1">
-                                              <span className="text-base leading-6 font-semibold text-dark-blue-400">
-                                                Emily
-                                              </span>
-                                              <span className="text-base leading-6 text-dark-blue-400">
-                                                @emily.j
-                                              </span>
-                                            </div>
-
-                                            <span className="text-[13px] leading-6 text-dark-blue-400">
-                                              Product Manager
-                                            </span>
-                                          </div>
-
-                                          <div className="inline-flex items-center gap-x-2">
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              December 2020 - Present
-                                            </span>
-                                            <span className="shrink-0 size-1 rounded-full bg-gray-300 inline-block" />
-                                            <span className="text-xs leading-none text-dark-blue-400">
-                                              5 yrs 2 mos
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <div className="inline-flex items-center gap-x-[2.35px]">
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                          <Favorite
-                                            defaultPressed
-                                            className="size-[15px]"
-                                          />
-                                        </div>
-
-                                        <span className="text-base leading-[28.16px] font-bold text-dark-blue-400">
-                                          4.8
-                                        </span>
-
-                                        <span className="text-[11px] leading-6 font-extralight text-dark-blue-400">
-                                          Posted a week ago
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex-1 w-[477px] inline-grid grid-cols-2 gap-y-4 gap-x-[50px] pb-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <CheckCircle className="size-[18px] text-success-500" />
-                                        <span className="text-sm text-dark-blue-400 leading-none font-medium">
-                                          Would Recommend
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 px-6">
-                                    <h1 className="text-sm leading-6 font-semibold text-dark-blue-400">
-                                      Best Experience with a Backend
-                                      Engineer!!!!
-                                    </h1>
-                                    <ReadMoreLess
-                                      max={32}
-                                      text="Lorem ipsum dolor sit amet consectetur adipisicing elit. Voluptate doloremque impedit eveniet harum dolores modi dolor, aspernatur saepe incidunt consequuntur et voluptatem dolorem ea sequi officia distinctio perspiciatis labore fugit eligendi architecto similique esse assumenda fugiat? Aut tempora veritatis, similique exercitationem quos consequuntur repudiandae, quaerat nesciunt ducimus beatae tempore alias repellendus id quidem pariatur blanditiis architecto quasi aperiam fugiat maiores?"
-                                    >
-                                      {({ readMore, text, toggle }) => (
-                                        <>
-                                          <p className="text-sm leading-none mt-1 text-gray-700 font-extralight">
-                                            {text}{" "}
-                                            <Button
-                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                              size="sm"
-                                              variant="link"
-                                              visual="gray"
-                                              onClick={toggle}
-                                            >
-                                              {readMore ? null : "...Read More"}
-                                            </Button>
-                                          </p>
-                                        </>
-                                      )}
-                                    </ReadMoreLess>
-
-                                    <div className="mt-3 flex items-center justify-between">
-                                      <div className="items-center inline-flex gap-x-2.5">
-                                        {!isOwnProfile && (
-                                          <>
-                                            <span className="text-xs font-medium leading-none text-dark-blue-400">
-                                              Helpful
-                                            </span>
-                                            <LikeDislike />
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-6 flex items-center gap-x-3 px-6 pb-6">
-                                    <div className="border border-black/10 w-[153px] relative rounded-lg overflow-hidden h-[98px]">
-                                      <NextImage
-                                        className="object-cover"
-                                        src="/dashboard.png"
-                                        alt="Dashboard"
-                                        fill
-                                        sizes="25vw"
-                                      />
-                                    </div>
-
-                                    <div className="flex-auto space-y-3">
-                                      <h1 className="text-sm font-bold leading-6 text-dark-blue-400">
-                                        Seniority Mobile App
-                                      </h1>
-
-                                      <div className="flex gap-x-8 items-center">
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-x-3">
-                                          <span className="text-sm text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                          <span className="text-sm font-bold text-dark-blue-400 leading-6">
-                                            Project Cost
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-x-2">
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                        <Badge size="sm" visual="gray">
-                                          Team player
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </ShowMoreLessComp>
-                            </div>
-
-                            <div className="flex items-center justify-end mt-6">
-                              <Button
-                                size="md"
-                                visual="gray"
-                                variant="outlined"
-                                className="bg-white"
-                                onClick={() => setIsShowing((prev) => !prev)}
-                              >
-                                {isShowing ? (
-                                  <>
-                                    View Less{" "}
-                                    <ChevronUp className="size-[15px]" />
-                                  </>
-                                ) : (
-                                  "Show More Feedback (1)"
-                                )}
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    </TabsContent>
-
-                    <TabsContent value="Ongoing">
-                      <div className="mt-6 space-y-6">
-                        <article className="border p-6 rounded-lg bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                          <div className="flex items-start gap-x-4">
-                            <div className="relative overflow-hidden rounded-md shrink-0 w-[134px] h-[86px]">
-                              <NextImage
-                                src="/dashboard.png"
-                                alt="Dashboard"
-                                fill
-                                sizes="25vw"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
                               <div className="flex items-center gap-x-2">
-                                <h1 className="text-sm font-bold text-dark-blue-400">
-                                  Seniority Mobile App
-                                </h1>
+                                <span className="text-xs text-dark-blue-400">
+                                  January 2025 - Present
+                                </span>
+
                                 <Badge
-                                  className="border rounded-[3.15px] bg-white border-gray-300"
-                                  visual="gray"
                                   variant="rounded"
+                                  className="bg-primary-50 text-primary-500 px-1.5 rounded-[3.15px]"
+                                  visual="primary"
                                 >
-                                  <FileText className="size-[9.46px] text-primary-500" />{" "}
-                                  Under NDA
+                                  2 Months
                                 </Badge>
                               </div>
+                            </div>
+                          </article>
 
-                              <div className="mt-2 flex items-center gap-x-6">
-                                <div className="flex gap-x-3">
-                                  <span className="text-xs leading-6 text-dark-blue-400">
-                                    Estimated Project Cost
-                                  </span>
-                                  <span className="font-bold text-sm leading-6 text-dark-blue-400">
-                                    $25,000
-                                  </span>
-                                </div>
-                                <div className="flex gap-x-3">
-                                  <span className="text-xs leading-6 text-dark-blue-400">
-                                    Project Type
-                                  </span>
-                                  <span className="font-bold text-sm leading-6 text-dark-blue-400">
-                                    Cloud Software
-                                  </span>
-                                </div>
-                                <div className="flex gap-x-3">
-                                  <span className="text-xs leading-6 text-dark-blue-400">
-                                    Current Phase
-                                  </span>
-                                  <span className="font-bold text-sm leading-6 text-dark-blue-400">
-                                    Development
-                                  </span>
-                                </div>
+                          <article className="border p-6 rounded-lg bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div className="flex items-start gap-x-4">
+                              <div className="relative overflow-hidden rounded-md shrink-0 w-[134px] h-[86px]">
+                                <NextImage
+                                  src="/dashboard.png"
+                                  alt="Dashboard"
+                                  fill
+                                  sizes="25vw"
+                                />
                               </div>
 
-                              <div className="mt-2 flex items-center gap-x-2">
-                                <Badge>API-Driven</Badge>
-                                <Badge>Agile Workflow</Badge>
-                                <Badge>Cross-Platform</Badge>
-                                <Badge>Cloud-Based</Badge>
-                                <Badge>Mobile-Optimized</Badge>
-                                <Badge>FinTech</Badge>
-                                <Badge>SaaS</Badge>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-x-2">
+                                  <h1 className="text-sm font-bold text-dark-blue-400">
+                                    Seniority Mobile App
+                                  </h1>
+                                  <Badge
+                                    className="border rounded-[3.15px] bg-white border-gray-300"
+                                    visual="gray"
+                                    variant="rounded"
+                                  >
+                                    <FileText className="size-[9.46px] text-primary-500" />{" "}
+                                    Under NDA
+                                  </Badge>
+                                </div>
+
+                                <div className="mt-2 flex items-center gap-x-6">
+                                  <div className="flex gap-x-3">
+                                    <span className="text-xs leading-6 text-dark-blue-400">
+                                      Estimated Project Cost
+                                    </span>
+                                    <span className="font-bold text-sm leading-6 text-dark-blue-400">
+                                      $25,000
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-x-3">
+                                    <span className="text-xs leading-6 text-dark-blue-400">
+                                      Project Type
+                                    </span>
+                                    <span className="font-bold text-sm leading-6 text-dark-blue-400">
+                                      Cloud Software
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-x-3">
+                                    <span className="text-xs leading-6 text-dark-blue-400">
+                                      Current Phase
+                                    </span>
+                                    <span className="font-bold text-sm leading-6 text-dark-blue-400">
+                                      Development
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="mt-2 flex items-center gap-x-2">
+                                  <Badge>API-Driven</Badge>
+                                  <Badge>Agile Workflow</Badge>
+                                  <Badge>Cross-Platform</Badge>
+                                  <Badge>Cloud-Based</Badge>
+                                  <Badge>Mobile-Optimized</Badge>
+                                  <Badge>FinTech</Badge>
+                                  <Badge>SaaS</Badge>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center gap-x-3 mt-3">
-                            <div className="flex items-center gap-x-4">
-                              <AvatarGroup
-                                excessClassName="border-gray-300 text-gray-500"
-                                excess
-                              >
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                              </AvatarGroup>
-
-                              <span className="text-xs text-dark-blue-400">
-                                Senior Front-End Developer
-                              </span>
-                            </div>
-
-                            <span className="shrink-0 size-1 bg-gray-300 rounded-full" />
-
-                            <div className="flex items-center gap-x-2">
-                              <span className="text-xs text-dark-blue-400">
-                                January 2025 - Present
-                              </span>
-
-                              <Badge
-                                variant="rounded"
-                                className="bg-primary-50 text-primary-500 px-1.5 rounded-[3.15px]"
-                                visual="primary"
-                              >
-                                2 Months
-                              </Badge>
-                            </div>
-                          </div>
-                        </article>
-
-                        <article className="border p-6 rounded-lg bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                          <div className="flex items-start gap-x-4">
-                            <div className="relative overflow-hidden rounded-md shrink-0 w-[134px] h-[86px]">
-                              <NextImage
-                                src="/dashboard.png"
-                                alt="Dashboard"
-                                fill
-                                sizes="25vw"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-x-2">
-                                <h1 className="text-sm font-bold text-dark-blue-400">
-                                  Seniority Mobile App
-                                </h1>
-                                <Badge
-                                  className="border rounded-[3.15px] bg-white border-gray-300"
-                                  visual="gray"
-                                  variant="rounded"
+                            <div className="flex items-center gap-x-3 mt-3">
+                              <div className="flex items-center gap-x-4">
+                                <AvatarGroup
+                                  excessClassName="border-gray-300 text-gray-500"
+                                  excess
                                 >
-                                  <FileText className="size-[9.46px] text-primary-500" />{" "}
-                                  Under NDA
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                  <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
+                                    <AvatarImage src="/woman.jpg" alt="Woman" />
+                                    <AvatarFallback>W</AvatarFallback>
+                                  </Avatar>
+                                </AvatarGroup>
+
+                                <span className="text-xs text-dark-blue-400">
+                                  Senior Front-End Developer
+                                </span>
+                              </div>
+
+                              <span className="shrink-0 size-1 bg-gray-300 rounded-full" />
+
+                              <div className="flex items-center gap-x-2">
+                                <span className="text-xs text-dark-blue-400">
+                                  January 2025 - Present
+                                </span>
+
+                                <Badge
+                                  variant="rounded"
+                                  className="bg-primary-50 text-primary-500 px-1.5 rounded-[3.15px]"
+                                  visual="primary"
+                                >
+                                  2 Months
                                 </Badge>
                               </div>
-
-                              <div className="mt-2 flex items-center gap-x-6">
-                                <div className="flex gap-x-3">
-                                  <span className="text-xs leading-6 text-dark-blue-400">
-                                    Estimated Project Cost
-                                  </span>
-                                  <span className="font-bold text-sm leading-6 text-dark-blue-400">
-                                    $25,000
-                                  </span>
-                                </div>
-                                <div className="flex gap-x-3">
-                                  <span className="text-xs leading-6 text-dark-blue-400">
-                                    Project Type
-                                  </span>
-                                  <span className="font-bold text-sm leading-6 text-dark-blue-400">
-                                    Cloud Software
-                                  </span>
-                                </div>
-                                <div className="flex gap-x-3">
-                                  <span className="text-xs leading-6 text-dark-blue-400">
-                                    Current Phase
-                                  </span>
-                                  <span className="font-bold text-sm leading-6 text-dark-blue-400">
-                                    Development
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="mt-2 flex items-center gap-x-2">
-                                <Badge>API-Driven</Badge>
-                                <Badge>Agile Workflow</Badge>
-                                <Badge>Cross-Platform</Badge>
-                                <Badge>Cloud-Based</Badge>
-                                <Badge>Mobile-Optimized</Badge>
-                                <Badge>FinTech</Badge>
-                                <Badge>SaaS</Badge>
-                              </div>
                             </div>
-                          </div>
-
-                          <div className="flex items-center gap-x-3 mt-3">
-                            <div className="flex items-center gap-x-4">
-                              <AvatarGroup
-                                excessClassName="border-gray-300 text-gray-500"
-                                excess
-                              >
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                                <Avatar className="border-2 border-white hover:ring-0 active:ring-0">
-                                  <AvatarImage src="/woman.jpg" alt="Woman" />
-                                  <AvatarFallback>W</AvatarFallback>
-                                </Avatar>
-                              </AvatarGroup>
-
-                              <span className="text-xs text-dark-blue-400">
-                                Senior Front-End Developer
-                              </span>
-                            </div>
-
-                            <span className="shrink-0 size-1 bg-gray-300 rounded-full" />
-
-                            <div className="flex items-center gap-x-2">
-                              <span className="text-xs text-dark-blue-400">
-                                January 2025 - Present
-                              </span>
-
-                              <Badge
-                                variant="rounded"
-                                className="bg-primary-50 text-primary-500 px-1.5 rounded-[3.15px]"
-                                visual="primary"
-                              >
-                                2 Months
-                              </Badge>
-                            </div>
-                          </div>
-                        </article>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
+                          </article>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </LazySection>
+                )}
               </div>
 
               <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
@@ -8046,10 +4541,17 @@ export default function Default() {
                   )}
                   ref={cardRef}
                 >
-                  <div className="p-6 rounded-t-lg relative bg-white border border-gray-200">
+                  <div
+                    className={cn(
+                      "p-6 rounded-t-lg relative bg-white border border-gray-200",
+                      !showLanguagesBox && "rounded-b-lg"
+                    )}
+                  >
                     <div className="flex items-center gap-x-1 justify-center">
                       <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
-                        <span className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`} />{" "}
+                        <span
+                          className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`}
+                        />{" "}
                         {isOwnProfile ? "Online" : "Offline"}
                       </span>
                       <span className="font-extralight text-sm leading-none text-dark-blue-400">
@@ -8081,58 +4583,117 @@ export default function Default() {
                       </span>
                     </div>
 
-                    <button className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]">
-                      <MessageSquare01 className="size-[15px]" /> Message Me
+                    <button
+                      className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
+                      onClick={() => {
+                        if (isOwnProfile) {
+                          router.push("/inbox")
+                          return
+                        }
+                        const currentUser = getCurrentUser()
+                        if (
+                          !currentUser?.id ||
+                          !profile?.id ||
+                          currentUser.id === profile.id
+                        )
+                          return
+                        router.push(`/inbox?participantId=${profile.id}`)
+                      }}
+                    >
+                      <MessageSquare01 className="size-[15px]" />{" "}
+                      {isOwnProfile ? "View Inbox" : "Message Me"}
                     </button>
                   </div>
 
+                  {showLanguagesBox && (
                   <div
                     className={`border-x rounded-b-lg border-b bg-white border-gray-200 transition-all duration-300 overflow-hidden ${
                       showLanguageSection
-                        ? "p-6 max-h-[200px] opacity-100"
+                        ? "p-6 max-h-[300px] opacity-100"
                         : "p-0 max-h-0 opacity-0"
                     }`}
                   >
                     {showLanguageSection && (
                       <>
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                            <MessageTextSquare01 className="size-[15px]" />
-                            Language
-                          </span>
+                        {(!isClientView || hasLanguages) && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                                <MessageTextSquare01 className="size-[15px]" />
+                                Languages
+                              </span>
 
-                          <div className="inline-flex items-center gap-x-1.5">
-                            <span className="text-xs leading-none font-bold text-dark-blue-400">
-                              English, Hindi
-                            </span>
-                            {isEditMode && isOwnProfile && (
-                              <IconButton
-                                className="rounded-full text-gray-500 hover:text-gray-800 size-5"
-                                variant="ghost"
-                                visual="gray"
-                                onClick={() => setLanguagesOpen(true)}
-                              >
-                                <Edit03 className="size-3" />
-                              </IconButton>
+                              {isEditMode && isOwnProfile && (
+                                <IconButton
+                                  className="rounded-full text-gray-500 hover:text-gray-800 size-5"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setLanguagesOpen(true)}
+                                >
+                                  <Edit03 className="size-4" />
+                                </IconButton>
+                              )}
+                            </div>
+
+                            {hasLanguages ? (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {profile!.languages!.map((l: any) => (
+                                  <Badge
+                                    key={l.id ?? l.name}
+                                    className="text-gray-700"
+                                    visual="gray"
+                                    size="lg"
+                                  >
+                                    {l.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
+                                <p className="text-xs font-light text-gray-500 leading-relaxed">
+                                  Tell us what languages you speak, they&apos;ll
+                                  show up here.
+                                </p>
+                                {isEditMode && isOwnProfile && (
+                                  <Button
+                                    className="mt-3 w-full bg-white"
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => setLanguagesOpen(true)}
+                                  >
+                                    <Plus className="size-[15px]" /> Add
+                                    Languages
+                                  </Button>
+                                )}
+                              </div>
                             )}
+                          </>
+                        )}
+
+                        {(!isClientView || hasTimezone) && (
+                          <div
+                            className={cn(
+                              "flex items-center justify-between",
+                              !isClientView || hasLanguages ? "mt-5" : ""
+                            )}
+                          >
+                            <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                              <Clock className="size-[15px]" />
+                              Time Zone
+                            </span>
+
+                            <span className="text-xs leading-none font-bold text-dark-blue-400">
+                              {profile?.timezone ?? "\u2014"}
+                            </span>
                           </div>
-                        </div>
-
-                        <div className="flex mt-5 items-center justify-between">
-                          <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                            <Clock className="size-[15px]" />
-                            Time Zone
-                          </span>
-
-                          <span className="text-xs leading-none font-bold text-dark-blue-400">
-                            India (IST-3)
-                          </span>
-                        </div>
+                        )}
                       </>
                     )}
                   </div>
+                  )}
                 </div>
 
+                {(similarProfiles.length > 0 || !isClientView) && (
                 <div className="space-y-6 mt-6">
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
@@ -8140,360 +4701,150 @@ export default function Default() {
                         Similar profiles
                       </h1>
 
-                      <div className="mt-3">
-                        <div className="py-3 flex items-start gap-x-2 border-b border-gray-200">
-                          <Avatar
-                            className="hover:ring-0 active:ring-primary-100"
-                            size="md"
-                          >
-                            <AvatarImage src="/man.jpg" alt="Man" />
-                            <AvatarFallbackIcon />
-                          </Avatar>
+                      {similarProfiles.length > 0 ? (
+                        <>
+                          <div className="mt-3">
+                            {similarProfiles.slice(0, 5).map((sp) => {
+                              const rateMin =
+                                sp.rateMin != null ? Number(sp.rateMin) : null
+                              const rateMax =
+                                sp.rateMax != null ? Number(sp.rateMax) : null
+                              // Ratings hidden for MVP — reintroduce with the rating system
+                              // const rating = Number(sp.rating) || 0
+                              const rate =
+                                rateMin != null &&
+                                rateMax != null &&
+                                rateMin !== rateMax
+                                  ? `$${rateMin} - $${rateMax}`
+                                  : `$${rateMin ?? (Number(sp.hourlyRate) || 0)}`
+                              return (
+                                <div
+                                  key={sp.id}
+                                  onClick={() =>
+                                    sp.username &&
+                                    router.push(
+                                      `/talent-profile?username=${sp.username}`
+                                    )
+                                  }
+                                  className={cn(
+                                    "py-3 flex items-start gap-x-2 border-b border-gray-200",
+                                    sp.username && "cursor-pointer"
+                                  )}
+                                >
+                                  <Avatar
+                                    className="hover:ring-0 active:ring-primary-100"
+                                    size="md"
+                                  >
+                                    <AvatarImage
+                                      src={sp.avatarUrl ?? undefined}
+                                      alt={sp.name}
+                                    />
+                                    <AvatarFallback>
+                                      {getInitials(sp.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
 
-                          <div className="flex-1">
-                            <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
-                              Jenny{" "}
-                              <span className="text-xs font-extralight leading-none text-gray-500">
-                                @LakshitKumar
-                              </span>
-                            </h1>
-                            <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
-                              Full Stack Developer
-                            </p>
-                            <div className="mt-1.5 flex items-center justify-between">
-                              <span className="text-[13px] leading-none font-bold text-dark-blue-400">
-                                $57
-                                <span className="text-xs leading-none text-dark-blue-400 font-extralight">
-                                  /hr
-                                </span>
-                              </span>
+                                  <div className="flex-1">
+                                    <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
+                                      {capitalize(sp.name.split(/\s+/)[0] || sp.name)}
+                                      {sp.username && (
+                                        <span className="text-xs font-extralight leading-none text-gray-500">
+                                          {" "}
+                                          @{sp.username}
+                                        </span>
+                                      )}
+                                    </h1>
+                                    {sp.jobTitle && (
+                                      <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
+                                        {sp.jobTitle}
+                                      </p>
+                                    )}
+                                    <div className="mt-1.5 flex items-center justify-between">
+                                      <span className="text-[13px] leading-none font-bold text-dark-blue-400">
+                                        {rate}
+                                        <span className="text-xs leading-none text-dark-blue-400 font-extralight">
+                                          /hr
+                                        </span>
+                                      </span>
 
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-3 text-primary-500 fill-primary-500" />
-                                <span className="font-medium leading-none text-xs text-dark-blue-400">
-                                  4.2
-                                </span>
-                              </div>
-                            </div>
+                                      {/* Ratings hidden for MVP — reintroduce with the rating system
+                                      {rating > 0 && (
+                                        <div className="inline-flex items-center gap-x-1">
+                                          <Star className="size-3 text-primary-500 fill-primary-500" />
+                                          <span className="font-medium leading-none text-xs text-dark-blue-400">
+                                            {rating.toFixed(1)}
+                                          </span>
+                                        </div>
+                                      )} */}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
-                        </div>
-                        <div className="py-3 flex items-start gap-x-2 border-b border-gray-200">
-                          <Avatar
-                            className="hover:ring-0 active:ring-primary-100"
-                            size="md"
-                          >
-                            <AvatarImage src="/man.jpg" alt="Man" />
-                            <AvatarFallbackIcon />
-                          </Avatar>
 
-                          <div className="flex-1">
-                            <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
-                              Jenny{" "}
-                              <span className="text-xs font-extralight leading-none text-gray-500">
-                                @LakshitKumar
-                              </span>
-                            </h1>
-                            <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
-                              Full Stack Developer
-                            </p>
-                            <div className="mt-1.5 flex items-center justify-between">
-                              <span className="text-[13px] leading-none font-bold text-dark-blue-400">
-                                $57
-                                <span className="text-xs leading-none text-dark-blue-400 font-extralight">
-                                  /hr
-                                </span>
-                              </span>
-
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-3 text-primary-500 fill-primary-500" />
-                                <span className="font-medium leading-none text-xs text-dark-blue-400">
-                                  4.2
-                                </span>
-                              </div>
-                            </div>
+                          <div className="mt-3 flex items-center justify-center">
+                            <Button
+                              size="sm"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => router.push("/talent-search")}
+                            >
+                              View More
+                            </Button>
                           </div>
+                        </>
+                      ) : (
+                        <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
+                          <p className="text-xs font-light text-gray-600 leading-relaxed">
+                            Complete your profile to start seeing similar
+                            profiles here.
+                          </p>
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              className="mt-3 w-full"
+                              variant="outlined"
+                              visual="gray"
+                              onClick={() => router.push("/complete-profile")}
+                            >
+                              Complete My Profile
+                            </Button>
+                          )}
                         </div>
-                        <div className="py-3 flex items-start gap-x-2 border-b border-gray-200">
-                          <Avatar
-                            className="hover:ring-0 active:ring-primary-100"
-                            size="md"
-                          >
-                            <AvatarImage src="/man.jpg" alt="Man" />
-                            <AvatarFallbackIcon />
-                          </Avatar>
-
-                          <div className="flex-1">
-                            <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
-                              Jenny{" "}
-                              <span className="text-xs font-extralight leading-none text-gray-500">
-                                @LakshitKumar
-                              </span>
-                            </h1>
-                            <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
-                              Full Stack Developer
-                            </p>
-                            <div className="mt-1.5 flex items-center justify-between">
-                              <span className="text-[13px] leading-none font-bold text-dark-blue-400">
-                                $57
-                                <span className="text-xs leading-none text-dark-blue-400 font-extralight">
-                                  /hr
-                                </span>
-                              </span>
-
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-3 text-primary-500 fill-primary-500" />
-                                <span className="font-medium leading-none text-xs text-dark-blue-400">
-                                  4.2
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-3 flex items-start gap-x-2 border-b border-gray-200">
-                          <Avatar
-                            className="hover:ring-0 active:ring-primary-100"
-                            size="md"
-                          >
-                            <AvatarImage src="/man.jpg" alt="Man" />
-                            <AvatarFallbackIcon />
-                          </Avatar>
-
-                          <div className="flex-1">
-                            <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
-                              Jenny{" "}
-                              <span className="text-xs font-extralight leading-none text-gray-500">
-                                @LakshitKumar
-                              </span>
-                            </h1>
-                            <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
-                              Full Stack Developer
-                            </p>
-                            <div className="mt-1.5 flex items-center justify-between">
-                              <span className="text-[13px] leading-none font-bold text-dark-blue-400">
-                                $57
-                                <span className="text-xs leading-none text-dark-blue-400 font-extralight">
-                                  /hr
-                                </span>
-                              </span>
-
-                              <div className="inline-flex items-center gap-x-1">
-                                <Star className="size-3 text-primary-500 fill-primary-500" />
-                                <span className="font-medium leading-none text-xs text-dark-blue-400">
-                                  4.2
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-center">
-                        <Button size="sm" variant="link" visual="gray">
-                          View More
-                        </Button>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
+                )}
 
+                {!isClientView && (
                 <div className="rounded-lg border border-gray-200 bg-white">
                   <div className="p-6">
                     <div className="flex items-center justify-between">
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
                         Affiliated Teams
                       </h1>
+                    </div>
+
+                    <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
+                      <p className="text-xs font-light text-gray-600 leading-relaxed">
+                        If you decide to join a team, those teams will be
+                        visible here.
+                      </p>
                       {isEditMode && isOwnProfile && (
-                        <IconButton
-                          className="rounded-full text-gray-500 hover:text-gray-800 size-6"
-                          variant="ghost"
+                        <Button
+                          className="mt-3 w-full bg-white"
+                          variant="outlined"
                           visual="gray"
-                          onClick={() => setAffiliatedTeamsOpen(true)}
+                          onClick={() => router.push("/teams")}
                         >
-                          <Edit03 className="size-3.5" />
-                        </IconButton>
+                          <Plus className="size-[15px]" /> Browse Teams
+                        </Button>
                       )}
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="py-3 flex items-center gap-x-2 border-b border-gray-200">
-                        <Avatar
-                          className="hover:ring-0 active:ring-primary-100"
-                          size="md"
-                        >
-                          <AvatarImage src="/man.jpg" alt="Man" />
-                          <AvatarFallbackIcon />
-                        </Avatar>
-
-                        <div className="flex-1">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none hover:underline text-sm leading-none text-dark-blue-400 font-bold"
-                          >
-                            Bitcoin Master Devs
-                          </NextLink>
-
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="inline-flex items-center gap-x-1 font-extralight">
-                              <MarkerPin02 className="size-2.5 text-dark-blue-400" />
-                              <span className="text-[10px] leading-none text-dark-blue-400 font-extralight">
-                                Moscow, Russia
-                              </span>
-                            </span>
-
-                            <div className="inline-flex items-center gap-x-1">
-                              <Clock className="size-[10px] text-primary-500" />
-                              <span className="font-extralight leading-none text-[10px] text-dark-blue-400">
-                                450 hrs
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="py-3 flex items-center gap-x-2 border-b border-gray-200">
-                        <Avatar
-                          className="hover:ring-0 active:ring-primary-100"
-                          size="md"
-                        >
-                          <AvatarImage src="/man.jpg" alt="Man" />
-                          <AvatarFallbackIcon />
-                        </Avatar>
-
-                        <div className="flex-1">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none hover:underline text-sm leading-none text-dark-blue-400 font-bold"
-                          >
-                            Bitcoin Master Devs
-                          </NextLink>
-
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="inline-flex items-center gap-x-1 font-extralight">
-                              <MarkerPin02 className="size-2.5 text-dark-blue-400" />
-                              <span className="text-[10px] leading-none text-dark-blue-400 font-extralight">
-                                Moscow, Russia
-                              </span>
-                            </span>
-
-                            <div className="inline-flex items-center gap-x-1">
-                              <Clock className="size-[10px] text-primary-500" />
-                              <span className="font-extralight leading-none text-[10px] text-dark-blue-400">
-                                450 hrs
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="py-3 flex items-center gap-x-2 border-b border-gray-200">
-                        <Avatar
-                          className="hover:ring-0 active:ring-primary-100"
-                          size="md"
-                        >
-                          <AvatarImage src="/man.jpg" alt="Man" />
-                          <AvatarFallbackIcon />
-                        </Avatar>
-
-                        <div className="flex-1">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none hover:underline text-sm leading-none text-dark-blue-400 font-bold"
-                          >
-                            Bitcoin Master Devs
-                          </NextLink>
-
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="inline-flex items-center gap-x-1 font-extralight">
-                              <MarkerPin02 className="size-2.5 text-dark-blue-400" />
-                              <span className="text-[10px] leading-none text-dark-blue-400 font-extralight">
-                                Moscow, Russia
-                              </span>
-                            </span>
-
-                            <div className="inline-flex items-center gap-x-1">
-                              <Clock className="size-[10px] text-primary-500" />
-                              <span className="font-extralight leading-none text-[10px] text-dark-blue-400">
-                                450 hrs
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="py-3 flex items-center gap-x-2 border-b border-gray-200">
-                        <Avatar
-                          className="hover:ring-0 active:ring-primary-100"
-                          size="md"
-                        >
-                          <AvatarImage src="/man.jpg" alt="Man" />
-                          <AvatarFallbackIcon />
-                        </Avatar>
-
-                        <div className="flex-1">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none hover:underline text-sm leading-none text-dark-blue-400 font-bold"
-                          >
-                            Bitcoin Master Devs
-                          </NextLink>
-
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="inline-flex items-center gap-x-1 font-extralight">
-                              <MarkerPin02 className="size-2.5 text-dark-blue-400" />
-                              <span className="text-[10px] leading-none text-dark-blue-400 font-extralight">
-                                Moscow, Russia
-                              </span>
-                            </span>
-
-                            <div className="inline-flex items-center gap-x-1">
-                              <Clock className="size-[10px] text-primary-500" />
-                              <span className="font-extralight leading-none text-[10px] text-dark-blue-400">
-                                450 hrs
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="py-3 flex items-center gap-x-2 border-b border-gray-200">
-                        <Avatar
-                          className="hover:ring-0 active:ring-primary-100"
-                          size="md"
-                        >
-                          <AvatarImage src="/man.jpg" alt="Man" />
-                          <AvatarFallbackIcon />
-                        </Avatar>
-
-                        <div className="flex-1">
-                          <NextLink
-                            href="#"
-                            className="focus-visible:outline-none hover:underline text-sm leading-none text-dark-blue-400 font-bold"
-                          >
-                            Bitcoin Master Devs
-                          </NextLink>
-
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="inline-flex items-center gap-x-1 font-extralight">
-                              <MarkerPin02 className="size-2.5 text-dark-blue-400" />
-                              <span className="text-[10px] leading-none text-dark-blue-400 font-extralight">
-                                Moscow, Russia
-                              </span>
-                            </span>
-
-                            <div className="inline-flex items-center gap-x-1">
-                              <Clock className="size-[10px] text-primary-500" />
-                              <span className="font-extralight leading-none text-[10px] text-dark-blue-400">
-                                450 hrs
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-center">
-                      <Button size="sm" variant="link" visual="gray">
-                        View More
-                      </Button>
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -8503,17 +4854,273 @@ export default function Default() {
       {/* Edit Profile Modals */}
       {isOwnProfile && (
         <>
-          <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
-          <SkillsDialog opened={skillsOpen} onOpenedChange={setSkillsOpen} profile={profile} onSaved={refreshProfile} />
-          <AboutMeDialog opened={overviewOpen} onOpenedChange={setOverviewOpen} profile={profile} onSaved={refreshProfile} />
-          <MyOffersDialog opened={offersOpen} onOpenedChange={setOffersOpen} />
-          <MoreInfoDialog opened={jobTitleOpen} onOpenedChange={setJobTitleOpen} profile={profile} onSaved={refreshProfile} />
-          <LanguagesDialog opened={languagesOpen} onOpenedChange={setLanguagesOpen} profile={profile} onSaved={refreshProfile} />
-          <IndustryExpertiseDialog opened={industriesOpen} onOpenedChange={setIndustriesOpen} profile={profile} onSaved={refreshProfile} />
-          <CertificationsDialog opened={certificationsOpen} onOpenedChange={setCertificationsOpen} profile={profile} onSaved={refreshProfile} />
-          <WorkExperienceDialog opened={workExperienceOpen} onOpenedChange={setWorkExperienceOpen} profile={profile} onSaved={refreshProfile} />
-          <EducationDialog opened={educationOpen} onOpenedChange={setEducationOpen} profile={profile} onSaved={refreshProfile} />
-          <AffiliatedTeamsDialog opened={affiliatedTeamsOpen} onOpenedChange={setAffiliatedTeamsOpen} />
+          <AvailabilityDialog
+            opened={availabilityOpen}
+            onOpenedChange={setAvailabilityOpen}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <SkillsDialog
+            opened={skillsOpen}
+            onOpenedChange={setSkillsOpen}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <AboutMeDialog
+            opened={overviewOpen}
+            onOpenedChange={setOverviewOpen}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <Dialog
+            open={listingsModalStep === "empty"}
+            onOpenChange={(open) =>
+              !open && setListingsModalStep("closed")
+            }
+          >
+            <DialogContent className="max-w-[420px] rounded-[12px] p-0">
+              <div className="flex items-start gap-x-2 px-6 pt-5 pb-4">
+                <h1 className="flex-auto text-lg leading-7 font-semibold text-dark-blue-400">
+                  My Listings
+                </h1>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="mx-5 mb-5 rounded-lg bg-gray-50 border border-gray-200 px-6 py-8 flex flex-col items-center text-center">
+                <PackagePlus className="size-10 text-gray-400" strokeWidth={1.5} />
+                <h2 className="mt-3 text-base leading-6 font-semibold text-dark-blue-400">
+                  Show clients what you have to offer
+                </h2>
+                <p className="mt-2 text-xs font-light text-gray-500 leading-relaxed max-w-[300px]">
+                  Create projects or service offers to get discovered,
+                  attract clients, and start generating money. Profiles with
+                  active offers can get 2-3x more visibility and
+                  opportunities than profiles with no offers at all.
+                </p>
+                <Button
+                  className="mt-5 bg-white"
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => setListingsModalStep("chooser")}
+                >
+                  Create Your First Listing
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={listingsModalStep === "chooser"}
+            onOpenChange={(open) =>
+              !open && setListingsModalStep("closed")
+            }
+          >
+            <DialogContent className="max-w-[560px] rounded-[12px] p-0">
+              <div className="p-6">
+                <div className="flex items-start gap-x-2">
+                  <div className="flex-auto">
+                    <h1 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                      Create a New Listing
+                    </h1>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      Choose the type of listing you&apos;d like to create
+                    </p>
+                  </div>
+                  <DialogClose asChild>
+                    <IconButton variant="ghost" visual="gray">
+                      <X className="size-5" />
+                    </IconButton>
+                  </DialogClose>
+                </div>
+
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className="text-left p-4 rounded-lg border border-gray-200 bg-white transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    onClick={() => goToPublishProject("project")}
+                  >
+                    <div className="flex items-center gap-x-2">
+                      <Briefcase className="size-5 text-dark-blue-400" />
+                      <span className="text-sm font-semibold text-dark-blue-400">
+                        Add A Project
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-light leading-relaxed text-gray-500">
+                      A fixed-scope offer with defined deliverables,
+                      timeline, and one-time work.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-left p-4 rounded-lg border border-gray-200 bg-white transition-colors hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    onClick={() => goToPublishProject("service")}
+                  >
+                    <div className="flex items-center gap-x-2">
+                      <Monitor className="size-5 text-dark-blue-400" />
+                      <span className="text-sm font-semibold text-dark-blue-400">
+                        Add A Service
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-light leading-relaxed text-gray-500">
+                      An ongoing offer with recurring work and long-term
+                      client engagement.
+                    </p>
+                  </button>
+                </div>
+
+                <p className="mt-4 text-xs font-light text-gray-500">
+                  Don&apos;t worry, you can always switch between a project
+                  and a service at any time.
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <MoreInfoDialog
+            opened={jobTitleOpen}
+            onOpenedChange={setJobTitleOpen}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <LanguagesDialog
+            opened={languagesOpen}
+            onOpenedChange={setLanguagesOpen}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <IndustryExpertiseDialog
+            opened={industriesOpen}
+            onOpenedChange={setIndustriesOpen}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <CertificationsDialog
+            opened={certificationsOpen}
+            onOpenedChange={(open) => {
+              setCertificationsOpen(open)
+              if (!open) setCertEditIdx(undefined)
+            }}
+            profile={profile}
+            onSaved={refreshProfile}
+            editIndex={certEditIdx}
+          />
+          <WorkExperienceDialog
+            opened={workExperienceOpen}
+            onOpenedChange={(o: boolean) => {
+              setWorkExperienceOpen(o)
+              if (!o) setWorkExpEditIdx(undefined)
+            }}
+            editIndex={workExpEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <EducationDialog
+            opened={educationOpen}
+            onOpenedChange={(o: boolean) => {
+              setEducationOpen(o)
+              if (!o) setEduEditIdx(undefined)
+            }}
+            editIndex={eduEditIdx}
+            profile={profile}
+            onSaved={refreshProfile}
+          />
+          <AffiliatedTeamsDialog
+            opened={affiliatedTeamsOpen}
+            onOpenedChange={setAffiliatedTeamsOpen}
+          />
+
+          <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+            <DialogContent
+              variant="unanimated"
+              className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
+            >
+              <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
+              <CaseStudyBuilder
+                onClose={() => setCaseStudyOpen(false)}
+                onSave={() => setCaseStudyOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!deleteConfirm}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDeleteConfirm(null)
+                setDeleteError(null)
+              }
+            }}
+          >
+            <DialogContent className="max-w-[409px] p-0">
+              <div className="p-6">
+                <DialogTitle className="text-dark-blue-400 text-base font-semibold">
+                  Delete{" "}
+                  {deleteConfirm?.type === "experience"
+                    ? "Work Experience"
+                    : "Education"}
+                  ?
+                </DialogTitle>
+                <DialogDescription className="text-dark-blue-400 mt-2 text-sm font-light">
+                  {deleteConfirm?.label ? (
+                    <>
+                      Your &ldquo;{deleteConfirm.label}&rdquo;{" "}
+                      {deleteConfirm.type === "experience"
+                        ? "job"
+                        : "education"}{" "}
+                      will be removed.
+                    </>
+                  ) : (
+                    <>
+                      Your{" "}
+                      {deleteConfirm?.type === "experience"
+                        ? "job"
+                        : "education"}{" "}
+                      will be removed.
+                    </>
+                  )}{" "}
+                  This cannot be undone.
+                </DialogDescription>
+
+                {deleteError && (
+                  <div
+                    role="alert"
+                    className="mt-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                  >
+                    {deleteError}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t rounded-b-xl flex items-center justify-between border-gray-200 bg-gray-25 py-4 px-6">
+                <DialogClose asChild>
+                  <Button
+                    variant="link"
+                    visual="gray"
+                    type="button"
+                    disabled={isDeleting}
+                  >
+                    <X className="size-[15px]" />
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting
+                    ? "Deleting..."
+                    : deleteError
+                      ? "Try Again"
+                      : "Yes, Delete"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </>

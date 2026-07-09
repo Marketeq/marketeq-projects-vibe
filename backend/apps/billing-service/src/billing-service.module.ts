@@ -5,6 +5,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { BillingSubscription } from './entities/subscription.entity';
 import { BillingInvoice } from './entities/invoice.entity';
 import { PaymentRetryLog } from './entities/payment-retry-log.entity';
+import { WebhookLog } from './entities/webhook-log.entity';
 import { BillingService } from './services/billing.service';
 import { StripeSubscriptionService } from './services/stripe-subscription.service';
 import { EventsService } from './services/events.service';
@@ -20,12 +21,14 @@ import { WebhooksController } from './controllers/webhooks.controller';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
-        entities: [BillingSubscription, BillingInvoice, PaymentRetryLog],
-        synchronize: config.get('NODE_ENV') !== 'production',
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        entities: [BillingSubscription, BillingInvoice, PaymentRetryLog, WebhookLog],
+        synchronize: false,
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),
-    TypeOrmModule.forFeature([BillingSubscription, BillingInvoice, PaymentRetryLog]),
+    TypeOrmModule.forFeature([BillingSubscription, BillingInvoice, PaymentRetryLog, WebhookLog]),
     ClientsModule.registerAsync([
       {
         name: 'RABBITMQ_CLIENT',

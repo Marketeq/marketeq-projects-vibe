@@ -1,0 +1,235 @@
+// ── Shared types for the homepage assembly endpoint ─────────────────────────
+
+/** Scoring signals shared across all listing card types */
+export interface ScoringFields {
+  rating?: number;
+  reviewCount?: number;
+  completionsCount?: number;
+  views90d?: number;
+  adminBoost?: number;
+  featured?: boolean;
+}
+
+/** Card shape returned for project listings */
+export interface ProjectCard extends ScoringFields {
+  id: string;
+  title: string;
+  slug: string | null;
+  description: string;
+  shortDescription: string | null;
+  thumbnail: string | null;
+  budget: number | null;
+  duration: string | null;
+  categories: string[];
+  skills: string[];
+  tags: string[];
+  createdAt: string;
+  /** URLs of collaborator avatars (team members on the project) */
+  collaborators?: string[];
+}
+
+/** Card shape returned for service listings */
+export interface ServiceCard extends ScoringFields {
+  id: string;
+  title: string;
+  slug: string | null;
+  description: string;
+  shortDescription: string | null;
+  thumbnail: string | null;
+  priceMin: number | null;
+  priceMax: number | null;
+  deliveryTime: string | null;
+  categories: string[];
+  skills: string[];
+  tags: string[];
+  createdAt: string;
+}
+
+/** Card shape returned for team profiles */
+export interface TeamCard extends ScoringFields {
+  id: string;
+  name: string;
+  slug: string | null;
+  logo: string | null;
+  memberCount: number;
+  rating: number;
+  specializations: string[];
+  completedProjects: number;
+  createdAt: string;
+}
+
+/** Card shape returned for talent profiles */
+export interface TalentCard {
+  id: string;
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+  title: string | null;
+  location: string | null;
+  rateMin: number | null;
+  rateMax: number | null;
+  skills: string[];
+  createdAt: string;
+}
+
+/** Pagination metadata for a block */
+export interface BlockPagination {
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+/** A single content block inside a section */
+export interface HomepageBlock {
+  key: string;
+  type: 'grid' | 'carousel';
+  entity: 'projects' | 'services' | 'teams' | 'talent';
+  items: (ProjectCard | ServiceCard | TeamCard | TalentCard)[];
+  pagination?: BlockPagination;
+  /** When the section uses tabs, identifies which tab this block belongs to */
+  tabSlug?: string;
+  tabLabel?: string;
+}
+
+/** A homepage section containing one or more blocks */
+export interface HomepageSection {
+  key: string;
+  title: string;
+  subtitle: string;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  blocks: HomepageBlock[];
+}
+
+/** A single rotating slide inside the hero carousel */
+export interface HomepageHeroSlide {
+  eyebrow: string;
+  title: string;
+  description: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  image: string;
+  /** Tailwind gradient fragment applied as a per-slide accent tint */
+  accent?: string;
+}
+
+/** Hero section — supports a multi-slide carousel via `slides` */
+export interface HomepageHero {
+  /** Multi-slide carousel content. Frontend rotates through these. */
+  slides: HomepageHeroSlide[];
+  /** Auto-rotation interval in milliseconds (default 7000) */
+  intervalMs?: number;
+  // ── Legacy single-slide fields (kept for CMS backwards-compat) ──
+  headline?: string;
+  subheadline?: string;
+  backgroundImage?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+}
+
+/** Promotional banner — sourced from CMS HomepageBanner global */
+export interface HomepageBanner {
+  enabled: boolean;
+  message: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  expiresAt: string | null;
+  bannerType: 'info' | 'promo' | 'warning';
+}
+
+/** SEO metadata */
+export interface HomepageSeo {
+  metaTitle: string;
+  metaDescription: string;
+  canonical: string | null;
+  ogImage: string | null;
+  noindex: boolean;
+}
+
+/** Category reference for "More Categories" */
+export interface CategoryRef {
+  name: string;
+  slug: string;
+  iconUrl: string | null;
+}
+
+/** Footer navigation column */
+export interface FooterNavColumn {
+  heading: string;
+  links: { label: string; url: string }[];
+}
+
+/** Talent Network CTA */
+export interface TalentNetworkCta {
+  headline: string;
+  description: string;
+  ctaLabel: string;
+  ctaUrl: string;
+}
+
+/** Full homepage API response */
+export interface HomepagePayload {
+  /** Internal title of this homepage document */
+  title: string;
+  /** URL slug of this homepage (e.g. "home") */
+  slug: string;
+  /** Document status: active, testing, or draft (preview only) */
+  status: 'active' | 'testing' | 'draft';
+  hero: HomepageHero;
+  /** Promotional banner — null when disabled or expired */
+  banner: HomepageBanner | null;
+  sections: HomepageSection[];
+  popularTabs: CategoryRef[];
+  moreCategoriesList: CategoryRef[];
+  talentNetworkCta: TalentNetworkCta;
+  footerNav: FooterNavColumn[];
+  seo: HomepageSeo;
+  generatedAt: string;
+}
+
+/** Max description length for card summaries */
+export const CARD_DESCRIPTION_MAX_LENGTH = 120;
+/** Carousel minimum: only render carousel if items >= gridSize * CAROUSEL_MIN_PAGES.
+ *  Set to 1 so any section with at least GRID_SIZE items (4) stays as a carousel
+ *  — matches the Figma homepage which shows themed sections (Online Sales Funnels,
+ *  Customer Service Solutions, etc.) as horizontal carousels even when they only
+ *  have 5–8 items. */
+export const CAROUSEL_MIN_PAGES = 1;
+export const GRID_SIZE = 4;
+
+// ── Section configuration (replaces CMS later) ─────────────────────────────
+
+export interface SectionTabConfig {
+  /** Display label shown in the pill tab */
+  label: string;
+  /** URL-safe identifier for the tab */
+  slug: string;
+  /** Optional category filter scoped to this tab */
+  categoryFilter?: string;
+  /** Optional ranking override for this tab (defaults to section's first block kind) */
+  kind?: 'newest' | 'top_rated' | 'trending' | 'most_popular';
+}
+
+export interface SectionConfig {
+  key: string;
+  title: string;
+  subtitle: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  /** Optional pill tabs — when set, the section produces one block per tab */
+  tabs?: SectionTabConfig[];
+  blocks: {
+    entity: 'projects' | 'services' | 'teams' | 'talent';
+    type: 'grid' | 'carousel';
+    /** Ranking algorithm — evaluator integration needed for top_rated/trending/most_popular */
+    kind: 'newest' | 'top_rated' | 'trending' | 'most_popular';
+    limit: number;
+    sort: 'newest' | 'random';
+    categoryFilter?: string;
+    /** When true, pre-filter the pool to items with `featured === true`
+     *  (admin/editorial curation flag). Used by "Our Favorite Projects". */
+    featuredOnly?: boolean;
+  }[];
+}

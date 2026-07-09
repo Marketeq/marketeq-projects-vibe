@@ -1,24 +1,21 @@
-export const HL = <T,>(v: T) => v
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
+
+export const HL = <T>(v: T) => v
 
 export type HttpConfig = {
   baseURL?: string
-  getToken?: () => Promise<string | null> | string | null
 }
 
 const defaultConfig: HttpConfig = {
-  baseURL: HL(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002/api"),
+  baseURL: HL(getPublicBackendUrl() || "http://localhost:3002/api"),
 }
 
 export function createHttp(cfg: HttpConfig = defaultConfig) {
   const baseURL = cfg.baseURL ?? defaultConfig.baseURL
-  const getToken = cfg.getToken ?? (async () => HL<string | null>(null))
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers)
     headers.set("Content-Type", "application/json")
-
-    const token = await getToken()
-    if (token) headers.set("Authorization", `Bearer ${token}`)
 
     const url = `${baseURL}${path}`.replace(/\/$/, "")
     const res = await fetch(url, { ...init, headers, credentials: "include" })

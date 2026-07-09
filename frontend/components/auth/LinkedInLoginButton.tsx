@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import {
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { LinkedInDefault } from "@blend-metrics/icons/social"
-import Cookies from "js-cookie"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
 
@@ -62,24 +65,28 @@ const LinkedInLogin = () => {
           code,
           redirectUrl,
         })
-          .then((response) => {
+          .then(async (response) => {
             if (
               response?.status === 200 &&
-              response?.data?.access_token &&
               response?.data?.user
             ) {
-              Cookies.set("access_token", response?.data?.access_token)
-              UserAPI.me().then((me) => {
+              let nextUser = response.data.user
+              try {
+                const me = await UserAPI.me()
                 if (me?.status === 200) {
-                  const user = me.data?.user ?? me.data
-                  if (user?.role) {
-                    setUser(user)
-                    router.push("/")
-                  } else {
-                    console.warn("User missing role", me.data)
+                  const profileUser =
+                    me.data?.user ?? me.data?.data?.user ?? me.data
+                  if (profileUser && typeof profileUser === "object") {
+                    nextUser = mergeDashboardUserFields(nextUser, profileUser)
                   }
                 }
-              })
+              } catch {
+                // fall back to auth payload
+              }
+              if (nextUser && typeof nextUser === "object") {
+                setUser(nextUser)
+              }
+              router.push(resolveDashboardRoute(nextUser as any))
             }
           })
           .catch((error) => {

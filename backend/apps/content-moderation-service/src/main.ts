@@ -1,24 +1,30 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { ContentModerationServiceModule } from './content-moderation-service.module';
+import { AppModule } from './app.module';
+import * as bodyParser from 'body-parser';
+import { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(ContentModerationServiceModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true });
-
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [process.env.RABBITMQ_URI || 'amqp://localhost:5672'],
-      queue: 'content_moderation_service_queue',
-      queueOptions: { durable: true },
-    },
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  console.log('MOCK_MODE:', process.env.MOCK_MODE);
+  const port = process.env.PORT || 3014; // Fallback to port 3014 if PORT is not defined
+  const host = process.env.HOST || '0.0.0.0';
+  // Only apply body parsers if not multipart/form-data
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    console.log('[MIDDLEWARE] Incoming request:', req.method, req.url, req.headers['content-type']);
+    if ((req.headers['content-type'] || '').includes('multipart/form-data')) {
+      console.log('[MIDDLEWARE] Skipping body parser for multipart/form-data');
+      next();
+    } else {
+      bodyParser.json({ limit: '10mb' })(req, res, (err) => {
+        if (err) return next(err);
+        bodyParser.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
+      });
+    }
   });
-
-  await app.startAllMicroservices();
-  await app.listen(process.env.PORT || 3018);
-  console.log(`content-moderation-service running on port ${process.env.PORT || 3018}`);
+  await app.listen(port, host);
+  console.log(
+    ` Content Moderation Service is running on: http://${host}:${port}`,
+  );
 }
 bootstrap();

@@ -22,7 +22,7 @@ import { BillingConsumer } from './consumers/billing.consumer'
 import { TimeTrackingConsumer } from './consumers/timetracking.consumer'
 import { PayoutConsumer } from './consumers/payout.consumer'
 
-import { JwtStrategy } from './guards/jwt-auth.guard'
+import { JwtStrategy } from './strategies/jwt.strategy'
 
 @Module({
   imports: [
@@ -34,8 +34,10 @@ import { JwtStrategy } from './guards/jwt-auth.guard'
         url: config.get<string>('DATABASE_URL'),
         schema: 'transaction_service',
         entities: [Transaction, Invoice, Contract, PaymentMethod, AuditLog],
-        synchronize: config.get('NODE_ENV') !== 'production',
-        ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        synchronize: false,
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),
     TypeOrmModule.forFeature([Transaction, Invoice, Contract, PaymentMethod, AuditLog]),

@@ -1,198 +1,405 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
-import { User } from './entities/user.entity';
-import { Education } from '../education/entities/education.entity';
-import { Experience } from '../experience/entities/experience.entity';
-import { Skill } from '../skills/entities/skill.entity';
-import { Language } from '../languages/entities/language.entity';
-import { Certification } from '../certifications/entities/certification.entity';
-import { Industry } from '../industries/entities/industry.entity';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Request } from "express";
+
+import { User } from "./entities/user.entity";
+import { CreateUserDto } from "./dtos/create-user.dto";
+import { UpdateUserDto } from "./dtos/update-user.dto";
+import { SyncUserDto } from "./dtos/sync-user.dto";
+import { UserRole } from "./enums/user-role.enum";
+import { UpdateAvailabilityDto } from "./dtos/update-availability.dto";
+import { AVAILABILITY } from "../talent/enum/availability.enum";
+import { Skill } from "../skills/skills.entity";
+import {
+  TimeZoneResolution,
+  TimezoneResolutionService,
+} from "./timezone-resolution.service";
+import { UserEventPublisher } from "./user-event.publisher";
 
 @Injectable()
 export class UserService {
   constructor(
-    @InjectRepository(User) private readonly userRepo: Repository<User>,
-    @InjectRepository(Education) private readonly educationRepo: Repository<Education>,
-    @InjectRepository(Experience) private readonly experienceRepo: Repository<Experience>,
-    @InjectRepository(Skill) private readonly skillRepo: Repository<Skill>,
-    @InjectRepository(Language) private readonly languageRepo: Repository<Language>,
-    @InjectRepository(Certification) private readonly certRepo: Repository<Certification>,
-    @InjectRepository(Industry) private readonly industryRepo: Repository<Industry>,
-    @InjectDataSource() private readonly dataSource: DataSource,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(Skill)
+    private readonly skillRepository: Repository<Skill>,
+    private readonly timezoneResolutionService: TimezoneResolutionService,
+    private readonly eventPublisher: UserEventPublisher,
   ) {}
 
-  private async enrichWithLogos(user: User): Promise<User> {
-    if (user.experience?.length) {
-      const companyIds = user.experience.map(e => e.companyId).filter(Boolean);
-      if (companyIds.length) {
-        const logos: { id: string; logoUrl: string }[] = await this.dataSource.query(
-          `SELECT id, "logoUrl" FROM companies.companies WHERE id = ANY($1)`,
-          [companyIds],
-        );
-        const logoMap = new Map(logos.map(l => [l.id, l.logoUrl]));
-        for (const exp of user.experience) {
-          if (exp.companyId) exp.companyLogoUrl = logoMap.get(exp.companyId) || undefined;
-        }
-      }
+  async createUser(dto: CreateUserDto): Promise<User> {
+    // Build OR predicate without `{ username: undefined }`; otherwise TypeORM
+    // matches every row where username IS NULL and the first username-less
+    // user blocks all subsequent creates.
+    const where: Array<Record<string, string>> = [{ email: dto.email }];
+    if (dto.username) {
+      where.push({ username: dto.username });
     }
-    if (user.education?.length) {
-      const instIds = user.education.map(e => e.institutionId).filter(Boolean);
-      if (instIds.length) {
-        const logos: { id: string; logoUrl: string }[] = await this.dataSource.query(
-          `SELECT id, "logoUrl" FROM institutions.institutions WHERE id = ANY($1)`,
-          [instIds],
-        );
-        const logoMap = new Map(logos.map(l => [l.id, l.logoUrl]));
-        for (const edu of user.education) {
-          if (edu.institutionId) edu.institutionLogoUrl = logoMap.get(edu.institutionId) || undefined;
-        }
-      }
+
+    const existing = await this.userRepository.findOne({ where });
+
+    if (existing) {
+      throw new ConflictException("User already exists");
     }
+
+    const user = this.userRepository.create(dto);
+    return this.userRepository.save(user);
+  }
+
+  async getUserById(id: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: [
+        'languages',
+        'experiences',
+        'educations',
+        'certifications',
+        'industries',
+        'portfolioItems',
+      ],
+    });
+    if (!user) throw new NotFoundException("User not found");
+
+    try {
+      user.skills = await this.skillRepository.find({
+        where: { userId: id },
+        select: {
+          id: true,
+          name: true,
+          proficiency: true,
+          userId: true,
+        },
+      });
+    } catch {
+      user.skills = [];
+    }
+
+    return {
+      ...user,
+      experience: user.experiences,
+      education: user.educations,
+      portfolio: user.portfolioItems,
+    } as User;
+  }
+
+  async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
+    const user = await this.getUserById(id);
+    user.avatarUrl = avatarUrl;
+    return this.userRepository.save(user);
+  }
+
+  async listUsers(limit = 50, offset = 0): Promise<User[]> {
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const safeOffset = Math.max(offset, 0);
+
+    return this.userRepository.find({
+      order: { createdAt: "DESC" },
+      take: safeLimit,
+      skip: safeOffset,
+    });
+  }
+
+  async getUserByEmail(email: string): Promise<User> {
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) throw new NotFoundException("User not found");
     return user;
   }
 
-  async create(dto: Partial<User>): Promise<User> {
-    const existing = await this.userRepo.findOne({ where: { email: dto.email } });
-    if (existing) throw new ConflictException('User already exists');
-    const user = this.userRepo.create(dto);
-    return this.userRepo.save(user);
+  async getInternalSummary(id: string): Promise<{
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserById(id);
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
+      avatarUrl: user.avatarUrl ?? undefined,
+      role: user.role ?? "client",
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
   }
 
-  async findAll(limit = 50, offset = 0): Promise<User[]> {
-    return this.userRepo.find({
-      relations: ['skills', 'languages', 'certifications', 'industries'],
-      take: limit,
-      skip: offset,
-      order: { createdAt: 'DESC' },
+  async getInternalSummaryByEmail(email: string): Promise<{
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+    role: string;
+    onboardingDismissed: boolean;
+    hasCompletedOnboarding: boolean;
+    isActive: boolean;
+  }> {
+    const user = await this.getUserByEmail(email);
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
+      avatarUrl: user.avatarUrl ?? undefined,
+      role: user.role ?? "client",
+      onboardingDismissed: user.onboardingDismissed,
+      hasCompletedOnboarding: user.onboardingDismissed,
+      isActive: user.isActive,
+    };
+  }
+
+  async getUserByClaims(claims: {
+    sub?: string;
+    id?: string;
+    email?: string;
+  }): Promise<User> {
+    const candidateId = claims.sub ?? claims.id;
+    if (candidateId) {
+      const byId = await this.userRepository.findOne({
+        where: { id: candidateId },
+      });
+      if (byId) {
+        return byId;
+      }
+    }
+
+    if (claims.email) {
+      const byEmail = await this.userRepository.findOne({
+        where: { email: claims.email },
+      });
+      if (byEmail) {
+        return byEmail;
+      }
+    }
+
+    if (candidateId && claims.email) {
+      return this.syncFromAuth({
+        id: candidateId,
+        email: claims.email,
+      });
+    }
+
+    throw new NotFoundException("User not found");
+  }
+
+  async updateUser(id: string, dto: UpdateUserDto): Promise<User> {
+    const user = await this.getUserById(id);
+    Object.assign(user, dto);
+    const saved = await this.userRepository.save(user);
+    
+    // Publish sync event for CMS (asynchronous, don't await if you want max performance,
+    // but here we await to ensure consistency in logs)
+    await this.eventPublisher.publishProfileUpdated(saved);
+    
+    return saved;
+  }
+
+  async updateAvailability(
+    id: string,
+    dto: UpdateAvailabilityDto,
+  ): Promise<User> {
+    return this.updateUser(id, {
+      availability: dto.availability,
+      customAvailability:
+        dto.availability === AVAILABILITY.CUSTOM
+          ? (dto.customAvailability ?? null)
+          : null,
     });
+  }
+
+  async updateTimezone(id: string, timezone: string): Promise<User> {
+    return this.updateUser(id, { timezone });
+  }
+
+  async refreshTimezone(
+    claims: { sub?: string; id?: string; email?: string },
+    req: Request,
+    clientTimeZone?: string | null,
+  ): Promise<TimeZoneResolution & { updated: boolean }> {
+    const user = await this.getUserByClaims(claims);
+
+    const resolution = this.timezoneResolutionService.resolve(
+      req,
+      clientTimeZone,
+      user.timezone ?? null,
+    );
+
+    const updated = user.timezone !== resolution.timeZone;
+    if (updated) {
+      user.timezone = resolution.timeZone;
+      await this.userRepository.save(user);
+    }
+
+    return {
+      ...resolution,
+      updated,
+    };
+  }
+
+  async updateOverview(id: string, overview: string): Promise<User> {
+    return this.updateUser(id, { overview });
+  }
+
+  async updateBio(id: string, bio: string): Promise<User> {
+    return this.updateUser(id, { bio });
+  }
+
+  async updatePhone(id: string, phone: string | null): Promise<User> {
+    const user = await this.getUserById(id);
+    user.phone = phone ?? undefined;
+    return this.userRepository.save(user);
+  }
+
+  async updateRate(id: string, dto: { rate?: number }) {
+    return this.updateUser(id, {
+      rate: dto.rate,
+    });
+  }
+
+  async dismissOnboarding(id: string, role?: UserRole): Promise<User> {
+    const userType =
+      role === UserRole.TALENT
+        ? "talent"
+        : role === UserRole.CLIENT
+          ? "client"
+          : undefined;
+
+    const now = new Date().toISOString();
+    const roleTimestamp =
+      role === UserRole.TALENT
+        ? { talentOnboardedAt: now }
+        : role === UserRole.CLIENT
+          ? { clientOnboardedAt: now }
+          : {};
+
+    return this.updateUser(id, {
+      onboardingDismissed: true,
+      ...(userType ? { userType } : {}),
+      ...roleTimestamp,
+    } as any);
+  }
+
+  async deactivateUser(id: string): Promise<void> {
+    const user = await this.getUserById(id);
+    user.isActive = false;
+    await this.userRepository.save(user);
+    return;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    const user = await this.getUserById(id);
+    await this.userRepository.remove(user);
+  }
+  async syncFromAuth(dto: SyncUserDto): Promise<User> {
+    let normalizedIncomingUsername =
+      typeof dto.username === "string"
+        ? dto.username.trim().toLowerCase()
+        : undefined;
+    // Treat empty/whitespace usernames as "unset" so we persist NULL/leave existing unchanged.
+    if (normalizedIncomingUsername === "")
+      normalizedIncomingUsername = undefined;
+    const fallbackUsername = `user_${dto.id.replace(/-/g, "").slice(0, 12)}`;
+    const resolvedRole = dto.role ?? UserRole.CLIENT;
+    const resolvedProvider = dto.provider ?? "EMAIL";
+    const resolvedHasPassword = dto.hasPassword ?? false;
+
+    const existingById = await this.userRepository.findOne({
+      where: { id: dto.id },
+    });
+
+    if (existingById) {
+      Object.assign(existingById, {
+        email: dto.email ?? existingById.email,
+        role: resolvedRole ?? existingById.role,
+        ...(dto.firstName && { firstName: dto.firstName }),
+        ...(dto.lastName && { lastName: dto.lastName }),
+        provider: dto.provider ?? existingById.provider ?? resolvedProvider,
+        hasPassword:
+          dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
+      });
+      if (normalizedIncomingUsername) {
+        existingById.username = normalizedIncomingUsername;
+      }
+      return this.userRepository.save(existingById);
+    }
+
+    const existingByEmail = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    if (existingByEmail) {
+      if (existingByEmail.id !== dto.id) {
+        throw new ConflictException("User already exists with a different id");
+      }
+      Object.assign(existingByEmail, {
+        role: resolvedRole ?? existingByEmail.role,
+        provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
+        hasPassword:
+          dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
+      });
+      if (normalizedIncomingUsername) {
+        existingByEmail.username = normalizedIncomingUsername;
+      }
+      return this.userRepository.save(existingByEmail);
+    }
+
+    const user = this.userRepository.create({
+      id: dto.id,
+      email: dto.email,
+      username: normalizedIncomingUsername ?? fallbackUsername,
+      role: resolvedRole,
+      ...(dto.firstName && { firstName: dto.firstName }),
+      ...(dto.lastName && { lastName: dto.lastName }),
+      provider: resolvedProvider,
+      hasPassword: resolvedHasPassword,
+    });
+
+    return this.userRepository.save(user);
+  }
+
+  // Load a user with skills + languages relations for the internal
+  // profile endpoint. getUserById intentionally skips relations for
+  // perf on the auth-gated path; this variant pays the join cost only
+  // when the caller explicitly needs the nested data.
+  async getUserWithRelations(id: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ["skills", "languages"],
+    });
+    if (!user) throw new NotFoundException("User not found");
+    return user;
+  }
+
+  /* ── Aliases used by vibe controllers (me.controller, internal.controller) ── */
+
+  async findByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { email } });
   }
 
   async findById(id: string): Promise<User> {
-    const user = await this.userRepo.findOne({
-      where: { id },
-      relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
-    });
-    if (!user) throw new NotFoundException('User not found');
-    return this.enrichWithLogos(user);
+    return this.getUserById(id);
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userRepo.findOne({ where: { email } });
+  async update(id: string, data: Record<string, any>): Promise<User> {
+    return this.updateUser(id, data as any);
   }
 
-  async findByUsername(username: string): Promise<User> {
-    const user = await this.userRepo.findOne({
-      where: { username },
-      relations: ['education', 'experience', 'skills', 'languages', 'certifications', 'industries'],
-    });
-    if (!user) throw new NotFoundException('User not found');
-    return this.enrichWithLogos(user);
-  }
-
-  async checkUsername(username: string): Promise<{ available: boolean }> {
-    const existing = await this.userRepo.findOne({ where: { username } });
-    return { available: !existing };
-  }
-
-  async update(id: string, dto: Partial<User>): Promise<User> {
-    await this.userRepo.update(id, dto);
-    return this.findById(id);
-  }
-
-  async dismissOnboarding(id: string): Promise<void> {
-    await this.userRepo.update(id, {
-      onboardingDismissed: true,
-      onboardingStatus: 'completed',
-      onboardedAt: new Date(),
-    });
-  }
-
-  async remove(id: string): Promise<void> {
-    await this.userRepo.delete(id);
-  }
-
-  // Education
-  async addEducation(userId: string, dto: Partial<Education>): Promise<Education> {
-    const entry = this.educationRepo.create({ ...dto, userId });
-    return this.educationRepo.save(entry);
-  }
-  async updateEducation(id: string, dto: Partial<Education>): Promise<Education> {
-    await this.educationRepo.update(id, dto);
-    const found = await this.educationRepo.findOne({ where: { id } });
-    if (!found) throw new NotFoundException('Education entry not found');
-    return found;
-  }
-  async removeEducation(id: string): Promise<void> {
-    await this.educationRepo.delete(id);
-  }
-
-  // Experience
-  async addExperience(userId: string, dto: Partial<Experience>): Promise<Experience> {
-    const entry = this.experienceRepo.create({ ...dto, userId });
-    return this.experienceRepo.save(entry);
-  }
-  async updateExperience(id: string, dto: Partial<Experience>): Promise<Experience> {
-    await this.experienceRepo.update(id, dto);
-    const found = await this.experienceRepo.findOne({ where: { id } });
-    if (!found) throw new NotFoundException('Experience entry not found');
-    return found;
-  }
-  async removeExperience(id: string): Promise<void> {
-    await this.experienceRepo.delete(id);
-  }
-
-  // Skills
-  async addSkill(userId: string, dto: Partial<Skill>): Promise<Skill> {
-    const entry = this.skillRepo.create({ ...dto, userId });
-    return this.skillRepo.save(entry);
-  }
-  async updateSkill(id: string, dto: Partial<Skill>): Promise<Skill> {
-    await this.skillRepo.update(id, dto);
-    const found = await this.skillRepo.findOne({ where: { id } });
-    if (!found) throw new NotFoundException('Skill not found');
-    return found;
-  }
-  async removeSkill(id: string): Promise<void> {
-    await this.skillRepo.delete(id);
-  }
-
-  // Languages
-  async addLanguage(userId: string, dto: Partial<Language>): Promise<Language> {
-    const entry = this.languageRepo.create({ ...dto, userId });
-    return this.languageRepo.save(entry);
-  }
-  async updateLanguage(id: string, dto: Partial<Language>): Promise<Language> {
-    await this.languageRepo.update(id, dto);
-    const found = await this.languageRepo.findOne({ where: { id } });
-    if (!found) throw new NotFoundException('Language not found');
-    return found;
-  }
-  async removeLanguage(id: string): Promise<void> {
-    await this.languageRepo.delete(id);
-  }
-
-  // Certifications
-  async addCertification(userId: string, dto: Partial<Certification>): Promise<Certification> {
-    const entry = this.certRepo.create({ ...dto, userId });
-    return this.certRepo.save(entry);
-  }
-  async updateCertification(id: string, dto: Partial<Certification>): Promise<Certification> {
-    await this.certRepo.update(id, dto);
-    const found = await this.certRepo.findOne({ where: { id } });
-    if (!found) throw new NotFoundException('Certification not found');
-    return found;
-  }
-  async removeCertification(id: string): Promise<void> {
-    await this.certRepo.delete(id);
-  }
-
-  // Industries
-  async addIndustry(userId: string, dto: Partial<Industry>): Promise<Industry> {
-    const entry = this.industryRepo.create({ ...dto, userId });
-    return this.industryRepo.save(entry);
-  }
-  async removeIndustry(id: string): Promise<void> {
-    await this.industryRepo.delete(id);
+  async create(data: Record<string, any>): Promise<User> {
+    const user = this.userRepository.create(data as Partial<User>);
+    return this.userRepository.save(user);
   }
 }

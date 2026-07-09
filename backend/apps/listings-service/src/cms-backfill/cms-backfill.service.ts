@@ -1,0 +1,412 @@
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IsNull, Repository } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
+import { Project } from '../projects/entities/project.entity';
+import { Testimonial } from '../testimonials/entities/testimonial.entity';
+import { Team } from '../teams/entities/team.entity';
+import { Service } from '../services/entities/service.entity';
+import { Job } from '../jobs/entities/job.entity';
+import { JobListing } from '../job-listing/entities/job-listing.entity';
+import { BasicInformation } from '../job-listing/entities/job-listing-basic-info.entity';
+import { TeamMemberRow } from '../job-listing/entities/job-listing-role-row.entity';
+import { RoleDescription } from '../job-listing/entities/job-listing-role-description.entity';
+import { ProjectEventPublisher } from '../projects/project-event.publisher';
+import { TestimonialsEventPublisher } from '../testimonials/testimonials-event.publisher';
+import { CloudflareStorageService } from '../publish/cloudflare-storage.service';
+
+const PAGE_SIZE = 50;
+const BOOT_DELAY_MS = 5_000;
+const PAGE_DELAY_MS = 300;
+
+@Injectable()
+export class CmsBackfillService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(CmsBackfillService.name);
+
+  constructor(
+    @InjectRepository(Project) private readonly projectRepo: Repository<Project>,
+    @InjectRepository(Testimonial) private readonly testimonialRepo: Repository<Testimonial>,
+    @InjectRepository(Team) private readonly teamRepo: Repository<Team>,
+    @InjectRepository(Service) private readonly serviceRepo: Repository<Service>,
+    @InjectRepository(Job) private readonly jobRepo: Repository<Job>,
+    @InjectRepository(JobListing) private readonly jobListingRepo: Repository<JobListing>,
+    @InjectRepository(BasicInformation) private readonly basicInfoRepo: Repository<BasicInformation>,
+    @InjectRepository(TeamMemberRow) private readonly teamMemberRowRepo: Repository<TeamMemberRow>,
+    @InjectRepository(RoleDescription) private readonly roleDescRepo: Repository<RoleDescription>,
+    private readonly projectPublisher: ProjectEventPublisher,
+    private readonly testimonialPublisher: TestimonialsEventPublisher,
+    private readonly config: ConfigService,
+    private readonly cloudflareStorageService: CloudflareStorageService,
+    private readonly httpService: HttpService,
+  ) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    if (this.config.get<string>('CMS_BACKFILL_ON_BOOT') === 'false') return;
+    await new Promise((r) => setTimeout(r, BOOT_DELAY_MS));
+    try {
+    await Promise.all([
+      this.backfillProjects(),
+      this.backfillMediaToR2(),
+      this.backfillTestimonials(),
+      this.backfillJobListings(),
+      this.backfillToCms('team-listings', this.teamRepo, (t: Team) => ({
+        sourceId: t.id,
+        title: t.title,
+        slug: t.slug ?? t.id,
+        status: t.status,
+        featured: t.featured,
+        rating: t.rating,
+        reviewCount: t.reviewCount,
+      })),
+      this.backfillToCms('service-listings', this.serviceRepo, (s: Service) => ({
+        sourceId: s.id,
+        title: s.title,
+        slug: s.slug ?? s.id,
+        status: s.status,
+        featured: s.featured,
+        rating: s.rating,
+        reviewCount: s.reviewCount,
+        priceMin: s.priceMin,
+        priceMax: s.priceMax,
+        deliveryTime: s.deliveryTime,
+        excerpt: s.shortDescription,
+      })),
+      this.backfillToCms('job-listings', this.jobRepo, (j: Job) => ({
+        sourceId: j.id,
+        title: j.title,
+        slug: j.slug ?? j.id,
+        status: j.status,
+        featured: j.featured,
+        jobType: j.jobType,
+        location: j.location,
+        salaryMin: j.salaryMin,
+        salaryMax: j.salaryMax,
+      })),
+    ]);
+    } catch (err: any) {
+      this.logger.error(`[CmsBackfill] Bootstrap backfill failed (non-fatal): ${err.message}`);
+    }
+  }
+
+  // ── Backfill entities → CMS REST API ──────────────────────────────────────
+
+  private async backfillToCms<T extends { id: string; payloadId?: string | null }>(
+    collection: string,
+    repo: Repository<T>,
+    toPayload: (entity: T) => Record<string, any>,
+  ): Promise<void> {
+    const cmsUrl = this.config.get<string>('CMS_URL') || 'http://localhost:3020';
+    const email = this.config.get<string>('CMS_ADMIN_EMAIL') || 'admin@marketeq.com';
+    const password = this.config.get<string>('CMS_ADMIN_PASSWORD') || 'password123';
+
+    // Authenticate
+    let token: string;
+    try {
+      const loginRes = await fetch(`${cmsUrl}/api/users/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!loginRes.ok) {
+        this.logger.warn(`[CmsBackfill:${collection}] CMS login failed — skipping`);
+        return;
+      }
+      const loginData = await loginRes.json() as any;
+      token = loginData?.token;
+      if (!token) {
+        this.logger.warn(`[CmsBackfill:${collection}] No token from CMS — skipping`);
+        return;
+      }
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:${collection}] CMS unreachable — skipping: ${err.message}`);
+      return;
+    }
+
+    // Find entities that haven't been pushed to CMS yet
+    let entities: T[];
+    try {
+      entities = await repo.find({ where: { payloadId: IsNull() } as any });
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:${collection}] Table not ready — skipping: ${err.message}`);
+      return;
+    }
+
+    this.logger.log(`[CmsBackfill:${collection}] ${entities.length} entities without payloadId`);
+    let created = 0;
+    let failed = 0;
+
+    for (const entity of entities) {
+      try {
+        const data = toPayload(entity);
+
+        // Check if CMS record already exists by sourceId
+        const checkRes = await fetch(
+          `${cmsUrl}/api/${collection}?where[sourceId][equals]=${entity.id}&limit=1`,
+          { headers: { Authorization: `JWT ${token}` } },
+        );
+        const checkData = await checkRes.json() as any;
+        const existing = checkData?.docs?.[0];
+
+        let payloadId: string;
+        if (existing) {
+          payloadId = String(existing.id);
+        } else {
+          const createRes = await fetch(`${cmsUrl}/api/${collection}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', Authorization: `JWT ${token}` },
+            body: JSON.stringify({ ...data, _status: 'published' }),
+          });
+          if (!createRes.ok) {
+            const txt = await createRes.text();
+            this.logger.error(`[CmsBackfill:${collection}] Create failed for ${entity.id}: ${txt}`);
+            failed++;
+            continue;
+          }
+          const created_ = await createRes.json() as any;
+          payloadId = String(created_.doc?.id ?? created_.id);
+        }
+
+        // Store payloadId back on entity
+        await repo.update(entity.id, { payloadId } as any);
+        created++;
+      } catch (err: any) {
+        failed++;
+        this.logger.error(`[CmsBackfill:${collection}] Failed for ${entity.id}: ${err.message}`);
+      }
+
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    this.logger.log(`[CmsBackfill:${collection}] Done — created/linked: ${created}, failed: ${failed}`);
+  }
+
+  // ── Existing project + testimonial backfill (unchanged) ───────────────────
+
+  private async backfillProjects(): Promise<void> {
+    const total = await this.projectRepo.count();
+    this.logger.log(`[CmsBackfill:projects] Starting — ${total} projects to sync`);
+    let offset = 0, published = 0, failed = 0;
+    while (offset < total) {
+      const projects = await this.projectRepo.find({ order: { createdAt: 'ASC' }, skip: offset, take: PAGE_SIZE });
+      for (const project of projects) {
+        try { await this.projectPublisher.publishProjectUpdated(project); published++; }
+        catch (err: any) { failed++; this.logger.error(`[CmsBackfill:projects] Failed for ${project.id}: ${err.message}`); }
+      }
+      offset += PAGE_SIZE;
+      if (offset < total) await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
+    }
+    this.logger.log(`[CmsBackfill:projects] Done — published: ${published}, failed: ${failed}`);
+  }
+
+  private async backfillJobListings(): Promise<void> {
+    const cmsUrl     = this.config.get<string>('CMS_URL') || 'http://localhost:3020';
+    const email      = this.config.get<string>('CMS_ADMIN_EMAIL') || 'admin@marketeq.com';
+    const password   = this.config.get<string>('CMS_ADMIN_PASSWORD') || 'password123';
+
+    let token: string;
+    try {
+      const loginRes = await fetch(`${cmsUrl}/api/users/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!loginRes.ok) {
+        this.logger.warn('[CmsBackfill:job-listings] CMS login failed — skipping');
+        return;
+      }
+      const data = await loginRes.json() as any;
+      token = data?.token;
+      if (!token) {
+        this.logger.warn('[CmsBackfill:job-listings] No token — skipping');
+        return;
+      }
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:job-listings] CMS unreachable — skipping: ${err.message}`);
+      return;
+    }
+
+    const headers = { 'content-type': 'application/json', Authorization: `JWT ${token}` };
+
+    let listings: JobListing[];
+    try {
+      listings = await this.jobListingRepo.find();
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:job-listings] Table not ready — skipping: ${err.message}`);
+      return;
+    }
+
+    this.logger.log(`[CmsBackfill:job-listings] ${listings.length} job listings to check`);
+    let created = 0, skipped = 0, failed = 0;
+
+    for (const listing of listings) {
+      try {
+        // Skip if already in CMS
+        const checkRes = await fetch(
+          `${cmsUrl}/api/job-listings?where[sourceId][equals]=${listing.id}&limit=1`,
+          { headers },
+        );
+        const checkData = await checkRes.json() as any;
+        if (checkData?.docs?.length > 0) { skipped++; continue; }
+
+        // Load relations
+        const basicInfo   = await this.basicInfoRepo.findOne({ where: { jobListingId: listing.id } });
+        const memberRows  = await this.teamMemberRowRepo.find({ where: { jobListingId: listing.id }, order: { positionOrder: 'ASC' } });
+        const roleDescs   = await this.roleDescRepo.find({ where: { jobListingId: listing.id } });
+
+        const payload = {
+          sourceId:   listing.id,
+          title:      basicInfo?.title ?? 'Untitled',
+          ndaEnabled: listing.ndaEnabled,
+          ndaScopeVisibility: listing.ndaScopeVisibility,
+          industries: (basicInfo?.industries ?? []).map((v) => ({ value: v })),
+          languages:  (basicInfo?.languages  ?? []).map((v) => ({ value: v })),
+          teamMemberRows: memberRows.map((r) => ({
+            roleTitle:            r.roleTitle,
+            location:             r.location             ?? undefined,
+            experienceLevel:      r.experienceLevel      ?? undefined,
+            workSchedule:         r.workSchedule,
+            customHours:          r.customHours          ?? undefined,
+            customFrequency:      r.customFrequency      ?? undefined,
+            contractLengthMonths: r.contractLengthMonths ?? undefined,
+          })),
+          roleDescriptions: roleDescs.map((rd) => ({
+            roleTitle:        rd.roleTitle,
+            overview:         rd.overview         ?? undefined,
+            benefits:         rd.benefits         ?? undefined,
+            responsibilities: rd.responsibilities ?? undefined,
+            skills:           rd.skills.map((s) => ({ value: s })),
+          })),
+        };
+
+        const createRes = await fetch(`${cmsUrl}/api/job-listings`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+
+        if (createRes.ok) {
+          created++;
+        } else {
+          this.logger.error(`[CmsBackfill:job-listings] Failed for ${listing.id}: ${await createRes.text()}`);
+          failed++;
+        }
+      } catch (err: any) {
+        failed++;
+        this.logger.error(`[CmsBackfill:job-listings] Error for ${listing.id}: ${err.message}`);
+      }
+
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    this.logger.log(`[CmsBackfill:job-listings] Done — created: ${created}, skipped: ${skipped}, failed: ${failed}`);
+  }
+
+  private async backfillMediaToR2(): Promise<void> {
+    const r2PublicUrl =
+      this.config.get<string>('CLOUDFLARE_R2_PUBLIC_URL') ||
+      this.config.get<string>('CLOUDFLARE_R2_ENDPOINT') || '';
+
+    if (!r2PublicUrl) {
+      this.logger.warn('[CmsBackfill:media-r2] No R2 URL configured — skipping');
+      return;
+    }
+
+    let projects: Project[];
+    try {
+      projects = await this.projectRepo.find({
+        select: ['id', 'mediaUrls'],
+      });
+    } catch (err: any) {
+      this.logger.warn(`[CmsBackfill:media-r2] Table not ready — skipping: ${err.message}`);
+      return;
+    }
+
+    // Filter to projects that have external (non-R2) media URLs
+    const needsBackfill = projects.filter(
+      (p) =>
+        p.mediaUrls?.length > 0 &&
+        p.mediaUrls.some(
+          (url) => /^https?:\/\//i.test(url) && !url.startsWith(r2PublicUrl),
+        ),
+    );
+
+    this.logger.log(
+      `[CmsBackfill:media-r2] ${needsBackfill.length} projects with external media URLs`,
+    );
+
+    let migrated = 0;
+    let failed = 0;
+
+    for (const project of needsBackfill) {
+      try {
+        const newUrls = await Promise.all(
+          project.mediaUrls.map(async (url) => {
+            if (!url || !(/^https?:\/\//i.test(url)) || url.startsWith(r2PublicUrl)) {
+              return url;
+            }
+
+            try {
+              const response = await this.httpService.axiosRef.get(url, {
+                responseType: 'arraybuffer',
+                timeout: 15_000,
+              });
+
+              const contentType =
+                (response.headers['content-type'] as string) || 'image/jpeg';
+              const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
+
+              const file = {
+                buffer: Buffer.from(response.data),
+                originalname: `cms-media.${ext}`,
+                mimetype: contentType,
+              } as Express.Multer.File;
+
+              const upload =
+                await this.cloudflareStorageService.uploadProjectMedia(
+                  project.id,
+                  file,
+                );
+              return upload.url;
+            } catch {
+              // Keep original URL if download fails
+              return url;
+            }
+          }),
+        );
+
+        await this.projectRepo.update(project.id, { mediaUrls: newUrls });
+        migrated++;
+      } catch (err: any) {
+        failed++;
+        this.logger.error(
+          `[CmsBackfill:media-r2] Failed for project ${project.id}: ${err.message}`,
+        );
+      }
+
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    this.logger.log(
+      `[CmsBackfill:media-r2] Done — migrated: ${migrated}, failed: ${failed}`,
+    );
+  }
+
+  private async backfillTestimonials(): Promise<void> {
+    let total: number;
+    try { total = await this.testimonialRepo.count(); }
+    catch (err: any) { this.logger.warn(`[CmsBackfill:testimonials] Skipped: ${err.message}`); return; }
+    this.logger.log(`[CmsBackfill:testimonials] Starting — ${total} testimonials to sync`);
+    let offset = 0, published = 0, failed = 0;
+    while (offset < total) {
+      const testimonials = await this.testimonialRepo.find({ order: { createdAt: 'ASC' }, skip: offset, take: PAGE_SIZE });
+      for (const t of testimonials) {
+        try { await this.testimonialPublisher.publishTestimonialUpdated(t); published++; }
+        catch (err: any) { failed++; this.logger.error(`[CmsBackfill:testimonials] Failed for ${t.id}: ${err.message}`); }
+      }
+      offset += PAGE_SIZE;
+      if (offset < total) await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
+    }
+    this.logger.log(`[CmsBackfill:testimonials] Done — published: ${published}, failed: ${failed}`);
+  }
+}

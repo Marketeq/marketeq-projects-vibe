@@ -1,53 +1,122 @@
 "use client"
 
 import { useEffect } from "react"
+import { useAuth } from "@/contexts/auth"
 import AxiosRequest from "../service/index"
 
+type TimezoneSyncState = {
+  userId: string
+  timeZone: string
+  syncedAt: number
+}
+
+const TIMEZONE_SYNC_STORAGE_KEY = "marketeq:timezone-sync"
+const SYNC_TTL_MS = 6 * 60 * 60 * 1000
+const CHECK_INTERVAL_MS = 15 * 60 * 1000
+
+const getBrowserTimeZone = () => {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return typeof timeZone === "string" && timeZone.trim()
+    ? timeZone.trim()
+    : null
+}
+
+const readSyncState = (): TimezoneSyncState | null => {
+  try {
+    const raw = window.localStorage.getItem(TIMEZONE_SYNC_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as TimezoneSyncState
+
+    if (
+      typeof parsed?.userId !== "string" ||
+      typeof parsed?.timeZone !== "string" ||
+      typeof parsed?.syncedAt !== "number"
+    ) {
+      return null
+    }
+
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+const writeSyncState = (state: TimezoneSyncState) => {
+  try {
+    window.localStorage.setItem(
+      TIMEZONE_SYNC_STORAGE_KEY,
+      JSON.stringify(state)
+    )
+  } catch {
+    // Best-effort cache only.
+  }
+}
+
+const shouldSync = (userId: string, timeZone: string) => {
+  const state = readSyncState()
+  if (!state) return true
+  if (state.userId !== userId) return true
+  if (state.timeZone !== timeZone) return true
+  return Date.now() - state.syncedAt > SYNC_TTL_MS
+}
+
 export function TimezoneSync() {
+  const { user, isAuthChecked } = useAuth()
+
   useEffect(() => {
-    let alive = true
+    if (!isAuthChecked || !user?.id) return
+
+    let mounted = true
+    const userId = user.id
 
     const sync = async () => {
+      const clientTimeZone = getBrowserTimeZone()
+      if (!clientTimeZone) return
+      if (!shouldSync(userId, clientTimeZone)) return
+
       try {
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-        if (!timeZone) return
-
-        // Get GPS coordinates from browser (server validates against IP region)
-        let lat: number | undefined
-        let lng: number | undefined
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              maximumAge: 300000, // Cache for 5 min
-            })
-          )
-          lat = pos.coords.latitude
-          lng = pos.coords.longitude
-        } catch {
-          // Geolocation denied — server will use IP-only location
-        }
-
-        if (!alive) return
-
-        await AxiosRequest.patch(
+        const response = await AxiosRequest.patch(
           "/user/refresh-timezone",
-          { timeZone, ...(lat != null && lng != null ? { lat, lng } : {}) },
+          { clientTimeZone },
           { withCredentials: true }
         )
+        if (!mounted) return
+        const resolvedTimeZone =
+          typeof response?.data?.timeZone === "string" &&
+          response.data.timeZone.trim()
+            ? response.data.timeZone.trim()
+            : clientTimeZone
+
+        writeSyncState({
+          userId,
+          timeZone: resolvedTimeZone,
+          syncedAt: Date.now(),
+        })
       } catch {
-        // Sync failed silently
+        // Best effort; do not block the app.
       }
     }
 
-    sync()
-    const intervalId = setInterval(sync, 5 * 60 * 1000)
+    void sync()
+
+    const intervalId = window.setInterval(() => {
+      void sync()
+    }, CHECK_INTERVAL_MS)
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void sync()
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange)
 
     return () => {
-      alive = false
-      clearInterval(intervalId)
+      mounted = false
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
     }
-  }, [])
+  }, [isAuthChecked, user?.id])
 
   return null
 }
