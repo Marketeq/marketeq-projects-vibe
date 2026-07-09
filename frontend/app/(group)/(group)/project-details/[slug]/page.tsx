@@ -4795,6 +4795,7 @@ export default function ProjectDetails({
               </Button>
             </div>
 
+            {(project?.similarProjects ?? []).length > 0 ? (
             <div className="gap-5 grid grid-cols-4">
               {(project?.similarProjects ?? []).slice(0, 4).map((sp: any) => (
                 <article
@@ -4821,115 +4822,45 @@ export default function ProjectDetails({
                       {sp.title}
                     </NextLink>
 
+                    {(sp.rating > 0 || sp.averageRating > 0) && (
                     <div className="inline-flex items-center gap-x-1">
                       <Star className="size-[15px] text-primary-500 fill-primary-500" />
                       <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                        4.9 <span className="font-extralight">(5)</span>
+                        {sp.rating || sp.averageRating} <span className="font-extralight">({sp.reviewCount ?? 0})</span>
                       </span>
                     </div>
+                    )}
                   </div>
 
+                  {sp.shortDescription && (
                   <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                    Brief Description of the project. Lorem ipsum dolor sit
-                    amet, consectetur adipiscing elit, sed do eiusmod tempor
-                    incididunt.
+                    {sp.shortDescription}
                   </p>
+                  )}
 
                   <div className="mt-[14.5px] flex flex-col gap-y-3">
+                    {sp.duration && (
                     <div className="flex items-center gap-x-[6.4px]">
                       <Clock className="size-[18px] shrink-0 text-primary-500" />
 
                       <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        Starting from 12 weeks
+                        Starting from {sp.duration}
                       </span>
                     </div>
+                    )}
 
+                    {sp.budget != null && (
                     <div className="flex items-center gap-x-[6.4px]">
                       <Money className="size-[18px] shrink-0 text-primary-500" />
 
                       <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        $50,000 budget
+                        ${Number(sp.budget).toLocaleString()} budget
                       </span>
                     </div>
+                    )}
                   </div>
 
-                  <div className="mt-5 flex items-end justify-between">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <AvatarGroup
-                            max={5}
-                            size="sm"
-                            excess
-                            excessClassName="border-gray-300 text-gray-500"
-                          >
-                            {Array.from({ length: 6 }).map((_, i) => (
-                              <Avatar
-                                key={i}
-                                size="sm"
-                                className="border-2 border-white hover:ring-0 active:ring-0"
-                              >
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-                            ))}
-                          </AvatarGroup>
-                        </TooltipTrigger>
-
-                        <TooltipContent
-                          className="p-0 max-w-[262px]"
-                          size="md"
-                        >
-                          <ScrollArea
-                            className="h-[192px] p-3"
-                            scrollBar={
-                              <ScrollBar
-                                className="w-4 p-1"
-                                thumbClassName="bg-white/20"
-                              />
-                            }
-                          >
-                            <div className="space-y-3 pr-5">
-                              {Array.from({ length: 4 }).map((_, i) => (
-                                <div key={i} className="flex items-center gap-x-[18px]">
-                                  <div className="flex items-center gap-x-2 flex-auto">
-                                    <Avatar>
-                                      <AvatarImage
-                                        src="/woman.jpg"
-                                        alt="Woman"
-                                      />
-                                      <AvatarFallback>W</AvatarFallback>
-                                    </Avatar>
-
-                                    <div className="flex flex-col flex-auto">
-                                      <div className="flex items-center gap-x-0.5">
-                                        <span className="text-xs leading-5 font-semibold text-white">
-                                          Sevil
-                                        </span>
-                                        <span className="text-[10px] leading-none font-light text-white">
-                                          @designsuperstar23
-                                        </span>
-                                      </div>
-                                      <span className="text-[10px] font-light text-white">
-                                        Full-stack Developer
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <span className="text-sm font-semibold text-white leading-5">
-                                    $75{" "}
-                                    <span className="text-[10px] font-light leading-5">
-                                      /hr
-                                    </span>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </ScrollArea>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
+                  <div className="mt-5 flex items-end justify-end">
                     <FavoriteRoot>
                       {({ pressed }) => (
                         <TooltipProvider delayDuration={75}>
@@ -4957,9 +4888,13 @@ export default function ProjectDetails({
                 </article>
               ))}
             </div>
+            ) : (
+              <p className="text-sm text-gray-500 py-4">No similar projects found.</p>
+            )}
           </div>
 
           {/* Recommended Projects */}
+          {recommendedProjects.length > 0 && (
           <div className="space-y-6 mt-[50px]">
             <div className="flex items-end justify-between">
               <div className="space-y-2">
@@ -5009,115 +4944,45 @@ export default function ProjectDetails({
                       {rp.title}
                     </NextLink>
 
+                    {(rp.rating > 0 || rp.averageRating > 0) && (
                     <div className="inline-flex items-center gap-x-1">
                       <Star className="size-[15px] text-primary-500 fill-primary-500" />
                       <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                        4.9 <span className="font-extralight">(5)</span>
+                        {rp.rating || rp.averageRating} <span className="font-extralight">({rp.reviewCount ?? 0})</span>
                       </span>
                     </div>
+                    )}
                   </div>
 
+                  {rp.shortDescription && (
                   <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                    Brief Description of the project. Lorem ipsum dolor sit
-                    amet, consectetur adipiscing elit, sed do eiusmod tempor
-                    incididunt.
+                    {rp.shortDescription}
                   </p>
+                  )}
 
                   <div className="mt-[14.5px] flex flex-col gap-y-3">
+                    {rp.duration && (
                     <div className="flex items-center gap-x-[6.4px]">
                       <Clock className="size-[18px] shrink-0 text-primary-500" />
 
                       <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        Starting from 12 weeks
+                        Starting from {rp.duration}
                       </span>
                     </div>
+                    )}
 
+                    {rp.budget != null && (
                     <div className="flex items-center gap-x-[6.4px]">
                       <Money className="size-[18px] shrink-0 text-primary-500" />
 
                       <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        $50,000 budget
+                        ${Number(rp.budget).toLocaleString()} budget
                       </span>
                     </div>
+                    )}
                   </div>
 
-                  <div className="mt-5 flex items-end justify-between">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <AvatarGroup
-                            max={5}
-                            size="sm"
-                            excess
-                            excessClassName="border-gray-300 text-gray-500"
-                          >
-                            {Array.from({ length: 6 }).map((_, i) => (
-                              <Avatar
-                                key={i}
-                                size="sm"
-                                className="border-2 border-white hover:ring-0 active:ring-0"
-                              >
-                                <AvatarImage src="/woman.jpg" alt="Woman" />
-                                <AvatarFallback>W</AvatarFallback>
-                              </Avatar>
-                            ))}
-                          </AvatarGroup>
-                        </TooltipTrigger>
-
-                        <TooltipContent
-                          className="p-0 max-w-[262px]"
-                          size="md"
-                        >
-                          <ScrollArea
-                            className="h-[192px] p-3"
-                            scrollBar={
-                              <ScrollBar
-                                className="w-4 p-1"
-                                thumbClassName="bg-white/20"
-                              />
-                            }
-                          >
-                            <div className="space-y-3 pr-5">
-                              {Array.from({ length: 4 }).map((_, i) => (
-                                <div key={i} className="flex items-center gap-x-[18px]">
-                                  <div className="flex items-center gap-x-2 flex-auto">
-                                    <Avatar>
-                                      <AvatarImage
-                                        src="/woman.jpg"
-                                        alt="Woman"
-                                      />
-                                      <AvatarFallback>W</AvatarFallback>
-                                    </Avatar>
-
-                                    <div className="flex flex-col flex-auto">
-                                      <div className="flex items-center gap-x-0.5">
-                                        <span className="text-xs leading-5 font-semibold text-white">
-                                          Sevil
-                                        </span>
-                                        <span className="text-[10px] leading-none font-light text-white">
-                                          @designsuperstar23
-                                        </span>
-                                      </div>
-                                      <span className="text-[10px] font-light text-white">
-                                        Full-stack Developer
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <span className="text-sm font-semibold text-white leading-5">
-                                    $75{" "}
-                                    <span className="text-[10px] font-light leading-5">
-                                      /hr
-                                    </span>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </ScrollArea>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
+                  <div className="mt-5 flex items-end justify-end">
                     <FavoriteRoot>
                       {({ pressed }) => (
                         <TooltipProvider delayDuration={75}>
@@ -5146,6 +5011,7 @@ export default function ProjectDetails({
               ))}
             </div>
           </div>
+          )}
 
           {/* More Ways to Explore */}
           <div className="mt-[50px]">
@@ -5255,8 +5121,8 @@ export default function ProjectDetails({
           </div>
         </div>
 
-        {/* Recently Viewed — show only when grid is full (9 items) */}
-        {recentlyViewed.length >= 9 && (
+        {/* Recently Viewed */}
+        {recentlyViewed.length > 0 && (
         <div className="max-w-[1240px] mx-auto py-[35px]">
           <div className="flex items-center justify-between">
             <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
