@@ -77,7 +77,9 @@ export function useUserChannel(handlers: UserChannelHandlers) {
 
     return () => {
       channel.unsubscribe()
-      client.close()
+      if (client.connection.state === "connected") {
+        client.close()
+      }
     }
   }, [user?.id])
 }

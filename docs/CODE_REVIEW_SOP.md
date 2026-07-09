@@ -186,9 +186,10 @@ Run every PR through this checklist in order. A single "❌ fail" blocks the mer
 - [ ] React render props and `useEffect` dependency arrays look correct.
 - [ ] Next.js route groups (`(group)/(group)/`) are respected — no files dropped in the wrong layout folder.
 
-### ✅ 3.6 Merge-conflict status
+### ✅ 3.6 Merge-conflict status and branch freshness
 - [ ] `mergeable: MERGEABLE` in `gh pr view`. If `CONFLICTING`, the PR cannot merge — see §5.
-- [ ] Branch is not more than ~10 commits behind `dev-main`. If it is, request a rebase before review.
+- [ ] **Branch MUST be up to date with its base before merge.** Check with: `git rev-list --count origin/<base>..origin/<head>` and `git rev-list --count origin/<head>..origin/<base>`. If the branch is more than 5 commits behind, **block the PR and require a rebase**. Do NOT use `--admin` to bypass this.
+- [ ] **NEVER merge a stale branch.** A squash merge from a stale branch silently overwrites any changes made to the same files on the base branch since the branch point. This has caused code loss in this repo. See §8.11.
 
 ### ✅ 3.7 Memory & performance
 - [ ] No new infinite loops, unbounded queries, or `while(true)` without break conditions.
@@ -245,17 +246,27 @@ git push --force-with-lease
 
 ## 6. How to Merge — the only approved procedure
 
-Once the checklist passes and the PR is `MERGEABLE`, merge with:
+Once the checklist passes and the PR is `MERGEABLE`, **verify the branch is up to date first**:
+
+```bash
+# Check how far behind the branch is
+gh api repos/Marketeq/marketeq-projects-vibe/compare/<base>...<head> --jq '.behind_by'
+# If behind_by > 0, the branch MUST be updated before merging
+gh pr update-branch <NUMBER>  # or ask the author to rebase
+```
+
+Only after the branch is up to date, merge with:
 
 ```bash
 gh pr merge <NUMBER> --squash --delete-branch
 ```
 
 **Never:**
-- `--admin` (bypasses checks) unless explicitly instructed by the user
+- `--admin` (bypasses checks) — **HARD BLOCK, no exceptions unless CTO explicitly types "use --admin"**
 - `--merge` (no commit-squashing — pollutes history)
 - `--rebase` without user approval
 - Skip `--delete-branch` — stale branches accumulate
+- Merge a branch that is behind the base — **this causes silent code loss** (see §8.11)
 
 **After merging, verify:**
 
@@ -368,6 +379,17 @@ Two contributors independently touch the same file — or touch different files 
 
 **This is the bug class the AI Breakage Detector (§9.6) and directory-scoped CODEOWNERS exist to catch.** Every reviewer must also manually apply §3.3 and specifically compare the full new version of each changed file against the `dev-main` version to verify no existing fix was lost in a rewrite.
 
+### 8.11 Silent code loss from stale branch squash merges (the #3 recurring bug)
+A feature branch is created from `dev-main` at commit A. Meanwhile, 20+ commits land on `dev-main` (commits B through T), modifying files X, Y, Z. The feature branch also modifies files X and Y. The branch is squash-merged **without rebasing** — GitHub creates a single commit on `dev-main` that contains the feature branch's version of X and Y, silently overwriting the changes from commits B-T on those same files. The code from B-T on files X and Y is now gone. There is no merge conflict because squash merges do not compare against intermediate commits.
+
+**This has caused actual code loss in this repo.** Audit of PRs #296-#324 found branches merged 40-68 commits behind their base.
+
+**Prevention:**
+- §3.6 now requires branches to be up to date before merge
+- `--admin` is hard-blocked (no exceptions without CTO typing the words)
+- Never duplicate commits across branches (commit to dev-main first, promote to staging, promote to live-mvp)
+- Never push directly to staging or live-mvp with separate commits
+
 ### 8.10 Broken login after a cross-environment "fix" (the #2 recurring bug)
 A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator to "fix login" in one environment. The feature work is fine for the author's environment but silently breaks login in the others — typically because the fix hardcoded a cookie flag, a backend URL, a CORS origin, or a JWT setting that only works in the author's environment. Every instance of this bug in the repo's history has been a violation of the bidirectional invariant in §1.4: *fixing login in any one environment must never break any other environment*. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review. GitHub Actions `sop-check` workflow also fails the PR on any hardcoded URL, cookie flag, CORS origin, or JWT secret in a frozen file.
 
@@ -429,6 +451,7 @@ This prevents developers from accidentally staging key material. It does not sto
   - `--no-verify` or `gh pr merge --admin` in scripts
   - Oversized PRs (>2000 lines) without `[EPIC]` prefix
   - New `@ts-ignore` without a `-- justification` comment
+  - **Stale branches:** PR branch is more than 5 commits behind the base branch — blocks with "Rebase required" message
 - **Login sentinel:** if any login-frozen file is touched, the workflow also auto-labels the PR `login-touched`, auto-requests @CTorres9800 as a reviewer, and posts a sticky 🚨 LOGIN TOUCHED comment regardless of confirmation status. See §1.4.
 
 ### 9.7 AI Breakage Detector — **ENFORCED (blocking)**
@@ -529,7 +552,8 @@ branch if it passes every one of the following checks:
    (5) Standards — no new any types, no @ts-ignore without a reason,
        NestJS exceptions for errors, correct useEffect deps, correct
        Next.js route group placement.
-   (6) Merge status — MERGEABLE and not >10 commits behind dev-main.
+   (6) Branch freshness — MERGEABLE and not >5 commits behind base.
+       If behind, block and require rebase. NEVER use --admin to bypass.
    (7) Memory/perf — no infinite loops, unbounded queries, heap risks.
 
 6. Confirm the gitleaks "Scan for committed secrets" check is passing.
@@ -685,3 +709,4 @@ Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`.
 | 2026-04-11 | Split devops concerns into `docs/DEVOPS_SOP.md`. This doc is now code-review-only. Removed former §1.8/§1.9/§1.10/§1.11/§1.12 (now consolidated in DEVOPS_SOP §3–§8) and kept only the §1.4 "login files are frozen" rule as a review-side concern with the bidirectional invariant stated plainly. Removed former §16 QA promotion SOP (moved to DEVOPS_SOP §7). Renamed production branch `main-live` → `live-mvp` throughout (actual branch name on origin). Added §14 regression prevention architecture and §15 AI breakage prompt (both review concerns, kept). |
 | 2026-05-22 | CI/CD split: PR gate checks on GitHub Actions, post-merge on both GitHub Actions + Jenkins, post-deploy on Jenkins only. All workflow/pipeline references updated accordingly. |
 | 2026-07-08 | Added §4.1 Selective Merge rule: never close entire PRs with mixed quality. Cherry-pick good code, reject only specific violations. |
+| 2026-07-09 | Added §8.11 stale branch code loss bug. Hardened §3.6 to require branches up to date before merge (max 5 commits behind). Hard-blocked `--admin` flag. Added staleness check to `sop-check.yml` workflow. Updated §6 merge procedure to require `gh pr update-branch` before merge. Updated review prompt §10 accordingly. |
