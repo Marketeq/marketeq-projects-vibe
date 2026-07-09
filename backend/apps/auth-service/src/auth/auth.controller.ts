@@ -117,7 +117,7 @@ export class AuthController {
       this.configService.get<string>('AUTH_JWT_TOKEN_EXPIRES_IN') ?? '15m',
     );
     const refreshMaxAge = this.parseCookieMaxAge(
-      this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '14d',
+      this.configService.get<string>('AUTH_REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN') ?? '14d',
     );
     const baseOptions = this.getBaseCookieOptions();
 

@@ -209,7 +209,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
                 )}
               />
               <Label className="font-normal text-gray-400" size="sm">
-                Remember me
+                Keep me signed in
               </Label>
             </div>
             <Button

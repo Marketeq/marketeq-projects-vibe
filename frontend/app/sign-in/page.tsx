@@ -549,7 +549,7 @@ export default function SignIn() {
                       className="text-[#939DA7] font-normal"
                       htmlFor="remember-me"
                     >
-                      Remember me
+                      Keep me signed in
                     </Label>
                   </div>
 
