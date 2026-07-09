@@ -32,7 +32,7 @@ import {
   File02,
   HelpCircle,
   MarkerPin02,
-  RefreshCw01,
+  RefreshCw,
   Star,
   Users,
 } from "@blend-metrics/icons"
@@ -117,6 +117,7 @@ interface TalentCardProps {
   allStars?: boolean
   skills?: string[]
   href?: string
+  favoriteSlot?: React.ReactNode
   isFavorited?: boolean
   onFavoriteChange?: (favorited: boolean) => void
   showOptionsMenu?: boolean
@@ -168,6 +169,7 @@ export function ListingCard(props: ListingCardProps) {
         allStars={props.allStars}
         skills={props.skills}
         profileHref={href}
+        favoriteSlot={props.favoriteSlot}
         isFavorited={props.isFavorited}
         onFavoriteChange={props.onFavoriteChange}
         showOptionsMenu={props.showOptionsMenu}
@@ -215,6 +217,21 @@ function ProjectListingCard({
           ? serviceDetailsUrl(id)
           : projectDetailsUrl(id))
   const badgeText = kind === "service" ? "Service" : badge?.trim()
+  const budgetText = (() => {
+    const value = String(budget ?? "")
+      .replace(/\s*\/\s*(hr|hour|month)\s*$/i, "")
+      .replace(/\s+budget\s*$/i, "")
+    const numericValue = Number(value.replace(/[$,\s]/g, ""))
+    return value && !Number.isNaN(numericValue)
+      ? `$${numericValue.toLocaleString()}`
+      : value
+  })()
+  const budgetSuffix =
+    budgetText && kind === "service"
+      ? "/month"
+      : budgetText && kind === "project"
+        ? " budget"
+        : ""
 
   const getStableVariantIndex = (value: string, total: number) => {
     let hash = 0
@@ -239,7 +256,7 @@ function ProjectListingCard({
     const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
 
     return (
-      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
         <div className="flex items-start justify-between gap-4">
           <NextLink
             href={computedHref}
@@ -386,7 +403,7 @@ function ProjectListingCard({
                   visual="gray"
                   size="sm"
                   className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
-                  leftIcon={<RefreshCw01 className="size-[14px]" />}
+                  leftIcon={<RefreshCw className="size-[14px]" />}
                 >
                   Service
                 </Button>
@@ -416,7 +433,7 @@ function ProjectListingCard({
     const jobSkills = ["Visual Design", "Tailwind CSS", "Next.js", "E-commerce"]
 
     return (
-      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
         <div className="p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 flex-1">
@@ -502,7 +519,7 @@ function ProjectListingCard({
               visual="gray"
               size="sm"
               className="h-auto shrink-0 px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
-              leftIcon={<RefreshCw01 className="size-[14px]" />}
+              leftIcon={<RefreshCw className="size-[14px]" />}
             >
               Service
             </Button>
@@ -587,7 +604,7 @@ function ProjectListingCard({
   }
 
   return (
-    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
       <NextLink
         href={computedHref}
         className="block focus-visible:outline-none group/card"
@@ -607,23 +624,9 @@ function ProjectListingCard({
             </div>
           )}
           {badgeText && (
-            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-[#00000091] px-2 py-0.5 text-[10px] font-semibold text-white shadow">
               {kind === "service" && (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="size-3 shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M21 12a9 9 0 0 1-15.5 6.3" />
-                  <path d="M3 12A9 9 0 0 1 18.5 5.7" />
-                  <path d="M7 18H5v-2" />
-                  <path d="M17 6h2v2" />
-                </svg>
+                <RefreshCw className="size-3 shrink-0 text-[#98B6FF]" />
               )}
               <span className="truncate">{badgeText}</span>
             </span>
@@ -631,8 +634,8 @@ function ProjectListingCard({
         </div>
 
         <div className="mt-3 flex items-start gap-x-3">
-          <span className="line-clamp-2 flex-auto text-base font-bold leading-none text-dark-blue-400 group-hover/card:underline">
-            {title}
+          <span className="line-clamp-2 min-w-0 flex-auto text-base font-bold leading-tight text-dark-blue-400">
+            <span className="hover:underline">{title}</span>
           </span>
 
           {mode === "owned" && status && status !== "Active" && (
@@ -664,7 +667,7 @@ function ProjectListingCard({
         </div>
 
         {description && (
-          <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-2">
+          <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
             {description}
           </p>
         )}
@@ -682,7 +685,14 @@ function ProjectListingCard({
           <div className="flex items-center gap-x-[6.4px]">
             <Money className="size-[18px] shrink-0 text-primary-500" />
             <span className="font-medium text-sm leading-none text-dark-blue-400">
-              {budget}
+              {budgetText}
+              {kind === "service" && budgetSuffix ? (
+                <span className="text-[10px] font-light leading-none">
+                  {budgetSuffix}
+                </span>
+              ) : (
+                budgetSuffix
+              )}
             </span>
           </div>
         </div>
@@ -706,7 +716,7 @@ function ProjectListingCard({
                 className="border-2 border-white hover:ring-0 active:ring-0"
               >
                 <AvatarImage src={src} alt="Collaborator" />
-                <AvatarFallback>·</AvatarFallback>
+                <AvatarFallback />
               </Avatar>
             ))}
           </AvatarGroup>
@@ -752,7 +762,7 @@ function TeamListingCard({
     memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
   return (
-    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
       <div className="flex items-start justify-between">
         <AvatarGroup
           max={3}
@@ -818,7 +828,7 @@ function TeamListingCard({
           <div className="mt-3.5 flex items-center gap-x-2">
             {typeof rating === "number" && (
               <div className="flex items-center gap-x-2">
-                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-[#F2F4F7] shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
                   <div className="flex items-center gap-x-[3px]">
                     {Array.from({ length: 5 }).map((_, k) => (
                       <Star
@@ -827,10 +837,10 @@ function TeamListingCard({
                       />
                     ))}
                   </div>
+                  <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                    {rating.toFixed(1)}
+                  </span>
                 </div>
-                <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                  {rating.toFixed(1)}
-                </span>
               </div>
             )}
             {typeof projectCount === "number" && (

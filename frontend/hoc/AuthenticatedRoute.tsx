@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import { Spinner } from "@/components/ui/spinner/spinner"
@@ -6,17 +6,20 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
   const pathname = usePathname()
-  const { isLoading, user, openAuthModal, closeAuthModal } = useAuth()
+  const { isLoading, user, authModalOpen, openAuthModal, closeAuthModal } = useAuth()
   const [isPageLoading, setIsPageLoading] = useState(true)
+  const didOpenModal = useRef(false)
 
   const routeCheck = async () => {
     if (isLoading) return
 
     if (!user) {
+      didOpenModal.current = true
       openAuthModal("sign-in")
       return
     } else {
       closeAuthModal()
+      didOpenModal.current = false
     }
 
     const targetRoute = resolveDashboardRoute(user)
@@ -42,6 +45,14 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     routeCheck()
   }, [user, isLoading, pathname])
+
+  // If user closed the modal without logging in, go back to previous page
+  useEffect(() => {
+    if (didOpenModal.current && !authModalOpen && !user && !isLoading) {
+      didOpenModal.current = false
+      router.back()
+    }
+  }, [authModalOpen, user, isLoading, router])
 
   return (
     <>
