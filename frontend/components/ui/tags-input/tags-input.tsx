@@ -259,6 +259,7 @@ export const TagsInputInput = React.forwardRef<
                           top: dropdownPos.top,
                           left: dropdownPos.left,
                           width: 202,
+                          pointerEvents: "auto",
                         }
                       : undefined
                   }

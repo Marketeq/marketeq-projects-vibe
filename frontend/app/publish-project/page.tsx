@@ -6428,11 +6428,12 @@ function PublishProject({
         additionalImages: additionalMeta.map((item: any) =>
           isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
         ),
-        featuredVideo: videoUrl,
       })
 
       if (signature === lastMediaPayloadRef.current) return
       if (!featuredMeta) return
+
+      lastMediaPayloadRef.current = signature
 
       const formData = new FormData()
       formData.append("projectId", draftProjectId)
@@ -6454,13 +6455,6 @@ function PublishProject({
         }
       }
 
-      if (videoUrl) {
-        formData.append(
-          "videoUrl",
-          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
-        )
-      }
-
       try {
         const response = await ProjectAPI.UploadMedia(formData)
         const nextMedia = {
@@ -6472,14 +6466,14 @@ function PublishProject({
             response?.data?.additionalImages ??
             persistedMediaRef.current?.additionalImages ??
             [],
-          featuredVideo:
-            response?.data?.featuredVideo ??
-            response?.data?.videoUrl ??
-            videoUrl,
+          featuredVideo: videoUrl,
         }
 
         persistedMediaRef.current = nextMedia
-        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: nextMedia.featuredImage,
+          additionalImages: nextMedia.additionalImages ?? [],
+        })
 
         mediaMethods.reset({
           featuredImages: nextMedia.featuredImage

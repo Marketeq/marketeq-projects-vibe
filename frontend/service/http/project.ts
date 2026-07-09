@@ -125,10 +125,14 @@ export const ProjectAPI = {
       },
     })
   },
-  UpdateGalleryImages: (projectId: string, additionalImages: string[]) => {
+  UpdateGalleryImages: (
+    projectId: string,
+    additionalImages: string[],
+    hiddenImages?: string[]
+  ) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/media/${projectId}/gallery`,
-      { additionalImages }
+      { additionalImages, hiddenImages }
     )
   },
   UploadRichTextImage: (data: FormData) => {

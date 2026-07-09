@@ -25,6 +25,7 @@ import {
   HelpCircle,
   Home03,
   Image03,
+  Edit03,
   Info,
   MapPin,
   MessageTextCircle01,
@@ -498,7 +499,13 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
-export default function ProjectDetails() {
+export default function ProjectDetails({
+  isPreview = false,
+  onEdit,
+}: {
+  isPreview?: boolean
+  onEdit?: () => void
+} = {}) {
   const params = useParams()
   const router = useRouter()
   const [project, setProject] = React.useState<any>(null)
@@ -516,8 +523,43 @@ export default function ProjectDetails() {
   const sidebarPricing = React.useMemo(() => {
     if (!project) return null
     const totalCost = Number(project.priceMin ?? project.budget ?? 0)
-    const durationStr = (project.duration ?? "") as string
-    const durationWeeks = parseInt(durationStr, 10) || 0
+
+    // Derive duration + roles from scope (matches edit mode). Handles both the
+    // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
+    const scopeArr = Array.isArray(project.scope) ? project.scope : []
+    const uniqueRoles = new Set<string>()
+    let totalDays = 0
+    for (const phase of scopeArr) {
+      const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
+      const taskDays: number[] = []
+      for (const row of rows) {
+        const role = row?.role ?? row?.roleName
+        if (role) uniqueRoles.add(role)
+        const dur = row?.duration
+        if (dur && typeof dur === "object") {
+          const val = Number(dur.value) || 0
+          if (val > 0) {
+            const days =
+              dur.type === "weeks"
+                ? val * 7
+                : dur.type === "hours"
+                  ? Math.max(1, Math.ceil(val / 24))
+                  : val
+            taskDays.push(days)
+          }
+        }
+      }
+      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
+    }
+
+    // Fall back to the baked project.duration / durationMonths when scope has no durations.
+    let durationWeeks = totalDays > 0 ? totalDays / 7 : 0
+    if (durationWeeks <= 0) {
+      durationWeeks = parseInt(String(project.duration ?? ""), 10) || 0
+      if (durationWeeks <= 0 && Number(project.durationMonths) > 0) {
+        durationWeeks = Number(project.durationMonths) * 4.33
+      }
+    }
     const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
 
     // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
@@ -535,24 +577,15 @@ export default function ProjectDetails() {
       ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
     ]
 
-    // Minimum team members = unique roles from scope (docs §01 L88-91)
-    const scopeArr = Array.isArray(project.scope) ? project.scope : []
-    const uniqueRoles = new Set(
-      scopeArr.flatMap((phase: any) =>
-        (phase.tasks ?? []).map((t: any) => t.roleName).filter(Boolean)
-      )
-    )
-
     // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    const durationDays = durationWeeks * 7
+    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
     let formattedDuration = ""
-    if (durationDays > 0 && durationDays < 7) {
-      formattedDuration = `${durationDays} day`
-    } else if (durationWeeks > 0 && durationWeeks < 4) {
-      formattedDuration = `${durationWeeks} week`
-    } else if (durationWeeks >= 4) {
-      const months = Math.ceil(durationWeeks / 4.33)
-      formattedDuration = `${months} month`
+    if (effDays > 0 && effDays < 7) {
+      formattedDuration = `${effDays} day`
+    } else if (effDays >= 7 && effDays < 28) {
+      formattedDuration = `${Math.max(1, Math.ceil(effDays / 7))} week`
+    } else if (effDays >= 28) {
+      formattedDuration = `${Math.max(1, Math.ceil(effDays / 30))} month`
     }
 
     return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
@@ -624,13 +657,39 @@ export default function ProjectDetails() {
                 if (draftRes?.data) {
                   const d = draftRes.data
                   let featuredImage: string | null = null
+                  let featuredVideo: string | null = null
+                  const galleryUrls: string[] = []
+                  const hiddenUrls: string[] = []
                   if (d.media) {
                     const mediaObj = Array.isArray(d.media)
                       ? d.media[0]
                       : d.media
                     if (mediaObj?.featuredImage)
                       featuredImage = mediaObj.featuredImage
+                    if (mediaObj?.featuredVideo)
+                      featuredVideo = mediaObj.featuredVideo
+                    if (Array.isArray(mediaObj?.additionalImages))
+                      galleryUrls.push(...mediaObj.additionalImages)
+                    if (Array.isArray(mediaObj?.hiddenImages))
+                      hiddenUrls.push(...mediaObj.hiddenImages)
                   }
+                  const visibleGallery = galleryUrls.filter(
+                    (u) => !hiddenUrls.includes(u)
+                  )
+                  const composedMediaUrls = featuredImage
+                    ? [featuredImage, ...visibleGallery]
+                    : Array.isArray(d.mediaUrls)
+                      ? d.mediaUrls
+                      : visibleGallery
+                  const composedSubcategories = Array.isArray(d.subcategories)
+                    ? d.subcategories
+                    : Array.isArray(d.subCategories)
+                      ? d.subCategories
+                      : Array.isArray(d.categorySelections)
+                        ? d.categorySelections.flatMap(
+                            (c: any) => c?.subCategories ?? []
+                          )
+                        : []
                   setProject({
                     ...d,
                     role:
@@ -638,6 +697,10 @@ export default function ProjectDetails() {
                     summary: d.shortDescription || d.fullDescription || "",
                     description: d.fullDescription || "",
                     featuredImage: featuredImage || d.featuredImage || null,
+                    featuredVideo:
+                      featuredVideo || d.featuredVideo || d.videoUrl || null,
+                    mediaUrls: composedMediaUrls,
+                    subcategories: composedSubcategories,
                     programmingLanguages:
                       Array.isArray(d.skills) && d.skills.length > 0
                         ? d.skills
@@ -702,7 +765,7 @@ export default function ProjectDetails() {
 
   // Fetch related data + track view when project loads
   React.useEffect(() => {
-    if (!project?.id) return
+    if (!project?.id || isPreview) return
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
     // Related searches from project metadata
@@ -822,9 +885,15 @@ export default function ProjectDetails() {
             have been removed or the link is broken.
           </p>
           <div className="mt-6">
-            <Button onClick={() => router.push("/projects")}>
-              Browse projects
-            </Button>
+            {isPreview && onEdit ? (
+              <Button variant="outlined" visual="gray" onClick={onEdit}>
+                Edit My Listing
+              </Button>
+            ) : (
+              <Button onClick={() => router.push("/projects")}>
+                Browse projects
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -4623,37 +4692,69 @@ export default function ProjectDetails() {
                 )}
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
+              {!isPreview && (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="lg"
+                      className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
+                      variant="outlined"
+                    >
+                      Start Project
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>
+                        Would you like to customize the project scope before
+                        checkout?
+                      </DialogTitle>
+                    </DialogHeader>
+                    <DialogFooter className="mt-8">
+                      <DialogClose asChild>
+                        <Button variant="outlined" visual="gray">
+                          Edit Scope
+                        </Button>
+                      </DialogClose>
+                      <Button
+                        onClick={() => router.push(`/checkout/${params.slug}`)}
+                      >
+                        Continue to Checkout
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {isPreview && onEdit && (
+                <div className="mt-6 flex items-center gap-x-3">
                   <Button
                     size="lg"
-                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
                     variant="outlined"
+                    visual="gray"
+                    className="flex-auto"
+                    onClick={onEdit}
                   >
-                    Start Project
+                    <Edit03 className="size-[15px]" />
+                    Edit My Project
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      Would you like to customize the project scope before
-                      checkout?
-                    </DialogTitle>
-                  </DialogHeader>
-                  <DialogFooter className="mt-8">
-                    <DialogClose asChild>
-                      <Button variant="outlined" visual="gray">
-                        Edit Scope
-                      </Button>
-                    </DialogClose>
-                    <Button
-                      onClick={() => router.push(`/checkout/${params.slug}`)}
-                    >
-                      Continue to Checkout
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  <IconButton
+                    size="lg"
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => {
+                      if (
+                        typeof navigator !== "undefined" &&
+                        navigator.clipboard
+                      ) {
+                        navigator.clipboard.writeText(window.location.href)
+                      }
+                    }}
+                  >
+                    <Share06 className="size-5" />
+                  </IconButton>
+                </div>
+              )}
 
               <div className="mt-6 flex items-center gap-x-2">
                 <span className="text-sm font-medium leading-none text-dark-blue-400 whitespace-nowrap">
@@ -4695,7 +4796,7 @@ export default function ProjectDetails() {
                 </div>
               )}
 
-              {project.helpButtonEnabled === true && (
+              {project.helpButtonEnabled !== false && (
                 <div className="inline-flex items-center gap-x-2">
                   <HelpCircle className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
