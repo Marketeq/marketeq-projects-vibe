@@ -1294,8 +1294,7 @@ export const TopMostHeader = ({
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
-  const [authModalOpen, setAuthModalOpen] = React.useState(false)
-  const [authModalView, setAuthModalView] = React.useState<"sign-in" | "sign-up">("sign-in")
+  const { authModalOpen, authModalView, openAuthModal, closeAuthModal } = useAuth()
 
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
@@ -1607,7 +1606,7 @@ export const TopMostHeader = ({
                 variant="link"
                 visual="primary"
                 size="sm"
-                onClick={() => { setAuthModalView("sign-in"); setAuthModalOpen(true) }}
+                onClick={() => openAuthModal("sign-in")}
               >
                 Sign In
               </Button>
@@ -1615,7 +1614,7 @@ export const TopMostHeader = ({
                 variant="filled"
                 visual="primary"
                 size="sm"
-                onClick={() => { setAuthModalView("sign-up"); setAuthModalOpen(true) }}
+                onClick={() => openAuthModal("sign-up")}
               >
                 Sign Up
               </Button>
@@ -1630,7 +1629,7 @@ export const TopMostHeader = ({
 
       <AuthModal
         open={authModalOpen}
-        onOpenChange={setAuthModalOpen}
+        onOpenChange={(open) => { if (!open) closeAuthModal() }}
         defaultView={authModalView}
       />
     </div>

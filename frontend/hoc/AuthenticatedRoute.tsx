@@ -6,16 +6,14 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
   const pathname = usePathname()
-  const { isLoading, user } = useAuth()
+  const { isLoading, user, openAuthModal } = useAuth()
   const [isPageLoading, setIsPageLoading] = useState(true)
 
   const routeCheck = async () => {
     if (isLoading) return
 
     if (!user) {
-      if (pathname !== "/sign-in") {
-        router.push("/sign-in")
-      }
+      openAuthModal("sign-in")
       return
     }
 
