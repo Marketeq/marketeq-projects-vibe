@@ -443,6 +443,18 @@ const Chats = () => {
   )
 }
 
+const toEmbedUrl = (raw?: string | null): string => {
+  if (!raw) return ""
+  const url = raw.trim()
+  const yt = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
+  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  return url
+}
+
 const CarouselPreviousTrigger = () => {
   const { canScrollPrev } = useCarousel()
   return canScrollPrev ? (
@@ -1092,10 +1104,13 @@ export default function ProjectDetails() {
               <Carousel className="max-w-[818px] w-full">
                 <CarouselContent className="-ml-3">
                   {(() => {
+                    const video =
+                      (project.videoUrl as string | undefined) ||
+                      (project.featuredVideo as string | undefined)
                     const gallery =
                       (project.mediaUrls as string[] | undefined)?.slice(1) ??
                       []
-                    if (gallery.length === 0) {
+                    if (!video && gallery.length === 0) {
                       return Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
                           <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
@@ -1111,23 +1126,42 @@ export default function ProjectDetails() {
                         </CarouselItem>
                       ))
                     }
-                    return gallery.map((url, index) => (
-                      <CarouselItem
-                        key={`${url}-${index}`}
-                        className="group basis-1/3"
-                      >
-                        <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                          <NextImage
-                            className="object-cover"
-                            src={url}
-                            alt={`${project.title} — gallery image ${index + 1}`}
-                            sizes="25vw"
-                            fill
-                          />
-                          <div className="absolute inset-0 transition duration-300" />
-                        </div>
-                      </CarouselItem>
-                    ))
+                    const items: React.ReactNode[] = []
+                    if (video) {
+                      items.push(
+                        <CarouselItem key="video" className="group basis-1/3">
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
+                            <iframe
+                              src={toEmbedUrl(video)}
+                              className="absolute inset-0 h-full w-full"
+                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                              allowFullScreen
+                              title="Project video"
+                            />
+                          </div>
+                        </CarouselItem>
+                      )
+                    }
+                    gallery.forEach((url, index) => {
+                      items.push(
+                        <CarouselItem
+                          key={`${url}-${index}`}
+                          className="group basis-1/3"
+                        >
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                            <NextImage
+                              className="object-cover"
+                              src={url}
+                              alt={`${project.title} — gallery image ${index + 1}`}
+                              sizes="25vw"
+                              fill
+                            />
+                            <div className="absolute inset-0 transition duration-300" />
+                          </div>
+                        </CarouselItem>
+                      )
+                    })
+                    return items
                   })()}
                 </CarouselContent>
 

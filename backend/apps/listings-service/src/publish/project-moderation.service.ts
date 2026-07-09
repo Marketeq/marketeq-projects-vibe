@@ -18,6 +18,7 @@ export type ProjectModerationInput = {
   subCategories?: string[] | null;
   categorySelections?: { category: string; subCategories: string[] }[] | null;
   tags?: string[] | null;
+  faqs?: { question: string; answer: string }[] | null;
   imageUrl?: string | null; // Add imageUrl for moderation
 };
 
@@ -117,7 +118,15 @@ export class ProjectModerationService {
     }
 
     // 2. Moderate content as before
-    const mergedContent = [input.shortDescription, input.fullDescription]
+    const faqText = (input.faqs ?? [])
+      .map((f) => [f?.question, f?.answer].filter(Boolean).join(' '))
+      .filter((t) => t.trim().length > 0)
+      .join('\n');
+    const mergedContent = [
+      input.shortDescription,
+      input.fullDescription,
+      faqText,
+    ]
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
       .join('\n');
 

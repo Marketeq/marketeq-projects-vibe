@@ -35,6 +35,8 @@ export class Project {
   deliverables?: any[] | null;
   media?: any[];
   mediaUrls?: string[];
+  videoUrl?: string | null;
+  faqs?: { question: string; answer: string; is_ai_generated?: boolean }[];
 
   createdAt?: Date;
   updatedAt?: Date;

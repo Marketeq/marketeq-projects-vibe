@@ -94,6 +94,12 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ name: 'mediaUrls', type: 'text', array: true, default: [] })
   mediaUrls: string[];
 
+  @Column({ name: 'videoUrl', type: String, nullable: true })
+  videoUrl?: string | null;
+
+  @Column({ type: 'jsonb', default: [] })
+  faqs: { question: string; answer: string; is_ai_generated?: boolean }[];
+
   @Column('uuid')
   userId: string;
 

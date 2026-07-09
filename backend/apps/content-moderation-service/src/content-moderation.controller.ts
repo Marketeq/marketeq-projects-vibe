@@ -45,6 +45,19 @@ export class ContentModerationController {
       return { status: 'rejected', reason, contentId };
     }
 
+    // 1.5️⃣ External Link / URL Check — off-platform links are not allowed.
+    // Matches explicit links (http/https/www), any domain followed by a path,
+    // and bare domains on link-heavy TLDs — while sparing dev terms like
+    // "asp.net", "socket.io", "node.js" (bare, no path).
+    const urlPattern =
+      /(?:https?:\/\/|www\.)\S+|\b[\w-]+\.(?:com|net|org|io|co|dev|app|store|shop|xyz|info|biz|link|site|online|me|ly|gg|tv|us|uk|ca)\/\S*|\b[\w-]+\.(?:com|org|store|shop|xyz|info|biz|link|site|online|club|buzz)\b/i;
+    if (urlPattern.test(combinedTextForKeywordChecks)) {
+      const reason =
+        'Content violates moderation policy: external links are not allowed';
+      await this.contentModerationService.rejectContent(contentId, reason);
+      return { status: 'rejected', reason, contentId };
+    }
+
     // 2️⃣ Profanity Filter Check
     const profanityResult = await this.profanityFilterService.check(combinedTextForKeywordChecks);
     if (profanityResult.failed) {

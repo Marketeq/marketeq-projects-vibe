@@ -66,6 +66,7 @@ import {
   Star,
   Stars02,
   Trash2,
+  Upload01,
   Upload04,
   UploadCloud,
   Users03,
@@ -331,8 +332,8 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 
-const SHORT_DESCRIPTION_MIN_LENGTH = 50
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MIN_LENGTH = 350
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MIN_LENGTH = 100
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 // Demo-toggle: publish-attempt validation (red inline hints + blocked publish).
@@ -370,6 +371,95 @@ const PROJECT_TYPE_OPTIONS = [
   "SaaS Platform",
   "Other",
 ]
+
+const toEmbedUrl = (raw?: string | null): string => {
+  if (!raw) return ""
+  const url = raw.trim()
+  const yt = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
+  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  return url
+}
+
+const generateFaqSuggestions = (
+  project: any
+): Array<{ question: string; answer: string }> => {
+  const isService = project?.listingType === "service"
+  const kind = isService ? "service" : "project"
+  const title =
+    project?.title && project.title !== "Enter Project Title"
+      ? project.title
+      : `this ${kind}`
+  const cats: string[] = project?.categories ?? []
+  const tech = [
+    ...new Set([
+      ...(project?.programmingLanguages ?? project?.skills ?? []),
+      ...(project?.tags ?? []),
+    ]),
+  ]
+    .filter(Boolean)
+    .slice(0, 6)
+  const summary: string = project?.summary || ""
+  const duration = project?.durationMonths
+
+  const out: Array<{ question: string; answer: string }> = []
+
+  out.push({
+    question: `What's included in ${title}?`,
+    answer:
+      summary ||
+      `This ${kind} covers everything defined in the scope and deliverables, with each phase broken down into clear tasks so you know exactly what you're getting.`,
+  })
+  if (tech.length) {
+    const last = tech[tech.length - 1]
+    const techList =
+      tech.length > 1 ? `${tech.slice(0, -1).join(", ")} and ${last}` : last
+    out.push({
+      question: `What technologies and skills are used?`,
+      answer: `This ${kind} is delivered using ${techList}.`,
+    })
+  }
+  out.push({
+    question: `How long does ${title} take to complete?`,
+    answer: duration
+      ? `The estimated timeline is around ${duration} ${
+          duration === 1 ? "month" : "months"
+        }, depending on the final scope and feedback cycles.`
+      : `Timelines depend on the final scope. Once the scope is set, the estimated duration is shown in the budget breakdown.`,
+  })
+  out.push({
+    question: `How is pricing determined?`,
+    answer: `Pricing is calculated from the scope — the tasks, estimated hours, and assigned roles — and starts from the total shown at the top of the listing.`,
+  })
+  if (cats.length) {
+    out.push({
+      question: `Is this a good fit for ${cats[0]} work?`,
+      answer: `Yes — this ${kind} focuses on ${cats
+        .slice(0, 3)
+        .join(", ")} and is built for that kind of work.`,
+    })
+  }
+  out.push({
+    question: `Can the scope be customized?`,
+    answer: `Yes. Reach out before starting and the phases, tasks, and deliverables can be adjusted to fit your specific needs.`,
+  })
+  return out
+}
+
+const generateFaqAnswer = (project: any, question: string): string => {
+  const match = generateFaqSuggestions(project).find(
+    (s) => s.question.trim().toLowerCase() === (question || "").trim().toLowerCase()
+  )
+  if (match) return match.answer
+  const kind = project?.listingType === "service" ? "service" : "project"
+  return (
+    project?.summary ||
+    `This ${kind} is designed to address exactly that — see the description and scope for the full details.`
+  )
+}
 
 const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
 
@@ -1333,8 +1423,17 @@ export default function ProjectDetails() {
   const [completingSlots, setCompletingSlots] = React.useState<Set<number>>(
     new Set()
   )
+  const galleryUrlsRef = React.useRef<string[]>([])
+  const galleryReservedRef = React.useRef<Set<number>>(new Set())
+  const galleryPersistTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
   const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
+
+  React.useEffect(() => {
+    galleryUrlsRef.current = project.mediaUrls ?? []
+  }, [project.mediaUrls])
   const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
   const [unsavedNavOpen, setUnsavedNavOpen] = React.useState(false)
   const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
@@ -1345,6 +1444,14 @@ export default function ProjectDetails() {
 
   const hasPublishBlockingErrors = SHOW_PUBLISH_VALIDATION
     ? [
+        !project.featuredImage &&
+          !project.mediaUrls?.[0] &&
+          !project.featuredVideo,
+        (project.mediaUrls?.length ?? 0) + (project.featuredVideo ? 1 : 0) < 3,
+        !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
+        !project.title || project.title === "Enter Project Title",
+        (project.categories || []).length < 3,
+        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
         !project.featuredImage && !project.mediaUrls?.[0],
         (project.mediaUrls?.length ?? 0) < 3,
         !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
@@ -1365,6 +1472,42 @@ export default function ProjectDetails() {
         !project.faqs || project.faqs.length === 0,
       ].some(Boolean)
     : false
+
+  const missingPublishFields = SHOW_PUBLISH_VALIDATION
+    ? ([
+        !PROJECT_TYPE_OPTIONS.includes(infoProjectType) && "a project type",
+        (!project.title || project.title === "Enter Project Title") &&
+          "project title",
+        (project.categories || []).length < 3 && "categories",
+        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH &&
+          "short description",
+        getRichTextCharacterCount(project.description || "") === 0 &&
+          "project description",
+        !(
+          project.programmingLanguages?.length > 0 ||
+          project.developmentTech?.length > 0 ||
+          project.subcategories?.length > 0 ||
+          project.tags?.length > 0
+        ) && "project details",
+        !(
+          Array.isArray(project.deliverables) &&
+          project.deliverables.length > 0
+        ) && "scope",
+        (!project.faqs || project.faqs.length === 0) && "FAQ's",
+      ].filter(Boolean) as string[])
+    : []
+
+  const missingPublishImages =
+    SHOW_PUBLISH_VALIDATION &&
+    ((project.mediaUrls?.length ?? 0) + (project.featuredVideo ? 1 : 0) < 3 ||
+      (!project.featuredImage &&
+        !project.mediaUrls?.[0] &&
+        !project.featuredVideo))
+
+  const joinWithAnd = (arr: string[]) =>
+    arr.length <= 1
+      ? arr[0] ?? ""
+      : `${arr.slice(0, -1).join(", ")} and ${arr[arr.length - 1]}`
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
   const { toast } = useToast()
 
@@ -1398,15 +1541,44 @@ export default function ProjectDetails() {
         )
         return
       }
-      const currentUrls: string[] = project.mediaUrls ?? []
-      const newUrls = [...currentUrls]
+      setHasChanges(true)
 
-      for (const file of Array.from(files)) {
-        // Determine the target slot index for loading state
-        const targetIndex =
-          replaceIndex !== undefined ? replaceIndex : newUrls.length
-        setUploadingSlots((prev) => new Set(prev).add(targetIndex))
+      // Reserve the next free slot so concurrent uploads never collide.
+      const reserveSlot = () => {
+        let i = galleryUrlsRef.current.length
+        while (galleryReservedRef.current.has(i) || galleryUrlsRef.current[i])
+          i++
+        galleryReservedRef.current.add(i)
+        return i
+      }
 
+      // Place a result at its reserved slot via a functional update, so
+      // parallel uploads accumulate instead of overwriting one another.
+      const placeUrl = (index: number, url: string) => {
+        setProject((prev: any) => {
+          const arr = [...(prev.mediaUrls ?? [])]
+          while (arr.length <= index) arr.push("")
+          arr[index] = url
+          galleryUrlsRef.current = arr
+          return { ...prev, mediaUrls: arr }
+        })
+      }
+
+      // Debounce persistence so a burst of concurrent uploads writes once,
+      // with the final full list (avoids last-write-wins races).
+      const schedulePersist = () => {
+        if (galleryPersistTimerRef.current)
+          clearTimeout(galleryPersistTimerRef.current)
+        galleryPersistTimerRef.current = setTimeout(async () => {
+          try {
+            await ProjectAPI.UpdateGalleryImages(
+              project.id,
+              galleryUrlsRef.current.filter(
+                (u: string) => u && !u.startsWith("blob:")
+              )
+            )
+          } catch (err) {
+            console.error("Failed to save gallery images:", err)
         const formData = new FormData()
         // Sent as featuredImage for the upload/moderation pipeline, but flagged
         // as a gallery upload so the backend appends it instead of replacing the cover.
@@ -1424,50 +1596,53 @@ export default function ProjectDetails() {
               newUrls.push(url)
             }
           }
-        } catch (err: any) {
-          console.error("Failed to upload image:", err)
-          // Show local preview even if backend upload fails
-          const localUrl = URL.createObjectURL(file)
-          if (replaceIndex !== undefined) {
-            while (newUrls.length <= replaceIndex) newUrls.push("")
-            newUrls[replaceIndex] = localUrl
-          } else {
-            newUrls.push(localUrl)
+        }, 500)
+      }
+
+      await Promise.all(
+        Array.from(files).map(async (file) => {
+          const targetIndex =
+            replaceIndex !== undefined ? replaceIndex : reserveSlot()
+          setUploadingSlots((prev) => new Set(prev).add(targetIndex))
+
+          const formData = new FormData()
+          formData.append("featuredImage", file)
+          formData.append("target", "additional")
+          formData.append("projectId", project.id)
+
+          let finalUrl: string | undefined
+          try {
+            const res = await ProjectAPI.UploadMedia(formData)
+            finalUrl = res?.data?.url || res?.data?.featuredImage
+          } catch (err: any) {
+            finalUrl = URL.createObjectURL(file)
+            const status = err?.response?.status
+            toast({
+              title:
+                status === 503
+                  ? "Image moderation service unavailable. Showing local preview."
+                  : "Failed to upload image. Showing local preview.",
+              variant: "destructive",
+            })
           }
-          const status = err?.response?.status
-          toast({
-            title:
-              status === 503
-                ? "Image moderation service unavailable. Showing local preview."
-                : "Failed to upload image. Showing local preview.",
-            variant: "destructive",
-          })
-        } finally {
-          // Stop uploading — ring will animate to 100% then call onComplete
+
+          if (finalUrl) {
+            placeUrl(targetIndex, finalUrl)
+            schedulePersist()
+          }
+
+          if (replaceIndex === undefined)
+            galleryReservedRef.current.delete(targetIndex)
           setUploadingSlots((prev) => {
             const next = new Set(prev)
             next.delete(targetIndex)
             return next
           })
           setCompletingSlots((prev) => new Set(prev).add(targetIndex))
-        }
-      }
-
-      setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
-      setHasChanges(true)
-      // Persist gallery URLs to the media record
-      if (isRealBackendId(project.id)) {
-        try {
-          await ProjectAPI.UpdateGalleryImages(
-            project.id,
-            newUrls.filter((u: string) => u && !u.startsWith("blob:"))
-          )
-        } catch (err) {
-          console.error("Failed to save gallery images:", err)
-        }
-      }
+        })
+      )
     },
-    [project.id, project.mediaUrls]
+    [project.id, toast]
   )
 
   const handleGalleryDelete = React.useCallback(
@@ -2096,6 +2271,147 @@ export default function ProjectDetails() {
     ]
   )
 
+  const faqSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+
+  const persistFaqs = React.useCallback(
+    (faqs: Array<{ question: string; answer: string }>) => {
+      if (faqSaveTimerRef.current) clearTimeout(faqSaveTimerRef.current)
+      faqSaveTimerRef.current = setTimeout(() => {
+        saveProjectFields({ faqs })
+      }, 400)
+    },
+    [saveProjectFields]
+  )
+
+  const handleAddFaq = () => {
+    if ((project.faqs?.length ?? 0) >= 10) return
+    const next = [...(project.faqs ?? []), { question: "", answer: "" }]
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    setOpenFaqIndex(next.length - 1)
+    saveProjectFields({ faqs: next })
+  }
+
+  const handleFaqChange = (
+    idx: number,
+    field: "question" | "answer",
+    value: string
+  ) => {
+    const next = (project.faqs ?? []).map((f: any, i: number) =>
+      i === idx ? { ...f, [field]: value } : f
+    )
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    persistFaqs(next)
+  }
+
+  const handleDeleteFaq = (idx: number) => {
+    const next = (project.faqs ?? []).filter((_: any, i: number) => i !== idx)
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    setOpenFaqIndex(null)
+    saveProjectFields({ faqs: next })
+  }
+
+  const [faqSuggestions, setFaqSuggestions] = React.useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+  const [aiFaqDialogOpen, setAiFaqDialogOpen] = React.useState(false)
+  const [faqGenLoading, setFaqGenLoading] = React.useState(false)
+  const [faqGenError, setFaqGenError] = React.useState(false)
+
+  const faqRemainingSlots = Math.max(0, 10 - (project.faqs?.length ?? 0))
+  const faqAddedCount = faqSuggestions.filter((s) => s.added).length
+
+  const dedupeFaqSuggestions = (
+    list: Array<{ question: string; answer: string }>
+  ) => {
+    const existing = new Set(
+      (project.faqs ?? []).map((f: any) =>
+        (f.question || "").trim().toLowerCase()
+      )
+    )
+    return list
+      .filter(
+        (s) => s?.question && !existing.has(s.question.trim().toLowerCase())
+      )
+      .map((s) => ({ question: s.question, answer: s.answer, added: false }))
+  }
+
+  const runFaqGeneration = async () => {
+    setFaqGenError(false)
+    // No backend draft yet — use the local heuristic directly.
+    if (!project?.id || !isRealBackendId(project.id)) {
+      setFaqSuggestions(dedupeFaqSuggestions(generateFaqSuggestions(project)))
+      return
+    }
+    setFaqGenLoading(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(project.id)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      setFaqSuggestions(dedupeFaqSuggestions(data))
+    } catch {
+      setFaqGenError(true)
+    } finally {
+      setFaqGenLoading(false)
+    }
+  }
+
+  const openAiFaqDialog = () => {
+    setAiFaqDialogOpen(true)
+    runFaqGeneration()
+  }
+
+  const insertFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s || s.added || (project.faqs?.length ?? 0) >= 10) return
+    const next = [
+      ...(project.faqs ?? []),
+      { question: s.question, answer: s.answer, is_ai_generated: true },
+    ]
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    saveProjectFields({ faqs: next })
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s) return
+    const q = s.question.trim().toLowerCase()
+    const next = (project.faqs ?? []).filter(
+      (f: any) => (f.question || "").trim().toLowerCase() !== q
+    )
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    saveProjectFields({ faqs: next })
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllFaqSuggestions = () => {
+    const slots = Math.max(0, 10 - (project.faqs?.length ?? 0))
+    const toAdd = faqSuggestions.filter((s) => !s.added).slice(0, slots)
+    if (toAdd.length === 0) return
+    const next = [
+      ...(project.faqs ?? []),
+      ...toAdd.map((s) => ({
+        question: s.question,
+        answer: s.answer,
+        is_ai_generated: true,
+      })),
+    ]
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    saveProjectFields({ faqs: next })
+    const addedSet = new Set(toAdd.map((s) => s.question))
+    setFaqSuggestions((prev) =>
+      prev.map((x) => (addedSet.has(x.question) ? { ...x, added: true } : x))
+    )
+  }
+
   // Persist team member assignments in localStorage (until backend supports assignedMemberId)
   const assignmentsKey = `scope-assignments-${project?.id || "draft"}`
   const saveAssignments = React.useCallback(
@@ -2372,7 +2688,8 @@ export default function ProjectDetails() {
               galleryUrls[0] ||
               d.mediaUrls?.[0] ||
               null,
-            featuredVideo: featuredVideo || d.featuredVideo || null,
+            featuredVideo:
+              featuredVideo || d.featuredVideo || d.videoUrl || null,
             mediaUrls:
               galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? []),
             programmingLanguages:
@@ -2933,6 +3250,8 @@ export default function ProjectDetails() {
                       SHOW_PUBLISH_VALIDATION &&
                         publishAttempted &&
                         !project.featuredImage &&
+                        !project.mediaUrls?.[0] &&
+                        !project.featuredVideo
                         !project.mediaUrls?.[0]
                         ? "bg-error-25 border-error-300"
                         : "bg-gray-50 border-gray-200"
@@ -3005,6 +3324,8 @@ export default function ProjectDetails() {
                         <div className="absolute inset-0 flex items-center justify-center">
                           {SHOW_PUBLISH_VALIDATION &&
                           publishAttempted &&
+                          !project.mediaUrls?.[0] &&
+                          !project.featuredVideo ? (
                           !project.mediaUrls?.[0] ? (
                             <span
                               className="size-[54px] bg-error-300"
@@ -3055,6 +3376,8 @@ export default function ProjectDetails() {
                   {SHOW_PUBLISH_VALIDATION &&
                     publishAttempted &&
                     !project.featuredImage &&
+                    !project.mediaUrls?.[0] &&
+                    !project.featuredVideo && (
                     !project.mediaUrls?.[0] && (
                       <p className="text-sm text-error-500">
                         Please add a featured image
@@ -3392,6 +3715,9 @@ export default function ProjectDetails() {
                   }}
                 >
                   <p
+                    style={{ whiteSpace: "pre-line" }}
+                    className={cn(
+                      "text-sm font-light break-words line-clamp-3",
                     className={cn(
                       "text-sm font-light break-words",
                       SHOW_PUBLISH_VALIDATION &&
@@ -3605,7 +3931,7 @@ export default function ProjectDetails() {
                           <div className="group/slide shrink-0 w-[calc(33.333%-8px)]">
                             <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
                               <iframe
-                                src={project.featuredVideo}
+                                src={toEmbedUrl(project.featuredVideo)}
                                 className={cn(
                                   "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
                                   videoHidden && "opacity-40 blur-[1px]"
@@ -3666,6 +3992,7 @@ export default function ProjectDetails() {
                                       featuredVideo: null,
                                     }))
                                     setVideoHidden(false)
+                                    saveProjectFields({ videoUrl: "" })
                                   }}
                                 >
                                   <Trash2 className="size-4 text-white" />
@@ -3681,7 +4008,9 @@ export default function ProjectDetails() {
                           const emptySlots = 3 - videoOffset
                           const totalSlots = Math.max(
                             emptySlots,
-                            allUrls.length
+                            allUrls.length,
+                            ...Array.from(uploadingSlots).map((i) => i + 1),
+                            ...Array.from(completingSlots).map((i) => i + 1)
                           )
                           const sortableIds = Array.from(
                             { length: totalSlots },
@@ -3701,6 +4030,9 @@ export default function ProjectDetails() {
                                   showError={
                                     SHOW_PUBLISH_VALIDATION &&
                                     publishAttempted &&
+                                    allUrls.length +
+                                      (project.featuredVideo ? 1 : 0) <
+                                      3
                                     allUrls.length < 3
                                   }
                                   isHidden={hiddenImages.has(index)}
@@ -3728,6 +4060,9 @@ export default function ProjectDetails() {
 
                 {SHOW_PUBLISH_VALIDATION &&
                   publishAttempted &&
+                  (project.mediaUrls?.length ?? 0) +
+                    (project.featuredVideo ? 1 : 0) <
+                    3 && (
                   (project.mediaUrls?.length ?? 0) < 3 && (
                     <p className="mt-2 text-sm text-error-500">
                       Please add at least 3 images to your project
@@ -4321,6 +4656,7 @@ export default function ProjectDetails() {
                                                         )
                                                       )}
                                                       <TagsInputInput
+                                                        portalDropdown
                                                         placeholder={
                                                           tagsInput.value.length
                                                             ? ""
@@ -5382,6 +5718,7 @@ export default function ProjectDetails() {
                                                 )
                                               )}
                                               <TagsInputInput
+                                                portalDropdown
                                                 options={field.options}
                                                 placeholder={
                                                   tagsInput.value.length
@@ -6319,6 +6656,7 @@ export default function ProjectDetails() {
                                         variant="outlined"
                                         visual="gray"
                                         size="sm"
+                                        onClick={openAiFaqDialog}
                                       >
                                         <Stars02 className="size-[15px]" />
                                         Generate With AI
@@ -6327,11 +6665,170 @@ export default function ProjectDetails() {
                                         variant="outlined"
                                         visual="gray"
                                         size="sm"
+                                        onClick={handleAddFaq}
                                       >
                                         <Plus className="size-[15px]" />
                                         Add Question
                                       </Button>
                                     </div>
+
+                                    {(project.faqs?.length ?? 0) >= 10 && (
+                                      <p className="mt-2 text-sm text-error-500">
+                                        You can add a maximum of 10 questions.
+                                      </p>
+                                    )}
+
+                                    <Dialog
+                                      open={aiFaqDialogOpen}
+                                      onOpenChange={setAiFaqDialogOpen}
+                                    >
+                                      <DialogContent className="max-w-[640px] p-0 gap-0">
+                                        <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+                                          <div className="flex items-start gap-x-2">
+                                            <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+                                            <div>
+                                              <DialogTitle>
+                                                AI Generated FAQ&apos;s
+                                              </DialogTitle>
+                                              <DialogDescription className="mt-1">
+                                                Review and adjust your
+                                                AI-generated FAQ&apos;s as needed
+                                              </DialogDescription>
+                                            </div>
+                                          </div>
+                                          <Badge
+                                            className="rounded-full bg-success-50 text-success-600 shrink-0"
+                                            visual="gray"
+                                          >
+                                            {faqAddedCount} of{" "}
+                                            {faqSuggestions.length} added
+                                          </Badge>
+                                        </div>
+
+                                        {faqRemainingSlots <
+                                          faqSuggestions.filter((s) => !s.added)
+                                            .length && (
+                                          <p className="px-6 pt-4 text-sm text-error-500">
+                                            You currently have{" "}
+                                            {project.faqs?.length ?? 0} FAQ&apos;s
+                                            in total, so you can only add{" "}
+                                            {faqRemainingSlots} more
+                                          </p>
+                                        )}
+
+                                        <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                                          {faqGenLoading ? (
+                                            <p className="py-8 text-center text-sm text-gray-500">
+                                              Generating suggestions…
+                                            </p>
+                                          ) : faqGenError ? (
+                                            <div className="py-8 text-center">
+                                              <p className="text-sm text-error-500">
+                                                Suggestions couldn&apos;t be
+                                                loaded. Try again.
+                                              </p>
+                                              <Button
+                                                variant="outlined"
+                                                visual="gray"
+                                                size="sm"
+                                                className="mt-3"
+                                                onClick={runFaqGeneration}
+                                              >
+                                                <Stars02 className="size-[15px]" />
+                                                Retry
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            faqSuggestions.map((s, i) => (
+                                              <div
+                                                key={i}
+                                                className={cn(
+                                                  "group/sfaq relative rounded-lg border p-4 transition",
+                                                  s.added
+                                                    ? "border-success-300 bg-success-25"
+                                                    : "border-gray-200 bg-white hover:bg-gray-50"
+                                                )}
+                                              >
+                                                <div className="flex items-start justify-between gap-x-3">
+                                                  <h3
+                                                    className={cn(
+                                                      "text-sm font-bold",
+                                                      s.added
+                                                        ? "text-success-700"
+                                                        : "text-dark-blue-400"
+                                                    )}
+                                                  >
+                                                    {s.question}
+                                                  </h3>
+                                                  {s.added ? (
+                                                    <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                                                      <Check className="size-4" />
+                                                      Added
+                                                    </span>
+                                                  ) : (
+                                                    <Button
+                                                      variant="outlined"
+                                                      visual="gray"
+                                                      size="sm"
+                                                      className="shrink-0 opacity-0 group-hover/sfaq:opacity-100 transition"
+                                                      onClick={() =>
+                                                        insertFaqSuggestion(i)
+                                                      }
+                                                    >
+                                                      <Upload01 className="size-[15px]" />
+                                                      Insert
+                                                    </Button>
+                                                  )}
+                                                </div>
+                                                <p
+                                                  className={cn(
+                                                    "mt-1 text-sm font-light",
+                                                    s.added
+                                                      ? "text-success-700"
+                                                      : "text-dark-blue-400"
+                                                  )}
+                                                >
+                                                  {s.answer}
+                                                </p>
+                                                {s.added && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      removeFaqSuggestion(i)
+                                                    }
+                                                    className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/sfaq:opacity-100 transition"
+                                                  >
+                                                    <Trash2 className="size-4" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+
+                                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                            onClick={runFaqGeneration}
+                                            disabled={faqGenLoading}
+                                          >
+                                            <Stars02 className="size-[15px]" />
+                                            Regenerate
+                                          </Button>
+                                          <Button
+                                            onClick={insertAllFaqSuggestions}
+                                            disabled={
+                                              faqGenLoading ||
+                                              faqRemainingSlots === 0 ||
+                                              faqSuggestions.every((s) => s.added)
+                                            }
+                                          >
+                                            Insert All ({faqSuggestions.length})
+                                          </Button>
+                                        </div>
+                                      </DialogContent>
+                                    </Dialog>
 
                                     {!project.faqs ||
                                     project.faqs.length === 0 ? (
@@ -6433,9 +6930,10 @@ export default function ProjectDetails() {
                                                   visual="gray"
                                                   size="sm"
                                                   className="rounded-full text-gray-500 hover:text-gray-800"
-                                                  onClick={(e) =>
+                                                  onClick={(e) => {
                                                     e.stopPropagation()
-                                                  }
+                                                    handleDeleteFaq(idx)
+                                                  }}
                                                 >
                                                   <Trash2 className="size-4" />
                                                 </IconButton>
@@ -6449,7 +6947,14 @@ export default function ProjectDetails() {
                                               </p>
                                               <Input
                                                 className="mt-2"
-                                                defaultValue={faq.question}
+                                                value={faq.question}
+                                                onChange={(e) =>
+                                                  handleFaqChange(
+                                                    idx,
+                                                    "question",
+                                                    e.target.value
+                                                  )
+                                                }
                                               />
                                               <div className="mt-4 flex items-center justify-between">
                                                 <div>
@@ -6466,6 +6971,49 @@ export default function ProjectDetails() {
                                                   variant="outlined"
                                                   visual="gray"
                                                   size="sm"
+                                                  onClick={async () => {
+                                                    if (
+                                                      !project?.id ||
+                                                      !isRealBackendId(
+                                                        project.id
+                                                      )
+                                                    ) {
+                                                      handleFaqChange(
+                                                        idx,
+                                                        "answer",
+                                                        generateFaqAnswer(
+                                                          project,
+                                                          faq.question
+                                                        )
+                                                      )
+                                                      return
+                                                    }
+                                                    try {
+                                                      const res =
+                                                        await ProjectAPI.SuggestFaqAnswer(
+                                                          project.id,
+                                                          faq.question
+                                                        )
+                                                      handleFaqChange(
+                                                        idx,
+                                                        "answer",
+                                                        res?.data?.answer ||
+                                                          generateFaqAnswer(
+                                                            project,
+                                                            faq.question
+                                                          )
+                                                      )
+                                                    } catch {
+                                                      handleFaqChange(
+                                                        idx,
+                                                        "answer",
+                                                        generateFaqAnswer(
+                                                          project,
+                                                          faq.question
+                                                        )
+                                                      )
+                                                    }
+                                                  }}
                                                 >
                                                   <Stars02 className="size-[15px]" />
                                                   Answer With AI
@@ -6474,7 +7022,14 @@ export default function ProjectDetails() {
                                               <Textarea
                                                 className="mt-2"
                                                 rows={4}
-                                                defaultValue={faq.answer}
+                                                value={faq.answer}
+                                                onChange={(e) =>
+                                                  handleFaqChange(
+                                                    idx,
+                                                    "answer",
+                                                    e.target.value.slice(0, 300)
+                                                  )
+                                                }
                                                 maxLength={300}
                                               />
                                               <p className="mt-1 text-right text-xs text-gray-500">
@@ -6485,6 +7040,7 @@ export default function ProjectDetails() {
                                         ))}
                                       </Accordion>
                                     )}
+
                                   </>
                                 )}
 
@@ -8521,6 +9077,9 @@ export default function ProjectDetails() {
                             aria-disabled={hasPublishBlockingErrors}
                             className={cn(
                               hasPublishBlockingErrors &&
+                                (publishAttempted
+                                  ? "bg-error-500 hover:bg-error-600 border-error-500"
+                                  : "opacity-40 hover:opacity-40")
                                 "opacity-40 hover:opacity-40"
                             )}
                           >
@@ -8592,7 +9151,13 @@ export default function ProjectDetails() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                               <DropdownMenuItem
-                                onSelect={() => setPublishDialogOpen(true)}
+                                onSelect={() => {
+                                  if (hasPublishBlockingErrors) {
+                                    setPublishAttempted(true)
+                                    return
+                                  }
+                                  setPublishDialogOpen(true)
+                                }}
                                 disabled={isPublishing}
                               >
                                 <Eye className="size-4 mr-2" />
@@ -8666,6 +9231,22 @@ export default function ProjectDetails() {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
+
+                {publishAttempted &&
+                  (missingPublishFields.length > 0 || missingPublishImages) && (
+                    <div className="mt-2">
+                      {missingPublishFields.length > 0 && (
+                        <p className="text-sm text-error-500">
+                          Please add {joinWithAnd(missingPublishFields)}
+                        </p>
+                      )}
+                      {missingPublishImages && (
+                        <p className="mt-3 text-sm text-error-500">
+                          Please add at least 3 images to your project
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                 {/* Publish confirmation dialog */}
                 <Dialog
@@ -8765,6 +9346,7 @@ export default function ProjectDetails() {
                               featuredVideo: fullUrl,
                             }))
                             setHasChanges(true)
+                            saveProjectFields({ videoUrl: fullUrl })
                           }
                           setVideoDialogOpen(false)
                         }}
@@ -8937,9 +9519,13 @@ export default function ProjectDetails() {
               </DialogClose>
               <Button
                 onClick={() => {
-                  setPublishDialogOpen(true)
                   setUnsavedNavOpen(false)
                   setPendingNavUrl(null)
+                  if (hasPublishBlockingErrors) {
+                    setPublishAttempted(true)
+                    return
+                  }
+                  setPublishDialogOpen(true)
                 }}
               >
                 Publish

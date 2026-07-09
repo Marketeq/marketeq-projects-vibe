@@ -118,6 +118,37 @@ export class PublishController {
     }
   }
 
+  @Post('project/:projectId/faqs/suggest')
+  async suggestFaqs(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.suggestFaqs(req.user.sub, projectId);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Post('project/:projectId/faqs/answer')
+  async suggestFaqAnswer(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body('question') question: string,
+  ) {
+    try {
+      return await this.publishService.suggestFaqAnswer(
+        req.user.sub,
+        projectId,
+        question,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Get('projects/mine')
   async getMyProjects(@Req() req: AuthenticatedRequest) {
     try {
