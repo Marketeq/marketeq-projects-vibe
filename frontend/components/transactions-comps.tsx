@@ -847,7 +847,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                         <BankIcon className="size-5 text-gray-500" />
                         <div className="flex flex-col items-start">
                           <span className="text-sm font-medium text-dark-blue-400">{verifyState.displayLabel}</span>
-                          <span className="text-xs text-gray-400">{addForm?.bankAccountType ? (addForm.bankAccountType.charAt(0).toUpperCase() + addForm.bankAccountType.slice(1)) + ' Account' : 'Checking Account'}</span>
+                          <span className="text-xs text-gray-400">{addForm?.accountType ? (addForm.accountType.charAt(0).toUpperCase() + addForm.accountType.slice(1)) + ' Account' : 'Checking Account'}</span>
                         </div>
                         <Badge visual="success" size="sm" className="ml-auto">Verified</Badge>
                       </div>

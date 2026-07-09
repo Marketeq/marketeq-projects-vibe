@@ -16,6 +16,7 @@ export enum SubscriptionStatus {
 @Entity('billing_subscriptions')
 @Index(['groupId'])
 @Index(['contractId'])
+@Index(['clientId'])
 export class BillingSubscription {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -49,6 +50,12 @@ export class BillingSubscription {
 
   @Column({ type: 'enum', enum: SubscriptionStatus, default: SubscriptionStatus.ACTIVE })
   status: SubscriptionStatus;
+
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  depositAmount: number;
+
+  @Column({ default: false })
+  depositPaid: boolean;
 
   @Column({ nullable: true })
   projectId: string;

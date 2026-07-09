@@ -5,6 +5,7 @@ import { SVGProps } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
+import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
 import {
   type MyListing,
@@ -532,11 +533,34 @@ interface Task {
   value: string
 }
 
-const defaultTasks: Task[] = []
+const TASKS_STORAGE_KEY = "marketeq-dashboard-tasks"
+
+const loadTasks = (): Task[] => {
+  try {
+    const saved = localStorage.getItem(TASKS_STORAGE_KEY)
+    return saved ? JSON.parse(saved) : []
+  } catch {
+    return []
+  }
+}
+
+const saveTasks = (tasks: Task[]) => {
+  try {
+    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
+  } catch {}
+}
 
 export const Tasks = () => {
-  const [tasks, setTasks] = React.useState<Task[]>(defaultTasks)
+  const [tasks, setTasks] = React.useState<Task[]>([])
   const [shouldClearAll, toggleShouldClearAll] = useToggle(false)
+
+  React.useEffect(() => {
+    setTasks(loadTasks())
+  }, [])
+
+  React.useEffect(() => {
+    saveTasks(tasks)
+  }, [tasks])
 
   React.useEffect(() => {
     if (shouldClearAll) {
@@ -878,6 +902,28 @@ export const StarsBFill = ({
 
 export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
   const { user } = useAuth()
+  const router = useRouter()
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
   return (
     <>
       <div className="md:contents flex flex-col gap-y-5">
@@ -899,6 +945,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
               className="bg-white text-dark-blue-400 xs:max-md:hidden"
               variant="outlined"
               visual="gray"
+              disabled={creatingDraft}
+              onClick={handleCreateProject}
             >
               <Plus className="size-[15px]" />
               Create a Project
@@ -910,6 +958,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
           className="bg-white text-dark-blue-400 md:hidden"
           variant="outlined"
           visual="gray"
+          disabled={creatingDraft}
+          onClick={handleCreateProject}
         >
           <Plus className="size-[15px]" />
           Create a Project
@@ -1227,7 +1277,28 @@ const GETTING_STARTED_STEPS = [
 
 export const CreateYourOwnProject = () => {
   const { user } = useAuth()
+  const router = useRouter()
   const totalSteps = GETTING_STARTED_STEPS.length
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
 
   // Read persisted step from user; null means dismissed
   const savedStep = user?.gettingStartedStep
@@ -1274,6 +1345,7 @@ export const CreateYourOwnProject = () => {
 
   const step = GETTING_STARTED_STEPS[currentStep]
   const progressValue = ((currentStep + 1) / totalSteps) * 100
+  const isCreateProjectStep = step.href === "/publish-project"
 
   return (
     <div className="bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border rounded-lg border-gray-200 p-5 flex flex-col-reverse md:grid md:grid-cols-2 gap-5 min-[1024px]:gap-x-[100px]">
@@ -1297,16 +1369,29 @@ export const CreateYourOwnProject = () => {
 
         <div className="mt-5 min-[1024px]:mt-[49px] flex flex-col items-start gap-y-3">
           <div className="flex items-center gap-x-3">
-            <NextLink href={step.href}>
+            {isCreateProjectStep ? (
               <Button
                 className="text-dark-blue-400"
                 size="sm"
                 variant="outlined"
                 visual="gray"
+                disabled={creatingDraft}
+                onClick={handleCreateProject}
               >
                 <Plus className="size-[15px]" /> {step.cta}
               </Button>
-            </NextLink>
+            ) : (
+              <NextLink href={step.href}>
+                <Button
+                  className="text-dark-blue-400"
+                  size="sm"
+                  variant="outlined"
+                  visual="gray"
+                >
+                  <Plus className="size-[15px]" /> {step.cta}
+                </Button>
+              </NextLink>
+            )}
             <Button
               className="text-dark-blue-400"
               size="sm"
@@ -1489,6 +1574,28 @@ export const RecommendedForYou = () => {
 }
 
 export const BecomeTopSeller = () => {
+  const router = useRouter()
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
   return (
     <div className="mt-3 md:mt-5 p-5 bg-white rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
@@ -1536,6 +1643,8 @@ export const BecomeTopSeller = () => {
               className="text-dark-blue-400"
               variant="outlined"
               visual="gray"
+              disabled={creatingDraft}
+              onClick={handleCreateProject}
             >
               Create a Project Now
             </Button>
