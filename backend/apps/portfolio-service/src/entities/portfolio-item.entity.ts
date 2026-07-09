@@ -30,6 +30,9 @@ export class PortfolioItem {
   @Column({ type: 'text', default: 'draft' })
   status: PortfolioStatus;
 
+  @Column('jsonb', { nullable: true })
+  gallery: Record<string, any>[] | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

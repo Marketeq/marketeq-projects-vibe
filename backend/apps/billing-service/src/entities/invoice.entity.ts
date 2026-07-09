@@ -6,12 +6,14 @@ export enum InvoiceStatus {
   FAILED = 'failed',
   FINALIZED = 'finalized',
   VOIDED = 'voided',
+  REFUNDED = 'refunded',
 }
 
 @Entity('billing_invoices')
 @Index(['contractId'])
 @Index(['groupId'])
 @Index(['stripeInvoiceId'])
+@Index(['subscriptionId'])
 export class BillingInvoice {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -40,6 +42,9 @@ export class BillingInvoice {
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
   creditApplied: number;
 
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  refundedAmount: number;
+
   @Column({ type: 'enum', enum: InvoiceStatus, default: InvoiceStatus.PENDING })
   status: InvoiceStatus;
 
@@ -50,7 +55,13 @@ export class BillingInvoice {
   finalizedAt: string;
 
   @Column({ nullable: true })
+  refundedAt: string;
+
+  @Column({ nullable: true })
   description: string;
+
+  @Column({ type: 'int', nullable: true })
+  installmentNumber: number;
 
   @Column('jsonb', { nullable: true })
   metadata: Record<string, any>;

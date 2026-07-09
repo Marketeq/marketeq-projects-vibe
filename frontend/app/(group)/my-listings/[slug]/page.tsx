@@ -1452,6 +1452,12 @@ export default function ProjectDetails() {
         !project.title || project.title === "Enter Project Title",
         (project.categories || []).length < 3,
         (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
+        !project.featuredImage && !project.mediaUrls?.[0],
+        (project.mediaUrls?.length ?? 0) < 3,
+        !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
+        !project.title || project.title === "Enter Project Title",
+        (project.categories || []).length < 3,
+        !project.summary,
         getRichTextCharacterCount(project.description || "") === 0,
         !(
           Array.isArray(project.deliverables) &&
@@ -1573,6 +1579,22 @@ export default function ProjectDetails() {
             )
           } catch (err) {
             console.error("Failed to save gallery images:", err)
+        const formData = new FormData()
+        // Sent as featuredImage for the upload/moderation pipeline, but flagged
+        // as a gallery upload so the backend appends it instead of replacing the cover.
+        formData.append("featuredImage", file)
+        formData.append("target", "additional")
+        formData.append("projectId", project.id)
+        try {
+          const res = await ProjectAPI.UploadMedia(formData)
+          const url = res?.data?.url || res?.data?.featuredImage
+          if (url) {
+            if (replaceIndex !== undefined) {
+              while (newUrls.length <= replaceIndex) newUrls.push("")
+              newUrls[replaceIndex] = url
+            } else {
+              newUrls.push(url)
+            }
           }
         }, 500)
       }
@@ -1762,6 +1784,10 @@ export default function ProjectDetails() {
 
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
+    if (hasPublishBlockingErrors) {
+      setPublishAttempted(true)
+      return
+    }
     setIsPublishing(true)
     try {
       await ProjectAPI.PublishProject(project.id)
@@ -3226,6 +3252,7 @@ export default function ProjectDetails() {
                         !project.featuredImage &&
                         !project.mediaUrls?.[0] &&
                         !project.featuredVideo
+                        !project.mediaUrls?.[0]
                         ? "bg-error-25 border-error-300"
                         : "bg-gray-50 border-gray-200"
                     )}
@@ -3299,6 +3326,7 @@ export default function ProjectDetails() {
                           publishAttempted &&
                           !project.mediaUrls?.[0] &&
                           !project.featuredVideo ? (
+                          !project.mediaUrls?.[0] ? (
                             <span
                               className="size-[54px] bg-error-300"
                               style={{
@@ -3350,6 +3378,7 @@ export default function ProjectDetails() {
                     !project.featuredImage &&
                     !project.mediaUrls?.[0] &&
                     !project.featuredVideo && (
+                    !project.mediaUrls?.[0] && (
                       <p className="text-sm text-error-500">
                         Please add a featured image
                       </p>
@@ -3689,6 +3718,8 @@ export default function ProjectDetails() {
                     style={{ whiteSpace: "pre-line" }}
                     className={cn(
                       "text-sm font-light break-words line-clamp-3",
+                    className={cn(
+                      "text-sm font-light break-words",
                       SHOW_PUBLISH_VALIDATION &&
                         publishAttempted &&
                         !project.summary
@@ -4002,6 +4033,7 @@ export default function ProjectDetails() {
                                     allUrls.length +
                                       (project.featuredVideo ? 1 : 0) <
                                       3
+                                    allUrls.length < 3
                                   }
                                   isHidden={hiddenImages.has(index)}
                                   isUploading={uploadingSlots.has(index)}
@@ -4031,6 +4063,7 @@ export default function ProjectDetails() {
                   (project.mediaUrls?.length ?? 0) +
                     (project.featuredVideo ? 1 : 0) <
                     3 && (
+                  (project.mediaUrls?.length ?? 0) < 3 && (
                     <p className="mt-2 text-sm text-error-500">
                       Please add at least 3 images to your project
                     </p>
@@ -9047,6 +9080,7 @@ export default function ProjectDetails() {
                                 (publishAttempted
                                   ? "bg-error-500 hover:bg-error-600 border-error-500"
                                   : "opacity-40 hover:opacity-40")
+                                "opacity-40 hover:opacity-40"
                             )}
                           >
                             Publish
