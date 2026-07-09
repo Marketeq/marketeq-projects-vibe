@@ -167,4 +167,9 @@ export const ProjectAPI = {
     }
     return null
   },
+  getRecommended: (skills: string[], limit = 10) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (skills.length) params.set("skills", skills.join(","))
+    return AxiosRequest.get(`${LISTINGS_BASE}/v1/projects/recommended?${params}`)
+  },
 }

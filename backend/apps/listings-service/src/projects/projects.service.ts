@@ -54,9 +54,10 @@ export class ProjectsService {
     });
     if (!item) throw new NotFoundException('Project not found');
 
-    const [similarProjects, projectHistoryRatings] = await Promise.all([
+    const [similarProjects, projectHistoryRatings, team] = await Promise.all([
       this.getSimilarProjects(item),
       this.getProjectHistoryRatings(item),
+      this.resolveTeamMembers(item),
     ]);
 
     return {
@@ -64,9 +65,68 @@ export class ProjectsService {
       similarProjects,
       relatedCategories: this.getRelatedCategories(item),
       relatedSkills: this.getRelatedSkills(item),
-      team: [],
+      team,
       projectHistoryRatings,
     };
+  }
+
+  private async resolveTeamMembers(project: Project) {
+    const rawRows: Array<{ teamMemberIds: string[]; userId: string | null }> = await this.repo.manager.query(
+      `SELECT "teamMemberIds", "userId"::text FROM listings.project WHERE id = $1`,
+      [project.id],
+    );
+    const row = rawRows[0];
+    const memberIds: string[] = Array.isArray(row?.teamMemberIds) && row.teamMemberIds.length
+      ? row.teamMemberIds
+      : row?.userId ? [row.userId] : [];
+    if (!memberIds.length) return [];
+
+    const [users, skillRows, langRows] = await Promise.all([
+      this.repo.manager.query<Array<{
+        id: string; firstName: string; lastName: string; username: string | null;
+        avatarUrl: string | null; recentJobTitle: string | null; location: string | null;
+      }>>(
+        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location
+         FROM user_service.users WHERE id = ANY($1::uuid[])`,
+        [memberIds],
+      ),
+      this.repo.manager.query<Array<{ userId: string; name: string }>>(
+        `SELECT "userId"::text, name FROM user_service.skills WHERE "userId" = ANY($1::uuid[])`,
+        [memberIds],
+      ),
+      this.repo.manager.query<Array<{ userId: string; name: string }>>(
+        `SELECT "userId"::text, name FROM user_service.languages WHERE "userId" = ANY($1::uuid[])`,
+        [memberIds],
+      ),
+    ]);
+
+    const skillsByUser = new Map<string, string[]>();
+    skillRows.forEach((s) => {
+      const arr = skillsByUser.get(s.userId) ?? [];
+      arr.push(s.name);
+      skillsByUser.set(s.userId, arr);
+    });
+    const langsByUser = new Map<string, string[]>();
+    langRows.forEach((l) => {
+      const arr = langsByUser.get(l.userId) ?? [];
+      arr.push(l.name);
+      langsByUser.set(l.userId, arr);
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      firstName: u.firstName ?? '',
+      lastName: u.lastName ?? '',
+      name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+      username: u.username ?? u.id,
+      avatarUrl: u.avatarUrl ?? null,
+      role: u.recentJobTitle ?? 'Team Member',
+      location: u.location ?? null,
+      isLead: u.id === String(project.userId),
+      isOnline: false,
+      skills: skillsByUser.get(u.id) ?? [],
+      languages: langsByUser.get(u.id) ?? [],
+    }));
   }
 
   async seedFromN8n(dto: Record<string, any>) {
@@ -74,8 +134,13 @@ export class ProjectsService {
     const title = String(dto.title ?? '').trim();
     if (!title) throw new BadRequestException('title is required');
     if (/undefined|null/i.test(title)) throw new BadRequestException(`Invalid title: "${title}" — category variable was not resolved in n8n`);
-    const description = String(dto.description ?? dto.fullDescription ?? '').trim();
-    if (!description) throw new BadRequestException('description or fullDescription is required');
+    const rawDescription = String(dto.description ?? dto.fullDescription ?? '').trim();
+    if (!rawDescription) throw new BadRequestException('description or fullDescription is required');
+    // Strip <img> tags whose src is not an absolute http/https URL (relative/local paths from n8n)
+    const description = rawDescription.replace(/<img\s[^>]*>/gi, (tag) => {
+      const src = tag.match(/src=["']([^"']+)["']/i)?.[1] ?? '';
+      return src.startsWith('http://') || src.startsWith('https://') ? tag : '';
+    });
 
     const rawScope = dto.scope ?? dto.phases ?? dto.projectPhases ?? dto.project_phases
       ?? dto.projectScope ?? dto.project_scope ?? dto.workPhases ?? dto.work_phases ?? [];
@@ -88,6 +153,9 @@ export class ProjectsService {
       : scope.length
       ? await this.deliverablesAdapter.deriveDeliverables(scope)
       : [];
+
+    const duplicate = await this.repo.findOne({ where: { title, createdBy: 'n8n-seed' } });
+    if (duplicate) return { ...this.shapeProject(duplicate), _contentType: 'project', _skipped: true };
 
     const item = this.repo.create({
       listingType: 'project',
@@ -503,6 +571,72 @@ export class ProjectsService {
     return Array.from(seedTerms)
       .filter((t) => t && t.trim().length > 0)
       .slice(0, limit);
+  }
+
+  async getRecommendedBySkills(skills: string[], limit = 10) {
+    const where = { status: ListingStatus.Published, listingType: 'project' };
+    const select: (keyof Project)[] = ['id', 'slug', 'title', 'mediaUrls', 'skills', 'tags', 'subcategories', 'userId'];
+
+    let candidates: Project[];
+    if (!skills.length) {
+      candidates = await this.repo.find({ where, order: { featured: 'DESC', createdAt: 'DESC' }, take: limit, select });
+    } else {
+      const published = await this.repo.find({ where, order: { featured: 'DESC', createdAt: 'DESC' }, take: 100, select });
+      const sourceSkills = new Set(skills.map((s) => s.toLowerCase()));
+      const scored = published
+        .map((p) => ({ p, score: this.overlapRatio(sourceSkills, (p.skills ?? []).map((s) => s.toLowerCase())) }))
+        .filter((c) => c.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+      candidates = scored.map((c) => c.p);
+    }
+
+    return this.attachMemberAvatars(candidates, !skills.length ? 0 : undefined);
+  }
+
+  private async attachMemberAvatars(projects: Project[], fixedScore?: number) {
+    if (!projects.length) return [];
+
+    const rawRows: Array<{ id: string; userId: string | null; teamMemberIds: string[] }> = await this.repo.manager.query(
+      `SELECT p.id::text, p."userId"::text, p."teamMemberIds"
+       FROM listings.project p
+       WHERE p.id = ANY($1::uuid[])`,
+      [projects.map((p) => p.id)],
+    );
+
+    const memberMap = new Map<string, string[]>();
+    const allUserIds = new Set<string>();
+    for (const row of rawRows) {
+      const ids: string[] = Array.isArray(row.teamMemberIds) && row.teamMemberIds.length
+        ? row.teamMemberIds
+        : row.userId ? [row.userId] : [];
+      memberMap.set(row.id, ids);
+      ids.forEach((id) => allUserIds.add(id));
+    }
+
+    const avatarMap = new Map<string, string | null>();
+    if (allUserIds.size) {
+      const userRows: Array<{ id: string; avatarUrl: string | null }> = await this.repo.manager.query(
+        `SELECT id::text, "avatarUrl" FROM user_service.users WHERE id = ANY($1::uuid[])`,
+        [Array.from(allUserIds)],
+      );
+      userRows.forEach((u) => avatarMap.set(u.id, u.avatarUrl));
+    }
+
+    return projects.map((p) => {
+      const memberIds = memberMap.get(String(p.id)) ?? [];
+      const memberAvatars = memberIds
+        .map((id) => avatarMap.get(id) ?? null)
+        .filter((url): url is string => !!url);
+      return {
+        id: String(p.id),
+        slug: p.slug,
+        title: p.title,
+        memberCount: memberIds.length,
+        memberAvatars,
+        score: fixedScore !== undefined ? fixedScore : 0,
+      };
+    });
   }
 
   private overlapRatio(source: Set<string>, candidate: string[] | null | undefined): number {
