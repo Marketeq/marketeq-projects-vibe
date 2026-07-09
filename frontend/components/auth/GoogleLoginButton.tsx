@@ -14,7 +14,7 @@ import { useGoogleLogin } from "@react-oauth/google"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
 
-const GoogleLoginButtonInner = () => {
+const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
   const router = useRouter()
 
   const { setUser } = useAuth()
@@ -53,7 +53,11 @@ const GoogleLoginButtonInner = () => {
             if (nextUser && typeof nextUser === "object") {
               setUser(nextUser)
             }
-            router.push(resolveDashboardRoute(nextUser as any))
+            if (onSuccess) {
+              onSuccess()
+            } else {
+              router.push(resolveDashboardRoute(nextUser as any))
+            }
           }
         })
         .catch((error) => {
@@ -97,7 +101,7 @@ const GoogleLoginButtonInner = () => {
   )
 }
 
-const GoogleLoginButton = () => {
+const GoogleLoginButton = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
     return (
       <Button
@@ -113,7 +117,7 @@ const GoogleLoginButton = () => {
     )
   }
 
-  return <GoogleLoginButtonInner />
+  return <GoogleLoginButtonInner onSuccess={onSuccess} />
 }
 
 export default GoogleLoginButton
