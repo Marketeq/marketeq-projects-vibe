@@ -79,15 +79,6 @@ const nextConfig = {
       },
     ],
   },
-  async redirects() {
-    return [
-      {
-        source: "/:kind(projects|teams|talent|services)/:l1/:l2/:l3",
-        destination: "/search?q=:l3&category=:kind",
-        permanent: false,
-      },
-    ]
-  },
   async rewrites() {
     // Bare kind routes (`/projects`, `/services`, `/teams`, `/talent`) are
     // real pages at `app/(group)/(group)/<kind>/page.tsx` — no rewrite.
@@ -98,8 +89,7 @@ const nextConfig = {
     //
     //   /projects/:l1                    → /c/:l1/projects
     //   /projects/:l1/:l2                → /c/:l1/:l2/projects
-    //   /projects/:l1/:l2/:l3            → handled by redirects() above,
-    //                                       not rewritten (see redirect rule)
+    //   /projects/:l1/:l2/:l3            → /c/:l1/:l2/:l3/projects
     const rewrites = []
     rewrites.push({
       source: "/api/:path*",
@@ -111,6 +101,10 @@ const nextConfig = {
       rewrites.push({
         source: `/${kind}/:l1/:l2`,
         destination: `/c/:l1/:l2/${kind}`,
+      })
+      rewrites.push({
+        source: `/${kind}/:l1/:l2/:l3`,
+        destination: `/c/:l1/:l2/:l3/${kind}`,
       })
     }
     // CMS media proxy. In dev the Payload cloud-storage plugin uploads to a

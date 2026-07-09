@@ -645,19 +645,8 @@ export default function ProjectDetails({
           res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
         }
         if (!res.ok) {
-          // Try as a service. Service URLs are also generated as
-          // `${slug}-${shortId}`, while the API expects the plain slug.
-          let svcRes: Response | null = null
-          for (const candidate of candidates) {
-            const r = await fetch(`${apiBase}/v1/services/slug/${candidate}`)
-            if (r.ok) {
-              svcRes = r
-              break
-            }
-          }
-          if (!svcRes) {
-            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
-          }
+          // Try as a service
+          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           if (!svcRes.ok) {
             // If rawSlug looks like a UUID, try the publish/draft endpoint
             // so "View as Client" works for unpublished drafts

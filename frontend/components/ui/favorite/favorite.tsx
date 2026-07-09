@@ -50,7 +50,7 @@ const Favorite = React.forwardRef<
       onPressedChange={ctx?.onValueChange}
       ref={ref}
       className={cn(
-        "group text-gray-300 transition duration-300 flex-none hover:text-gray-500 hover:fill-gray-100 h-6 w-6 inline-flex items-center justify-center fill-none focus-visible:outline-none data-[state=on]:text-primary-500 data-[state=on]:hover:text-primary-500 data-[state=on]:fill-primary-500 data-[state=on]:hover:fill-primary-500",
+        "group text-gray-300 transition duration-300 flex-none hover:text-gray-500 hover:fill-gray-100 h-6 w-6 inline-flex items-center justify-center fill-white focus-visible:outline-none data-[state=on]:text-primary-500 data-[state=on]:hover:text-primary-500 data-[state=on]:fill-primary-500 data-[state=on]:hover:fill-primary-500",
         className
       )}
       {...props}

@@ -1,13 +1,6 @@
 // frontend/src/lib/api/favorites.ts
-import { getPublicApiUrl } from "@/lib/runtime-urls"
-
-const favoritesApiBase = () => {
-  const explicit = process.env.NEXT_PUBLIC_FAVORITES_API_URL?.trim()
-  if (explicit) return explicit.replace(/\/$/, "")
-
-  const apiBase = getPublicApiUrl() || "http://localhost:4000"
-  return `${apiBase.replace(/\/$/, "")}/favorites`
-}
+const FAVORITES_API_URL =
+  process.env.NEXT_PUBLIC_FAVORITES_API_URL || "http://localhost:3012/favorites"
 
 function authHeaders(): HeadersInit {
   return {
@@ -64,7 +57,7 @@ export async function createGroup(
   dto: CreateGroupDto
 ): Promise<FavoriteGroup | null> {
   try {
-    const res = await fetch(`${favoritesApiBase()}/groups`, {
+    const res = await fetch(`${FAVORITES_API_URL}/groups`, {
       method: "POST",
       headers: authHeaders(),
       credentials: "include",
@@ -81,7 +74,7 @@ export async function createGroup(
 /** Get all groups for the current user (includes favorites in each group) */
 export async function getGroups(): Promise<FavoriteGroup[]> {
   try {
-    const res = await fetch(`${favoritesApiBase()}/groups`, {
+    const res = await fetch(`${FAVORITES_API_URL}/groups`, {
       headers: authHeaders(),
       credentials: "include",
       cache: "no-store",
@@ -100,7 +93,7 @@ export async function renameGroup(
   dto: RenameGroupDto
 ): Promise<FavoriteGroup | null> {
   try {
-    const res = await fetch(`${favoritesApiBase()}/groups/${groupId}`, {
+    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "PATCH",
       headers: authHeaders(),
       credentials: "include",
@@ -117,7 +110,7 @@ export async function renameGroup(
 /** Delete a favorites group (cascades to all favorites in it) */
 export async function deleteGroup(groupId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${favoritesApiBase()}/groups/${groupId}`, {
+    const res = await fetch(`${FAVORITES_API_URL}/groups/${groupId}`, {
       method: "DELETE",
       headers: authHeaders(),
       credentials: "include",
@@ -139,8 +132,7 @@ export async function getAllFavoritesGrouped(
   type?: FavoriteType
 ): Promise<FavoriteGroup[]> {
   try {
-    const base = favoritesApiBase()
-    const url = type ? `${base}?type=${type}` : base
+    const url = type ? `${FAVORITES_API_URL}?type=${type}` : FAVORITES_API_URL
     const res = await fetch(url, {
       headers: authHeaders(),
       credentials: "include",
@@ -170,7 +162,7 @@ export async function addFavorite(
   dto: CreateFavoriteDto
 ): Promise<Favorite | null> {
   try {
-    const res = await fetch(favoritesApiBase(), {
+    const res = await fetch(FAVORITES_API_URL, {
       method: "POST",
       headers: authHeaders(),
       credentials: "include",
@@ -190,7 +182,7 @@ export async function moveFavorite(
   dto: UpdateFavoriteDto
 ): Promise<Favorite | null> {
   try {
-    const res = await fetch(`${favoritesApiBase()}/${favoriteId}`, {
+    const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
       method: "PATCH",
       headers: authHeaders(),
       credentials: "include",
@@ -207,7 +199,7 @@ export async function moveFavorite(
 /** Remove a favorite */
 export async function removeFavorite(favoriteId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${favoritesApiBase()}/${favoriteId}`, {
+    const res = await fetch(`${FAVORITES_API_URL}/${favoriteId}`, {
       method: "DELETE",
       headers: authHeaders(),
       credentials: "include",
@@ -227,20 +219,6 @@ export async function findFavoriteByItemId(
 ): Promise<Favorite | null> {
   try {
     const favorites = await getAllFavorites()
-    return favorites.find((fav) => fav.itemId === itemId) || null
-  } catch (error) {
-    console.error("Error finding favorite:", error)
-    return null
-  }
-}
-
-/** Find favorite by type and itemId. */
-export async function findFavoriteByTypeAndItemId(
-  type: FavoriteType,
-  itemId: string
-): Promise<Favorite | null> {
-  try {
-    const favorites = await getAllFavorites(type)
     return favorites.find((fav) => fav.itemId === itemId) || null
   } catch (error) {
     console.error("Error finding favorite:", error)
