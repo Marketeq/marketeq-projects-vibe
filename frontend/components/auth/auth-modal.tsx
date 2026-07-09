@@ -57,7 +57,7 @@ type SignUpFormValues = z.infer<typeof signUpSchema>
 
 function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => void; onClose: () => void }) {
   const router = useRouter()
-  const { setUser } = useAuth()
+  const { setUser, closeAuthModal } = useAuth()
   const { toast } = useToast()
   const [isVisible, toggleIsVisible] = useToggle(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -105,6 +105,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
           if (nextUser && typeof nextUser === "object") {
             setUser(nextUser)
           }
+          closeAuthModal()
           onClose()
           router.push(resolveDashboardRoute(nextUser))
           reset()
@@ -249,7 +250,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
 function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => void; onClose: () => void }) {
   const router = useRouter()
-  const { setUser } = useAuth()
+  const { setUser, closeAuthModal } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [showSecuritySettings, setShowSecuritySettings] = useState(false)
@@ -276,6 +277,7 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
       .then((response) => {
         if (response?.status === 201 && response?.data?.user) {
           setUser(response?.data?.user)
+          closeAuthModal()
           onClose()
           setShowSecuritySettings(true)
           reset()
