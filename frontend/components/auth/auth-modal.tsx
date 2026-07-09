@@ -63,6 +63,8 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
   const [isLoading, setIsLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
 
+  const savedEmail = typeof window !== "undefined" ? localStorage.getItem("marketeq_remembered_email") ?? "" : ""
+
   const {
     register,
     formState: { errors },
@@ -71,10 +73,15 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
     reset,
   } = useForm<SignInFormValues>({
     resolver: zodResolver(signInSchema),
-    defaultValues: { email: "", password: "", rememberMe: false },
+    defaultValues: { email: savedEmail, password: "", rememberMe: savedEmail !== "" },
   })
 
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
+    if (rememberMe) {
+      localStorage.setItem("marketeq_remembered_email", email)
+    } else {
+      localStorage.removeItem("marketeq_remembered_email")
+    }
     setIsLoading(true)
     setLoginError(null)
     AuthAPI.LoginWithEmail({ email, password, rememberMe })

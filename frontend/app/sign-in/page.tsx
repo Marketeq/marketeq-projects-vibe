@@ -119,9 +119,9 @@ export default function SignIn() {
   } = useForm<SignInFormValues>({
     resolver: zodResolver(signInSchema),
     defaultValues: {
-      email: "",
+      email: typeof window !== "undefined" ? localStorage.getItem("marketeq_remembered_email") ?? "" : "",
       password: "",
-      rememberMe: false,
+      rememberMe: typeof window !== "undefined" ? localStorage.getItem("marketeq_remembered_email") !== null : false,
     },
   })
   const handleVerify2FA = async () => {
@@ -184,6 +184,11 @@ export default function SignIn() {
   }
 
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
+    if (rememberMe) {
+      localStorage.setItem("marketeq_remembered_email", email)
+    } else {
+      localStorage.removeItem("marketeq_remembered_email")
+    }
     setIsLoading(true)
 
     setLoginError(null)
