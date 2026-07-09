@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { hookFormHasError } from "@/utils/functions"
-import { ArrowLeft, Lock01, Mail01 } from "@blend-metrics/icons"
+import { ArrowLeft, Lock01 } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { SubmitHandler, useForm } from "react-hook-form"
@@ -13,8 +13,11 @@ import { z } from "zod"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import { Button, ErrorMessage, Input, Label, useToast } from "@/components/ui"
+import { MagicLinkSentShowcase } from "@/components/magic-link-sent-showcase"
+import { AccountNotFoundShowcase } from "@/components/account-not-found-showcaset"
 
 const SENT_EMAIL_STORAGE_KEY = "forgotPasswordEmail"
+const ACCOUNT_FOUND_STORAGE_KEY = "forgotPasswordAccountFound"
 
 const schema = z.object({
   email: z
@@ -34,6 +37,7 @@ function ForgotPassword() {
   const [isResending, setIsResending] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [sentEmail, setSentEmail] = useState("")
+  const [accountFound, setAccountFound] = useState(true)
 
   useEffect(() => {
     if (searchParams?.get("sent") !== "1") return
@@ -43,6 +47,9 @@ function ForgotPassword() {
         : null
     if (storedEmail) {
       setSentEmail(storedEmail)
+      setAccountFound(
+        window.sessionStorage.getItem(ACCOUNT_FOUND_STORAGE_KEY) !== "0",
+      )
       setSubmitted(true)
     }
   }, [searchParams])
@@ -62,17 +69,23 @@ function ForgotPassword() {
       typeof window !== "undefined"
         ? `${window.location.origin}/reset-password`
         : undefined
-    await AuthAPI.ForgotPassword({ email, redirectUrl })
+    const response = await AuthAPI.ForgotPassword({ email, redirectUrl })
+    return Boolean(response?.data?.accountFound)
   }
 
   const onSubmit: SubmitHandler<FormValues> = async ({ email }) => {
     setIsLoading(true)
     try {
-      await requestReset(email)
+      const found = await requestReset(email)
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem(SENT_EMAIL_STORAGE_KEY, email)
+        window.sessionStorage.setItem(
+          ACCOUNT_FOUND_STORAGE_KEY,
+          found ? "1" : "0",
+        )
       }
       setSentEmail(email)
+      setAccountFound(found)
       setSubmitted(true)
       router.replace("/forgot-password?sent=1")
     } catch (error: any) {
@@ -92,8 +105,19 @@ function ForgotPassword() {
     if (!sentEmail) return
     setIsResending(true)
     try {
-      await requestReset(sentEmail)
-      toast({ title: "Magic link resent. Please check your inbox." })
+      const found = await requestReset(sentEmail)
+      setAccountFound(found)
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          ACCOUNT_FOUND_STORAGE_KEY,
+          found ? "1" : "0",
+        )
+      }
+      toast({
+        title: found
+          ? "Magic link resent. Please check your inbox."
+          : "No account found for this email.",
+      })
     } catch (error: any) {
       toast({
         title:
@@ -110,9 +134,11 @@ function ForgotPassword() {
   const handleBack = () => {
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(SENT_EMAIL_STORAGE_KEY)
+      window.sessionStorage.removeItem(ACCOUNT_FOUND_STORAGE_KEY)
     }
     setSubmitted(false)
     setSentEmail("")
+    setAccountFound(true)
     router.replace("/forgot-password")
   }
 
@@ -136,58 +162,16 @@ function ForgotPassword() {
 
       <div className="py-10 px-5 md:p-10 3xl:px-[120px] 3xl:py-[50px]">
         {submitted ? (
-          <div className="max-w-[467px] w-full mx-auto p-5 md:p-[50px] bg-white border rounded-xl border-gray-100 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.05)] text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary-50">
-              <Mail01 className="size-6 text-primary-500" />
-            </div>
-            <h1 className="mt-4 text-lg font-semibold text-dark-blue-400">
-              Magic link sent!
-            </h1>
-            <p className="mt-2 text-sm leading-5 text-dark-blue-400">
-              We sent a magic link to the email{" "}
-              <span className="font-semibold">{sentEmail}</span>.
-              <br />
-              The link will expire in <span className="font-semibold">24 hours</span>.
-            </p>
-
-            <div className="mt-6 flex flex-col items-center gap-y-3">
-              <Button
-                size="sm"
-                disabled={isResending}
-                onClick={handleResend}
-                type="button"
-              >
-                {isResending ? (
-                  <Spinner
-                    size={20}
-                    className="stroke-white"
-                    trackClassName="stroke-primary-500"
-                    strokeWidth={2}
-                  />
-                ) : (
-                  "Resend Link"
-                )}
-              </Button>
-              <Button
-                size="sm"
-                variant="link"
-                type="button"
-                onClick={handleBack}
-              >
-                <ArrowLeft className="size-[15px]" /> Back
-              </Button>
-            </div>
-
-            <p className="mt-5 text-sm leading-5 text-dark-blue-400">
-              Still having trouble?{" "}
-              <Link
-                href="mailto:support@marketeqdigital.com"
-                className="underline font-semibold text-primary-500"
-              >
-                Start account recovery
-              </Link>
-            </p>
-          </div>
+          accountFound ? (
+            <MagicLinkSentShowcase
+              email={sentEmail}
+              onResend={handleResend}
+              goBack={handleBack}
+              isResending={isResending}
+            />
+          ) : (
+            <AccountNotFoundShowcase email={sentEmail} goBack={handleBack} />
+          )
         ) : (
           <form
             onSubmit={handleSubmit(onSubmit)}
