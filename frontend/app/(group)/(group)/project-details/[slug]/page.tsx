@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -509,6 +510,7 @@ export default function ProjectDetails({
 } = {}) {
   const params = useParams()
   const router = useRouter()
+  const { user } = useAuth()
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
@@ -5186,7 +5188,8 @@ export default function ProjectDetails({
 
       </div>
 
-      {/* Ready to Work CTA */}
+      {/* Ready to Work CTA — only for unauthenticated users */}
+      {!user && (
       <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] py-[70px] bg-gray-50">
         <div className="relative">
           <h1 className="text-[30px] font-bold text-center leading-none text-dark-blue-400">
@@ -5260,6 +5263,7 @@ export default function ProjectDetails({
           </svg>
         </div>
       </div>
+      )}
 
     </div>
   )
