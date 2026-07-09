@@ -6,7 +6,7 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
   const pathname = usePathname()
-  const { isLoading, user, openAuthModal } = useAuth()
+  const { isLoading, user, openAuthModal, closeAuthModal } = useAuth()
   const [isPageLoading, setIsPageLoading] = useState(true)
 
   const routeCheck = async () => {
@@ -15,6 +15,8 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     if (!user) {
       openAuthModal("sign-in")
       return
+    } else {
+      closeAuthModal()
     }
 
     const targetRoute = resolveDashboardRoute(user)

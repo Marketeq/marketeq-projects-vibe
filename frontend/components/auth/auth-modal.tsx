@@ -107,7 +107,6 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
           }
           closeAuthModal()
           onClose()
-          router.push(resolveDashboardRoute(nextUser))
           reset()
         } else if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           // 2FA required — redirect to full sign-in page
@@ -403,7 +402,6 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
         <SecuritySettingsStepper
           onCloseModal={() => {
             setShowSecuritySettings(false)
-            router.push("/onboarding")
           }}
         />
       )}
