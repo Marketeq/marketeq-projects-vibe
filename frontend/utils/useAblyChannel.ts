@@ -93,7 +93,9 @@ export function useAblyChannel(
 
     return () => {
       channel.unsubscribe()
-      client.close()
+      if (client.connection.state === "connected") {
+        client.close()
+      }
     }
   }, [threadId, user?.id])
 }
