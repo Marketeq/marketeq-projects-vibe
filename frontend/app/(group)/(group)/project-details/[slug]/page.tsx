@@ -25,6 +25,7 @@ import {
   HelpCircle,
   Home03,
   Image03,
+  Edit03,
   Info,
   MapPin,
   MessageTextCircle01,
@@ -40,6 +41,7 @@ import {
   Star,
   Stars02,
   UploadCloud,
+  User01,
   Users03,
   X,
 } from "@blend-metrics/icons"
@@ -443,6 +445,18 @@ const Chats = () => {
   )
 }
 
+const toEmbedUrl = (raw?: string | null): string => {
+  if (!raw) return ""
+  const url = raw.trim()
+  const yt = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
+  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  return url
+}
+
 const CarouselPreviousTrigger = () => {
   const { canScrollPrev } = useCarousel()
   return canScrollPrev ? (
@@ -486,7 +500,13 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
-export default function ProjectDetails() {
+export default function ProjectDetails({
+  isPreview = false,
+  onEdit,
+}: {
+  isPreview?: boolean
+  onEdit?: () => void
+} = {}) {
   const params = useParams()
   const router = useRouter()
   const [project, setProject] = React.useState<any>(null)
@@ -504,8 +524,43 @@ export default function ProjectDetails() {
   const sidebarPricing = React.useMemo(() => {
     if (!project) return null
     const totalCost = Number(project.priceMin ?? project.budget ?? 0)
-    const durationStr = (project.duration ?? "") as string
-    const durationWeeks = parseInt(durationStr, 10) || 0
+
+    // Derive duration + roles from scope (matches edit mode). Handles both the
+    // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
+    const scopeArr = Array.isArray(project.scope) ? project.scope : []
+    const uniqueRoles = new Set<string>()
+    let totalDays = 0
+    for (const phase of scopeArr) {
+      const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
+      const taskDays: number[] = []
+      for (const row of rows) {
+        const role = row?.role ?? row?.roleName
+        if (role) uniqueRoles.add(role)
+        const dur = row?.duration
+        if (dur && typeof dur === "object") {
+          const val = Number(dur.value) || 0
+          if (val > 0) {
+            const days =
+              dur.type === "weeks"
+                ? val * 7
+                : dur.type === "hours"
+                  ? Math.max(1, Math.ceil(val / 24))
+                  : val
+            taskDays.push(days)
+          }
+        }
+      }
+      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
+    }
+
+    // Fall back to the baked project.duration / durationMonths when scope has no durations.
+    let durationWeeks = totalDays > 0 ? totalDays / 7 : 0
+    if (durationWeeks <= 0) {
+      durationWeeks = parseInt(String(project.duration ?? ""), 10) || 0
+      if (durationWeeks <= 0 && Number(project.durationMonths) > 0) {
+        durationWeeks = Number(project.durationMonths) * 4.33
+      }
+    }
     const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
 
     // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
@@ -523,24 +578,15 @@ export default function ProjectDetails() {
       ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
     ]
 
-    // Minimum team members = unique roles from scope (docs §01 L88-91)
-    const scopeArr = Array.isArray(project.scope) ? project.scope : []
-    const uniqueRoles = new Set(
-      scopeArr.flatMap((phase: any) =>
-        (phase.tasks ?? []).map((t: any) => t.roleName).filter(Boolean)
-      )
-    )
-
     // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    const durationDays = durationWeeks * 7
+    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
     let formattedDuration = ""
-    if (durationDays > 0 && durationDays < 7) {
-      formattedDuration = `${durationDays} day`
-    } else if (durationWeeks > 0 && durationWeeks < 4) {
-      formattedDuration = `${durationWeeks} week`
-    } else if (durationWeeks >= 4) {
-      const months = Math.ceil(durationWeeks / 4.33)
-      formattedDuration = `${months} month`
+    if (effDays > 0 && effDays < 7) {
+      formattedDuration = `${effDays} day`
+    } else if (effDays >= 7 && effDays < 28) {
+      formattedDuration = `${Math.max(1, Math.ceil(effDays / 7))} week`
+    } else if (effDays >= 28) {
+      formattedDuration = `${Math.max(1, Math.ceil(effDays / 30))} month`
     }
 
     return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
@@ -612,13 +658,39 @@ export default function ProjectDetails() {
                 if (draftRes?.data) {
                   const d = draftRes.data
                   let featuredImage: string | null = null
+                  let featuredVideo: string | null = null
+                  const galleryUrls: string[] = []
+                  const hiddenUrls: string[] = []
                   if (d.media) {
                     const mediaObj = Array.isArray(d.media)
                       ? d.media[0]
                       : d.media
                     if (mediaObj?.featuredImage)
                       featuredImage = mediaObj.featuredImage
+                    if (mediaObj?.featuredVideo)
+                      featuredVideo = mediaObj.featuredVideo
+                    if (Array.isArray(mediaObj?.additionalImages))
+                      galleryUrls.push(...mediaObj.additionalImages)
+                    if (Array.isArray(mediaObj?.hiddenImages))
+                      hiddenUrls.push(...mediaObj.hiddenImages)
                   }
+                  const visibleGallery = galleryUrls.filter(
+                    (u) => !hiddenUrls.includes(u)
+                  )
+                  const composedMediaUrls = featuredImage
+                    ? [featuredImage, ...visibleGallery]
+                    : Array.isArray(d.mediaUrls)
+                      ? d.mediaUrls
+                      : visibleGallery
+                  const composedSubcategories = Array.isArray(d.subcategories)
+                    ? d.subcategories
+                    : Array.isArray(d.subCategories)
+                      ? d.subCategories
+                      : Array.isArray(d.categorySelections)
+                        ? d.categorySelections.flatMap(
+                            (c: any) => c?.subCategories ?? []
+                          )
+                        : []
                   setProject({
                     ...d,
                     role:
@@ -626,6 +698,10 @@ export default function ProjectDetails() {
                     summary: d.shortDescription || d.fullDescription || "",
                     description: d.fullDescription || "",
                     featuredImage: featuredImage || d.featuredImage || null,
+                    featuredVideo:
+                      featuredVideo || d.featuredVideo || d.videoUrl || null,
+                    mediaUrls: composedMediaUrls,
+                    subcategories: composedSubcategories,
                     programmingLanguages:
                       Array.isArray(d.skills) && d.skills.length > 0
                         ? d.skills
@@ -690,7 +766,7 @@ export default function ProjectDetails() {
 
   // Fetch related data + track view when project loads
   React.useEffect(() => {
-    if (!project?.id) return
+    if (!project?.id || isPreview) return
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
     // Related searches from project metadata
@@ -729,8 +805,8 @@ export default function ProjectDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px]">
+      <div className="min-h-screen bg-white px-5 md:px-10 lg:px-[100px] py-10">
+        <div className="max-w-[1240px] w-full mx-auto">
           {/* breadcrumb */}
           <div className="flex items-center gap-x-3">
             <Shimmer className="h-3 w-3 rounded-full" />
@@ -739,7 +815,7 @@ export default function ProjectDetails() {
             <Shimmer className="h-3 w-32" />
           </div>
           <div className="flex items-start gap-x-8 mt-8">
-            <div className="max-w-[818px] flex-auto space-y-6">
+            <div className="flex-auto min-w-0 space-y-6">
               {/* title + categories */}
               <div className="space-y-3">
                 <Shimmer className="h-8 w-2/3" />
@@ -810,9 +886,15 @@ export default function ProjectDetails() {
             have been removed or the link is broken.
           </p>
           <div className="mt-6">
-            <Button onClick={() => router.push("/projects")}>
-              Browse projects
-            </Button>
+            {isPreview && onEdit ? (
+              <Button variant="outlined" visual="gray" onClick={onEdit}>
+                Edit My Listing
+              </Button>
+            ) : (
+              <Button onClick={() => router.push("/projects")}>
+                Browse projects
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -820,12 +902,12 @@ export default function ProjectDetails() {
   }
 
   return (
-    <div className="px-[100px] relative bg-white">
-      <div className="max-w-[1240px] flex items-start gap-x-8">
-        <div className="max-w-[818px] flex-auto">
+    <div className="px-5 md:px-10 lg:px-[100px] relative bg-white">
+      <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
+        <div className="flex-auto min-w-0">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
-              <div className="absolute w-screen -translate-x-[100px] top-0 bottom-px bg-gray-50" />
+              <div className="absolute top-0 bottom-px bg-gray-50 w-[100vw] left-[calc(50%-50vw)]" />
 
               <div className="flex items-center gap-x-2 relative">
                 <NextLink href="/">
@@ -1089,13 +1171,16 @@ export default function ProjectDetails() {
                 static /waves.png placeholder carousel so the design
                 density stays intact (saved "no-empty-swap" memory rule).
               */}
-              <Carousel className="max-w-[818px] w-full">
+              <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
                   {(() => {
+                    const video =
+                      (project.videoUrl as string | undefined) ||
+                      (project.featuredVideo as string | undefined)
                     const gallery =
                       (project.mediaUrls as string[] | undefined)?.slice(1) ??
                       []
-                    if (gallery.length === 0) {
+                    if (!video && gallery.length === 0) {
                       return Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
                           <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
@@ -1111,23 +1196,42 @@ export default function ProjectDetails() {
                         </CarouselItem>
                       ))
                     }
-                    return gallery.map((url, index) => (
-                      <CarouselItem
-                        key={`${url}-${index}`}
-                        className="group basis-1/3"
-                      >
-                        <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                          <NextImage
-                            className="object-cover"
-                            src={url}
-                            alt={`${project.title} — gallery image ${index + 1}`}
-                            sizes="25vw"
-                            fill
-                          />
-                          <div className="absolute inset-0 transition duration-300" />
-                        </div>
-                      </CarouselItem>
-                    ))
+                    const items: React.ReactNode[] = []
+                    if (video) {
+                      items.push(
+                        <CarouselItem key="video" className="group basis-1/3">
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
+                            <iframe
+                              src={toEmbedUrl(video)}
+                              className="absolute inset-0 h-full w-full"
+                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                              allowFullScreen
+                              title="Project video"
+                            />
+                          </div>
+                        </CarouselItem>
+                      )
+                    }
+                    gallery.forEach((url, index) => {
+                      items.push(
+                        <CarouselItem
+                          key={`${url}-${index}`}
+                          className="group basis-1/3"
+                        >
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                            <NextImage
+                              className="object-cover"
+                              src={url}
+                              alt={`${project.title} — gallery image ${index + 1}`}
+                              sizes="25vw"
+                              fill
+                            />
+                            <div className="absolute inset-0 transition duration-300" />
+                          </div>
+                        </CarouselItem>
+                      )
+                    })
+                    return items
                   })()}
                 </CarouselContent>
 
@@ -1142,8 +1246,8 @@ export default function ProjectDetails() {
                   ref={tabsRef}
                   data-position={isSticky ? "sticky" : "default"}
                 >
-                  <div className="fixed top-0 z-50 inset-x-0 bg-white border border-gray-200 drop-shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] px-[100px] group-data-[position=default]/tabs:contents">
-                    <div className="max-w-[1240px] mx-auto flex items-center group-data-[position=default]/tabs:contents">
+                  <div className="fixed top-0 z-50 inset-x-0 bg-white border border-gray-200 drop-shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] px-5 md:px-10 lg:px-[100px] group-data-[position=default]/tabs:contents">
+                    <div className="max-w-[1240px] w-full mx-auto flex items-center group-data-[position=default]/tabs:contents">
                       <div className="pt-[12px] flex-auto group-data-[position=default]/tabs:contents">
                         <div className="pb-2 inline-flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                           <div className="h-12 relative w-[66px] overflow-hidden rounded-[5px] bg-[#FBFBFB] border-b border-black/15">
@@ -1533,6 +1637,7 @@ export default function ProjectDetails() {
                               location: string | null
                               languages: string[]
                               skills: string[]
+                              role: string
                               isLead: boolean
                               isOnline: boolean
                             }
@@ -1593,11 +1698,9 @@ export default function ProjectDetails() {
                                           </span>{" "}
                                           @{lead.username}
                                         </NextLink>
-                                        {lead.skills[0] ? (
+                                        {lead.role ? (
                                           <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                            {lead.skills
-                                              .slice(0, 2)
-                                              .join(" · ")}
+                                            {lead.role}
                                           </span>
                                         ) : null}
                                       </div>
@@ -1690,143 +1793,23 @@ export default function ProjectDetails() {
                               About the Team
                             </h3>
 
-                            <div className="grid grid-cols-2 gap-x-6 mt-6">
-                              <div className="flex items-start gap-x-3">
-                                <Avatar size="lg">
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <div className="space-y-1.5">
-                                  <Badge
-                                    className="rounded-[4px] bg-primary-50"
-                                    visual="primary"
-                                  >
-                                    Project Lead
-                                  </Badge>
-
-                                  <div className="flex flex-col gap-y-0.5">
-                                    <span className="block text-sm leading-none text-gray-500 font-extralight">
-                                      <span className="text-base font-bold text-dark-blue-400 ">
-                                        Chris
-                                      </span>{" "}
-                                      @ux23isee
-                                    </span>
-
-                                    <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                      Full Stack Designer
-                                    </span>
-                                  </div>
-                                </div>
+                            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+                              <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                                <Users03 className="size-6 text-gray-400" />
                               </div>
 
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <MapPin className="size-[18px]" /> Locations
-                                </h3>
+                              <h4 className="mt-4 text-base font-semibold text-dark-blue-400">
+                                No team assigned yet
+                              </h4>
+                              <p className="mt-1 max-w-[260px] text-sm text-gray-500">
+                                Be the first to claim this project and lead a
+                                team to deliver it.
+                              </p>
 
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    USA,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    UK,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Brazil,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    and 1 more...
-                                  </NextLink>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-6 grid grid-cols-2 gap-x-6">
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <MessageTextSquare01 className="size-[18px]" />{" "}
-                                  Languages
-                                </h3>
-
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    English,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Spanish,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    French
-                                  </NextLink>
-                                </div>
-                              </div>
-
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <Stars02 className="size-[18px]" /> Skills &
-                                  Expertise
-                                </h3>
-
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Performance,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Security,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Operating Systems,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Design,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Databases,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    and 1 more...
-                                  </NextLink>
-                                </div>
+                              <div className="mt-5">
+                                <Button size="md" visual="primary">
+                                  Claim this Project
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -3687,7 +3670,7 @@ export default function ProjectDetails() {
                   // start on day (prev end + 1).
                   let cursor = 1
                   const withDays = phases.map((phase) => {
-                    const phaseHours = phase.tasks.reduce(
+                    const phaseHours = (phase.tasks ?? []).reduce(
                       (sum, t) => sum + (t.estimatedHours || 0),
                       0
                     )
@@ -3710,74 +3693,75 @@ export default function ProjectDetails() {
                             value={`scope-${pi}`}
                             className="rounded-lg border border-gray-200 shadow-sm"
                           >
-                            <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                              <div className="inline-flex items-center gap-x-3.5">
-                                <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                                  <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                </AccordionTrigger>
+                            <AccordionTrigger className="focus-visible:outline-none w-full cursor-pointer">
+                              <div className="flex items-center justify-between gap-x-4 px-3 py-3">
+                                <div className="inline-flex items-center gap-x-3.5">
+                                  <div className="size-8 inline-flex items-center justify-center">
+                                    <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                  </div>
 
-                                <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                  {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
-                                  <span className="font-light">
-                                    {phase.phaseName}
+                                  <span className="text-base md:text-[18px] font-semibold leading-7 text-dark-blue-400">
+                                    {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                    <span className="font-light">
+                                      {phase.phaseName}
+                                    </span>
                                   </span>
-                                </span>
-                              </div>
+                                </div>
 
-                              <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  Day {start}
-                                </span>
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  -
-                                </span>
-                                <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                  Day {end}
-                                </span>
+                                <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
+                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                    Day {start}
+                                  </span>
+                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                    -
+                                  </span>
+                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                    Day {end}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
+                            </AccordionTrigger>
 
                             <DisclosureContent>
-                              <Table>
+                              <Table className="w-full table-fixed">
                                 <TableHeader className="bg-gray-50">
                                   <TableRow className="hover:bg-transparent">
-                                    <TableHead>Task</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead>Location</TableHead>
-                                    <TableHead>Experience</TableHead>
-                                    <TableHead>Duration</TableHead>
+                                    <TableHead className="w-[45%]">Task</TableHead>
+                                    <TableHead className="w-[25%]">Role</TableHead>
+                                    <TableHead className="w-[15%]">Experience</TableHead>
+                                    <TableHead className="w-[15%] text-right">Duration</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {phase.tasks.map((task, ti) => (
+                                  {(phase.tasks ?? []).map((task, ti) => (
                                     <TableRow key={`task-${pi}-${ti}`}>
                                       <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          {task.title}
-                                        </span>
+                                        <TooltipProvider delayDuration={200}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="text-sm font-semibold text-dark-blue-400 truncate block cursor-default">
+                                                {task.title}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent visual="white">
+                                              {task.title}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
                                       </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          {task.roleName}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight text-dark-blue-400">
-                                          {task.location ? (
-                                            <span className="inline-flex items-center gap-x-2">
-                                              {locationToFlag(task.location) ? (
-                                                <span aria-hidden="true">
-                                                  {locationToFlag(
-                                                    task.location
-                                                  )}
-                                                </span>
-                                              ) : null}
-                                              <span>{task.location}</span>
-                                            </span>
-                                          ) : (
-                                            "-"
-                                          )}
-                                        </span>
+                                      <TableCell className="py-4 px-6 whitespace-nowrap max-w-[200px]">
+                                        <TooltipProvider delayDuration={200}>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="text-sm font-extralight text-dark-blue-400 truncate block cursor-default">
+                                                {task.roleName}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent visual="white">
+                                              {task.roleName}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
                                       </TableCell>
                                       <TableCell className="py-4 px-6">
                                         <Badge
@@ -3787,8 +3771,8 @@ export default function ProjectDetails() {
                                           {task.experienceLevel}
                                         </Badge>
                                       </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
+                                      <TableCell className="py-4 px-6 text-right">
+                                        <span className="text-sm text-nowrap text-dark-blue-400">
                                           {task.estimatedHours} hours
                                         </span>
                                       </TableCell>
@@ -4468,106 +4452,100 @@ export default function ProjectDetails() {
                   Current Team
                 </span>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AvatarGroup size="sm" excess>
-                        {(Array.isArray(project.team) && project.team.length > 0
-                          ? project.team
-                          : [
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                              { firstName: "T", avatarUrl: "/woman.jpg" },
-                            ]
-                        ).map((m: any, i: number) => (
-                          <Avatar
-                            key={m.username ?? i}
-                            className="border-2 border-white hover:ring-0 active:ring-0"
-                            size="sm"
-                          >
-                            {m.avatarUrl ? (
-                              <AvatarImage
-                                src={m.avatarUrl}
-                                alt={m.firstName}
-                              />
-                            ) : null}
-                            <AvatarFallback>
-                              {(m.firstName || "?").charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                      </AvatarGroup>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-0" size="md">
-                      <ScrollArea
-                        className="h-[192px] p-3 pr-4"
-                        scrollBar={
-                          <ScrollBar
-                            className="w-4 p-1"
-                            thumbClassName="bg-white/20"
-                          />
-                        }
-                      >
-                        <div className="space-y-3 pr-5">
-                          {(Array.isArray(project.team) &&
-                          project.team.length > 0
-                            ? project.team
-                            : [
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                                {
-                                  firstName: "Sevil",
-                                  username: "designsuperstar23",
-                                  location: null,
-                                  skills: ["Full-stack Developer"],
-                                },
-                              ]
-                          ).map((m: any, i: number) => (
-                            <div
+                {Array.isArray(project.team) && project.team.length > 0 ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AvatarGroup size="sm" excess>
+                          {project.team.map((m: any, i: number) => (
+                            <Avatar
                               key={m.username ?? i}
-                              className="flex items-center gap-x-[18px]"
+                              className="border-2 border-white hover:ring-0 active:ring-0"
+                              size="sm"
                             >
-                              <div className="flex items-center gap-x-2 flex-auto">
-                                <Avatar>
-                                  {m.avatarUrl ? (
-                                    <AvatarImage
-                                      src={m.avatarUrl}
-                                      alt={m.firstName}
-                                    />
-                                  ) : null}
-                                  <AvatarFallback>
-                                    {(m.firstName || "?")
-                                      .charAt(0)
-                                      .toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col flex-auto">
-                                  <div className="flex items-center gap-x-0.5">
-                                    <span className="text-xs leading-5 font-semibold text-white">
-                                      {m.firstName}
-                                    </span>
-                                    <span className="text-[10px] leading-none font-light text-white">
-                                      @{m.username}
+                              {m.avatarUrl ? (
+                                <AvatarImage
+                                  src={m.avatarUrl}
+                                  alt={m.firstName}
+                                />
+                              ) : null}
+                              <AvatarFallback>
+                                {(m.firstName || "?").charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </AvatarGroup>
+                      </TooltipTrigger>
+                      <TooltipContent className="p-0" size="md">
+                        <ScrollArea
+                          className="h-[192px] p-3 pr-4"
+                          scrollBar={
+                            <ScrollBar
+                              className="w-4 p-1"
+                              thumbClassName="bg-white/20"
+                            />
+                          }
+                        >
+                          <div className="space-y-3 pr-5">
+                            {project.team.map((m: any, i: number) => (
+                              <div
+                                key={m.username ?? i}
+                                className="flex items-center gap-x-[18px]"
+                              >
+                                <div className="flex items-center gap-x-2 flex-auto">
+                                  <Avatar>
+                                    {m.avatarUrl ? (
+                                      <AvatarImage
+                                        src={m.avatarUrl}
+                                        alt={m.firstName}
+                                      />
+                                    ) : null}
+                                    <AvatarFallback>
+                                      {(m.firstName || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex flex-col flex-auto">
+                                    <div className="flex items-center gap-x-0.5">
+                                      <span className="text-xs leading-5 font-semibold text-white">
+                                        {m.firstName}
+                                      </span>
+                                      <span className="text-[10px] leading-none font-light text-white">
+                                        @{m.username}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-light text-white">
+                                      {m.location ||
+                                        m.skills?.[0] ||
+                                        "Team Member"}
                                     </span>
                                   </div>
-                                  <span className="text-[10px] font-light text-white">
-                                    {m.location ||
-                                      m.skills?.[0] ||
-                                      "Team Member"}
-                                  </span>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <div className="flex flex-col items-start gap-y-2">
+                    <div className="flex items-center -space-x-2">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
+                        >
+                          <User01 className="size-3.5 text-gray-400" />
                         </div>
-                      </ScrollArea>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-400 font-extralight leading-none">
+                      No team assigned yet
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 space-y-3">
@@ -4589,37 +4567,69 @@ export default function ProjectDetails() {
                 )}
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
+              {!isPreview && (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="lg"
+                      className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
+                      variant="outlined"
+                    >
+                      Start Project
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>
+                        Would you like to customize the project scope before
+                        checkout?
+                      </DialogTitle>
+                    </DialogHeader>
+                    <DialogFooter className="mt-8">
+                      <DialogClose asChild>
+                        <Button variant="outlined" visual="gray">
+                          Edit Scope
+                        </Button>
+                      </DialogClose>
+                      <Button
+                        onClick={() => router.push(`/checkout/${params.slug}`)}
+                      >
+                        Continue to Checkout
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {isPreview && onEdit && (
+                <div className="mt-6 flex items-center gap-x-3">
                   <Button
                     size="lg"
-                    className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
                     variant="outlined"
+                    visual="gray"
+                    className="flex-auto"
+                    onClick={onEdit}
                   >
-                    Start Project
+                    <Edit03 className="size-[15px]" />
+                    Edit My Project
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      Would you like to customize the project scope before
-                      checkout?
-                    </DialogTitle>
-                  </DialogHeader>
-                  <DialogFooter className="mt-8">
-                    <DialogClose asChild>
-                      <Button variant="outlined" visual="gray">
-                        Edit Scope
-                      </Button>
-                    </DialogClose>
-                    <Button
-                      onClick={() => router.push(`/checkout/${params.slug}`)}
-                    >
-                      Continue to Checkout
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  <IconButton
+                    size="lg"
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => {
+                      if (
+                        typeof navigator !== "undefined" &&
+                        navigator.clipboard
+                      ) {
+                        navigator.clipboard.writeText(window.location.href)
+                      }
+                    }}
+                  >
+                    <Share06 className="size-5" />
+                  </IconButton>
+                </div>
+              )}
 
               <div className="mt-6 flex items-center gap-x-2">
                 <span className="text-sm font-medium leading-none text-dark-blue-400 whitespace-nowrap">
@@ -4661,7 +4671,7 @@ export default function ProjectDetails() {
                 </div>
               )}
 
-              {project.helpButtonEnabled === true && (
+              {project.helpButtonEnabled !== false && (
                 <div className="inline-flex items-center gap-x-2">
                   <HelpCircle className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
@@ -4749,7 +4759,7 @@ export default function ProjectDetails() {
       <div className="pb-[100px]" />
 
       {/* Similar Projects — full-width section */}
-      <div className="-mx-[100px] px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
+      <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
         <div>
           <div className="space-y-6">
             <div className="flex items-end justify-between">
@@ -5300,7 +5310,7 @@ export default function ProjectDetails() {
       </div>
 
       {/* Ready to Work CTA */}
-      <div className="-mx-[100px] px-[100px] py-[70px] bg-gray-50">
+      <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] py-[70px] bg-gray-50">
         <div className="relative">
           <h1 className="text-[30px] font-bold text-center leading-none text-dark-blue-400">
             Ready to Work With Premium Quality Talent?

@@ -29,6 +29,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         autoLoadEntities: true,
         synchronize: false,
         ssl: false, // port 5433 = Supabase PgBouncer pooler — SSL not supported on this port
+        retryAttempts: 5,
+        retryDelay: 3000,
       }),
     }),
 

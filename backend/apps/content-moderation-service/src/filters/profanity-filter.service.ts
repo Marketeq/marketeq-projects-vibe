@@ -11,11 +11,15 @@ class BasicProfanityFilter {
     words.forEach((w) => this.words.delete(String(w).toLowerCase()));
   }
 
+  private wordPattern(word: string, flags: string): RegExp {
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}(?:s|es|ed|ing|in|er|ers|y)?\\b`, flags);
+  }
+
   isProfane(content: string): boolean {
     const normalized = content.toLowerCase();
     for (const word of this.words) {
-      const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-      if (pattern.test(normalized)) return true;
+      if (this.wordPattern(word, 'i').test(normalized)) return true;
     }
     return false;
   }
@@ -23,8 +27,10 @@ class BasicProfanityFilter {
   clean(content: string): string {
     let result = content;
     for (const word of this.words) {
-      const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-      result = result.replace(pattern, '*'.repeat(word.length));
+      result = result.replace(
+        this.wordPattern(word, 'gi'),
+        '*'.repeat(word.length),
+      );
     }
     return result;
   }

@@ -52,6 +52,10 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 **Review-side rules this SOP enforces:**
 
 - **Frozen files** (any change to any of these triggers the four-point confirmation below):
+  - `frontend/app/top-most-header.tsx` — the single master navigation bar component. No replacements, no duplicates, no deletions. The shadow and gap-free layout between primary and secondary nav is intentional and must never be reverted.
+  - `frontend/components/navigation/marketplace-secondary-nav.tsx` — part of the master nav bar unit. The negative margin overlap and shadow placement are intentional fixes. Never overwrite.
+  - `frontend/components/auth/auth-modal.tsx` — the auth modal for in-marketplace login/signup. Marketplace login MUST use this modal, never redirect to `/sign-in`. See §1.4.1.
+  - `frontend/hoc/AuthenticatedRoute.tsx` — opens auth modal for unauthenticated users. Must call `openAuthModal()`, never `router.push("/sign-in")`. See §1.4.1.
   - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
   - `frontend/contexts/auth.tsx`
   - `frontend/src/lib/api/auth.ts`
@@ -81,6 +85,29 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what the GitHub Actions `sop-check` workflow blocks, in both directions, on every PR.
 
 **Everything else about the login/env topology — Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping — lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
+
+### 1.4.1 Auth modal login flow is FROZEN — block any PR that changes it
+
+The marketplace uses a **dual login flow** that must never be changed:
+
+1. **Marketplace (in-app):** When a logged-out user clicks any protected feature (Dashboard, profile, etc.) or clicks Sign In / Sign Up in the nav bar, a **popup modal** opens on the current page. The user never leaves the page they're on. This is powered by:
+   - `frontend/components/auth/auth-modal.tsx` — the AuthModal component with SignInForm and SignUpForm
+   - `frontend/contexts/auth.tsx` — exposes `openAuthModal()` / `closeAuthModal()` via AuthContext
+   - `frontend/hoc/AuthenticatedRoute.tsx` — calls `openAuthModal("sign-in")` instead of redirecting to `/sign-in`
+   - `frontend/app/top-most-header.tsx` — nav bar buttons call `openAuthModal()` for logged-out users
+
+2. **Marketing website:** When a user clicks Login/Sign Up from the marketing website (marketeqdigital.com), they navigate to the full `/sign-in` or `/sign-up` page with the sidebar layout.
+
+**Block any PR that:**
+- Replaces `openAuthModal()` with `router.push("/sign-in")` in `AuthenticatedRoute.tsx`
+- Removes or bypasses the auth modal in favor of page navigation within the marketplace
+- Removes `authModalOpen` / `openAuthModal` / `closeAuthModal` from the AuthContext
+- Deletes or guts `auth-modal.tsx`
+- Changes the nav bar to navigate to `/sign-in` instead of opening the modal
+
+**These files are frozen for this purpose** (in addition to §1.4 frozen rules):
+- `frontend/components/auth/auth-modal.tsx`
+- `frontend/hoc/AuthenticatedRoute.tsx`
 
 ### 1.5 Incremental changes only
 - No mega-PRs that mix unrelated concerns (e.g., "fix login" should not also include a CSS refactor).
@@ -183,6 +210,16 @@ After the checklist, apply this matrix:
 | Author explicitly marked `[DO NOT MERGE]` or draft | **Do not merge** regardless of checklist |
 
 **Default posture:** when in doubt, block. The cost of a bad merge is much higher than the cost of another review cycle.
+
+### 4.1 Selective Merge — never waste code
+
+When a PR has **mixed quality** (some good code, some violations), **never close the entire PR**. Instead:
+
+1. **Cherry-pick the good code** — manually apply usable changes (backend logic, data wiring, API endpoints, bug fixes) to `dev-main`
+2. **Reject only the specific violations** — layout deletions, security issues, off-limits changes
+3. **Close the PR** with a comment listing exactly what was merged and what was rejected, with line references
+
+Code takes time and money to write. Closing an entire PR because of one bad file wastes all the good work in it. Always extract value before closing.
 
 ---
 
@@ -647,3 +684,4 @@ Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`.
 | 2026-04-11 | Initial document. Captures the review rules, block-comment format, branch rules enforceable on the free org plan, and the exact Claude CLI prompt used for reviews. |
 | 2026-04-11 | Split devops concerns into `docs/DEVOPS_SOP.md`. This doc is now code-review-only. Removed former §1.8/§1.9/§1.10/§1.11/§1.12 (now consolidated in DEVOPS_SOP §3–§8) and kept only the §1.4 "login files are frozen" rule as a review-side concern with the bidirectional invariant stated plainly. Removed former §16 QA promotion SOP (moved to DEVOPS_SOP §7). Renamed production branch `main-live` → `live-mvp` throughout (actual branch name on origin). Added §14 regression prevention architecture and §15 AI breakage prompt (both review concerns, kept). |
 | 2026-05-22 | CI/CD split: PR gate checks on GitHub Actions, post-merge on both GitHub Actions + Jenkins, post-deploy on Jenkins only. All workflow/pipeline references updated accordingly. |
+| 2026-07-08 | Added §4.1 Selective Merge rule: never close entire PRs with mixed quality. Cherry-pick good code, reject only specific violations. |

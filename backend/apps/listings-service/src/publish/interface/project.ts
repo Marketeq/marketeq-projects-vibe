@@ -28,12 +28,16 @@ export class Project {
   tags?: string[] | null;
   skills?: string[] | null;
   listingType?: string | null;
+  projectType?: string | null;
   status?: string | null;
   projectDatePublished?: Date | null;
   userId: string;
 
   deliverables?: any[] | null;
   media?: any[];
+  mediaUrls?: string[];
+  videoUrl?: string | null;
+  faqs?: { question: string; answer: string; is_ai_generated?: boolean }[];
 
   createdAt?: Date;
   updatedAt?: Date;

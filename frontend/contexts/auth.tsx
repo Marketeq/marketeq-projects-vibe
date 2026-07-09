@@ -150,6 +150,10 @@ interface AuthContextType {
   user: User | null
   setUser: Dispatch<React.SetStateAction<User | null>>
   logoutHandler: () => void
+  authModalOpen: boolean
+  authModalView: "sign-in" | "sign-up"
+  openAuthModal: (view?: "sign-in" | "sign-up") => void
+  closeAuthModal: () => void
 }
 
 const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
@@ -158,6 +162,10 @@ const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
   user: null,
   setUser: () => {},
   logoutHandler: () => {},
+  authModalOpen: false,
+  authModalView: "sign-in",
+  openAuthModal: () => {},
+  closeAuthModal: () => {},
 })
 
 const mergeUserAuthFields = (
@@ -314,7 +322,21 @@ function useProvideAuth() {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const auth = useProvideAuth()
-  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authModalView, setAuthModalView] = useState<"sign-in" | "sign-up">("sign-in")
+
+  const openAuthModal = (view: "sign-in" | "sign-up" = "sign-in") => {
+    setAuthModalView(view)
+    setAuthModalOpen(true)
+  }
+
+  const closeAuthModal = () => setAuthModalOpen(false)
+
+  return (
+    <AuthContext.Provider value={{ ...auth, authModalOpen, authModalView, openAuthModal, closeAuthModal }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export const useAuth = () => useContext(AuthContext)

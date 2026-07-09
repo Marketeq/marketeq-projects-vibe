@@ -108,7 +108,7 @@ export function MarketplaceSecondaryNavShell({
   return (
     <>
       <div
-        className="fixed inset-x-0 top-[62px] lg:top-[65px] px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden z-40 transition-transform duration-300"
+        className="fixed inset-x-0 top-[61px] lg:top-[64px] -mt-px px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden z-40 transition-transform duration-300"
         style={{
           transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)",
         }}

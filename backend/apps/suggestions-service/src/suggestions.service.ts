@@ -8,18 +8,31 @@ import { JobTitle } from './entities/job-title.entity';
 import { SuggestDto, AddJobTitleDto } from './dto/suggest.dto';
 
 const NOISE_WORDS = [
-  // Informal/joke titles
   'crazy', 'clown', 'ninja', 'guru', 'wizard', 'rockstar', 'unicorn', 'jedi',
   'pirate', 'superhero', 'god', 'genius', 'legend', 'boss', 'overlord', 'king',
   'queen', 'master', 'lord', 'chief', 'supreme', 'ultimate', 'extreme', 'mega',
-  // Gibberish
   'asdf', 'qwerty', 'lorem', 'ipsum', 'blah', 'foo', 'bar', 'baz', 'test',
   'dummy', 'fake', 'random', 'abc', 'xyz',
-  // Offensive/inappropriate
   'porn', 'sex', 'drug', 'hacker', 'cracker', 'scammer', 'spammer',
 ];
 
-const CACHE_TTL = 60_000; // 1 minute
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  'Engineering': ['engineer', 'developer', 'programmer', 'architect', 'devops', 'sre', 'qa', 'tester', 'embedded'],
+  'Product Management': ['product manager', 'product owner', 'scrum master', 'program manager'],
+  'Design': ['designer', 'ux', 'ui', 'graphic', 'motion', 'brand', 'interaction', 'visual'],
+  'Data & Analytics': ['data scientist', 'data analyst', 'data engineer', 'business analyst', 'analytics', 'bi analyst', 'intelligence'],
+  'Marketing': ['marketing', 'seo', 'social media', 'growth', 'content strategist', 'email marketing', 'performance marketing'],
+  'Writing & Content': ['writer', 'copywriter', 'editor', 'content', 'journalist', 'blogger'],
+  'Finance': ['financial', 'accountant', 'bookkeeper', 'tax', 'auditor', 'cfo', 'controller'],
+  'Legal': ['attorney', 'lawyer', 'paralegal', 'compliance', 'legal'],
+  'Consulting': ['consultant', 'advisor', 'strategist'],
+  'Project Management': ['project manager', 'agile coach', 'delivery manager', 'pmo'],
+  'Media Production': ['video', 'videographer', 'photographer', 'audio', 'animator', 'illustrator'],
+  'Healthcare': ['health', 'clinical', 'medical', 'nurse', 'physician'],
+  'Education': ['instructor', 'curriculum', 'e-learning', 'teacher', 'trainer', 'tutor'],
+};
+
+const CACHE_TTL = 60_000;
 
 @Injectable()
 export class SuggestionsService implements OnModuleInit {
@@ -57,6 +70,7 @@ export class SuggestionsService implements OnModuleInit {
       .where('jt.isActive = true')
       .andWhere('jt.title % :q', { q: dto.q })
       .orderBy('similarity(jt.title, :q)', 'DESC')
+      .addOrderBy('jt.usageCount', 'DESC')
       .setParameter('q', dto.q)
       .limit(dto.limit ?? 10);
 
@@ -73,27 +87,37 @@ export class SuggestionsService implements OnModuleInit {
   }
 
   async add(dto: AddJobTitleDto): Promise<JobTitle> {
-    const normalized = dto.title.trim().toLowerCase();
+    const normalized = dto.title.trim();
+    const lower = normalized.toLowerCase();
 
-    if (NOISE_WORDS.some(w => normalized.includes(w))) {
-      throw new BadRequestException(`Job title contains disallowed term`);
+    if (NOISE_WORDS.some(w => lower.includes(w))) {
+      throw new BadRequestException('Job title contains disallowed term');
     }
 
-    const existing = await this.titleRepo.findOne({
-      where: { title: dto.title.trim() },
-    });
+    if (normalized.length < 2 || normalized.length > 200) {
+      throw new BadRequestException('Job title must be between 2 and 200 characters');
+    }
+
+    // Case-insensitive duplicate detection
+    const existing = await this.titleRepo
+      .createQueryBuilder('jt')
+      .where('LOWER(jt.title) = LOWER(:title)', { title: normalized })
+      .andWhere('LOWER(COALESCE(jt.industry, \'\')) = LOWER(COALESCE(:industry, \'\'))', { industry: dto.industry ?? null })
+      .getOne();
 
     if (existing) {
       existing.usageCount += 1;
       return this.titleRepo.save(existing);
     }
 
+    const category = dto.category || this.categorize(lower);
+
     return this.titleRepo.save(
       this.titleRepo.create({
-        title: dto.title.trim(),
+        title: normalized,
         industry: dto.industry,
         goal: dto.goal,
-        category: dto.category,
+        category,
       }),
     );
   }
@@ -113,5 +137,14 @@ export class SuggestionsService implements OnModuleInit {
 
     await this.cache.set(cacheKey, results, CACHE_TTL);
     return results;
+  }
+
+  private categorize(titleLower: string): string {
+    for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+      if (keywords.some(kw => titleLower.includes(kw))) {
+        return category;
+      }
+    }
+    return 'Other';
   }
 }

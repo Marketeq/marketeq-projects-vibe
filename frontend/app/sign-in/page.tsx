@@ -119,9 +119,9 @@ export default function SignIn() {
   } = useForm<SignInFormValues>({
     resolver: zodResolver(signInSchema),
     defaultValues: {
-      email: "",
+      email: typeof window !== "undefined" ? localStorage.getItem("marketeq_remembered_email") ?? "" : "",
       password: "",
-      rememberMe: false,
+      rememberMe: typeof window !== "undefined" ? localStorage.getItem("marketeq_remembered_email") !== null : false,
     },
   })
   const handleVerify2FA = async () => {
@@ -184,6 +184,11 @@ export default function SignIn() {
   }
 
   const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
+    if (rememberMe) {
+      localStorage.setItem("marketeq_remembered_email", email)
+    } else {
+      localStorage.removeItem("marketeq_remembered_email")
+    }
     setIsLoading(true)
 
     setLoginError(null)
@@ -259,18 +264,20 @@ export default function SignIn() {
 
           <div className="flex items-start gap-y-5 flex-col relative">
             <p className="text-white text-sm font-medium">
-              Already have an account?
+              Don't have an account?
             </p>
 
             <div className="inline-block relative">
+              <NextLink href="/sign-up">
               <Button
                 className="text-white hover:bg-white/10 border-white/20"
                 visual="gray"
                 variant="outlined"
                 size="lg"
               >
-                Sign In
+                Join Us For Free
               </Button>
+              </NextLink>
               <svg
                 className="size-[23px] absolute right-[15.33px] top-[34px] text-primary-500"
                 viewBox="0 0 23 23"
@@ -542,7 +549,7 @@ export default function SignIn() {
                       className="text-[#939DA7] font-normal"
                       htmlFor="remember-me"
                     >
-                      Remember me
+                      Keep me signed in
                     </Label>
                   </div>
 

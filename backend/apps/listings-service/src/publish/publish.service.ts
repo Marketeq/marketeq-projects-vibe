@@ -47,6 +47,8 @@ import {
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
 import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types';
+import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
+import { FaqContext, FaqSuggestion } from './faq/faq.types';
 
 @Injectable()
 export class PublishService {
@@ -62,7 +64,76 @@ export class PublishService {
     private readonly httpService: HttpService,
     @Inject(DELIVERABLES_ADAPTER)
     private readonly deliverablesAdapter: DeliverablesAdapter,
+    @Inject(FAQ_ADAPTER)
+    private readonly faqAdapter: FaqAdapter,
   ) {}
+
+  private faqContextFromProject(project: Project): FaqContext {
+    return {
+      title: project.title,
+      listingType: project.listingType,
+      categories: project.categories,
+      skills: project.skills,
+      tags: project.tags,
+      durationMonths: project.durationMonths,
+      shortDescription: project.shortDescription,
+      fullDescription: project.fullDescription,
+    };
+  }
+
+  private async loadFaqScope(
+    projectId: string,
+  ): Promise<Array<{ phaseName: string; tasks: string[] }>> {
+    try {
+      const phases = await this.phaseRepository.findAll({
+        filterOptions: { projectId },
+      });
+      const sorted = [...phases].sort(
+        (a, b) => (a.order ?? 0) - (b.order ?? 0),
+      );
+      return await Promise.all(
+        sorted.map(async (phase, index) => {
+          const hydrated =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+          return {
+            phaseName:
+              hydrated.name || hydrated.stageName || `Phase ${index + 1}`,
+            tasks: (hydrated.task ?? [])
+              .map((t) => t.taskName)
+              .filter(Boolean),
+          };
+        }),
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async suggestFaqs(
+    userId: string,
+    projectId: string,
+  ): Promise<FaqSuggestion[]> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    const scope = await this.loadFaqScope(projectId);
+    return this.faqAdapter.suggestFaqs({
+      ...this.faqContextFromProject(project),
+      scope,
+    });
+  }
+
+  async suggestFaqAnswer(
+    userId: string,
+    projectId: string,
+    question: string,
+  ): Promise<{ answer: string }> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    const scope = await this.loadFaqScope(projectId);
+    const answer = await this.faqAdapter.suggestAnswer(
+      { ...this.faqContextFromProject(project), scope },
+      question,
+    );
+    return { answer };
+  }
 
   private get shouldSkipModeration(): boolean {
     return process.env.SKIP_CONTENT_MODERATION === 'true';
@@ -127,6 +198,7 @@ export class PublishService {
     subCategories?: string[] | null;
     categorySelections?: { category: string; subCategories: string[] }[] | null;
     tags?: string[] | null;
+    faqs?: { question: string; answer: string }[] | null;
     imageUrl?: string | null;
   }): ProjectModerationInput {
     return {
@@ -137,6 +209,7 @@ export class PublishService {
       subCategories: input.subCategories ?? [],
       categorySelections: input.categorySelections ?? [],
       tags: input.tags ?? [],
+      faqs: input.faqs ?? [],
       imageUrl: input.imageUrl ?? undefined,
     };
   }
@@ -170,10 +243,27 @@ export class PublishService {
       status = 'rejected';
     }
 
-    const moderatedProject = await this.projectRepository.update(projectId, {
+    const updatePayload: Partial<Project> = {
       status,
       projectDatePublished,
-    });
+    };
+
+    if (status === 'published') {
+      const media = await this.mediaRepository.find({ projectId });
+      const hiddenSet = new Set(media?.hiddenImages ?? []);
+      const galleryUrls = [
+        media?.featuredImage,
+        ...(media?.additionalImages ?? []).filter((url) => !hiddenSet.has(url)),
+      ].filter((url): url is string => Boolean(url && url.trim()));
+      if (galleryUrls.length > 0) {
+        updatePayload.mediaUrls = galleryUrls;
+      }
+    }
+
+    const moderatedProject = await this.projectRepository.update(
+      projectId,
+      updatePayload,
+    );
 
     if (status === 'rejected') {
       const moderationReason = moderationResult.reason ?? '';
@@ -187,17 +277,19 @@ export class PublishService {
         /banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines/i.test(
           moderationReason,
         );
-      throw new BadRequestException(
-        isImageViolation
-          ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
-          : isVideoViolation
-            ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
-            : isContentViolation
-              ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
-              : moderationResult.reason
-                ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
-                : 'Project rejected: content violates moderation policy.',
-      );
+      const message = isImageViolation
+        ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
+        : isVideoViolation
+          ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
+          : isContentViolation
+            ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
+            : moderationResult.reason
+              ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
+              : 'Project rejected: content violates moderation policy.';
+      throw new BadRequestException({
+        message,
+        field: moderationResult.field,
+      });
     }
 
     if (status === 'pending_review') {
@@ -442,6 +534,9 @@ export class PublishService {
     if (dto.tags !== undefined) payload.tags = dto.tags;
     if (dto.skills !== undefined) payload.skills = dto.skills;
     if (dto.listingType !== undefined) payload.listingType = dto.listingType;
+    if (dto.projectType !== undefined) payload.projectType = dto.projectType;
+    if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
+    if (dto.faqs !== undefined) payload.faqs = dto.faqs;
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -578,13 +673,12 @@ export class PublishService {
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
-    if (project.status === 'published') {
-      return project;
-    }
-
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
-      if (!media?.featuredImage) {
+      const hasCover =
+        !!media?.featuredImage ||
+        (Array.isArray(project.mediaUrls) && project.mediaUrls.length > 0);
+      if (!hasCover) {
         throw new BadRequestException(
           'Featured image is required before publishing.',
         );
@@ -607,6 +701,7 @@ export class PublishService {
         subCategories: project.subCategories,
         categorySelections: project.categorySelections,
         tags: project.tags,
+        faqs: project.faqs,
       });
 
       const moderationResult = await this.projectModerationService.moderateProject(
@@ -627,6 +722,18 @@ export class PublishService {
       this.throwIfHttpException(error);
       throw new InternalServerErrorException('Failed to publish project');
     }
+  }
+
+  async unpublishProject(userId: string, projectId: string): Promise<Project> {
+    await this.ensureProjectOwnership(projectId, userId);
+    const updated = await this.projectRepository.update(projectId, {
+      status: 'draft',
+      projectDatePublished: null,
+    });
+    if (!updated) {
+      throw new NotFoundException('Project not found');
+    }
+    return updated;
   }
 
   async createProjectOfPhase(
@@ -784,23 +891,39 @@ export class PublishService {
     userId: string,
     projectId: string,
     additionalImages: string[],
+    hiddenImages?: string[],
   ): Promise<Media | null> {
     const project = await this.projectRepository.find({ id: projectId });
     if (!project || project.userId !== userId) {
       throw new NotFoundException('Project not found');
     }
     const existingMedia = await this.mediaRepository.find({ projectId });
+    const featured = existingMedia?.featuredImage ?? '';
+    const hidden = hiddenImages ?? existingMedia?.hiddenImages ?? [];
+    const hiddenSet = new Set(hidden);
+    const galleryUrls = [
+      featured,
+      ...additionalImages.filter((url) => !hiddenSet.has(url)),
+    ].filter((url): url is string => Boolean(url && url.trim()));
+    await this.projectRepository.update(projectId, { mediaUrls: galleryUrls });
     if (!existingMedia) {
-      // Create a new media record with just additionalImages
-      return this.mediaRepository.create({ projectId, additionalImages, featuredImage: '' } as any);
+      return this.mediaRepository.create({
+        projectId,
+        additionalImages,
+        hiddenImages: hidden,
+        featuredImage: '',
+      } as any);
     }
-    return this.mediaRepository.update(existingMedia.id, { additionalImages });
+    return this.mediaRepository.update(existingMedia.id, {
+      additionalImages,
+      hiddenImages: hidden,
+    });
   }
 
   async createProjectOfMedia(
     userId: string,
     files: {
-      featuredImage: Express.Multer.File;
+      featuredImage?: Express.Multer.File;
       additionalImages?: Express.Multer.File[];
       featuredVideo?: Express.Multer.File;
     },
@@ -815,7 +938,11 @@ export class PublishService {
         throw new BadRequestException('You can upload a maximum of 8 images.');
       }
 
-      if (!this.shouldSkipModeration) {
+      const existingMedia = await this.mediaRepository.find({
+        projectId: dto.projectId,
+      });
+
+      if (files.featuredImage && !this.shouldSkipModeration) {
         const featuredImageModeration =
           await this.projectModerationService.moderateUploadedImage(
             dto.projectId,
@@ -837,7 +964,7 @@ export class PublishService {
             `Project rejected: image violates moderation policy. ${reason}`.trim(),
           );
         }
-      } else {
+      } else if (files.featuredImage) {
         this.logger.warn(
           `Skipping image moderation for project ${dto.projectId} (SKIP_CONTENT_MODERATION=true)`,
         );
@@ -881,7 +1008,8 @@ export class PublishService {
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
         moderationContext = 'video';
-        if (!this.shouldSkipModeration) {
+        const videoUnchanged = existingMedia?.featuredVideo === resolvedVideoUrl;
+        if (!videoUnchanged && !this.shouldSkipModeration) {
           const videoModeration =
             await this.projectModerationService.moderateVideoUrl(
               dto.projectId,
@@ -904,24 +1032,54 @@ export class PublishService {
         persistedVideoUrl = resolvedVideoUrl;
       }
 
-      const featuredImageUpload =
-        await this.cloudflareStorageService.uploadProjectMedia(
-          dto.projectId,
-          files.featuredImage,
-        );
+      let featuredImageUrl: string;
+      if (files.featuredImage) {
+        const featuredImageUpload =
+          await this.cloudflareStorageService.uploadProjectMedia(
+            dto.projectId,
+            files.featuredImage,
+          );
+        featuredImageUrl = featuredImageUpload.url;
+      } else if (dto.featuredImage) {
+        featuredImageUrl = dto.featuredImage;
+      } else {
+        throw new BadRequestException('Featured image is required.');
+      }
+
       const additionalImageUploads = await Promise.all(
         (files.additionalImages ?? []).map((file) =>
           this.cloudflareStorageService.uploadProjectMedia(dto.projectId, file),
         ),
       );
+      const uploadedAdditionalUrls = additionalImageUploads.map(
+        (image) => image.url,
+      );
+      const mergedAdditionalImages = [
+        ...(dto.additionalImages ?? []),
+        ...uploadedAdditionalUrls,
+      ];
+      const hasProvidedAdditional =
+        dto.additionalImages !== undefined || uploadedAdditionalUrls.length > 0;
 
       // Upsert: update existing media record if one exists, otherwise create
-      const existingMedia = await this.mediaRepository.find({ projectId: dto.projectId });
       let media: Media;
+      const isGalleryUpload = dto.target === 'additional';
       const mediaPayload = {
-        featuredImage: featuredImageUpload.url,
-        additionalImages: additionalImageUploads.map((image) => image.url),
-        featuredVideo: persistedVideoUrl ?? undefined,
+        featuredImage: isGalleryUpload
+          ? (existingMedia?.featuredImage ?? '')
+          : featuredImageUrl,
+        additionalImages: isGalleryUpload
+          ? [...(existingMedia?.additionalImages ?? []), featuredImageUrl]
+          : hasProvidedAdditional
+            ? mergedAdditionalImages
+            : (existingMedia?.additionalImages ?? []),
+        hiddenImages:
+          (dto as CreateMediaDto & { replaceHidden?: string }).replaceHidden ===
+            'true' || dto.hiddenImages !== undefined
+            ? (dto.hiddenImages ?? [])
+            : (existingMedia?.hiddenImages ?? []),
+        featuredVideo:
+          persistedVideoUrl ?? existingMedia?.featuredVideo ?? undefined,
         projectId: dto.projectId,
       };
       if (existingMedia?.id) {
@@ -932,7 +1090,20 @@ export class PublishService {
         media = await this.mediaRepository.create(mediaPayload);
       }
 
-      return media;
+      const hiddenSet = new Set(mediaPayload.hiddenImages ?? []);
+      const galleryUrls = [
+        mediaPayload.featuredImage,
+        ...(mediaPayload.additionalImages ?? []).filter(
+          (url) => !hiddenSet.has(url),
+        ),
+      ].filter((url): url is string => Boolean(url && url.trim()));
+      if (galleryUrls.length > 0) {
+        await this.projectRepository.update(dto.projectId, {
+          mediaUrls: galleryUrls,
+        });
+      }
+
+      return { ...media, url: featuredImageUrl } as Media;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);
