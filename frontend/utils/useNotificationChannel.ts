@@ -59,7 +59,9 @@ export function useNotificationChannel(handlers: {
 
     return () => {
       channel.unsubscribe()
-      client.close()
+      if (client.connection.state === "connected") {
+        client.close()
+      }
     }
   }, [user?.id])
 }
