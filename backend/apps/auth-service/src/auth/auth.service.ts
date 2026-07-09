@@ -84,6 +84,11 @@ const parseExpiresIn = (value: string): number | StringValue =>
 const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
 const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
   'Too many requests. Please try again later.';
+// Precomputed bcrypt hash used to burn equivalent CPU time on the
+// "account not found" path of forgotPassword, so response timing
+// does not leak whether an email is registered.
+const DUMMY_PASSWORD_HASH =
+  '$2a$10$CwTycUXWue0Thq9StjUM0uJ8p8/f6IejtOM8b1QOJIgHkyw.9k5EO';
 
 type RateLimitBucket = {
   count: number;
@@ -502,8 +507,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       'If an account exists for this email, password reset instructions will be sent.';
 
     if (!user) {
+      // Perform equivalent-cost dummy work so response timing does not
+      // reveal whether the account exists (user enumeration protection).
+      await bcrypt.compare(normalizedEmail, DUMMY_PASSWORD_HASH);
+      this.logger.log(
+        `forgotPassword: reset requested for unknown email (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       return { message };
     }
+
+    this.logger.log(
+      `forgotPassword: reset requested for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
 
     user.passwordResetVersion = randomUUID();
     await this.userRepository.save(user);
@@ -1601,7 +1616,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
+      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '24h',
     );
 
     return this.jwtService.signAsync(

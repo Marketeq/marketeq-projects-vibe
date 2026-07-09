@@ -114,7 +114,7 @@ function ResetPassword() {
           </h1>
           <p className="mt-2 text-sm leading-5 text-dark-blue-400">
             Choose a new password for your account. Your reset link expires
-            after 15 minutes.
+            after 24 hours.
           </p>
 
           {!token && (
