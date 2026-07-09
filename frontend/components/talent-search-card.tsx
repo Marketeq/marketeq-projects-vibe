@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   addFavorite,
@@ -13,8 +14,7 @@ import {
   MarkerPin02,
   MoreHorizontal,
   Star,
-  Star01,
-  Star02,
+  Stars02,
   Trash2,
 } from "@blend-metrics/icons"
 import NextImage from "./next-image"
@@ -64,6 +64,7 @@ interface TalentSearchCardProps {
   allStars?: boolean
   skills?: string[]
   profileHref?: string
+  favoriteSlot?: ReactNode
   isFavorited?: boolean
   onFavoriteChange?: (favorited: boolean) => void
   imageLoading?: "lazy" | "eager"
@@ -137,6 +138,7 @@ export const TalentSearchCard = ({
   allStars = true,
   skills: skillsList = defaultSkills,
   profileHref = "#",
+  favoriteSlot,
   isFavorited = false,
   onFavoriteChange,
   imageLoading = "lazy",
@@ -145,8 +147,37 @@ export const TalentSearchCard = ({
 }: TalentSearchCardProps) => {
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
 
+  const handleFavoriteToggle = useCallback(
+    async (pressed: boolean) => {
+      if (pressed) {
+        onFavoriteChange?.(true)
+        if (id) {
+          const result = await addFavorite({
+            type: "talent",
+            itemId: String(id),
+          })
+          if (!result) {
+            onFavoriteChange?.(false)
+          }
+        }
+      } else {
+        onFavoriteChange?.(false)
+        if (id) {
+          const favorite = await findFavoriteByItemId(String(id))
+          if (favorite) {
+            const success = await removeFavorite(favorite.id)
+            if (!success) {
+              onFavoriteChange?.(true)
+            }
+          }
+        }
+      }
+    },
+    [id, onFavoriteChange]
+  )
+
   return (
-    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2">
+    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col min-h-[440px] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
       <div className="p-5">
         <div className="relative">
           <NextLink href={profileHref} className="block">
@@ -164,7 +195,7 @@ export const TalentSearchCard = ({
           <div className="flex items-center absolute px-2.5 pt-2.5 justify-between top-0 inset-x-0 pointer-events-none">
             {allStars ? (
               <div className="font-bold rounded-[5px] py-0.5 px-1.5 bg-black/[.57] inline-flex items-center gap-x-1 text-white text-[10px]">
-                <Star02 /> All Stars
+                <Stars02 /> All Stars
               </div>
             ) : (
               <div />
@@ -191,7 +222,36 @@ export const TalentSearchCard = ({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Star01 className="size-5 text-white" />
+              <span className="pointer-events-auto inline-block">
+                {favoriteSlot ?? (
+                  <FavoriteRoot
+                    value={isFavorited}
+                    onValueChange={handleFavoriteToggle}
+                  >
+                    {({ pressed }) => (
+                      <TooltipProvider delayDuration={75}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-block">
+                              <Favorite />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {pressed ? (
+                              <span className="inline-flex items-center gap-x-1">
+                                <Check className="size-[15px] shrink-0 text-green-500" />
+                                Saved
+                              </span>
+                            ) : (
+                              "Save to favorites"
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </FavoriteRoot>
+                )}
+              </span>
             )}
           </div>
 
@@ -229,84 +289,29 @@ export const TalentSearchCard = ({
             </p>
           </div>
 
-          <div className="mt-3.5 flex items-center justify-between">
+          <div className="mt-3.5 flex items-center gap-x-2">
             <div className="flex items-center gap-x-2">
-              <div className="flex items-center gap-x-2">
-                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                  <div className="flex items-center gap-x-[3px]">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <Star
-                        key={i}
-                        className={`size-3 shrink-0 ${
-                          i <= Math.round(rating)
-                            ? "text-primary-500 fill-primary-500"
-                            : "text-gray-200 fill-gray-200"
-                        }`}
-                      />
-                    ))}
-                  </div>
+              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                <div className="flex items-center gap-x-[3px]">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star
+                      key={i}
+                      className={`size-3 shrink-0 ${
+                        i <= Math.round(rating)
+                          ? "text-primary-500 fill-primary-500"
+                          : "text-gray-200 fill-gray-200"
+                      }`}
+                    />
+                  ))}
                 </div>
-                <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                  {rating}
-                </span>
               </div>
               <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                {projects} Projects
+                {rating}
               </span>
             </div>
-
-            {!showOptionsMenu && (
-              <FavoriteRoot
-                value={isFavorited}
-                onValueChange={async (pressed) => {
-                  if (pressed) {
-                    onFavoriteChange?.(true)
-                    if (id) {
-                      const result = await addFavorite({
-                        type: "talent",
-                        itemId: String(id),
-                      })
-                      if (!result) {
-                        onFavoriteChange?.(false)
-                      }
-                    }
-                  } else {
-                    onFavoriteChange?.(false)
-                    if (id) {
-                      const favorite = await findFavoriteByItemId(String(id))
-                      if (favorite) {
-                        const success = await removeFavorite(favorite.id)
-                        if (!success) {
-                          onFavoriteChange?.(true)
-                        }
-                      }
-                    }
-                  }
-                }}
-              >
-                {({ pressed }) => (
-                  <TooltipProvider delayDuration={75}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-block">
-                          <Favorite />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {pressed ? (
-                          <span className="inline-flex items-center gap-x-1">
-                            <Check className="size-[15px] shrink-0 text-green-500" />
-                            Saved
-                          </span>
-                        ) : (
-                          "Save to favorites"
-                        )}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-              </FavoriteRoot>
-            )}
+            <span className="text-xs font-semibold leading-none text-dark-blue-400">
+              {projects} Projects
+            </span>
           </div>
         </div>
       </div>

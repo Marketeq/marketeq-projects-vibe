@@ -75,6 +75,11 @@ export interface EarningsRow {
   avgKeyboardPct: number | null
   avgMousePct: number | null
   feeBreakdown?: FeeBreakdown
+  weeklyHours?: number
+  totalHours?: number
+  weeklyEarnings?: string
+  totalEarnings?: string
+  budget?: string
 }
 
 export interface EarningsListResponse {

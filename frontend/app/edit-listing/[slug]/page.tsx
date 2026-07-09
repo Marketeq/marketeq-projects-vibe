@@ -80,6 +80,7 @@ import {
   Trash01,
   Trash2,
   Type,
+  Upload01,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -365,6 +366,39 @@ const resolveMediaFileForUpload = async (
   return makeUniqueFile(file)
 }
 
+const appendFeaturedImageField = async (
+  formData: FormData,
+  meta: File | Blob | undefined
+): Promise<boolean> => {
+  if (!meta) return false
+  if (isPersistedMediaFile(meta)) {
+    formData.append("featuredImage", meta.__persistedUrl!)
+    return true
+  }
+  const resolved = await resolveMediaFileForUpload(meta, "featured-image.jpg")
+  if (!resolved) return false
+  formData.append("featuredImage", resolved)
+  return true
+}
+
+const appendAdditionalImageFields = async (
+  formData: FormData,
+  metas: (File | Blob | undefined)[]
+): Promise<void> => {
+  for (const meta of metas) {
+    if (!meta) continue
+    if (isPersistedMediaFile(meta)) {
+      formData.append("additionalImages", meta.__persistedUrl!)
+      continue
+    }
+    const resolved = await resolveMediaFileForUpload(
+      meta,
+      "additional-image.jpg"
+    )
+    if (resolved) formData.append("additionalImages", resolved)
+  }
+}
+
 const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
   try {
     const response = await fetch(url)
@@ -414,6 +448,7 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
     industries: projectInfo.industry,
     tags: projectInfo.tags,
     skills: projectInfo.skills,
+    projectType: projectInfo.projectType,
     shortDescription: projectInfo.shortDescription,
     fullDescription: projectInfo.fullDescription,
   }
@@ -998,10 +1033,14 @@ const Header = ({
   onClose,
   slug,
   lastSavedAt,
+  onPublish,
+  publishing,
 }: {
   onClose?: () => void
   slug?: string
   lastSavedAt?: Date | null
+  onPublish?: () => void
+  publishing?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1040,7 +1079,9 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button>Publish</Button>
+        <Button onClick={onPublish} disabled={publishing}>
+          {publishing ? "Publishing…" : "Publish"}
+        </Button>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1206,22 +1247,12 @@ const BottomBar = ({
         if (featuredFile || additionalFiles.length || videoUrl) {
           const formData = new FormData()
           formData.append("projectId", String(projectId))
-          const uniqueFeatured = await resolveMediaFileForUpload(
-            featuredFile,
-            "featured-image.jpg"
-          )
-          if (uniqueFeatured) {
-            formData.append("featuredImage", uniqueFeatured)
+          await appendFeaturedImageField(formData, featuredFile)
+          await appendAdditionalImageFields(formData, additionalFiles)
+          for (const url of media.hiddenImages ?? []) {
+            formData.append("hiddenImages", url)
           }
-          for (const file of additionalFiles) {
-            const uniqueAdditional = await resolveMediaFileForUpload(
-              file,
-              "additional-image.jpg"
-            )
-            if (uniqueAdditional) {
-              formData.append("additionalImages", uniqueAdditional)
-            }
-          }
+          formData.append("replaceHidden", "true")
           if (videoUrl) {
             formData.append("videoUrl", videoUrl)
           }
@@ -1648,6 +1679,7 @@ const projectInfoSchema = z.object({
     })
     .min(1, "Please enter/select at least 1 skill(s)")
     .max(10, "Please do not enter/select more than 10 tag(s)"),
+  projectType: z.string().default("Website"),
 })
 
 type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>
@@ -1856,7 +1888,8 @@ const ProjectInfo = ({
     trigger,
   } = methods
 
-  const [projectType, setProjectType] = useState("Website")
+  const projectType = methods.watch("projectType") ?? "Website"
+  const setProjectType = (value: string) => setValue("projectType", value)
 
   const [suggested, setSuggested] = useState<SuggestedCategoryOption[]>(
     DEFAULT_SUGGESTED_CATEGORIES
@@ -3591,6 +3624,7 @@ const mediaFormSchema = z
         }
       )
       .optional(),
+    hiddenImages: z.array(z.string()).optional(),
   })
   .refine(
     (data) => data.featuredImages.every((value) => value.progress === 100),
@@ -3632,6 +3666,7 @@ type MediaFormValues = {
     meta: any
   }[][]
   featuredVideo: string
+  hiddenImages?: string[]
 }
 
 const MEDIA_VALIDATION_TARGETS: Array<{
@@ -3661,6 +3696,24 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     trigger,
     setValue,
   } = useMediaContext()
+
+  const formHiddenImages =
+    (useWatch({ control, name: "hiddenImages" }) as string[] | undefined) ?? []
+  const hiddenKey = formHiddenImages.join("|")
+  const [hiddenImages, setHiddenImages] = useState<string[]>([])
+  useEffect(() => {
+    setHiddenImages(formHiddenImages)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hiddenKey])
+  const setHiddenForUrl = (url: string, hidden: boolean) => {
+    const next = hidden
+      ? hiddenImages.includes(url)
+        ? hiddenImages
+        : [...hiddenImages, url]
+      : hiddenImages.filter((u) => u !== url)
+    setHiddenImages(next)
+    setValue("hiddenImages", next, { shouldDirty: true })
+  }
 
   const { currentStep } = useStepRootContext()
   const [progressValue, setProgressValue] = useState(0)
@@ -3904,26 +3957,42 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     key={index}
                     name={`additionalImages.${index}`}
                     control={control}
-                    render={({ field: { value, onChange } }) => (
-                      <SquareShapeDropzone
-                        className="transition-colors duration-300"
-                        value={value}
-                        onValueChange={(value) => {
-                          onChange(
-                            value?.map((item) => ({ ...item, progress: 50 }))
-                          )
-                          window.setTimeout(() => {
+                    render={({ field: { value, onChange } }) => {
+                      const meta = value?.[0]?.meta
+                      const url =
+                        meta && isPersistedMediaFile(meta)
+                          ? meta.__persistedUrl
+                          : undefined
+                      return (
+                        <SquareShapeDropzone
+                          className="transition-colors duration-300"
+                          value={value}
+                          onValueChange={(value) => {
                             onChange(
-                              value?.map((item) => ({ ...item, progress: 100 }))
+                              value?.map((item) => ({ ...item, progress: 50 }))
                             )
-                          }, ONE_SECOND * 2)
-                          isSubmitted ? trigger("additionalImages") : noop
-                        }}
-                        onError={(message) =>
-                          setError(`additionalImages.${index}`, { message })
-                        }
-                      />
-                    )}
+                            window.setTimeout(() => {
+                              onChange(
+                                value?.map((item) => ({
+                                  ...item,
+                                  progress: 100,
+                                }))
+                              )
+                            }, ONE_SECOND * 2)
+                            isSubmitted ? trigger("additionalImages") : noop
+                          }}
+                          onError={(message) =>
+                            setError(`additionalImages.${index}`, { message })
+                          }
+                          isHidden={
+                            url ? hiddenImages.includes(url) : undefined
+                          }
+                          onToggleHidden={
+                            url ? (h) => setHiddenForUrl(url, h) : undefined
+                          }
+                        />
+                      )
+                    }}
                   />
                 ))}
               </div>
@@ -6608,14 +6677,20 @@ const Team = () => {
   )
 }
 
+type WizardFaq = { id: string; q: string; a: string }
+
 const SortableFaqItem = ({
   id,
   faq,
   index,
+  onChange,
+  onDelete,
 }: {
   id: string
   faq: { q: string; a: string }
   index: number
+  onChange: (id: string, patch: Partial<{ q: string; a: string }>) => void
+  onDelete: (id: string) => void
 }) => {
   const {
     attributes,
@@ -6693,7 +6768,10 @@ const SortableFaqItem = ({
             visual="gray"
             size="sm"
             className="rounded-full text-gray-500 hover:text-gray-800"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(id)
+            }}
           >
             <Trash2 className="size-4" />
           </IconButton>
@@ -6703,7 +6781,11 @@ const SortableFaqItem = ({
         <p className="text-sm font-light text-dark-blue-400">
           Make this clear and concise, this is what customers will see first.
         </p>
-        <Input className="mt-2" defaultValue={faq.q} />
+        <Input
+          className="mt-2"
+          value={faq.q}
+          onChange={(e) => onChange(id, { q: e.target.value })}
+        />
         <div className="mt-4">
           <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
           <p className="mt-1 text-sm font-light text-dark-blue-400">
@@ -6714,7 +6796,8 @@ const SortableFaqItem = ({
         <Textarea
           className="mt-2"
           rows={4}
-          defaultValue={faq.a}
+          value={faq.a}
+          onChange={(e) => onChange(id, { a: e.target.value })}
           maxLength={300}
         />
         <div className="mt-1 flex items-center justify-between">
@@ -6729,23 +6812,125 @@ const SortableFaqItem = ({
   )
 }
 
-const Questions = () => {
+const Questions = ({
+  faqs,
+  setFaqs,
+  draftProjectId,
+}: {
+  faqs: WizardFaq[]
+  setFaqs: React.Dispatch<React.SetStateAction<WizardFaq[]>>
+  draftProjectId: string | null
+}) => {
   const [questionsTab, setQuestionsTab] = useState("FAQs")
   const [recentQTab, setRecentQTab] = useState("all")
   const [openFaqId, setOpenFaqId] = useState<string | null>(null)
-  const [faqs, setFaqs] = useState([
-    {
-      id: "faq-1",
-      q: "How will you involve me in the process?",
-      a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management.",
-    },
-    { id: "faq-2", q: "How do you handle revisions and feedback?", a: "" },
-    {
-      id: "faq-3",
-      q: "Do you offer any post-design support or maintenance?",
-      a: "",
-    },
-  ])
+  const [aiOpen, setAiOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState(false)
+  const [suggestions, setSuggestions] = useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+
+  const remainingSlots = Math.max(0, 10 - faqs.length)
+  const addedCount = suggestions.filter((s) => s.added).length
+
+  const runFaqGeneration = async () => {
+    if (!draftProjectId) return
+    setGenError(false)
+    setGenerating(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(draftProjectId)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      const seen = new Set<string>()
+      const deduped = data.filter((d) => {
+        const key = (d?.question ?? "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setSuggestions(deduped.map((d) => ({ ...d, added: false })))
+    } catch (error) {
+      console.error("Failed to generate FAQs", error)
+      setGenError(true)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const openAiFaqDialog = () => {
+    setAiOpen(true)
+    void runFaqGeneration()
+  }
+
+  const insertSuggestion = (idx: number) => {
+    const s = suggestions[idx]
+    if (!s || s.added || faqs.length >= 10) return
+    setFaqs((items) => [
+      ...items,
+      { id: `faq-ai-${Date.now()}-${idx}`, q: s.question, a: s.answer },
+    ])
+    setSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeSuggestion = (idx: number) => {
+    const s = suggestions[idx]
+    if (!s) return
+    const key = s.question.trim().toLowerCase()
+    setFaqs((items) => items.filter((f) => f.q.trim().toLowerCase() !== key))
+    setSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllSuggestions = () => {
+    const seen = new Set(faqs.map((f) => f.q.trim().toLowerCase()))
+    const toAdd = suggestions
+      .filter((s) => !s.added && !seen.has(s.question.trim().toLowerCase()))
+      .slice(0, remainingSlots)
+    if (toAdd.length === 0) return
+    setFaqs((items) => [
+      ...items,
+      ...toAdd.map((s, i) => ({
+        id: `faq-ai-all-${Date.now()}-${i}`,
+        q: s.question,
+        a: s.answer,
+      })),
+    ])
+    const addedKeys = new Set(toAdd.map((s) => s.question.trim().toLowerCase()))
+    setSuggestions((prev) =>
+      prev.map((x) =>
+        addedKeys.has(x.question.trim().toLowerCase())
+          ? { ...x, added: true }
+          : x
+      )
+    )
+  }
+
+  const handleAddFaq = () => {
+    setFaqs((items) =>
+      items.length >= 10
+        ? items
+        : [...items, { id: `faq-${Date.now()}-${items.length}`, q: "", a: "" }]
+    )
+  }
+
+  const handleFaqChange = (
+    id: string,
+    patch: Partial<{ q: string; a: string }>
+  ) => {
+    setFaqs((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    )
+  }
+
+  const handleDeleteFaq = (id: string) => {
+    setFaqs((items) => items.filter((item) => item.id !== id))
+  }
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -6801,15 +6986,168 @@ const Questions = () => {
               </p>
 
               <div className="mt-4 flex items-center gap-3">
-                <Button variant="outlined" visual="gray" size="sm">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={openAiFaqDialog}
+                  disabled={!draftProjectId}
+                >
                   <Stars02 className="size-[15px]" />
                   Generate With AI
                 </Button>
-                <Button variant="outlined" visual="gray" size="sm">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={handleAddFaq}
+                  disabled={faqs.length >= 10}
+                >
                   <Plus className="size-[15px]" />
                   Add Question
                 </Button>
               </div>
+
+              <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+                <DialogContent className="max-w-[640px] p-0 gap-0">
+                  <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+                    <div className="flex items-start gap-x-2">
+                      <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <DialogTitle>AI Generated FAQ&apos;s</DialogTitle>
+                        <DialogDescription className="mt-1">
+                          Review and adjust your AI-generated FAQ&apos;s as needed
+                        </DialogDescription>
+                      </div>
+                    </div>
+                    <Badge
+                      className="rounded-full bg-success-50 text-success-600 shrink-0"
+                      visual="gray"
+                    >
+                      {addedCount} of {suggestions.length} added
+                    </Badge>
+                  </div>
+
+                  {remainingSlots <
+                    suggestions.filter((s) => !s.added).length && (
+                    <p className="px-6 pt-4 text-sm text-error-500">
+                      You currently have {faqs.length} FAQ&apos;s in total, so
+                      you can only add {remainingSlots} more
+                    </p>
+                  )}
+
+                  <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                    {generating ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        Generating suggestions…
+                      </p>
+                    ) : genError ? (
+                      <div className="py-8 text-center">
+                        <p className="text-sm text-error-500">
+                          Suggestions couldn&apos;t be loaded. Try again.
+                        </p>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="mt-3"
+                          onClick={runFaqGeneration}
+                        >
+                          <Stars02 className="size-[15px]" />
+                          Retry
+                        </Button>
+                      </div>
+                    ) : suggestions.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        No suggestions available.
+                      </p>
+                    ) : (
+                      suggestions.map((s, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "group/sfaq relative rounded-lg border p-4 transition",
+                            s.added
+                              ? "border-success-300 bg-success-25"
+                              : "border-gray-200 bg-white hover:bg-gray-50"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-x-3">
+                            <h3
+                              className={cn(
+                                "text-sm font-bold",
+                                s.added
+                                  ? "text-success-700"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              {s.question}
+                            </h3>
+                            {s.added ? (
+                              <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                                <Check className="size-4" />
+                                Added
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                size="sm"
+                                className="shrink-0 opacity-0 group-hover/sfaq:opacity-100 transition"
+                                onClick={() => insertSuggestion(i)}
+                              >
+                                <Upload01 className="size-[15px]" />
+                                Insert
+                              </Button>
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "mt-1 text-sm font-light",
+                              s.added
+                                ? "text-success-700"
+                                : "text-dark-blue-400"
+                            )}
+                          >
+                            {s.answer}
+                          </p>
+                          {s.added && (
+                            <button
+                              type="button"
+                              onClick={() => removeSuggestion(i)}
+                              className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/sfaq:opacity-100 transition"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      onClick={runFaqGeneration}
+                      disabled={generating}
+                    >
+                      <Stars02 className="size-[15px]" />
+                      Regenerate
+                    </Button>
+                    <Button
+                      onClick={insertAllSuggestions}
+                      disabled={
+                        generating ||
+                        remainingSlots === 0 ||
+                        suggestions.every((s) => s.added)
+                      }
+                    >
+                      Insert All ({suggestions.length})
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               <DndContext
                 sensors={sensors}
@@ -6834,6 +7172,8 @@ const Questions = () => {
                         id={faq.id}
                         faq={faq}
                         index={idx}
+                        onChange={handleFaqChange}
+                        onDelete={handleDeleteFaq}
                       />
                     ))}
                   </Accordion>
@@ -7165,12 +7505,14 @@ function PublishProject({
       fullDescription: "",
       tags: [],
       skills: [],
+      projectType: "Website",
     },
   })
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
     defaultValues: {
       featuredVideo: "",
+      hiddenImages: [],
     },
   })
   const projectScopeMethods = useState<Phase[]>([{}])
@@ -7179,17 +7521,43 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isPublishing, setIsPublishing] = useState(false)
+
+  const handlePublish = async () => {
+    if (!draftProjectId || isPublishing) return
+    setIsPublishing(true)
+    try {
+      await ProjectAPI.PublishProject(draftProjectId)
+      setIsProjectSubmitted(true)
+      router.push("/my-listings")
+    } catch (error) {
+      console.error("Failed to publish project", error)
+    } finally {
+      setIsPublishing(false)
+    }
+  }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [faqs, setFaqs] = useState<WizardFaq[]>([])
   const persistedMediaRef = useRef<{
     featuredImage?: string
     additionalImages?: string[]
+    hiddenImages?: string[]
     featuredVideo?: string
   } | null>(null)
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
   const lastMediaPayloadRef = useRef<string>("")
+  const lastFaqsPayloadRef = useRef<string>("")
+  const faqsRef = useRef<WizardFaq[]>([])
+  const saveFaqsRef = useRef<() => Promise<void>>(async () => {})
+  const lastVideoUrlRef = useRef<string>("")
+  const saveVideoRef = useRef<() => Promise<void>>(async () => {})
   const hasHydratedRef = useRef(false)
+
+  useEffect(() => {
+    faqsRef.current = faqs
+  }, [faqs])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -7200,7 +7568,14 @@ function PublishProject({
     const hydrateDraft = async () => {
       try {
         // Edit mode: fetch existing project by slug
-        let response = slug ? await ProjectAPI.GetProjectBySlug(slug) : null
+        let response: any = null
+        if (slug) {
+          try {
+            response = await ProjectAPI.GetProjectBySlug(slug)
+          } catch {
+            response = null
+          }
+        }
 
         // If no project found by slug, try draftId from query params as fallback
         if (!response?.data) {
@@ -7211,17 +7586,27 @@ function PublishProject({
           }
         }
 
+        // Path param is itself a draft id (editor reached as /edit-listing/{draftId})
+        if (!response?.data && slug && UUID_PATTERN.test(slug)) {
+          try {
+            response = await ProjectAPI.GetProjectDraft(slug)
+          } catch {
+            // fall through to create a fresh draft below
+          }
+        }
+
         if (cancelled) return
 
         // If no project found by slug, create a new draft so edits still save
         //    If the slug matches a seed listing, use its title/description
         if (!response?.data) {
-          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === params.slug)
+          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === slug)
           response = await ProjectAPI.CreateProjectDraft({
             title: seedListing?.title || "",
             shortDescription: seedListing?.description || "",
             fullDescription: seedListing?.description || "",
-            listingType: seedListing?.projectType || "Website",
+            listingType: "project",
+            projectType: seedListing?.projectType || "Website",
           })
         }
 
@@ -7231,29 +7616,68 @@ function PublishProject({
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
 
+        const rawCategorySelections = Array.isArray(draft?.categorySelections)
+          ? draft.categorySelections
+          : []
+        const fallbackSubcategories = Array.isArray(draft?.subcategories)
+          ? draft.subcategories
+          : Array.isArray(draft?.subCategories)
+            ? draft.subCategories
+            : []
+        const categoryRows =
+          rawCategorySelections.length > 0
+            ? rawCategorySelections.map((cs: any) => ({
+                category: cs?.category || "",
+                subCategories: Array.isArray(cs?.subCategories)
+                  ? cs.subCategories
+                  : [],
+              }))
+            : Array.isArray(draft?.categories) && draft.categories.length > 0
+              ? draft.categories.map((cat: string, i: number) => ({
+                  category: cat,
+                  subCategories: i === 0 ? fallbackSubcategories : [],
+                }))
+              : []
+        while (categoryRows.length < 3)
+          categoryRows.push({ category: "", subCategories: [] })
+
         projectInfoMethods.reset({
           title: draft?.title ?? "",
-          category: Array.isArray(draft?.categorySelections)
-            ? draft.categorySelections
-            : [],
+          category: categoryRows.slice(0, 3),
           industry: Array.isArray(draft?.industries) ? draft.industries : [],
           shortDescription: draft?.shortDescription ?? "",
           fullDescription: draft?.fullDescription ?? "",
           tags: Array.isArray(draft?.tags) ? draft.tags : [],
           skills: Array.isArray(draft?.skills) ? draft.skills : [],
+          projectType: draft?.projectType ?? draft?.listingType ?? "Website",
         })
         lastDraftPayloadRef.current = JSON.stringify(
           buildProjectDraftPayload({
             title: draft?.title ?? "",
-            category: Array.isArray(draft?.categorySelections)
-              ? draft.categorySelections
-              : [],
+            category: categoryRows.slice(0, 3),
             industry: Array.isArray(draft?.industries) ? draft.industries : [],
             shortDescription: draft?.shortDescription ?? "",
             fullDescription: draft?.fullDescription ?? "",
             tags: Array.isArray(draft?.tags) ? draft.tags : [],
             skills: Array.isArray(draft?.skills) ? draft.skills : [],
+            projectType: draft?.projectType ?? draft?.listingType ?? "Website",
           })
+        )
+
+        const loadedFaqs: WizardFaq[] = Array.isArray(draft?.faqs)
+          ? draft.faqs.map(
+              (f: { question?: string; answer?: string }, i: number) => ({
+                id: `faq-${i}`,
+                q: f?.question ?? "",
+                a: f?.answer ?? "",
+              })
+            )
+          : []
+        setFaqs(loadedFaqs)
+        lastFaqsPayloadRef.current = JSON.stringify(
+          loadedFaqs
+            .filter((f) => f.q.trim() || f.a.trim())
+            .map((f) => ({ question: f.q.trim(), answer: f.a.trim() }))
         )
 
         const persistedMedia = draft?.media
@@ -7261,6 +7685,9 @@ function PublishProject({
               featuredImage: draft.media.featuredImage,
               additionalImages: Array.isArray(draft.media.additionalImages)
                 ? draft.media.additionalImages
+                : [],
+              hiddenImages: Array.isArray(draft.media.hiddenImages)
+                ? draft.media.hiddenImages
                 : [],
               featuredVideo: draft.media.featuredVideo ?? "",
             }
@@ -7296,13 +7723,19 @@ function PublishProject({
               hasError: false,
             },
           ]),
-          featuredVideo: persistedMedia?.featuredVideo ?? "",
+          featuredVideo: draft?.videoUrl ?? persistedMedia?.featuredVideo ?? "",
+          hiddenImages: persistedMedia?.hiddenImages ?? [],
         })
         lastMediaPayloadRef.current = JSON.stringify({
           featuredImage: persistedMedia?.featuredImage ?? "",
           additionalImages: persistedMedia?.additionalImages ?? [],
           featuredVideo: persistedMedia?.featuredVideo ?? "",
         })
+        lastVideoUrlRef.current = (
+          draft?.videoUrl ??
+          persistedMedia?.featuredVideo ??
+          ""
+        ).trim()
 
         const scope = Array.isArray(draft?.scope)
           ? draft.scope.map((phase: any) => ({
@@ -7373,6 +7806,7 @@ function PublishProject({
         industry: info.industry ?? [],
         tags: info.tags ?? [],
         skills: info.skills ?? [],
+        projectType: info.projectType ?? "Website",
         shortDescription: info.shortDescription ?? "",
         fullDescription: info.fullDescription ?? "",
       })
@@ -7445,11 +7879,74 @@ function PublishProject({
     projectScopeMethods,
   ])
 
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveFaqs = async () => {
+      const payload = faqsRef.current
+        .filter((f) => f.q.trim() || f.a.trim())
+        .map((f) => ({ question: f.q.trim(), answer: f.a.trim() }))
+      const serializedPayload = JSON.stringify(payload)
+
+      if (serializedPayload === lastFaqsPayloadRef.current) return
+
+      try {
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, { faqs: payload })
+        lastFaqsPayloadRef.current = serializedPayload
+        setLastSavedAt(new Date())
+      } catch (error) {
+        console.error("Failed to save project FAQs draft", error)
+      }
+    }
+
+    saveFaqsRef.current = saveFaqs
+
+    const interval = setInterval(() => {
+      void saveFaqs()
+    }, 2000)
+
+    return () => {
+      clearInterval(interval)
+      void saveFaqs()
+    }
+  }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveVideo = async () => {
+      const videoUrl = mediaMethods.getValues().featuredVideo?.trim() ?? ""
+
+      if (videoUrl === lastVideoUrlRef.current) return
+
+      try {
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, { videoUrl })
+        lastVideoUrlRef.current = videoUrl
+        setLastSavedAt(new Date())
+      } catch (error) {
+        console.error("Failed to save project video draft", error)
+      }
+    }
+
+    saveVideoRef.current = saveVideo
+
+    const interval = setInterval(() => {
+      void saveVideo()
+    }, 2000)
+
+    return () => {
+      clearInterval(interval)
+      void saveVideo()
+    }
+  }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
+
   // Flush pending saves when the user navigates away or closes the tab
   useEffect(() => {
     const handleBeforeUnload = () => {
       void saveDraftRef.current()
       void saveScopeRef.current()
+      void saveFaqsRef.current()
+      void saveVideoRef.current()
     }
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
@@ -7467,6 +7964,7 @@ function PublishProject({
           .map((item) => item?.meta)
           .filter(Boolean) ?? []
       const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
+      const hiddenImages = mediaValues.hiddenImages ?? []
 
       const signature = JSON.stringify({
         featuredImage: isPersistedMediaFile(featuredMeta)
@@ -7475,38 +7973,26 @@ function PublishProject({
         additionalImages: additionalMeta.map((item: any) =>
           isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
         ),
-        featuredVideo: videoUrl,
+        hiddenImages,
       })
 
       if (signature === lastMediaPayloadRef.current) return
       if (!featuredMeta) return
 
+      lastMediaPayloadRef.current = signature
+
       const formData = new FormData()
       formData.append("projectId", draftProjectId)
 
-      const resolvedFeatured = await resolveMediaFileForUpload(
-        featuredMeta,
-        "featured-image.jpg"
-      )
-      if (!resolvedFeatured) return
-      formData.append("featuredImage", resolvedFeatured)
+      const hasFeatured = await appendFeaturedImageField(formData, featuredMeta)
+      if (!hasFeatured) return
 
-      for (const file of additionalMeta) {
-        const resolvedAdditional = await resolveMediaFileForUpload(
-          file,
-          "additional-image.jpg"
-        )
-        if (resolvedAdditional) {
-          formData.append("additionalImages", resolvedAdditional)
-        }
-      }
+      await appendAdditionalImageFields(formData, additionalMeta)
 
-      if (videoUrl) {
-        formData.append(
-          "videoUrl",
-          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
-        )
+      for (const url of hiddenImages) {
+        formData.append("hiddenImages", url)
       }
+      formData.append("replaceHidden", "true")
 
       try {
         const response = await ProjectAPI.UploadMedia(formData)
@@ -7519,14 +8005,11 @@ function PublishProject({
             response?.data?.additionalImages ??
             persistedMediaRef.current?.additionalImages ??
             [],
-          featuredVideo:
-            response?.data?.featuredVideo ??
-            response?.data?.videoUrl ??
-            videoUrl,
+          hiddenImages: response?.data?.hiddenImages ?? hiddenImages,
+          featuredVideo: videoUrl,
         }
 
         persistedMediaRef.current = nextMedia
-        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
 
         mediaMethods.reset({
           featuredImages: nextMedia.featuredImage
@@ -7551,6 +8034,24 @@ function PublishProject({
             ]
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
+          hiddenImages: nextMedia.hiddenImages ?? [],
+        })
+
+        const resetValues = mediaMethods.getValues()
+        const resetFeatured = resetValues.featuredImages?.[0]?.meta
+        const resetAdditional =
+          resetValues.additionalImages
+            ?.flat()
+            .map((item) => item?.meta)
+            .filter(Boolean) ?? []
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: isPersistedMediaFile(resetFeatured)
+            ? resetFeatured.__persistedUrl
+            : (resetFeatured?.name ?? ""),
+          additionalImages: resetAdditional.map((item: any) =>
+            isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
+          ),
+          hiddenImages: resetValues.hiddenImages ?? [],
         })
         setLastSavedAt(new Date())
       } catch (error) {
@@ -7668,6 +8169,8 @@ function PublishProject({
                     onClose={() => router.back()}
                     slug={slug}
                     lastSavedAt={lastSavedAt}
+                    onPublish={handlePublish}
+                    publishing={isPublishing}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
@@ -7708,7 +8211,11 @@ function PublishProject({
                         <Team />
                       </Step>
                       <Step className="contents">
-                        <Questions />
+                        <Questions
+                          faqs={faqs}
+                          setFaqs={setFaqs}
+                          draftProjectId={draftProjectId}
+                        />
                       </Step>
                     </StepControl>
                   </div>

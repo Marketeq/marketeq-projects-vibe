@@ -27,6 +27,9 @@
 - Force-push any of the three protected branches
 - Merge `dev-main` → `live-mvp` directly (must pass through `staging`)
 - Rename any of the three branches (historical rename is locked in — `live-mvp` is the production branch name, not `main-live` or `live/mvp`)
+- **Duplicate commits across branches** — never commit the same work separately to `dev-main` AND `staging`. Code goes to `dev-main` first, then is promoted. Duplicating creates divergence and causes code loss in squash merges (see `CODE_REVIEW_SOP.md` §8.11)
+- **Merge a stale branch** — if a feature branch is more than 5 commits behind the base, it MUST be rebased first. Squash-merging a stale branch silently overwrites intermediate changes on the base. This is a hard block, no exceptions.
+- **Use `--admin` to force-merge** — this bypasses all safety checks including the staleness check. Only the CTO may authorize `--admin`, and only by explicitly typing "use --admin" in the conversation
 
 ---
 
@@ -322,3 +325,4 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | 2026-04-11 | Initial document. Split from `docs/CODE_REVIEW_SOP.md` at CTO request — devops concerns belong here, code review concerns stay in the review SOP. Branch names locked to `dev-main` / `staging` / `live-mvp` (real names on origin). §3 CTO call: Render on `live-mvp` with auto-deploy on, one service, all three Vercel projects hit it. §1.11 "dev-main not on Vercel" rule from the review SOP is deleted — dev-main legitimately deploys to `marketeq-projects-dev`, the bug was hardcoded login values not the Vercel coupling itself. |
 | 2026-05-22 | CI/CD split: PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`) run on **GitHub Actions**. Post-merge enforcement (`post-merge-audit`, `login-violation-alert`) runs on **both** GitHub Actions and Jenkins. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). n8n DevOps workflows deactivated. Old docs archived to `docs/md/Deployment (CI-CD)/old devops docs/`. |
 | 2026-06-30 | Added §3.0.2 Zero-downtime service rule: no service may ever be down on staging or production. Added P0 failure mode for services down. Wired `sync-dev-main-to-staging` into Jenkins webhook dispatcher. Re-enabled messaging-service in `boot-all.js`. Added `offer-service` and `cms-service` to `Dockerfile.all` build list. |
+| 2026-07-09 | Added three hard rules to §1 Never list: no duplicating commits across branches, no merging stale branches (>5 behind = block), no `--admin` without CTO explicitly typing "use --admin". Driven by audit finding code loss from stale squash merges (CODE_REVIEW_SOP §8.11). |

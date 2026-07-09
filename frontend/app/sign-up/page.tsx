@@ -152,18 +152,20 @@ export default function SignUp() {
 
           <div className="flex items-start gap-y-5 flex-col relative">
             <p className="text-white text-sm font-medium">
-              Don't have an account?
+              Already have an account?
             </p>
 
             <div className="inline-block relative">
+              <NextLink href="/sign-in">
               <Button
                 className="text-white hover:bg-white/10 border-white/20"
                 visual="gray"
                 variant="outlined"
                 size="lg"
               >
-                Join Us For Free
+                Sign In
               </Button>
+              </NextLink>
               <svg
                 className="size-[23px] absolute right-[15.33px] top-[34px] text-primary-500"
                 viewBox="0 0 23 23"

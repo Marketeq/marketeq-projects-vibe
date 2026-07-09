@@ -33,6 +33,12 @@ export class ModerationLog {
   @Column({ type: 'text', nullable: true })
   reason: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  fieldType: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  mediaUrl: string | null;
+
   @Column({ type: 'text', nullable: true })
   moderatorId: string | null;
 

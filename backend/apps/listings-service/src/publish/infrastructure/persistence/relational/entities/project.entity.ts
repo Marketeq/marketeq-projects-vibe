@@ -35,15 +35,16 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: String, nullable: true })
   shortDescription: string;
 
-  @Column({ type: String, nullable: true })
+  @Column({ name: 'description', type: String, nullable: true })
   fullDescription: string;
 
   @Column({ type: String, array: true, default: [] })
   categories: string[];
 
-  @Column({ type: String, array: true, default: [] })
+  @Column({ name: 'subcategories', type: String, array: true, default: [] })
   subCategories: string[];
 
+  @Column({ name: 'categorySelections', type: 'jsonb', default: [] })
   categorySelections: {
     category: string;
     subCategories: string[];
@@ -63,6 +64,9 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @Column({ type: String, nullable: true })
   listingType: string;
+
+  @Column({ name: 'projectType', type: String, nullable: true })
+  projectType?: string | null;
 
   @Column({ type: 'numeric', nullable: true })
   budget: number;
@@ -90,6 +94,15 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
 
   @OneToMany(() => MediaEntity, (media) => media.project, { cascade: true })
   media: MediaEntity[];
+
+  @Column({ name: 'mediaUrls', type: 'text', array: true, default: [] })
+  mediaUrls: string[];
+
+  @Column({ name: 'videoUrl', type: String, nullable: true })
+  videoUrl?: string | null;
+
+  @Column({ type: 'jsonb', default: [] })
+  faqs: { question: string; answer: string; is_ai_generated?: boolean }[];
 
   @Column('uuid')
   userId: string;

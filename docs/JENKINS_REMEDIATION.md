@@ -1,6 +1,6 @@
 # Jenkins CI/CD Remediation Plan
 
-> **Status:** RESOLVED — all 7 issues fixed 2026-05-27
+> **Status:** RESOLVED — all 9 issues fixed (7 on 2026-05-27, 2 more on 2026-07-08)
 > **Server:** 72.61.77.231:8080
 > **Created:** 2026-05-27
 > **Priority:** P0 — deployments and branch sync are manual until fixed
@@ -154,6 +154,39 @@ This is currently harmless because the squash-merge also triggers a `push` event
 
 ---
 
+## Issue 8: `infra-health-check` checks a dead backend path
+
+**Severity:** P2 — silent monitoring blind spot, not a build failure
+**Pipeline:** `infra-health-check` (hourly)
+
+**Root cause:** The "Backend Health" stage curled `https://marketeq-backend.onrender.com/api/health`, which 404s — that path doesn't exist on the gateway. The real health route is `/health` (the same one `staging-services-monitor` already used correctly). The stage doesn't gate the build on the result (no `exit 1` either way), so this was never visible as a failure — it just meant the hourly check was quietly checking nothing meaningful.
+
+**Fix:** Changed the stage to curl `https://marketeq-backend.onrender.com/health`.
+
+**Verification:** Triggered build #1189 manually — log shows `curl ... https://marketeq-backend.onrender.com/health` returning `Backend health: 200`.
+
+---
+
+## Issue 9: `sync-dev-main-to-staging` silently misreports branch sync state and crashes on the next stage
+
+**Severity:** P0 — blocks all staging promotions
+**Pipeline:** `sync-dev-main-to-staging` (build #47 — false "nothing to promote", then crashed)
+
+**Root cause:** Two compounding bugs in the `Preview` stage:
+1. `AHEAD=$(git rev-list --count origin/staging..origin/dev-main 2>/dev/null || echo "0")` swallowed any `rev-list` error and silently defaulted to `"0"`. With `dev-main` genuinely 1 commit ahead, the stage still reported "dev-main is 0 commits ahead of staging -- Nothing to promote."
+2. That false negative was recorded nowhere, so downstream stages (`Merge promote`, `Secret scan`, `Push`, `Post-deploy smoke test`) had no way to skip themselves. `Merge promote` ran anyway and crashed on `git checkout staging` with `error: pathspec 'staging' did not match any file(s) known to git`.
+
+No push ever reached `staging` during the failed runs — the crash happened before the `Push` stage, so this was a clean failure with no partial/inconsistent state.
+
+**Fix:**
+- `git fetch` now uses explicit refspecs (`dev-main:refs/remotes/origin/dev-main staging:refs/remotes/origin/staging`) instead of bare branch names, removing ambiguity about which local refs get written.
+- `rev-list --count` no longer swallows errors — a real fetch/ref problem now fails loudly instead of lying with a false `"0"`.
+- `Preview` writes a `nothing_to_promote.flag` file when there's truly nothing to promote; `Merge promote`, `Secret scan`, `Push`, and `Post-deploy smoke test` all gate on `!fileExists('nothing_to_promote.flag')` in addition to `DRY_RUN == false`, so they properly no-op instead of running against a repo state there was no reason to touch.
+
+**Verification:** Ran build #49 with `DRY_RUN=true` after the fix — correctly reported `dev-main is 1 commits ahead of staging`, listed the real commit (`491b6e6 fix(legal-service): add TypeORM retry on startup to survive staggered boot`), and all downstream stages skipped cleanly per `DRY_RUN`.
+
+---
+
 ## Summary Table
 
 | # | Pipeline | Issue | Severity | Status |
@@ -165,6 +198,8 @@ This is currently harmless because the squash-merge also triggers a `push` event
 | 5 | `post-merge-audit` | Flags SOP-approved staging force-push | P1 | FIXED 2026-05-27 |
 | 6 | `github-webhook-dispatcher` | Ignores merged PR events | P2 | FIXED 2026-05-27 |
 | 7 | All jobs | CSRF blocks programmatic API triggers | P2 | FIXED 2026-05-27 |
+| 8 | `infra-health-check` | Backend Health stage checks dead `/api/health` path | P2 | FIXED 2026-07-08 |
+| 9 | `sync-dev-main-to-staging` | Silently misreports sync state, crashes on `git checkout staging` | P0 | FIXED 2026-07-08 |
 
 ---
 
@@ -201,3 +236,5 @@ This is currently harmless because the squash-merge also triggers a `push` event
 |------|--------|
 | 2026-05-27 | Initial document. Full audit of all 13 Jenkins pipelines after discovering staging was 5 days stale and Vercel hadn't deployed since May 22. |
 | 2026-05-27 | ALL 7 ISSUES FIXED. Dispatcher updated with 3 new dispatch calls + merged PR handling. Post-merge-audit switched from check-runs API to statuses API with correct Jenkins context names. Staging force-push allowlist added. CSRF excludeClientIPFromCrumb enabled. |
+| 2026-07-08 | Issue 8 found and fixed: `infra-health-check` was checking a dead `/api/health` path instead of `/health`. |
+| 2026-07-08 | Issue 9 found and fixed: `sync-dev-main-to-staging` silently misreported branch sync state (swallowed `rev-list` errors) and crashed on `git checkout staging` in the next stage. Fixed with explicit fetch refspecs, error-surfacing on rev-list, and a `nothing_to_promote.flag` gate on downstream stages. Verified via dry run (build #49). |

@@ -64,6 +64,13 @@ export function getPreview<T extends File>(
     return () => {}
   }
 
+  const persistedUrl = (file as File & { __persistedUrl?: string })
+    .__persistedUrl
+  if (persistedUrl) {
+    onComplete(persistedUrl)
+    return () => {}
+  }
+
   const onLoadEnd = (
     reader: FileReader,
     onComplete: (dataUrl?: string) => void

@@ -271,7 +271,7 @@ const EmojiPickerImpl = ({
                 <div className="grid grid-cols-2 gap-x-1">
                   <div className="grid gap-y-1">
                     {value?.results
-                      .slice(0, getMiddleIndex(value.results))
+                      ?.slice(0, getMiddleIndex(value.results))
                       .map((gif) => (
                         <button
                           key={gif.id}
@@ -288,7 +288,7 @@ const EmojiPickerImpl = ({
                   </div>
                   <div className="grid gap-y-1">
                     {value?.results
-                      .slice(getMiddleIndex(value.results))
+                      ?.slice(getMiddleIndex(value.results))
                       .map((gif) => (
                         <button
                           key={gif.id}

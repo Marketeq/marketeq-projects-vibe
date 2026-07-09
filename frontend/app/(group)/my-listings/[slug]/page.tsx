@@ -2,7 +2,13 @@
 
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { useParams, useRouter } from "next/navigation"
+
+const ClientListingView = dynamic(
+  () => import("@/app/(group)/(group)/project-details/[slug]/page"),
+  { ssr: false }
+)
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
@@ -66,6 +72,7 @@ import {
   Star,
   Stars02,
   Trash2,
+  Upload01,
   Upload04,
   UploadCloud,
   Users03,
@@ -331,10 +338,13 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 
-const SHORT_DESCRIPTION_MIN_LENGTH = 50
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MIN_LENGTH = 350
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MIN_LENGTH = 100
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
+// Demo-toggle: publish-attempt validation (red inline hints + blocked publish).
+// Set to false to hide all publish validation.
+const SHOW_PUBLISH_VALIDATION = true
 
 const plainTextFromRichTextHtml = (value: string) => {
   if (!value) return ""
@@ -367,6 +377,121 @@ const PROJECT_TYPE_OPTIONS = [
   "SaaS Platform",
   "Other",
 ]
+
+const toEmbedUrl = (raw?: string | null): string => {
+  if (!raw) return ""
+  const url = raw.trim()
+  const yt = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
+  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  return url
+}
+
+const backendErrorMessage = (err: any): string => {
+  const raw = err?.response?.data?.message
+  if (Array.isArray(raw)) return raw.join(" ")
+  if (typeof raw === "string") return raw
+  return ""
+}
+
+const isModerationRejection = (err: any): boolean =>
+  err?.response?.status === 400 &&
+  /moderation|rejected|violat/i.test(backendErrorMessage(err))
+
+const moderationFieldLabel = (field?: string | null): string | null => {
+  switch (field) {
+    case "title":
+      return "project title"
+    case "shortDescription":
+      return "short description"
+    case "fullDescription":
+      return "project description"
+    case "faqs":
+      return "FAQ's"
+    default:
+      return null
+  }
+}
+
+const generateFaqSuggestions = (
+  project: any
+): Array<{ question: string; answer: string }> => {
+  const isService = project?.listingType === "service"
+  const kind = isService ? "service" : "project"
+  const title =
+    project?.title && project.title !== "Enter Project Title"
+      ? project.title
+      : `this ${kind}`
+  const cats: string[] = project?.categories ?? []
+  const tech = [
+    ...new Set([
+      ...(project?.programmingLanguages ?? project?.skills ?? []),
+      ...(project?.tags ?? []),
+    ]),
+  ]
+    .filter(Boolean)
+    .slice(0, 6)
+  const summary: string = project?.summary || ""
+  const duration = project?.durationMonths
+
+  const out: Array<{ question: string; answer: string }> = []
+
+  out.push({
+    question: `What's included in ${title}?`,
+    answer:
+      summary ||
+      `This ${kind} covers everything defined in the scope and deliverables, with each phase broken down into clear tasks so you know exactly what you're getting.`,
+  })
+  if (tech.length) {
+    const last = tech[tech.length - 1]
+    const techList =
+      tech.length > 1 ? `${tech.slice(0, -1).join(", ")} and ${last}` : last
+    out.push({
+      question: `What technologies and skills are used?`,
+      answer: `This ${kind} is delivered using ${techList}.`,
+    })
+  }
+  out.push({
+    question: `How long does ${title} take to complete?`,
+    answer: duration
+      ? `The estimated timeline is around ${duration} ${
+          duration === 1 ? "month" : "months"
+        }, depending on the final scope and feedback cycles.`
+      : `Timelines depend on the final scope. Once the scope is set, the estimated duration is shown in the budget breakdown.`,
+  })
+  out.push({
+    question: `How is pricing determined?`,
+    answer: `Pricing is calculated from the scope — the tasks, estimated hours, and assigned roles — and starts from the total shown at the top of the listing.`,
+  })
+  if (cats.length) {
+    out.push({
+      question: `Is this a good fit for ${cats[0]} work?`,
+      answer: `Yes — this ${kind} focuses on ${cats
+        .slice(0, 3)
+        .join(", ")} and is built for that kind of work.`,
+    })
+  }
+  out.push({
+    question: `Can the scope be customized?`,
+    answer: `Yes. Reach out before starting and the phases, tasks, and deliverables can be adjusted to fit your specific needs.`,
+  })
+  return out
+}
+
+const generateFaqAnswer = (project: any, question: string): string => {
+  const match = generateFaqSuggestions(project).find(
+    (s) => s.question.trim().toLowerCase() === (question || "").trim().toLowerCase()
+  )
+  if (match) return match.answer
+  const kind = project?.listingType === "service" ? "service" : "project"
+  return (
+    project?.summary ||
+    `This ${kind} is designed to address exactly that — see the description and scope for the full details.`
+  )
+}
 
 const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
 
@@ -913,6 +1038,7 @@ function SortableGalleryItem({
   onDelete,
   onToggleHidden,
   onUploadComplete,
+  showError,
 }: {
   index: number
   url: string | undefined
@@ -923,6 +1049,7 @@ function SortableGalleryItem({
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
   onUploadComplete: () => void
+  showError?: boolean
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const {
@@ -949,7 +1076,12 @@ function SortableGalleryItem({
       style={style}
       className="group/slide shrink-0 w-[calc(33.333%-8px)]"
     >
-      <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+      <div
+        className={cn(
+          "relative border h-[150.6px] overflow-hidden rounded-lg",
+          showError && !url ? "border-error-300" : "border-gray-200"
+        )}
+      >
         {url ? (
           <>
             <NextImage
@@ -1134,8 +1266,29 @@ function SortableGalleryItem({
           </div>
         ) : (
           <>
-            <div className="absolute inset-0 bg-gray-50 flex items-center justify-center">
-              <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+            <div
+              className={cn(
+                "absolute inset-0 flex items-center justify-center",
+                showError ? "bg-error-25" : "bg-gray-50"
+              )}
+            >
+              {showError ? (
+                <span
+                              className="size-[54px] bg-error-300"
+                              style={{
+                                WebkitMaskImage: "url(/placeholder-img.svg)",
+                                maskImage: "url(/placeholder-img.svg)",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                                WebkitMaskSize: "contain",
+                                maskSize: "contain",
+                                WebkitMaskPosition: "center",
+                                maskPosition: "center",
+                              }}
+                            />
+              ) : (
+                <img src="/placeholder-img.svg" alt="" className="size-[54px]" />
+              )}
             </div>
             <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200 flex items-center justify-center">
               <button
@@ -1235,6 +1388,9 @@ export default function ProjectDetails() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [descFullscreenOpen, setDescFullscreenOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
+  const descDraftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const toTitleCase = (str: string) =>
     str.replace(/\b\w/g, (char) => char.toUpperCase())
@@ -1299,14 +1455,95 @@ export default function ProjectDetails() {
   const [completingSlots, setCompletingSlots] = React.useState<Set<number>>(
     new Set()
   )
+  const galleryUrlsRef = React.useRef<string[]>([])
+  const galleryReservedRef = React.useRef<Set<number>>(new Set())
+  const galleryPersistTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
   const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
+
+  React.useEffect(() => {
+    galleryUrlsRef.current = project.mediaUrls ?? []
+  }, [project.mediaUrls])
   const [featuredDeleteOpen, setFeaturedDeleteOpen] = React.useState(false)
   const [unsavedNavOpen, setUnsavedNavOpen] = React.useState(false)
   const [pendingNavUrl, setPendingNavUrl] = React.useState<string | null>(null)
+  const [isClientView, setIsClientView] = React.useState(false)
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
+  const [publishAttempted, setPublishAttempted] = React.useState(false)
+  const [publishError, setPublishError] = React.useState<string | null>(null)
+  const [publishErrorField, setPublishErrorField] = React.useState<
+    string | null
+  >(null)
   const [videoDialogOpen, setVideoDialogOpen] = React.useState(false)
+
+  const publishImageCount =
+    (project.mediaUrls ?? []).filter(
+      (u: string) => !!u && u.trim() !== "" && !u.startsWith("blob:")
+    ).length + (project.featuredVideo ? 1 : 0)
+
+  const hasPublishBlockingErrors = SHOW_PUBLISH_VALIDATION
+    ? [
+        !project.featuredImage &&
+          !project.mediaUrls?.[0] &&
+          !project.featuredVideo,
+        publishImageCount < 3,
+        !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
+        !project.title || project.title === "Enter Project Title",
+        (project.categories || []).length < 3,
+        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
+        getRichTextCharacterCount(project.description || "") === 0,
+        !(
+          Array.isArray(project.deliverables) &&
+          project.deliverables.length > 0
+        ),
+        !(
+          project.programmingLanguages?.length > 0 ||
+          project.developmentTech?.length > 0 ||
+          project.subcategories?.length > 0 ||
+          project.tags?.length > 0
+        ),
+        !project.faqs || project.faqs.length === 0,
+      ].some(Boolean)
+    : false
+
+  const missingPublishFields = SHOW_PUBLISH_VALIDATION
+    ? ([
+        !PROJECT_TYPE_OPTIONS.includes(infoProjectType) && "a project type",
+        (!project.title || project.title === "Enter Project Title") &&
+          "project title",
+        (project.categories || []).length < 3 && "categories",
+        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH &&
+          "short description",
+        getRichTextCharacterCount(project.description || "") === 0 &&
+          "project description",
+        !(
+          project.programmingLanguages?.length > 0 ||
+          project.developmentTech?.length > 0 ||
+          project.subcategories?.length > 0 ||
+          project.tags?.length > 0
+        ) && "project details",
+        !(
+          Array.isArray(project.deliverables) &&
+          project.deliverables.length > 0
+        ) && "scope",
+        (!project.faqs || project.faqs.length === 0) && "FAQ's",
+      ].filter(Boolean) as string[])
+    : []
+
+  const missingPublishImages =
+    SHOW_PUBLISH_VALIDATION &&
+    (publishImageCount < 3 ||
+      (!project.featuredImage &&
+        !project.mediaUrls?.[0] &&
+        !project.featuredVideo))
+
+  const joinWithAnd = (arr: string[]) =>
+    arr.length <= 1
+      ? arr[0] ?? ""
+      : `${arr.slice(0, -1).join(", ")} and ${arr[arr.length - 1]}`
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
   const { toast } = useToast()
 
@@ -1340,74 +1577,98 @@ export default function ProjectDetails() {
         )
         return
       }
-      const currentUrls: string[] = project.mediaUrls ?? []
-      const newUrls = [...currentUrls]
+      setHasChanges(true)
 
-      for (const file of Array.from(files)) {
-        // Determine the target slot index for loading state
-        const targetIndex =
-          replaceIndex !== undefined ? replaceIndex : newUrls.length
-        setUploadingSlots((prev) => new Set(prev).add(targetIndex))
+      // Reserve the next free slot so concurrent uploads never collide.
+      const reserveSlot = () => {
+        let i = galleryUrlsRef.current.length
+        while (galleryReservedRef.current.has(i) || galleryUrlsRef.current[i])
+          i++
+        galleryReservedRef.current.add(i)
+        return i
+      }
 
-        const formData = new FormData()
-        // Backend requires featuredImage field to be present
-        formData.append("featuredImage", file)
-        formData.append("projectId", project.id)
-        try {
-          const res = await ProjectAPI.UploadMedia(formData)
-          const url = res?.data?.url || res?.data?.featuredImage
-          if (url) {
-            if (replaceIndex !== undefined) {
-              while (newUrls.length <= replaceIndex) newUrls.push("")
-              newUrls[replaceIndex] = url
+      // Place a result at its reserved slot via a functional update, so
+      // parallel uploads accumulate instead of overwriting one another.
+      const placeUrl = (index: number, url: string) => {
+        setProject((prev: any) => {
+          const arr = [...(prev.mediaUrls ?? [])]
+          while (arr.length <= index) arr.push("")
+          arr[index] = url
+          galleryUrlsRef.current = arr
+          return { ...prev, mediaUrls: arr }
+        })
+      }
+
+      // Debounce persistence so a burst of concurrent uploads writes once,
+      // with the final full list (avoids last-write-wins races).
+      const schedulePersist = () => {
+        if (galleryPersistTimerRef.current)
+          clearTimeout(galleryPersistTimerRef.current)
+        galleryPersistTimerRef.current = setTimeout(async () => {
+          try {
+            await ProjectAPI.UpdateGalleryImages(
+              project.id,
+              galleryUrlsRef.current.filter(
+                (u: string) => u && !u.startsWith("blob:")
+              )
+            )
+          } catch (err) {
+            console.error("Failed to save gallery images:", err)
+          }
+        }, 500)
+      }
+
+      await Promise.all(
+        Array.from(files).map(async (file) => {
+          const targetIndex =
+            replaceIndex !== undefined ? replaceIndex : reserveSlot()
+          setUploadingSlots((prev) => new Set(prev).add(targetIndex))
+
+          const formData = new FormData()
+          formData.append("featuredImage", file)
+          formData.append("target", "additional")
+          formData.append("projectId", project.id)
+
+          let finalUrl: string | undefined
+          try {
+            const res = await ProjectAPI.UploadMedia(formData)
+            finalUrl = res?.data?.url || res?.data?.featuredImage
+          } catch (err: any) {
+            if (isModerationRejection(err)) {
+              toast({
+                title: backendErrorMessage(err),
+                variant: "destructive",
+              })
             } else {
-              newUrls.push(url)
+              finalUrl = URL.createObjectURL(file)
+              toast({
+                title:
+                  err?.response?.status === 503
+                    ? "Image moderation service unavailable. Showing local preview."
+                    : "Failed to upload image. Showing local preview.",
+                variant: "destructive",
+              })
             }
           }
-        } catch (err: any) {
-          console.error("Failed to upload image:", err)
-          // Show local preview even if backend upload fails
-          const localUrl = URL.createObjectURL(file)
-          if (replaceIndex !== undefined) {
-            while (newUrls.length <= replaceIndex) newUrls.push("")
-            newUrls[replaceIndex] = localUrl
-          } else {
-            newUrls.push(localUrl)
+
+          if (finalUrl) {
+            placeUrl(targetIndex, finalUrl)
+            schedulePersist()
           }
-          const status = err?.response?.status
-          toast({
-            title:
-              status === 503
-                ? "Image moderation service unavailable. Showing local preview."
-                : "Failed to upload image. Showing local preview.",
-            variant: "destructive",
-          })
-        } finally {
-          // Stop uploading — ring will animate to 100% then call onComplete
+
+          if (replaceIndex === undefined)
+            galleryReservedRef.current.delete(targetIndex)
           setUploadingSlots((prev) => {
             const next = new Set(prev)
             next.delete(targetIndex)
             return next
           })
           setCompletingSlots((prev) => new Set(prev).add(targetIndex))
-        }
-      }
-
-      setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
-      setHasChanges(true)
-      // Persist gallery URLs to the media record
-      if (isRealBackendId(project.id)) {
-        try {
-          await ProjectAPI.UpdateGalleryImages(
-            project.id,
-            newUrls.filter((u: string) => u && !u.startsWith("blob:"))
-          )
-        } catch (err) {
-          console.error("Failed to save gallery images:", err)
-        }
-      }
+        })
+      )
     },
-    [project.id, project.mediaUrls]
+    [project.id, toast]
   )
 
   const handleGalleryDelete = React.useCallback(
@@ -1443,14 +1704,28 @@ export default function ProjectDetails() {
     [project.id, project.mediaUrls]
   )
 
-  const handleGalleryToggleHidden = React.useCallback((index: number) => {
-    setHiddenImages((prev) => {
-      const next = new Set(prev)
+  const handleGalleryToggleHidden = React.useCallback(
+    (index: number) => {
+      const next = new Set(hiddenImages)
       if (next.has(index)) next.delete(index)
       else next.add(index)
-      return next
-    })
-  }, [])
+      setHiddenImages(next)
+
+      if (project.id && isRealBackendId(project.id)) {
+        const urls: string[] = project.mediaUrls ?? []
+        const additional = urls.filter(
+          (u: string) => u && !u.startsWith("blob:")
+        )
+        const hidden = Array.from(next)
+          .map((i) => urls[i])
+          .filter((u): u is string => Boolean(u && !u.startsWith("blob:")))
+        ProjectAPI.UpdateGalleryImages(project.id, additional, hidden).catch(
+          (err: any) => console.error("Failed to save hidden images:", err)
+        )
+      }
+    },
+    [hiddenImages, project.id, project.mediaUrls]
+  )
 
   const gallerySensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -1530,15 +1805,19 @@ export default function ProjectDetails() {
         }
       } catch (err: any) {
         console.error("Failed to upload featured image:", err)
-        const localUrl = URL.createObjectURL(file)
-        setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
-        toast({
-          title:
-            err?.response?.status === 503
-              ? "Image moderation service unavailable. Showing local preview."
-              : "Failed to upload featured image. Showing local preview.",
-          variant: "destructive",
-        })
+        if (isModerationRejection(err)) {
+          toast({ title: backendErrorMessage(err), variant: "destructive" })
+        } else {
+          const localUrl = URL.createObjectURL(file)
+          setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
+          toast({
+            title:
+              err?.response?.status === 503
+                ? "Image moderation service unavailable. Showing local preview."
+                : "Failed to upload featured image. Showing local preview.",
+            variant: "destructive",
+          })
+        }
       } finally {
         setFeaturedUploading(false)
         setFeaturedCompleting(true)
@@ -1550,6 +1829,8 @@ export default function ProjectDetails() {
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
     setIsPublishing(true)
+    setPublishError(null)
+    setPublishErrorField(null)
     try {
       await ProjectAPI.PublishProject(project.id)
       setProject((prev: any) => ({ ...prev, status: "published" }))
@@ -1557,12 +1838,15 @@ export default function ProjectDetails() {
       setPublishDialogOpen(false)
       const label = project.listingType === "service" ? "service" : "project"
       toast({ title: `Your ${label} is live`, variant: "success" })
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to publish:", err)
-      toast({
-        title: "Failed to publish. Please try again.",
-        variant: "destructive",
-      })
+      const message =
+        backendErrorMessage(err) || "Failed to publish. Please try again."
+      const field = err?.response?.data?.field
+      setPublishError(message)
+      setPublishErrorField(typeof field === "string" ? field : null)
+      setPublishDialogOpen(false)
+      toast({ title: message, variant: "destructive" })
     } finally {
       setIsPublishing(false)
     }
@@ -1572,9 +1856,7 @@ export default function ProjectDetails() {
     if (!project?.id || !isRealBackendId(project.id)) return
     setIsPublishing(true)
     try {
-      await ProjectAPI.UpdateProjectDraft(project.id, {
-        status: "draft",
-      } as any)
+      await ProjectAPI.UnpublishProject(project.id)
       setProject((prev: any) => ({ ...prev, status: "draft" }))
       setHasChanges(false)
       const label = project.listingType === "service" ? "service" : "project"
@@ -2032,6 +2314,147 @@ export default function ProjectDetails() {
     ]
   )
 
+  const faqSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+
+  const persistFaqs = React.useCallback(
+    (faqs: Array<{ question: string; answer: string }>) => {
+      if (faqSaveTimerRef.current) clearTimeout(faqSaveTimerRef.current)
+      faqSaveTimerRef.current = setTimeout(() => {
+        saveProjectFields({ faqs })
+      }, 400)
+    },
+    [saveProjectFields]
+  )
+
+  const handleAddFaq = () => {
+    if ((project.faqs?.length ?? 0) >= 10) return
+    const next = [...(project.faqs ?? []), { question: "", answer: "" }]
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    setOpenFaqIndex(next.length - 1)
+    saveProjectFields({ faqs: next })
+  }
+
+  const handleFaqChange = (
+    idx: number,
+    field: "question" | "answer",
+    value: string
+  ) => {
+    const next = (project.faqs ?? []).map((f: any, i: number) =>
+      i === idx ? { ...f, [field]: value } : f
+    )
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    persistFaqs(next)
+  }
+
+  const handleDeleteFaq = (idx: number) => {
+    const next = (project.faqs ?? []).filter((_: any, i: number) => i !== idx)
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    setOpenFaqIndex(null)
+    saveProjectFields({ faqs: next })
+  }
+
+  const [faqSuggestions, setFaqSuggestions] = React.useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+  const [aiFaqDialogOpen, setAiFaqDialogOpen] = React.useState(false)
+  const [faqGenLoading, setFaqGenLoading] = React.useState(false)
+  const [faqGenError, setFaqGenError] = React.useState(false)
+
+  const faqRemainingSlots = Math.max(0, 10 - (project.faqs?.length ?? 0))
+  const faqAddedCount = faqSuggestions.filter((s) => s.added).length
+
+  const dedupeFaqSuggestions = (
+    list: Array<{ question: string; answer: string }>
+  ) => {
+    const existing = new Set(
+      (project.faqs ?? []).map((f: any) =>
+        (f.question || "").trim().toLowerCase()
+      )
+    )
+    return list
+      .filter(
+        (s) => s?.question && !existing.has(s.question.trim().toLowerCase())
+      )
+      .map((s) => ({ question: s.question, answer: s.answer, added: false }))
+  }
+
+  const runFaqGeneration = async () => {
+    setFaqGenError(false)
+    // No backend draft yet — use the local heuristic directly.
+    if (!project?.id || !isRealBackendId(project.id)) {
+      setFaqSuggestions(dedupeFaqSuggestions(generateFaqSuggestions(project)))
+      return
+    }
+    setFaqGenLoading(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(project.id)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      setFaqSuggestions(dedupeFaqSuggestions(data))
+    } catch {
+      setFaqGenError(true)
+    } finally {
+      setFaqGenLoading(false)
+    }
+  }
+
+  const openAiFaqDialog = () => {
+    setAiFaqDialogOpen(true)
+    runFaqGeneration()
+  }
+
+  const insertFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s || s.added || (project.faqs?.length ?? 0) >= 10) return
+    const next = [
+      ...(project.faqs ?? []),
+      { question: s.question, answer: s.answer, is_ai_generated: true },
+    ]
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    saveProjectFields({ faqs: next })
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s) return
+    const q = s.question.trim().toLowerCase()
+    const next = (project.faqs ?? []).filter(
+      (f: any) => (f.question || "").trim().toLowerCase() !== q
+    )
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    saveProjectFields({ faqs: next })
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllFaqSuggestions = () => {
+    const slots = Math.max(0, 10 - (project.faqs?.length ?? 0))
+    const toAdd = faqSuggestions.filter((s) => !s.added).slice(0, slots)
+    if (toAdd.length === 0) return
+    const next = [
+      ...(project.faqs ?? []),
+      ...toAdd.map((s) => ({
+        question: s.question,
+        answer: s.answer,
+        is_ai_generated: true,
+      })),
+    ]
+    setProject((prev: any) => ({ ...prev, faqs: next }))
+    saveProjectFields({ faqs: next })
+    const addedSet = new Set(toAdd.map((s) => s.question))
+    setFaqSuggestions((prev) =>
+      prev.map((x) => (addedSet.has(x.question) ? { ...x, added: true } : x))
+    )
+  }
+
   // Persist team member assignments in localStorage (until backend supports assignedMemberId)
   const assignmentsKey = `scope-assignments-${project?.id || "draft"}`
   const saveAssignments = React.useCallback(
@@ -2289,6 +2712,7 @@ export default function ProjectDetails() {
           let featuredImage: string | null = null
           let featuredVideo: string | null = null
           const galleryUrls: string[] = []
+          const hiddenUrls: string[] = []
           if (d.media) {
             const mediaObj = Array.isArray(d.media) ? d.media[0] : d.media
             if (mediaObj?.featuredImage) featuredImage = mediaObj.featuredImage
@@ -2296,7 +2720,18 @@ export default function ProjectDetails() {
             if (Array.isArray(mediaObj?.additionalImages)) {
               galleryUrls.push(...mediaObj.additionalImages)
             }
+            if (Array.isArray(mediaObj?.hiddenImages)) {
+              hiddenUrls.push(...mediaObj.hiddenImages)
+            }
           }
+          const finalGallery =
+            galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? [])
+          const hiddenIndices = new Set<number>()
+          for (const u of hiddenUrls) {
+            const idx = finalGallery.indexOf(u)
+            if (idx >= 0) hiddenIndices.add(idx)
+          }
+          setHiddenImages(hiddenIndices)
           setProject({
             ...d,
             role: d.category || d.categories?.[0] || "Software Development",
@@ -2305,10 +2740,12 @@ export default function ProjectDetails() {
             featuredImage:
               featuredImage ||
               d.featuredImage ||
+              galleryUrls[0] ||
+              d.mediaUrls?.[0] ||
               null,
-            featuredVideo: featuredVideo || d.featuredVideo || null,
-            mediaUrls:
-              galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? []),
+            featuredVideo:
+              featuredVideo || d.featuredVideo || d.videoUrl || null,
+            mediaUrls: finalGallery,
             programmingLanguages:
               Array.isArray(d.skills) && d.skills.length > 0
                 ? d.skills
@@ -2430,7 +2867,8 @@ export default function ProjectDetails() {
             reviewCount: 14,
             listingType: d.listingType || "project",
           })
-          if (d.listingType) setInfoProjectType(d.listingType)
+          if (d.projectType || d.listingType)
+            setInfoProjectType(d.projectType || d.listingType)
           if (d.shortDescription) setInfoSummary(d.shortDescription)
           if (d.title && d.title !== "Enter Project Title")
             setInfoTitle(d.title)
@@ -2606,7 +3044,8 @@ export default function ProjectDetails() {
           reviewCount: 14,
           listingType: data.listingType || "project",
         })
-        if (data.listingType) setInfoProjectType(data.listingType)
+        if (data.projectType || data.listingType)
+          setInfoProjectType(data.projectType || data.listingType)
         if (data.shortDescription) setInfoSummary(data.shortDescription)
         setLoading(false)
         return
@@ -2822,6 +3261,12 @@ export default function ProjectDetails() {
     )
   }
 
+  if (isClientView) {
+    return (
+      <ClientListingView isPreview onEdit={() => setIsClientView(false)} />
+    )
+  }
+
   return (
     <>
       <div className="px-[100px] pb-[100px] relative bg-white">
@@ -2860,7 +3305,19 @@ export default function ProjectDetails() {
                 </div>
 
                 <div className="flex gap-x-[13px] items-start mt-8 relative z-[5]">
-                  <div className="group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
+                  <div className="flex flex-col gap-y-1.5">
+                  <div
+                    className={cn(
+                      "group/thumb w-[189px] h-[126px] relative overflow-hidden rounded-lg border",
+                      SHOW_PUBLISH_VALIDATION &&
+                        publishAttempted &&
+                        !project.featuredImage &&
+                        !project.mediaUrls?.[0] &&
+                        !project.featuredVideo
+                        ? "bg-error-25 border-error-300"
+                        : "bg-gray-50 border-gray-200"
+                    )}
+                  >
                     {(featuredUploading || featuredCompleting) &&
                     !project.featuredImage ? (
                       <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
@@ -2926,11 +3383,30 @@ export default function ProjectDetails() {
                     ) : (
                       <>
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <img
-                            src="/placeholder-img.svg"
-                            alt=""
-                            className="size-[54px]"
-                          />
+                          {SHOW_PUBLISH_VALIDATION &&
+                          publishAttempted &&
+                          !project.mediaUrls?.[0] &&
+                          !project.featuredVideo ? (
+                            <span
+                              className="size-[54px] bg-error-300"
+                              style={{
+                                WebkitMaskImage: "url(/placeholder-img.svg)",
+                                maskImage: "url(/placeholder-img.svg)",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskRepeat: "no-repeat",
+                                WebkitMaskSize: "contain",
+                                maskSize: "contain",
+                                WebkitMaskPosition: "center",
+                                maskPosition: "center",
+                              }}
+                            />
+                          ) : (
+                            <img
+                              src="/placeholder-img.svg"
+                              alt=""
+                              className="size-[54px]"
+                            />
+                          )}
                         </div>
                         <div className="absolute inset-0 bg-gray-500/80 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-200 flex items-center justify-center">
                           <button
@@ -2955,6 +3431,16 @@ export default function ProjectDetails() {
                           </button>
                         </div>
                       </>
+                    )}
+                  </div>
+                  {SHOW_PUBLISH_VALIDATION &&
+                    publishAttempted &&
+                    !project.featuredImage &&
+                    !project.mediaUrls?.[0] &&
+                    !project.featuredVideo && (
+                      <p className="text-sm text-error-500">
+                        Please add a featured image
+                      </p>
                     )}
                   </div>
 
@@ -3009,10 +3495,19 @@ export default function ProjectDetails() {
                       <PopoverTrigger asChild>
                         <button type="button">
                           <Badge
-                            className="rounded-[5px] bg-gray-100 cursor-pointer"
+                            className={cn(
+                              "rounded-[5px] cursor-pointer",
+                              SHOW_PUBLISH_VALIDATION &&
+                                publishAttempted &&
+                                !PROJECT_TYPE_OPTIONS.includes(infoProjectType)
+                                ? "bg-error-50 text-error-500"
+                                : "bg-gray-100"
+                            )}
                             visual="gray"
                           >
-                            {infoProjectType || "Select Project Type"}
+                            {PROJECT_TYPE_OPTIONS.includes(infoProjectType)
+                              ? infoProjectType
+                              : "Select Project Type"}
                           </Badge>
                         </button>
                       </PopoverTrigger>
@@ -3023,11 +3518,11 @@ export default function ProjectDetails() {
                             setInfoProjectType(val)
                             setProject((prev: any) => ({
                               ...prev,
-                              listingType: val,
+                              projectType: val,
                             }))
                             setProjectTypeQuery("")
                             setProjectTypeOpen(false)
-                            saveProjectFields({ listingType: val })
+                            saveProjectFields({ projectType: val })
                           }}
                           className="w-full"
                         >
@@ -3058,6 +3553,14 @@ export default function ProjectDetails() {
                         </Combobox>
                       </PopoverContent>
                     </Popover>
+
+                    {SHOW_PUBLISH_VALIDATION &&
+                      publishAttempted &&
+                      !PROJECT_TYPE_OPTIONS.includes(infoProjectType) && (
+                        <p className="text-sm text-error-500">
+                          Please select your project type
+                        </p>
+                      )}
 
                     <div
                       className="flex items-center gap-1.5 w-full cursor-pointer"
@@ -3157,7 +3660,17 @@ export default function ProjectDetails() {
                             )}
                           </>
                         ) : (
-                          <span className="text-[22px] leading-[30px] font-semibold text-dark-blue-400">
+                          <span
+                            className={cn(
+                              "text-[22px] leading-[30px] font-semibold break-words min-w-0",
+                              SHOW_PUBLISH_VALIDATION &&
+                                publishAttempted &&
+                                (!project.title ||
+                                  project.title === "Enter Project Title")
+                                ? "text-error-500"
+                                : "text-dark-blue-400"
+                            )}
+                          >
                             {project.title || "Enter Project Title"}
                           </span>
                         )}
@@ -3171,6 +3684,15 @@ export default function ProjectDetails() {
                         )}
                       />
                     </div>
+
+                    {SHOW_PUBLISH_VALIDATION &&
+                      publishAttempted &&
+                      (!project.title ||
+                        project.title === "Enter Project Title") && (
+                        <p className="text-sm text-error-500">
+                          Please enter your project title
+                        </p>
+                      )}
 
                     {(project.categories || []).length > 0 ? (
                       <div className="flex items-center gap-x-3">
@@ -3193,7 +3715,12 @@ export default function ProjectDetails() {
                       </div>
                     ) : (
                       <button
-                        className="inline-flex items-center gap-x-1.5 text-sm font-semibold text-dark-blue-400 hover:underline transition duration-300"
+                        className={cn(
+                          "inline-flex items-center gap-x-1.5 text-sm font-semibold hover:underline transition duration-300",
+                          SHOW_PUBLISH_VALIDATION && publishAttempted
+                            ? "text-error-500"
+                            : "text-dark-blue-400"
+                        )}
                         onClick={() => {
                           setInfoTitle(
                             project.title === "Enter Project Title"
@@ -3209,6 +3736,14 @@ export default function ProjectDetails() {
                         Add Categories
                       </button>
                     )}
+
+                    {SHOW_PUBLISH_VALIDATION &&
+                      publishAttempted &&
+                      (project.categories || []).length < 3 && (
+                        <p className="text-sm text-error-500">
+                          Please add at least 3 categories
+                        </p>
+                      )}
                   </div>
 
                   <IconButton
@@ -3238,10 +3773,30 @@ export default function ProjectDetails() {
                     setProjectInfoOpen(true)
                   }}
                 >
-                  <p className="text-sm font-light text-dark-blue-400">
+                  <p
+                    style={{ whiteSpace: "pre-line" }}
+                    className={cn(
+                      "text-sm font-light break-words line-clamp-3",
+                      SHOW_PUBLISH_VALIDATION &&
+                        publishAttempted &&
+                        !project.summary
+                        ? "text-error-500"
+                        : "text-dark-blue-400"
+                    )}
+                  >
                     {project.summary ||
                       "Add a short description here to explain your project features and benefits. This will help visitors quickly see the difference between your project and similar projects in the marketplace..."}
                   </p>
+                  {SHOW_PUBLISH_VALIDATION &&
+                    publishAttempted &&
+                    !project.summary && (
+                      <p className="mt-2 text-sm text-error-500">
+                        Please add a short description
+                      </p>
+                    )}
+                  {publishError && publishErrorField === "shortDescription" && (
+                    <p className="mt-2 text-sm text-error-500">{publishError}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -3436,7 +3991,7 @@ export default function ProjectDetails() {
                           <div className="group/slide shrink-0 w-[calc(33.333%-8px)]">
                             <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
                               <iframe
-                                src={project.featuredVideo}
+                                src={toEmbedUrl(project.featuredVideo)}
                                 className={cn(
                                   "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
                                   videoHidden && "opacity-40 blur-[1px]"
@@ -3497,6 +4052,7 @@ export default function ProjectDetails() {
                                       featuredVideo: null,
                                     }))
                                     setVideoHidden(false)
+                                    saveProjectFields({ videoUrl: "" })
                                   }}
                                 >
                                   <Trash2 className="size-4 text-white" />
@@ -3512,7 +4068,9 @@ export default function ProjectDetails() {
                           const emptySlots = 3 - videoOffset
                           const totalSlots = Math.max(
                             emptySlots,
-                            allUrls.length
+                            allUrls.length,
+                            ...Array.from(uploadingSlots).map((i) => i + 1),
+                            ...Array.from(completingSlots).map((i) => i + 1)
                           )
                           const sortableIds = Array.from(
                             { length: totalSlots },
@@ -3529,6 +4087,13 @@ export default function ProjectDetails() {
                                   key={id}
                                   index={index}
                                   url={allUrls[index]}
+                                  showError={
+                                    SHOW_PUBLISH_VALIDATION &&
+                                    publishAttempted &&
+                                    allUrls.length +
+                                      (project.featuredVideo ? 1 : 0) <
+                                      3
+                                  }
                                   isHidden={hiddenImages.has(index)}
                                   isUploading={uploadingSlots.has(index)}
                                   isCompleting={completingSlots.has(index)}
@@ -3551,6 +4116,14 @@ export default function ProjectDetails() {
                     </div>
                   </div>
                 </DndContext>
+
+                {SHOW_PUBLISH_VALIDATION &&
+                  publishAttempted &&
+                  publishImageCount < 3 && (
+                    <p className="mt-2 text-sm text-error-500">
+                      Please add at least 3 images to your project
+                    </p>
+                  )}
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -3700,32 +4273,72 @@ export default function ProjectDetails() {
                             }}
                           />
                         ) : (
-                          <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 flex items-start justify-between">
-                            <div>
-                              <h1 className="text-lg font-semibold text-dark-blue-400">
-                                Project Description
-                              </h1>
-                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                Describe your project in a meaningful way that
-                                will attract top clients. You can even add
-                                images using our rich text editor to make your
-                                project stand out.
-                              </p>
-                            </div>
-                            <Button
-                              variant="outlined"
-                              visual="gray"
-                              className="shrink-0 ml-[75px]"
-                              onClick={() => {
-                                setDescDraft(project.description || "")
-                                setDescFullscreenOpen(true)
-                              }}
+                          <>
+                            <div
+                              className={cn(
+                                "border-2 rounded-lg p-6 flex items-start justify-between",
+                                SHOW_PUBLISH_VALIDATION && publishAttempted
+                                  ? "border-error-300 bg-error-50"
+                                  : "border-gray-200 bg-gray-25"
+                              )}
                             >
-                              <Plus className="size-[15px]" />
-                              Add Description
-                            </Button>
-                          </div>
+                              <div>
+                                <h1
+                                  className={cn(
+                                    "text-lg font-semibold",
+                                    SHOW_PUBLISH_VALIDATION && publishAttempted
+                                      ? "text-error-500"
+                                      : "text-dark-blue-400"
+                                  )}
+                                >
+                                  Project Description
+                                </h1>
+                                <p
+                                  className={cn(
+                                    "mt-1 text-sm font-light",
+                                    SHOW_PUBLISH_VALIDATION && publishAttempted
+                                      ? "text-error-500"
+                                      : "text-dark-blue-400"
+                                  )}
+                                >
+                                  Describe your project in a meaningful way that
+                                  will attract top clients. You can even add
+                                  images using our rich text editor to make your
+                                  project stand out.
+                                </p>
+                              </div>
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                className={cn(
+                                  "shrink-0 ml-[75px]",
+                                  SHOW_PUBLISH_VALIDATION &&
+                                    publishAttempted &&
+                                    "text-error-500 border-error-300"
+                                )}
+                                onClick={() => {
+                                  setDescDraft(project.description || "")
+                                  setDescFullscreenOpen(true)
+                                }}
+                              >
+                                <Plus className="size-[15px]" />
+                                Add Description
+                              </Button>
+                            </div>
+                            {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                              <p className="mt-2 text-sm text-error-500">
+                                Please add a project description
+                              </p>
+                            )}
+                          </>
                         )}
+
+                        {publishError &&
+                          publishErrorField === "fullDescription" && (
+                            <p className="mt-2 text-sm text-error-500">
+                              {publishError}
+                            </p>
+                          )}
 
                         {descFullscreenOpen && (
                           <RichTextEditor
@@ -3754,7 +4367,14 @@ export default function ProjectDetails() {
                             fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
                             fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
                             className="hidden"
-                            onUpdate={(html) => setDescDraft(html)}
+                            onUpdate={(html) => {
+                              if (descDraftTimerRef.current)
+                                clearTimeout(descDraftTimerRef.current)
+                              descDraftTimerRef.current = setTimeout(
+                                () => setDescDraft(html),
+                                250
+                              )
+                            }}
                           />
                         )}
 
@@ -3792,7 +4412,7 @@ export default function ProjectDetails() {
                                   ...prev,
                                   title: infoTitle || prev.title,
                                   summary: infoSummary || prev.summary,
-                                  listingType: infoProjectType,
+                                  projectType: infoProjectType,
                                   categories: updatedCategories,
                                   subcategories: updatedSubCategories,
                                   categorySelections,
@@ -3801,7 +4421,7 @@ export default function ProjectDetails() {
                                 saveProjectFields({
                                   title: infoTitle || undefined,
                                   shortDescription: infoSummary || undefined,
-                                  listingType: infoProjectType || undefined,
+                                  projectType: infoProjectType || undefined,
                                   categories: updatedCategories,
                                   subCategories: updatedSubCategories,
                                   categorySelections,
@@ -4051,7 +4671,7 @@ export default function ProjectDetails() {
                                                           return v
                                                         return v
                                                           .replace(
-                                                            /[^a-zA-Z ]/g,
+                                                            /[^a-zA-Z0-9 ]/g,
                                                             ""
                                                           )
                                                           .trim()
@@ -4099,6 +4719,7 @@ export default function ProjectDetails() {
                                                         )
                                                       )}
                                                       <TagsInputInput
+                                                        portalDropdown
                                                         placeholder={
                                                           tagsInput.value.length
                                                             ? ""
@@ -4250,7 +4871,7 @@ export default function ProjectDetails() {
                                           </span>
                                         </p>
                                         <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                          {phase.items
+                                          {(phase.items ?? [])
                                             .slice(0, 6)
                                             .map((item, i) => (
                                               <div
@@ -4313,35 +4934,68 @@ export default function ProjectDetails() {
                               }}
                             </ShowMoreLessRoot>
                           ) : (
-                            <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
-                              <div>
-                                <h1 className="text-lg font-semibold text-dark-blue-400">
-                                  Deliverables
-                                </h1>
-                                <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                  Your project deliverables will be displayed
-                                  here once you add a scope to your offer. These
-                                  deliverables are automatically generated based
-                                  on the details in your scope and tasks,
-                                  they&apos;re not directly editable.
-                                </p>
-                              </div>
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                className="shrink-0 ml-[75px]"
-                                onClick={() => {
-                                  setSelected("View Project Scope")
-                                  window.scrollTo({
-                                    top: 0,
-                                    behavior: "smooth",
-                                  })
-                                }}
+                            <>
+                              <div
+                                className={cn(
+                                  "border-2 rounded-lg p-6 mt-6 flex items-start justify-between",
+                                  SHOW_PUBLISH_VALIDATION && publishAttempted
+                                    ? "border-error-300 bg-error-50"
+                                    : "border-gray-200 bg-gray-25"
+                                )}
                               >
-                                <Plus className="size-[15px]" />
-                                Add Scope
-                              </Button>
-                            </div>
+                                <div>
+                                  <h1
+                                    className={cn(
+                                      "text-lg font-semibold",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
+                                    Deliverables
+                                  </h1>
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-sm font-light",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
+                                    Your project deliverables will be displayed
+                                    here once you add a scope to your offer. These
+                                    deliverables are automatically generated based
+                                    on the details in your scope and tasks,
+                                    they&apos;re not directly editable.
+                                  </p>
+                                </div>
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className={cn(
+                                    "shrink-0 ml-[75px]",
+                                    SHOW_PUBLISH_VALIDATION &&
+                                      publishAttempted &&
+                                      "text-error-500 border-error-300"
+                                  )}
+                                  onClick={() => {
+                                    setSelected("View Project Scope")
+                                    window.scrollTo({
+                                      top: 0,
+                                      behavior: "smooth",
+                                    })
+                                  }}
+                                >
+                                  <Plus className="size-[15px]" />
+                                  Add Scope
+                                </Button>
+                              </div>
+                              {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                                <p className="mt-2 text-sm text-error-500">
+                                  Please add a scope to your project
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
 
@@ -4861,13 +5515,34 @@ export default function ProjectDetails() {
                               )}
                             </div>
                           ) : (
-                            <div className="mt-6 rounded-lg overflow-hidden">
-                              <div className="p-6 border-2 border-gray-200 bg-gray-25 rounded-t-lg flex items-start justify-between">
+                            <>
+                            <div
+                              className={cn(
+                                "mt-6 p-6 border-2 rounded-lg flex items-start justify-between",
+                                  SHOW_PUBLISH_VALIDATION && publishAttempted
+                                    ? "border-error-300 bg-error-50"
+                                    : "border-gray-200 bg-gray-25"
+                                )}
+                              >
                                 <div>
-                                  <h1 className="text-lg font-semibold text-dark-blue-400">
+                                  <h1
+                                    className={cn(
+                                      "text-lg font-semibold",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
                                     Project Details
                                   </h1>
-                                  <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-sm font-light",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "text-error-500"
+                                        : "text-dark-blue-400"
+                                    )}
+                                  >
                                     Your project deliverables will be displayed
                                     here once you add a scope to your offer.
                                     These deliverables are automatically
@@ -4879,7 +5554,12 @@ export default function ProjectDetails() {
                                 <Button
                                   variant="outlined"
                                   visual="gray"
-                                  className="shrink-0 ml-[75px]"
+                                  className={cn(
+                                    "shrink-0 ml-[75px]",
+                                    SHOW_PUBLISH_VALIDATION &&
+                                      publishAttempted &&
+                                      "text-error-500 border-error-300"
+                                  )}
                                   onClick={() => {
                                     setDetailsLangs(
                                       project.programmingLanguages ?? []
@@ -4898,9 +5578,14 @@ export default function ProjectDetails() {
                                   Add Details
                                 </Button>
                               </div>
+                              {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                                <p className="mt-2 text-sm text-error-500">
+                                  Please add your project details
+                                </p>
+                              )}
 
                               {/* About the Team — empty state */}
-                              <div className="p-6 bg-white rounded-b-lg border border-gray-200 border-t-0">
+                              <div className="mt-6 p-6 bg-white rounded-lg border border-gray-200">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-base leading-none font-semibold text-dark-blue-400">
                                     About the Team
@@ -4924,7 +5609,7 @@ export default function ProjectDetails() {
                                   button to manage your team.
                                 </p>
                               </div>
-                            </div>
+                            </>
                           )}
 
                           {/* Project Details Dialog */}
@@ -4956,7 +5641,12 @@ export default function ProjectDetails() {
                                 </div>
                               </div>
 
-                              <div className="border-t border-gray-200 px-6 py-6 space-y-6 max-h-[60vh] overflow-y-auto">
+                              <ScrollArea
+                                className="max-h-[60vh] border-t border-gray-200"
+                                viewportClassName="!h-auto !max-h-[60vh] [&>div]:!h-auto"
+                                scrollBar={<ScrollBar className="w-4 p-1" />}
+                              >
+                                <div className="px-6 py-6 space-y-6">
                                 {[
                                   {
                                     label: "Programming Languages",
@@ -5055,7 +5745,7 @@ export default function ProjectDetails() {
                                             )
                                               return v
                                             return v
-                                              .replace(/[^a-zA-Z ]/g, "")
+                                              .replace(/[^a-zA-Z0-9 ]/g, "")
                                               .trim()
                                               .toLowerCase()
                                               .replace(/\b\w/g, (c) =>
@@ -5096,6 +5786,7 @@ export default function ProjectDetails() {
                                                 )
                                               )}
                                               <TagsInputInput
+                                                portalDropdown
                                                 options={field.options}
                                                 placeholder={
                                                   tagsInput.value.length
@@ -5179,6 +5870,7 @@ export default function ProjectDetails() {
                                   )}
                                 </div>
                               </div>
+                              </ScrollArea>
 
                               <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
                                 <Button
@@ -5716,6 +6408,11 @@ export default function ProjectDetails() {
                           )}
 
                           <div className="mt-8">
+                            {publishError && publishErrorField === "faqs" && (
+                              <p className="mb-3 text-sm text-error-500">
+                                {publishError}
+                              </p>
+                            )}
                             <Tabs
                               value={questionsSectionTab}
                               onValueChange={setQuestionsSectionTab}
@@ -5726,7 +6423,14 @@ export default function ProjectDetails() {
                                     variant="unstyled"
                                     showUnderline={false}
                                     value="section-faqs"
-                                    className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                                    className={cn(
+                                      "focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300",
+                                      SHOW_PUBLISH_VALIDATION &&
+                                        publishAttempted &&
+                                        (!project.faqs ||
+                                          project.faqs.length === 0) &&
+                                        "border-error-300 text-error-500 data-[state=active]:border-error-300 data-[state=active]:text-error-500 hover:data-[state=active]:border-error-300 hover:data-[state=active]:text-error-500"
+                                    )}
                                   >
                                     FAQ&apos;s
                                   </TabsTrigger>
@@ -5743,12 +6447,36 @@ export default function ProjectDetails() {
 
                               <TabsContent value="section-faqs">
                                 {!project.faqs || project.faqs.length === 0 ? (
-                                  <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6 flex items-start justify-between">
+                                  <>
+                                  <div
+                                    className={cn(
+                                      "border-2 rounded-lg p-6 mt-6 flex items-start justify-between",
+                                      SHOW_PUBLISH_VALIDATION && publishAttempted
+                                        ? "border-error-300 bg-error-50"
+                                        : "border-gray-200 bg-gray-25"
+                                    )}
+                                  >
                                     <div>
-                                      <h1 className="text-lg font-semibold text-dark-blue-400">
+                                      <h1
+                                        className={cn(
+                                          "text-lg font-semibold",
+                                          SHOW_PUBLISH_VALIDATION &&
+                                            publishAttempted
+                                            ? "text-error-500"
+                                            : "text-dark-blue-400"
+                                        )}
+                                      >
                                         FAQ&apos;s
                                       </h1>
-                                      <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                      <p
+                                        className={cn(
+                                          "mt-1 text-sm font-light",
+                                          SHOW_PUBLISH_VALIDATION &&
+                                            publishAttempted
+                                            ? "text-error-500"
+                                            : "text-dark-blue-400"
+                                        )}
+                                      >
                                         Your project deliverables will be
                                         displayed here once you add a scope to
                                         your offer. These deliverables are
@@ -5760,7 +6488,12 @@ export default function ProjectDetails() {
                                     <Button
                                       variant="outlined"
                                       visual="gray"
-                                      className="shrink-0 ml-[75px]"
+                                      className={cn(
+                                        "shrink-0 ml-[75px]",
+                                        SHOW_PUBLISH_VALIDATION &&
+                                          publishAttempted &&
+                                          "text-error-500 border-error-300"
+                                      )}
                                       onClick={() => {
                                         setQuestionsTab("dialog-faqs")
                                         setQuestionsDialogOpen(true)
@@ -5770,6 +6503,12 @@ export default function ProjectDetails() {
                                       Add FAQ&apos;s
                                     </Button>
                                   </div>
+                                  {SHOW_PUBLISH_VALIDATION && publishAttempted && (
+                                    <p className="mt-2 text-sm text-error-500">
+                                      Please add at least 5 FAQ&apos;s
+                                    </p>
+                                  )}
+                                  </>
                                 ) : (
                                   <ShowMoreLessRoot>
                                     {({
@@ -5991,6 +6730,7 @@ export default function ProjectDetails() {
                                         variant="outlined"
                                         visual="gray"
                                         size="sm"
+                                        onClick={openAiFaqDialog}
                                       >
                                         <Stars02 className="size-[15px]" />
                                         Generate With AI
@@ -5999,11 +6739,170 @@ export default function ProjectDetails() {
                                         variant="outlined"
                                         visual="gray"
                                         size="sm"
+                                        onClick={handleAddFaq}
                                       >
                                         <Plus className="size-[15px]" />
                                         Add Question
                                       </Button>
                                     </div>
+
+                                    {(project.faqs?.length ?? 0) >= 10 && (
+                                      <p className="mt-2 text-sm text-error-500">
+                                        You can add a maximum of 10 questions.
+                                      </p>
+                                    )}
+
+                                    <Dialog
+                                      open={aiFaqDialogOpen}
+                                      onOpenChange={setAiFaqDialogOpen}
+                                    >
+                                      <DialogContent className="max-w-[640px] p-0 gap-0">
+                                        <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+                                          <div className="flex items-start gap-x-2">
+                                            <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+                                            <div>
+                                              <DialogTitle>
+                                                AI Generated FAQ&apos;s
+                                              </DialogTitle>
+                                              <DialogDescription className="mt-1">
+                                                Review and adjust your
+                                                AI-generated FAQ&apos;s as needed
+                                              </DialogDescription>
+                                            </div>
+                                          </div>
+                                          <Badge
+                                            className="rounded-full bg-success-50 text-success-600 shrink-0"
+                                            visual="gray"
+                                          >
+                                            {faqAddedCount} of{" "}
+                                            {faqSuggestions.length} added
+                                          </Badge>
+                                        </div>
+
+                                        {faqRemainingSlots <
+                                          faqSuggestions.filter((s) => !s.added)
+                                            .length && (
+                                          <p className="px-6 pt-4 text-sm text-error-500">
+                                            You currently have{" "}
+                                            {project.faqs?.length ?? 0} FAQ&apos;s
+                                            in total, so you can only add{" "}
+                                            {faqRemainingSlots} more
+                                          </p>
+                                        )}
+
+                                        <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                                          {faqGenLoading ? (
+                                            <p className="py-8 text-center text-sm text-gray-500">
+                                              Generating suggestions…
+                                            </p>
+                                          ) : faqGenError ? (
+                                            <div className="py-8 text-center">
+                                              <p className="text-sm text-error-500">
+                                                Suggestions couldn&apos;t be
+                                                loaded. Try again.
+                                              </p>
+                                              <Button
+                                                variant="outlined"
+                                                visual="gray"
+                                                size="sm"
+                                                className="mt-3"
+                                                onClick={runFaqGeneration}
+                                              >
+                                                <Stars02 className="size-[15px]" />
+                                                Retry
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            faqSuggestions.map((s, i) => (
+                                              <div
+                                                key={i}
+                                                className={cn(
+                                                  "group/sfaq relative rounded-lg border p-4 transition",
+                                                  s.added
+                                                    ? "border-success-300 bg-success-25"
+                                                    : "border-gray-200 bg-white hover:bg-gray-50"
+                                                )}
+                                              >
+                                                <div className="flex items-start justify-between gap-x-3">
+                                                  <h3
+                                                    className={cn(
+                                                      "text-sm font-bold",
+                                                      s.added
+                                                        ? "text-success-700"
+                                                        : "text-dark-blue-400"
+                                                    )}
+                                                  >
+                                                    {s.question}
+                                                  </h3>
+                                                  {s.added ? (
+                                                    <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                                                      <Check className="size-4" />
+                                                      Added
+                                                    </span>
+                                                  ) : (
+                                                    <Button
+                                                      variant="outlined"
+                                                      visual="gray"
+                                                      size="sm"
+                                                      className="shrink-0 opacity-0 group-hover/sfaq:opacity-100 transition"
+                                                      onClick={() =>
+                                                        insertFaqSuggestion(i)
+                                                      }
+                                                    >
+                                                      <Upload01 className="size-[15px]" />
+                                                      Insert
+                                                    </Button>
+                                                  )}
+                                                </div>
+                                                <p
+                                                  className={cn(
+                                                    "mt-1 text-sm font-light",
+                                                    s.added
+                                                      ? "text-success-700"
+                                                      : "text-dark-blue-400"
+                                                  )}
+                                                >
+                                                  {s.answer}
+                                                </p>
+                                                {s.added && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      removeFaqSuggestion(i)
+                                                    }
+                                                    className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/sfaq:opacity-100 transition"
+                                                  >
+                                                    <Trash2 className="size-4" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+
+                                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                            onClick={runFaqGeneration}
+                                            disabled={faqGenLoading}
+                                          >
+                                            <Stars02 className="size-[15px]" />
+                                            Regenerate
+                                          </Button>
+                                          <Button
+                                            onClick={insertAllFaqSuggestions}
+                                            disabled={
+                                              faqGenLoading ||
+                                              faqRemainingSlots === 0 ||
+                                              faqSuggestions.every((s) => s.added)
+                                            }
+                                          >
+                                            Insert All ({faqSuggestions.length})
+                                          </Button>
+                                        </div>
+                                      </DialogContent>
+                                    </Dialog>
 
                                     {!project.faqs ||
                                     project.faqs.length === 0 ? (
@@ -6105,9 +7004,10 @@ export default function ProjectDetails() {
                                                   visual="gray"
                                                   size="sm"
                                                   className="rounded-full text-gray-500 hover:text-gray-800"
-                                                  onClick={(e) =>
+                                                  onClick={(e) => {
                                                     e.stopPropagation()
-                                                  }
+                                                    handleDeleteFaq(idx)
+                                                  }}
                                                 >
                                                   <Trash2 className="size-4" />
                                                 </IconButton>
@@ -6121,7 +7021,14 @@ export default function ProjectDetails() {
                                               </p>
                                               <Input
                                                 className="mt-2"
-                                                defaultValue={faq.question}
+                                                value={faq.question}
+                                                onChange={(e) =>
+                                                  handleFaqChange(
+                                                    idx,
+                                                    "question",
+                                                    e.target.value
+                                                  )
+                                                }
                                               />
                                               <div className="mt-4 flex items-center justify-between">
                                                 <div>
@@ -6138,6 +7045,49 @@ export default function ProjectDetails() {
                                                   variant="outlined"
                                                   visual="gray"
                                                   size="sm"
+                                                  onClick={async () => {
+                                                    if (
+                                                      !project?.id ||
+                                                      !isRealBackendId(
+                                                        project.id
+                                                      )
+                                                    ) {
+                                                      handleFaqChange(
+                                                        idx,
+                                                        "answer",
+                                                        generateFaqAnswer(
+                                                          project,
+                                                          faq.question
+                                                        )
+                                                      )
+                                                      return
+                                                    }
+                                                    try {
+                                                      const res =
+                                                        await ProjectAPI.SuggestFaqAnswer(
+                                                          project.id,
+                                                          faq.question
+                                                        )
+                                                      handleFaqChange(
+                                                        idx,
+                                                        "answer",
+                                                        res?.data?.answer ||
+                                                          generateFaqAnswer(
+                                                            project,
+                                                            faq.question
+                                                          )
+                                                      )
+                                                    } catch {
+                                                      handleFaqChange(
+                                                        idx,
+                                                        "answer",
+                                                        generateFaqAnswer(
+                                                          project,
+                                                          faq.question
+                                                        )
+                                                      )
+                                                    }
+                                                  }}
                                                 >
                                                   <Stars02 className="size-[15px]" />
                                                   Answer With AI
@@ -6146,7 +7096,14 @@ export default function ProjectDetails() {
                                               <Textarea
                                                 className="mt-2"
                                                 rows={4}
-                                                defaultValue={faq.answer}
+                                                value={faq.answer}
+                                                onChange={(e) =>
+                                                  handleFaqChange(
+                                                    idx,
+                                                    "answer",
+                                                    e.target.value.slice(0, 300)
+                                                  )
+                                                }
                                                 maxLength={300}
                                               />
                                               <p className="mt-1 text-right text-xs text-gray-500">
@@ -6157,6 +7114,7 @@ export default function ProjectDetails() {
                                         ))}
                                       </Accordion>
                                     )}
+
                                   </>
                                 )}
 
@@ -8182,8 +9140,21 @@ export default function ProjectDetails() {
                         <TooltipTrigger asChild>
                           <Button
                             size="md"
-                            onClick={() => setPublishDialogOpen(true)}
+                            onClick={() => {
+                              if (hasPublishBlockingErrors) {
+                                setPublishAttempted(true)
+                                return
+                              }
+                              setPublishDialogOpen(true)
+                            }}
                             disabled={isPublishing}
+                            aria-disabled={hasPublishBlockingErrors}
+                            className={cn(
+                              hasPublishBlockingErrors &&
+                                (publishAttempted
+                                  ? "bg-error-500 hover:bg-error-600 border-error-500"
+                                  : "opacity-40 hover:opacity-40")
+                            )}
                           >
                             Publish
                           </Button>
@@ -8253,7 +9224,13 @@ export default function ProjectDetails() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                               <DropdownMenuItem
-                                onSelect={() => setPublishDialogOpen(true)}
+                                onSelect={() => {
+                                  if (hasPublishBlockingErrors) {
+                                    setPublishAttempted(true)
+                                    return
+                                  }
+                                  setPublishDialogOpen(true)
+                                }}
                                 disabled={isPublishing}
                               >
                                 <Eye className="size-4 mr-2" />
@@ -8280,15 +9257,7 @@ export default function ProjectDetails() {
                           visual="gray"
                           size="md"
                           className="flex-auto"
-                          onClick={() => {
-                            const url = `/project-details/${project.slug || project.id || params.slug}`
-                            if (hasChanges) {
-                              setPendingNavUrl(url)
-                              setUnsavedNavOpen(true)
-                            } else {
-                              router.push(url)
-                            }
-                          }}
+                          onClick={() => setIsClientView(true)}
                         >
                           <Eye className="size-[15px]" />
                           View as Client
@@ -8327,6 +9296,37 @@ export default function ProjectDetails() {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
+
+                {publishAttempted &&
+                  (missingPublishFields.length > 0 || missingPublishImages) && (
+                    <div className="mt-2">
+                      {missingPublishFields.length > 0 && (
+                        <p className="text-sm text-error-500">
+                          Please add {joinWithAnd(missingPublishFields)}
+                        </p>
+                      )}
+                      {missingPublishImages && (
+                        <p className="mt-3 text-sm text-error-500">
+                          Please add at least 3 images to your project
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                {publishError &&
+                  !["faqs", "shortDescription", "fullDescription"].includes(
+                    publishErrorField ?? ""
+                  ) && (
+                    <div className="mt-2">
+                      <p className="text-sm text-error-500">
+                        {moderationFieldLabel(publishErrorField)
+                          ? `Check your ${moderationFieldLabel(
+                              publishErrorField
+                            )} — ${publishError}`
+                          : publishError}
+                      </p>
+                    </div>
+                  )}
 
                 {/* Publish confirmation dialog */}
                 <Dialog
@@ -8426,6 +9426,7 @@ export default function ProjectDetails() {
                               featuredVideo: fullUrl,
                             }))
                             setHasChanges(true)
+                            saveProjectFields({ videoUrl: fullUrl })
                           }
                           setVideoDialogOpen(false)
                         }}
@@ -8598,9 +9599,13 @@ export default function ProjectDetails() {
               </DialogClose>
               <Button
                 onClick={() => {
-                  setPublishDialogOpen(true)
                   setUnsavedNavOpen(false)
                   setPendingNavUrl(null)
+                  if (hasPublishBlockingErrors) {
+                    setPublishAttempted(true)
+                    return
+                  }
+                  setPublishDialogOpen(true)
                 }}
               >
                 Publish
