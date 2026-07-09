@@ -57,6 +57,7 @@ import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
 } from "@/components/offer-flow-dialog"
+import { AuthModal } from "@/components/auth/auth-modal"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
   Avatar,
@@ -1293,6 +1294,8 @@ export const TopMostHeader = ({
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
+  const [authModalOpen, setAuthModalOpen] = React.useState(false)
+  const [authModalView, setAuthModalView] = React.useState<"sign-in" | "sign-up">("sign-in")
 
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
@@ -1334,7 +1337,7 @@ export const TopMostHeader = ({
         "fixed inset-x-0 top-0 px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
-          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
+          : "shadow-none",
         PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5"
       )}
     >
@@ -1372,6 +1375,8 @@ export const TopMostHeader = ({
         </div>
 
         <div className="flex items-center">
+          {user ? (
+          <>
           <div className="flex items-center gap-x-1">
             <InviteWindowTrigger asChild>
               <IconButton
@@ -1595,12 +1600,39 @@ export const TopMostHeader = ({
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+          </>
+          ) : (
+            <div className="flex items-center gap-x-5">
+              <Button
+                variant="link"
+                visual="primary"
+                size="sm"
+                onClick={() => { setAuthModalView("sign-in"); setAuthModalOpen(true) }}
+              >
+                Sign In
+              </Button>
+              <Button
+                variant="filled"
+                visual="primary"
+                size="sm"
+                onClick={() => { setAuthModalView("sign-up"); setAuthModalOpen(true) }}
+              >
+                Sign Up
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="md:hidden">
         <SearchBar />
       </div>
+
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
+        defaultView={authModalView}
+      />
     </div>
   )
 }

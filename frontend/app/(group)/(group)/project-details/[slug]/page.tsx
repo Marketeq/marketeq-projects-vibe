@@ -40,6 +40,7 @@ import {
   Star,
   Stars02,
   UploadCloud,
+  User01,
   Users03,
   X,
 } from "@blend-metrics/icons"
@@ -730,7 +731,7 @@ export default function ProjectDetails() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white px-[100px] py-10">
-        <div className="max-w-[1240px]">
+        <div className="max-w-[1240px] mx-auto">
           {/* breadcrumb */}
           <div className="flex items-center gap-x-3">
             <Shimmer className="h-3 w-3 rounded-full" />
@@ -821,7 +822,7 @@ export default function ProjectDetails() {
 
   return (
     <div className="px-[100px] relative bg-white">
-      <div className="max-w-[1240px] flex items-start gap-x-8">
+      <div className="max-w-[1240px] mx-auto flex items-start gap-x-8">
         <div className="max-w-[818px] flex-auto">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
@@ -1689,143 +1690,23 @@ export default function ProjectDetails() {
                               About the Team
                             </h3>
 
-                            <div className="grid grid-cols-2 gap-x-6 mt-6">
-                              <div className="flex items-start gap-x-3">
-                                <Avatar size="lg">
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
-
-                                <div className="space-y-1.5">
-                                  <Badge
-                                    className="rounded-[4px] bg-primary-50"
-                                    visual="primary"
-                                  >
-                                    Project Lead
-                                  </Badge>
-
-                                  <div className="flex flex-col gap-y-0.5">
-                                    <span className="block text-sm leading-none text-gray-500 font-extralight">
-                                      <span className="text-base font-bold text-dark-blue-400 ">
-                                        Chris
-                                      </span>{" "}
-                                      @ux23isee
-                                    </span>
-
-                                    <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                                      Full Stack Designer
-                                    </span>
-                                  </div>
-                                </div>
+                            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+                              <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                                <Users03 className="size-6 text-gray-400" />
                               </div>
 
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <MapPin className="size-[18px]" /> Locations
-                                </h3>
+                              <h4 className="mt-4 text-base font-semibold text-dark-blue-400">
+                                No team assigned yet
+                              </h4>
+                              <p className="mt-1 max-w-[260px] text-sm text-gray-500">
+                                Be the first to claim this project and lead a
+                                team to deliver it.
+                              </p>
 
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    USA,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    UK,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Brazil,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    and 1 more...
-                                  </NextLink>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-6 grid grid-cols-2 gap-x-6">
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <MessageTextSquare01 className="size-[18px]" />{" "}
-                                  Languages
-                                </h3>
-
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    English,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Spanish,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    French
-                                  </NextLink>
-                                </div>
-                              </div>
-
-                              <div className="space-y-3">
-                                <h3 className="flex items-center gap-x-[5.85px] text-sm leading-none font-extralight text-dark-blue-400">
-                                  <Stars02 className="size-[18px]" /> Skills &
-                                  Expertise
-                                </h3>
-
-                                <div className="gap-1 flex items-center flex-wrap">
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Performance,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Security,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Operating Systems,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Design,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    Databases,
-                                  </NextLink>
-                                  <NextLink
-                                    href="#"
-                                    className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                  >
-                                    and 1 more...
-                                  </NextLink>
-                                </div>
+                              <div className="mt-5">
+                                <Button size="md" visual="primary">
+                                  Claim this Project
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -4552,7 +4433,7 @@ export default function ProjectDetails() {
                           key={i}
                           className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
                         >
-                          <Users03 className="size-3.5 text-gray-400" />
+                          <User01 className="size-3.5 text-gray-400" />
                         </div>
                       ))}
                     </div>

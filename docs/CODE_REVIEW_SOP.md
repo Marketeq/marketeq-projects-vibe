@@ -52,6 +52,8 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 **Review-side rules this SOP enforces:**
 
 - **Frozen files** (any change to any of these triggers the four-point confirmation below):
+  - `frontend/app/top-most-header.tsx` — the single master navigation bar component. No replacements, no duplicates, no deletions. The shadow and gap-free layout between primary and secondary nav is intentional and must never be reverted.
+  - `frontend/components/navigation/marketplace-secondary-nav.tsx` — part of the master nav bar unit. The negative margin overlap and shadow placement are intentional fixes. Never overwrite.
   - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
   - `frontend/contexts/auth.tsx`
   - `frontend/src/lib/api/auth.ts`
