@@ -1542,7 +1542,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   private refreshTtlValue(_rememberMe?: boolean): string {
-    return this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '90d';
+    return this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '14d';
   }
 
   private refreshTtlMs(rememberMe: boolean): number {
