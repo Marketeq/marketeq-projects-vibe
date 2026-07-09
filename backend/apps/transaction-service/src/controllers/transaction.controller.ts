@@ -80,7 +80,15 @@ import {
       return this.exportService.triggerExport(userId, dto);
     }
   
-    // ── 3.7 Report a problem ───────────────────────────────────────────
+    // ── 3.7 Rate averages (consumed by pricing-service) ────────────────
+    @Get('rate-averages')
+    async rateAverages(
+      @Query('sinceDate') sinceDate?: string,
+    ) {
+      return this.transactionService.getRateAverages(sinceDate);
+    }
+
+    // ── 3.8 Report a problem ───────────────────────────────────────────
     @Post(':id/report')
     @HttpCode(HttpStatus.CREATED)
     async report(
