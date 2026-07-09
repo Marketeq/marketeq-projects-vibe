@@ -54,6 +54,8 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 - **Frozen files** (any change to any of these triggers the four-point confirmation below):
   - `frontend/app/top-most-header.tsx` — the single master navigation bar component. No replacements, no duplicates, no deletions. The shadow and gap-free layout between primary and secondary nav is intentional and must never be reverted.
   - `frontend/components/navigation/marketplace-secondary-nav.tsx` — part of the master nav bar unit. The negative margin overlap and shadow placement are intentional fixes. Never overwrite.
+  - `frontend/components/auth/auth-modal.tsx` — the auth modal for in-marketplace login/signup. Marketplace login MUST use this modal, never redirect to `/sign-in`. See §1.4.1.
+  - `frontend/hoc/AuthenticatedRoute.tsx` — opens auth modal for unauthenticated users. Must call `openAuthModal()`, never `router.push("/sign-in")`. See §1.4.1.
   - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
   - `frontend/contexts/auth.tsx`
   - `frontend/src/lib/api/auth.ts`
@@ -83,6 +85,29 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what the GitHub Actions `sop-check` workflow blocks, in both directions, on every PR.
 
 **Everything else about the login/env topology — Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping — lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
+
+### 1.4.1 Auth modal login flow is FROZEN — block any PR that changes it
+
+The marketplace uses a **dual login flow** that must never be changed:
+
+1. **Marketplace (in-app):** When a logged-out user clicks any protected feature (Dashboard, profile, etc.) or clicks Sign In / Sign Up in the nav bar, a **popup modal** opens on the current page. The user never leaves the page they're on. This is powered by:
+   - `frontend/components/auth/auth-modal.tsx` — the AuthModal component with SignInForm and SignUpForm
+   - `frontend/contexts/auth.tsx` — exposes `openAuthModal()` / `closeAuthModal()` via AuthContext
+   - `frontend/hoc/AuthenticatedRoute.tsx` — calls `openAuthModal("sign-in")` instead of redirecting to `/sign-in`
+   - `frontend/app/top-most-header.tsx` — nav bar buttons call `openAuthModal()` for logged-out users
+
+2. **Marketing website:** When a user clicks Login/Sign Up from the marketing website (marketeqdigital.com), they navigate to the full `/sign-in` or `/sign-up` page with the sidebar layout.
+
+**Block any PR that:**
+- Replaces `openAuthModal()` with `router.push("/sign-in")` in `AuthenticatedRoute.tsx`
+- Removes or bypasses the auth modal in favor of page navigation within the marketplace
+- Removes `authModalOpen` / `openAuthModal` / `closeAuthModal` from the AuthContext
+- Deletes or guts `auth-modal.tsx`
+- Changes the nav bar to navigate to `/sign-in` instead of opening the modal
+
+**These files are frozen for this purpose** (in addition to §1.4 frozen rules):
+- `frontend/components/auth/auth-modal.tsx`
+- `frontend/hoc/AuthenticatedRoute.tsx`
 
 ### 1.5 Incremental changes only
 - No mega-PRs that mix unrelated concerns (e.g., "fix login" should not also include a CSS refactor).
