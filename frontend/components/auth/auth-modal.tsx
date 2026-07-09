@@ -137,8 +137,8 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton />
-          <LinkedInLoginButton />
+          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
+          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -320,8 +320,8 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton />
-          <LinkedInLoginButton />
+          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
+          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">

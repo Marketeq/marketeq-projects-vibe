@@ -13,7 +13,7 @@ import { LinkedInDefault } from "@blend-metrics/icons/social"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
 
-const LinkedInLogin = () => {
+const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
   const hasLoggedInRef = useRef(false)
 
   const router = useRouter()
@@ -86,7 +86,11 @@ const LinkedInLogin = () => {
               if (nextUser && typeof nextUser === "object") {
                 setUser(nextUser)
               }
-              router.push(resolveDashboardRoute(nextUser as any))
+              if (onSuccess) {
+                onSuccess()
+              } else {
+                router.push(resolveDashboardRoute(nextUser as any))
+              }
             }
           })
           .catch((error) => {
