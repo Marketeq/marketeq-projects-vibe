@@ -7,7 +7,6 @@ import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
-import { ProjectAPI } from "@/service/http/project"
 import {
   type MyListing,
   formatActivityDate,
