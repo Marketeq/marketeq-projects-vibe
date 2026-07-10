@@ -641,6 +641,16 @@ function CarouselNavButtons() {
   )
 }
 
+// MVP helper: slice talents with wraparound so sections never show empty
+function sliceTalents(talents: TalentUser[], offset: number, count: number): TalentUser[] {
+  if (talents.length === 0) return []
+  const result: TalentUser[] = []
+  for (let i = 0; i < count; i++) {
+    result.push(talents[(offset + i) % talents.length])
+  }
+  return result
+}
+
 /** Carousel section: title + nav buttons in the same header row.
  *  MVP: renders real talent cards instead of CMS project/service items. */
 function CarouselSectionView({
@@ -654,8 +664,8 @@ function CarouselSectionView({
   talents: TalentUser[]
   talentOffset: number
 }) {
-  const carouselTalents = talents.slice(talentOffset, talentOffset + Math.max(block.items.length, 10))
-  if (carouselTalents.length === 0 && block.items.length === 0) return null
+  const carouselTalents = sliceTalents(talents, talentOffset, Math.max(block.items.length, 10))
+  if (carouselTalents.length === 0) return null
 
   return (
     <SwiperRoot>
@@ -695,7 +705,7 @@ function GridBlockBody({
   talents: TalentUser[]
   talentOffset: number
 }) {
-  const gridTalents = talents.slice(talentOffset, talentOffset + Math.max(block.items.length, 6))
+  const gridTalents = sliceTalents(talents, talentOffset, Math.max(block.items.length, 6))
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-[42px] gap-y-10">
