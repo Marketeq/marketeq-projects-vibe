@@ -402,7 +402,7 @@ function SectionHeader({
       <div className="flex items-center gap-x-3">
         {ctaLabel && ctaUrl && (
           <NextLink href={ctaUrl}>
-            <Button className="underline" variant="link" visual="gray">
+            <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
               {ctaLabel}
               <ArrowRight className="size-[15px]" />
             </Button>
@@ -776,13 +776,13 @@ function TabbedSectionView({
         {section.ctaLabel &&
           (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
-              <Button className="underline" variant="link" visual="gray">
+              <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
                 {section.ctaLabel}
                 <ArrowRight className="size-[15px]" />
               </Button>
             </NextLink>
           ) : (
-            <Button className="underline" variant="link" visual="gray">
+            <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
               {section.ctaLabel}
               <ArrowRight className="size-[15px]" />
             </Button>
@@ -845,13 +845,13 @@ function GridSectionView({
         {section.ctaLabel &&
           (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
-              <Button className="underline" variant="link" visual="gray">
+              <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
                 {section.ctaLabel}
                 <ArrowRight className="size-[15px]" />
               </Button>
             </NextLink>
           ) : (
-            <Button className="underline" variant="link" visual="gray">
+            <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
               {section.ctaLabel}
               <ArrowRight className="size-[15px]" />
             </Button>
@@ -1015,7 +1015,7 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
           </p>
         </div>
         <NextLink href="/categories" className="xs:max-lg:hidden">
-          <Button className="underline" visual="gray" variant="link">
+          <Button className="underline hover:text-dark-blue-400" visual="gray" variant="link">
             View All Categories
             <ArrowRight className="size-[15px]" />
           </Button>
