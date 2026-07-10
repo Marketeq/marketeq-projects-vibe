@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { seedCategories } from "./categories.seed";
 import { seedProjects } from "./projects.seed";
 import { seedDefaultHomepage } from "./homepage.seed";
+import { seedMvpTalentHomepage } from "./homepage-mvp-talent.seed";
 import { seedTalentProfiles } from "./talent-profiles.seed";
 import { seedCategoryPages } from "./category-pages.seed";
 import { lexicalText, upsertPlaceholderMedia } from "./seed-utils";
@@ -72,6 +73,7 @@ export async function seedAll(payload: Payload): Promise<void> {
 
   await seedCategories(payload);
   await seedDefaultHomepage(payload);
+  await seedMvpTalentHomepage(payload);
   await seedProjects(payload);
 
   console.log("Seeding category pages...");

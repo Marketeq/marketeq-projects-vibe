@@ -12,6 +12,7 @@
 import 'dotenv/config';
 import payload from 'payload';
 import { seedDefaultHomepage } from './homepage.seed';
+import { seedMvpTalentHomepage } from './homepage-mvp-talent.seed';
 
 async function main() {
   const secret = process.env.PAYLOAD_SECRET;
@@ -28,6 +29,7 @@ async function main() {
   });
 
   await seedDefaultHomepage(payload);
+  await seedMvpTalentHomepage(payload);
 
   payload.logger.info('Seed complete.');
   process.exit(0);
