@@ -57,6 +57,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 
+/** Map common abbreviations/short names to official country names. */
+const COUNTRY_OFFICIAL_NAMES: Record<string, string> = {
+  UK: "United Kingdom",
+  US: "United States",
+  USA: "United States",
+  UAE: "United Arab Emirates",
+}
+
 // ── Hero ────────────────────────────────────────────────────────────────────
 // Multi-slide rotating hero with cross-fade, Ken Burns zoom, staggered text
 // reveal, and a bottom-left navigator with filling progress bars. Falls back
@@ -711,8 +719,9 @@ function GridBlockBody({
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-[42px] gap-y-10">
       {gridTalents.map((user, idx) => {
         const props = talentToCardProps(user, idx)
-        // Compact cards show country only — strip city/state if present
-        const country = props.country?.split(",").pop()?.trim() || props.country
+        // Compact cards show country only — strip city/state, use official names
+        const rawCountry = props.country?.split(",").pop()?.trim() || props.country
+        const country = COUNTRY_OFFICIAL_NAMES[rawCountry?.toUpperCase() ?? ""] ?? rawCountry
         return (
           <div key={user.id}>
             <TalentCardCompact
