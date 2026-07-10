@@ -57,6 +57,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 
+/** MVP: replace "Project(s)" and "Service(s)" with talent-focused labels in CMS text. */
+function talentifyText(text: string | null | undefined): string {
+  if (!text) return text ?? ""
+  return text
+    .replace(/\bProjects?\b/g, (m) => (m === "Project" ? "Talent" : "Talent"))
+    .replace(/\bServices?\b/g, (m) => (m === "Service" ? "Profile" : "Profiles"))
+}
+
 /** Map common abbreviations/short names to official country names. */
 const COUNTRY_OFFICIAL_NAMES: Record<string, string> = {
   UK: "United Kingdom",
@@ -80,7 +88,7 @@ function Hero({ hero }: { hero: HomepagePayload["hero"] }) {
           eyebrow: "Featured",
           title: hero.headline,
           description: hero.subheadline ?? "",
-          ctaLabel: hero.ctaLabel ?? "Browse Projects",
+          ctaLabel: hero.ctaLabel ?? "Browse Talent",
           ctaUrl: hero.ctaUrl ?? "/c/development",
           image: hero.backgroundImage ?? "/sending-emails.png",
         },
@@ -399,11 +407,11 @@ function SectionHeader({
     <div className="flex items-start justify-between gap-x-6">
       <div className="space-y-2">
         <h2 className="text-[28px] leading-none font-bold text-dark-blue-400">
-          {title}
+          {talentifyText(title)}
         </h2>
         {subtitle && (
           <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
-            {subtitle}
+            {talentifyText(subtitle)}
           </p>
         )}
       </div>
@@ -411,7 +419,7 @@ function SectionHeader({
         {ctaLabel && ctaUrl && (
           <NextLink href={ctaUrl}>
             <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
-              {ctaLabel}
+              {talentifyText(ctaLabel)}
               <ArrowRight className="size-[15px]" />
             </Button>
           </NextLink>
@@ -777,11 +785,11 @@ function TabbedSectionView({
       <div className="flex items-end justify-between gap-x-6">
         <div className="space-y-2">
           <h2 className="text-2xl leading-[29.05px] lg:text-4xl lg:leading-[43.57px] font-bold text-dark-blue-600">
-            {section.title}
+            {talentifyText(section.title)}
           </h2>
           {section.subtitle && (
             <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
-              {section.subtitle}
+              {talentifyText(section.subtitle)}
             </p>
           )}
         </div>
@@ -789,13 +797,13 @@ function TabbedSectionView({
           (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
               <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
-                {section.ctaLabel}
+                {talentifyText(section.ctaLabel)}
                 <ArrowRight className="size-[15px]" />
               </Button>
             </NextLink>
           ) : (
             <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
-              {section.ctaLabel}
+              {talentifyText(section.ctaLabel)}
               <ArrowRight className="size-[15px]" />
             </Button>
           ))}
@@ -811,7 +819,7 @@ function TabbedSectionView({
               variant="unstyled"
               className="inline-flex items-center justify-center h-8 rounded-full border border-gray-300 bg-white px-3.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
             >
-              {t.label}
+              {talentifyText(t.label)}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -846,11 +854,11 @@ function GridSectionView({
       <div className="flex items-start justify-between gap-x-6">
         <div className="space-y-2">
           <h2 className="text-[24px] leading-none text-dark-blue-400 font-bold">
-            {section.title}
+            {talentifyText(section.title)}
           </h2>
           {section.subtitle && (
             <p className="text-base leading-[19.36px] font-light text-gray-500 max-w-[800px]">
-              {section.subtitle}
+              {talentifyText(section.subtitle)}
             </p>
           )}
         </div>
@@ -858,13 +866,13 @@ function GridSectionView({
           (section.ctaUrl ? (
             <NextLink href={section.ctaUrl}>
               <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
-                {section.ctaLabel}
+                {talentifyText(section.ctaLabel)}
                 <ArrowRight className="size-[15px]" />
               </Button>
             </NextLink>
           ) : (
             <Button className="underline hover:text-dark-blue-400" variant="link" visual="gray">
-              {section.ctaLabel}
+              {talentifyText(section.ctaLabel)}
               <ArrowRight className="size-[15px]" />
             </Button>
           ))}
