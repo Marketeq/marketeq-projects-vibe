@@ -711,6 +711,8 @@ function GridBlockBody({
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-[42px] gap-y-10">
       {gridTalents.map((user, idx) => {
         const props = talentToCardProps(user, idx)
+        // Compact cards show country only — strip city/state if present
+        const country = props.country?.split(",").pop()?.trim() || props.country
         return (
           <div key={user.id}>
             <TalentCardCompact
@@ -722,7 +724,7 @@ function GridBlockBody({
               photo={props.photo}
               rate={props.rate}
               experience={props.experience}
-              country={props.country}
+              country={country}
             />
           </div>
         )
