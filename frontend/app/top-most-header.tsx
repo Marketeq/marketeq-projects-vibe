@@ -957,7 +957,8 @@ const listingTypes = [
 const SearchBar = () => {
   const router = useRouter()
   const pathname = usePathname()
-  const [state, setState] = useState<string>()
+  // MVP: default to Talent since View All is removed
+  const [state, setState] = useState<string>("Talent")
   const [selected, setSelected] = React.useState<{
     id: number
     value: string
@@ -1186,7 +1187,7 @@ const SearchBar = () => {
             <Listbox className="w-auto" value={state} onChange={setState}>
               <ListboxButton
                 className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
-                placeholder="View All"
+                placeholder="Talent"
                 iconClassName="size-[12.5px]"
               />
               <ListboxOptions
