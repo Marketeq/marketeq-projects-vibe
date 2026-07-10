@@ -47,12 +47,12 @@ export function TalentCardCompact({
     <article className="flex items-center gap-x-6">
       <NextLink
         href={computedHref}
-        className="relative size-[100px] overflow-hidden rounded-full shrink-0 block focus-visible:outline-none"
+        className="relative size-[100px] overflow-hidden rounded-full shrink-0 block focus-visible:outline-none group/thumb"
         aria-label={name || role || "Talent profile"}
       >
         {photo ? (
           <NextImage
-            className="object-cover w-[100px] h-[100px]"
+            className="object-cover w-[100px] h-[100px] group-hover/thumb:scale-150 transition [transition-duration:3000ms]"
             src={photo}
             alt={name || "Talent"}
             width={100}
