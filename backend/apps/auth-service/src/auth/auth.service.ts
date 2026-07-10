@@ -502,8 +502,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       'If an account exists for this email, password reset instructions will be sent.';
 
     if (!user) {
-      return { message };
+      this.logger.log(
+        `forgotPassword: reset requested for unknown email (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      return { accountFound: false };
     }
+
+    this.logger.log(
+      `forgotPassword: reset requested for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
 
     user.passwordResetVersion = randomUUID();
     await this.userRepository.save(user);
@@ -538,6 +545,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
 
     return {
+      accountFound: true,
       message,
       ...(isDev && { reset_token: resetToken, reset_url: resetUrl }),
     };
@@ -1600,7 +1608,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
+      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '24h',
     );
 
     return this.jwtService.signAsync(
