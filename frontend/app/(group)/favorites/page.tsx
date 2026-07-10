@@ -1128,7 +1128,7 @@ function EmptyState({
 
 export default function FavoritesPage() {
   const [value, setValue] = useState([GRID_LAYOUT])
-  const [activeTab, setActiveTab] = useState("Projects")
+  const [activeTab, setActiveTab] = useState("Talent Network")
   const [projectGroups, setProjectGroups] = useState<FavGroup[]>([])
   const [serviceGroups, setServiceGroups] = useState<FavGroup[]>([])
   const [talentFavorites, setTalentFavorites] = useState<Favorite[]>([])
@@ -1344,7 +1344,8 @@ export default function FavoritesPage() {
               <SearchMd className="size-[18px]" />
             </Button>
 
-            <TabsList className="flex justify-start border-b-0 px-0">
+            {/* MVP: tabs hidden — only Talent Network content shown */}
+            {/* <TabsList className="flex justify-start border-b-0 px-0">
               <TabsTrigger
                 className="xs:max-lg:text-xs xs:max-lg:leading-5"
                 value="Projects"
@@ -1367,7 +1368,7 @@ export default function FavoritesPage() {
               >
                 Talent Network
               </TabsTrigger>
-            </TabsList>
+            </TabsList> */}
           </div>
 
           <div className="hidden items-center gap-x-3 lg:gap-x-6 self-start md:flex">
@@ -1442,113 +1443,13 @@ export default function FavoritesPage() {
           </div>
         </TabsContent>
 
-        {/* Projects Tab */}
-        <TabsContent value="Projects">
-          {isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
-                  />
-                ))}
-            </div>
-          ) : projectGroups.length === 0 ? (
-            <EmptyState
-              icon={Briefcase}
-              title="No saved projects yet"
-              description="Browse projects and tap the star icon to save them here. Organize what you love into groups for easy access later."
-              action={
-                <NextLink href="/c/research">
-                  <Button>Browse Projects</Button>
-                </NextLink>
-              }
-            />
-          ) : getFirstItem(value) === GRID_LAYOUT ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {sortedProjectGroups.map((group) => (
-                <ProjectGroupCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-y-3 pt-3.5 lg:pt-6">
-              {sortedProjectGroups.map((group) => (
-                <ProjectGroupListCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                />
-              ))}
-            </div>
-          )}
+        {/* MVP: Projects and Services tabs hidden — talent only */}
+        {/* <TabsContent value="Projects">
+          ...
         </TabsContent>
-
-        {/* Services Tab */}
         <TabsContent value="Services">
-          {isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
-                  />
-                ))}
-            </div>
-          ) : serviceGroups.length === 0 ? (
-            <EmptyState
-              icon={Monitor}
-              title="No saved services yet"
-              description="Discover services from top talent and save the ones you&rsquo;re interested in. You can organize them into groups for easy comparison."
-              action={
-                <NextLink href="/c/research">
-                  <Button>Browse Services</Button>
-                </NextLink>
-              }
-            />
-          ) : getFirstItem(value) === GRID_LAYOUT ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {sortedServiceGroups.map((group) => (
-                <ProjectGroupCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                  itemType="service"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-y-3 pt-3.5 lg:pt-6">
-              {sortedServiceGroups.map((group) => (
-                <ProjectGroupListCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                  itemType="service"
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
+          ...
+        </TabsContent> */}
       </Tabs>
     </div>
     </AuthenticatedRoute>

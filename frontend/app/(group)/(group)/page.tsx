@@ -3,7 +3,9 @@ import type { Metadata } from "next"
 import { cookies } from "next/headers"
 import type { HomepagePayload } from "@/types/homepage"
 import { getServerBackendUrl } from "@/lib/runtime-urls"
-import { HomepageClient } from "./homepage-client"
+// MVP: use talent-only homepage
+import { HomepageMvpClient as HomepageClient } from "./homepage-mvp"
+// Original: import { HomepageClient } from "./homepage-client"
 
 const HOMEPAGE_BASE = getServerBackendUrl() || "http://localhost:4000"
 

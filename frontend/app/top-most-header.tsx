@@ -929,9 +929,10 @@ const fixedSuggestions: Array<{
   route: string
 }> = [
   { id: 1, icon: Talent, value: "Browse Talent", route: "/talent" },
-  { id: 2, icon: Project, value: "Browse Projects", route: "/projects" },
-  { id: 3, icon: Campaigns, value: "Browse Services", route: "/services" },
-  { id: 4, icon: Users, value: "Browse Teams", route: "/teams" },
+  // MVP: hidden — projects, services, teams not in MVP
+  // { id: 2, icon: Project, value: "Browse Projects", route: "/projects" },
+  // { id: 3, icon: Campaigns, value: "Browse Services", route: "/services" },
+  // { id: 4, icon: Users, value: "Browse Teams", route: "/teams" },
   { id: 5, icon: SearchMd, value: "Find Jobs", route: "/find-jobs" },
 ]
 
@@ -944,7 +945,14 @@ const suggestions = [
   { id: 6, value: "Magento development" },
 ]
 
-const listingTypes = ["Projects", "Services", "Talent", "Teams", "Jobs"]
+const listingTypes = [
+  // MVP: talent-only — hide non-talent listing types
+  // "Projects",
+  // "Services",
+  "Talent",
+  // "Teams",
+  "Jobs",
+]
 
 const SearchBar = () => {
   const router = useRouter()

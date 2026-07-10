@@ -21,6 +21,9 @@ import {
   serviceDetailsUrl,
 } from "@/src/lib/listing-urls"
 import { parseCategoryParams } from "@/src/lib/urlHelpers"
+import { projectSeeds } from "@/data/projects.seed"
+import { serviceSeeds } from "@/data/services.seed"
+import { talentSeeds } from "@/data/talent.seed"
 import { fromLength } from "@/utils/functions"
 import {
   ArrowRight,
@@ -6773,27 +6776,23 @@ export default function Projects() {
                               className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#2459DB" }}
                             >
-                                <h1 className="text-[28px] font-bold leading-none text-white">
-                                  {currentName} Talent
-                                </h1>
-                                <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
-                                  Find {currentName.toLowerCase()} talent to
-                                  bring your projects to life.
-                                </p>
-                              </div>
-                              <div className="flex flex-col gap-y-4">
-                                <Button
-                                  asChild
-                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
-                                  size="lg"
-                                >
-                                  
-                                  <NextLink href={listingHref("talent")}>
-                                    Explore More{" "}
-                                    <ArrowRight className="size-[15px] ml-2" />
-                                  </NextLink>
-                                </Button>
-                              </div>
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                {currentName} Talent
+                              </h1>
+                              <p className="mt-4 text-lg font-light leading-snug text-white opacity-90 max-w-[280px]">
+                                Find {currentName.toLowerCase()} talent to
+                                bring your projects to life.
+                              </p>
+                              <Button
+                                asChild
+                                className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
+                                size="lg"
+                              >
+                                <NextLink href={listingHref("talent")}>
+                                  Explore More{" "}
+                                  <ArrowRight className="size-[15px] ml-2" />
+                                </NextLink>
+                              </Button>
                             </article>
                           </SwiperSlide>
                           {(talentUsers.length > 0
@@ -7490,26 +7489,23 @@ export default function Projects() {
                               className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
                               style={{ backgroundColor: "#2459DB" }}
                             >
-                                <h1 className="text-[28px] font-bold leading-none text-white">
-                                  {currentName} Talent
-                                </h1>
-                                <p className="mt-3 text-lg font-light leading-none text-white">
-                                  Find {currentName.toLowerCase()} talent to
-                                  bring your projects to life.
-                                </p>
-                              </div>
-                              <div className="flex flex-col gap-y-4">
-                                <Button
-                                  asChild
-                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
-                                  size="lg"
-                                >
-                                  <NextLink href={listingHref("talent")}>
-                                    Explore More{" "}
-                                    <ArrowRight className="size-[15px] ml-2" />
-                                  </NextLink>
-                                </Button>
-                              </div>
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                {currentName} Talent
+                              </h1>
+                              <p className="mt-3 text-lg font-light leading-none text-white">
+                                Find {currentName.toLowerCase()} talent to
+                                bring your projects to life.
+                              </p>
+                              <Button
+                                asChild
+                                className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
+                                size="lg"
+                              >
+                                <NextLink href={listingHref("talent")}>
+                                  Explore More{" "}
+                                  <ArrowRight className="size-[15px] ml-2" />
+                                </NextLink>
+                              </Button>
                             </article>
                           </SwiperSlide>
                           {(talentUsers.length > 0
