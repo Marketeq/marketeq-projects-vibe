@@ -1,15 +1,7 @@
 "use client"
 
-/**
- * MVP Homepage — Talent-only version.
- *
- * True copy of homepage-client.tsx with the original layout preserved.
- * Only change: all cards (carousel + grid) render real talent profiles
- * from the database instead of CMS project/service/team data.
- * Hero, footer, section structure, tabs — all identical to the original.
- */
-
 import React from "react"
+import { projectDetailsUrl, serviceDetailsUrl } from "@/src/lib/listing-urls"
 import { cn, fromLength } from "@/utils/functions"
 import {
   AlertCircle,
@@ -32,13 +24,14 @@ import type {
   TalentCard,
   TeamCard,
 } from "@/types/homepage"
+import { Blocks1 } from "@/components/blocks-1"
 import {
   type TalentUser,
   talentToCardProps,
   useTalentUsers,
 } from "@/src/lib/api/talent-users"
-import { Blocks1 } from "@/components/blocks-1"
 import { ListingCard } from "@/components/listing-card"
+import { ListingCardCompact } from "@/components/listing-card-compact"
 import { TalentCardCompact } from "@/components/talent-card-compact"
 import { MarketplaceFooter } from "@/components/marketplace-footer"
 import NextImage from "@/components/next-image"
@@ -451,7 +444,173 @@ function FavoriteButton() {
   )
 }
 
-// ── Shared nav button styling ───────────────────────────────────────────────
+// ── Format helpers ──────────────────────────────────────────────────────────
+
+function formatBudget(budget: number | null): string {
+  if (budget == null) return "Budget TBD"
+  return `Starting at $${budget.toLocaleString()}`
+}
+
+function formatDuration(duration: string | null): string {
+  if (!duration) return ""
+  return `Starting from ${duration}`
+}
+
+function formatPrice(min: number | null, max: number | null): string {
+  if (min == null && max == null) return "Contact for pricing"
+  if (min != null && max != null)
+    return `$${min.toLocaleString()} – $${max.toLocaleString()}/mo`
+  const price = min ?? max
+  if (price == null) return "Contact for pricing"
+  return `$${price.toLocaleString()}/mo`
+}
+
+// ── Card renderers ──────────────────────────────────────────────────────────
+
+// Fallback avatar group — matches the static page's visual: 6 stacked
+// placeholder avatars so the ListingCard always renders an AvatarGroup.
+// When the backend starts populating `item.collaborators`, the real values
+// take precedence.
+const FALLBACK_COLLABORATORS = fromLength(6).map(() => "/woman.jpg")
+
+function renderProjectCarousel(item: ProjectCard) {
+  return (
+    <ListingCard
+      kind="project"
+      id={item.id}
+      href={projectDetailsUrl(
+        item.slug ?? item.id,
+        item.slug ? item.id : undefined
+      )}
+      title={item.title}
+      description={item.shortDescription ?? item.description}
+      mediaUrl={item.thumbnail ?? undefined}
+      budget={formatBudget(item.budget)}
+      duration={formatDuration(item.duration)}
+      rating={item.rating ?? 4.9}
+      reviewCount={item.reviewCount ?? 5}
+      collaborators={
+        item.collaborators && item.collaborators.length > 0
+          ? item.collaborators
+          : FALLBACK_COLLABORATORS
+      }
+      favoriteSlot={<FavoriteButton />}
+    />
+  )
+}
+
+function renderServiceCarousel(item: ServiceCard) {
+  return (
+    <ListingCard
+      kind="service"
+      id={item.id}
+      href={serviceDetailsUrl(
+        item.slug ?? item.id,
+        item.slug ? item.id : undefined
+      )}
+      title={item.title}
+      description={item.shortDescription ?? item.description}
+      mediaUrl={item.thumbnail ?? undefined}
+      budget={formatPrice(item.priceMin, item.priceMax)}
+      duration={
+        item.deliveryTime ? `Delivery: ${item.deliveryTime}` : undefined
+      }
+      rating={item.rating}
+      reviewCount={item.reviewCount}
+      favoriteSlot={<FavoriteButton />}
+    />
+  )
+}
+
+function renderTeamCard(item: TeamCard) {
+  return (
+    <ListingCard
+      kind="team"
+      id={item.id}
+      name={item.name}
+      tagline={item.specializations?.join(" · ")}
+      rating={item.rating}
+      projectCount={item.completedProjects}
+      memberAvatars={item.logo ? [item.logo] : undefined}
+    />
+  )
+}
+
+function renderTalentCard(item: TalentCard) {
+  const name =
+    [item.firstName, item.lastName].filter(Boolean).join(" ") || item.username
+  const rate = item.rateMin != null ? `$${item.rateMin}/hr` : undefined
+  return (
+    <ListingCard
+      kind="talent"
+      id={item.id}
+      username={item.username}
+      name={name}
+      role={item.title ?? undefined}
+      photo={item.avatarUrl ?? undefined}
+      rate={rate}
+      skills={item.skills}
+      country={item.location ?? undefined}
+    />
+  )
+}
+
+// Grid sections (Newest Additions, Most Popular) use the compact horizontal
+// card — matches the static page's RecentlyViewedSection which deliberately
+// uses ListingCardCompact (image-left, title+description+budget+duration on
+// the right, no rating/team/favorite). Only carousel sections get the full
+// vertical ListingCard.
+function renderProjectGrid(item: ProjectCard) {
+  return (
+    <ListingCardCompact
+      kind="project"
+      id={item.id}
+      slug={item.slug ?? undefined}
+      title={item.title}
+      description={item.shortDescription ?? item.description}
+      mediaUrl={item.thumbnail ?? undefined}
+      budget={formatBudget(item.budget)}
+      duration={item.duration ?? undefined}
+    />
+  )
+}
+
+function renderServiceGrid(item: ServiceCard) {
+  return (
+    <ListingCardCompact
+      kind="service"
+      id={item.id}
+      slug={item.slug ?? undefined}
+      title={item.title}
+      description={item.shortDescription ?? item.description}
+      mediaUrl={item.thumbnail ?? undefined}
+      budget={formatPrice(item.priceMin, item.priceMax)}
+      duration={item.deliveryTime ?? undefined}
+    />
+  )
+}
+
+// ── Block renderer ──────────────────────────────────────────────────────────
+
+function renderBlockItem(
+  block: HomepageBlock,
+  item: ProjectCard | ServiceCard | TeamCard | TalentCard,
+  layout: "carousel" | "grid"
+) {
+  if (block.entity === "projects") {
+    return layout === "carousel"
+      ? renderProjectCarousel(item as ProjectCard)
+      : renderProjectGrid(item as ProjectCard)
+  }
+  if (block.entity === "services") {
+    return layout === "carousel"
+      ? renderServiceCarousel(item as ServiceCard)
+      : renderServiceGrid(item as ServiceCard)
+  }
+  if (block.entity === "teams") return renderTeamCard(item as TeamCard)
+  if (block.entity === "talent") return renderTalentCard(item as TalentCard)
+  return null
+}
 
 /** Shared icon-button styling for the in-header swiper nav. */
 const NAV_BUTTON_CLASS =
@@ -482,23 +641,21 @@ function CarouselNavButtons() {
   )
 }
 
-// ── Section views ───────────────────────────────────────────────────────────
-// Layout structure identical to homepage-client.tsx.
-// Only change: card content is talent from useTalentUsers().
-
-/** Carousel section: title + nav buttons in the same header row. */
+/** Carousel section: title + nav buttons in the same header row.
+ *  MVP: renders real talent cards instead of CMS project/service items. */
 function CarouselSectionView({
   section,
+  block,
   talents,
   talentOffset,
 }: {
   section: HomepageSection
+  block: HomepageBlock
   talents: TalentUser[]
   talentOffset: number
 }) {
-  const block = section.blocks[0]
-  const carouselTalents = talents.slice(talentOffset, talentOffset + Math.max(block?.items?.length ?? 0, 10))
-  if (carouselTalents.length === 0) return null
+  const carouselTalents = talents.slice(talentOffset, talentOffset + Math.max(block.items.length, 10))
+  if (carouselTalents.length === 0 && block.items.length === 0) return null
 
   return (
     <SwiperRoot>
@@ -528,6 +685,7 @@ function CarouselSectionView({
   )
 }
 
+/** MVP: grid blocks render TalentCardCompact with round avatars. */
 function GridBlockBody({
   block,
   talents,
@@ -639,12 +797,7 @@ function TabbedSectionView({
           <TabsContent key={t.slug} value={t.slug}>
             <div className="mt-[29px] space-y-10">
               {t.blocks.map((block, blockIdx) => (
-                <GridBlockBody
-                  key={block.key}
-                  block={block}
-                  talents={talents}
-                  talentOffset={talentOffset + blockIdx * 6}
-                />
+                <GridBlockBody key={block.key} block={block} talents={talents} talentOffset={talentOffset + blockIdx * 6} />
               ))}
             </div>
           </TabsContent>
@@ -696,12 +849,7 @@ function GridSectionView({
       </div>
       <div className="mt-[29px] space-y-10">
         {section.blocks.map((block, blockIdx) => (
-          <GridBlockBody
-            key={block.key}
-            block={block}
-            talents={talents}
-            talentOffset={talentOffset + blockIdx * 6}
-          />
+          <GridBlockBody key={block.key} block={block} talents={talents} talentOffset={talentOffset + blockIdx * 6} />
         ))}
       </div>
     </div>
@@ -726,13 +874,7 @@ function HomepageSectionRenderer({
   // Carousel section: first block is a carousel
   const firstBlock = section.blocks[0]
   if (firstBlock?.type === "carousel") {
-    return (
-      <CarouselSectionView
-        section={section}
-        talents={talents}
-        talentOffset={talentOffset}
-      />
-    )
+    return <CarouselSectionView section={section} block={firstBlock} talents={talents} talentOffset={talentOffset} />
   }
 
   // Otherwise: plain grid section
@@ -740,7 +882,8 @@ function HomepageSectionRenderer({
 }
 
 // ── More Categories ─────────────────────────────────────────────────────────
-// Layout identical to original. Only label changed: "Browse Projects" → "Browse Talent"
+// Featured "promo" category blocks — dark image-backed feature cards mixed
+// with white spotlight cards. Labels/hrefs come from data.moreCategoriesList.
 
 function CategoryImageFeatureCard({ category }: { category: CategoryRef }) {
   return (
@@ -894,8 +1037,10 @@ function MoreCategories({ categories }: { categories: CategoryRef[] }) {
 }
 
 // Talent Network CTA is now rendered inside the Footer component (per Figma).
+// The previous standalone gradient-banner section component was removed when
+// the content moved into the footer's right column.
 
-// ── Main MVP client component ───────────────────────────────────────────────
+// ── Main client component ───────────────────────────────────────────────────
 
 export function HomepageMvpClient({ data }: { data: HomepagePayload }) {
   const { talents } = useTalentUsers()
