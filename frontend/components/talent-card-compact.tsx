@@ -44,7 +44,7 @@ export function TalentCardCompact({
   const computedHref = href ?? talentProfileUrl(username ?? id)
 
   return (
-    <article className="flex items-start gap-x-6">
+    <article className="flex items-center gap-x-6">
       <NextLink
         href={computedHref}
         className="relative size-[100px] overflow-hidden rounded-full shrink-0 block focus-visible:outline-none"
