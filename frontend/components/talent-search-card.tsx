@@ -289,6 +289,7 @@ export const TalentSearchCard = ({
             </p>
           </div>
 
+          {/* MVP: rating + projects hidden until rating system is released
           <div className="mt-3.5 flex items-center gap-x-2">
             <div className="flex items-center gap-x-2">
               <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
@@ -313,6 +314,7 @@ export const TalentSearchCard = ({
               {projects} Projects
             </span>
           </div>
+          */}
         </div>
       </div>
 
