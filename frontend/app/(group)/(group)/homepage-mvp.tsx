@@ -709,19 +709,20 @@ function GridBlockBody({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-[42px] gap-y-10">
-      {gridTalents.map((user) => {
-        const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.username || "Talent"
-        const rate = user.hourlyRate ? `$${user.hourlyRate}/hr` : undefined
+      {gridTalents.map((user, idx) => {
+        const props = talentToCardProps(user, idx)
         return (
           <div key={user.id}>
             <TalentCardCompact
-              id={user.id}
-              username={user.username}
-              title={name}
-              description={user.title ?? undefined}
-              photo={user.avatarUrl ?? undefined}
-              budget={rate}
-              duration={user.location ?? undefined}
+              id={props.id}
+              username={props.username}
+              name={props.name}
+              handle={props.handle}
+              role={props.role}
+              photo={props.photo}
+              rate={props.rate}
+              experience={props.experience}
+              country={props.country}
             />
           </div>
         )
