@@ -529,6 +529,19 @@ export class PublishService {
     return value * 8;
   }
 
+  private taskDurationDays(task: any): number {
+    const [rawVal, rawUnit] = String(task.duration ?? '')
+      .trim()
+      .split(/\s+/);
+    const value = Number(rawVal);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    const unit = (rawUnit ?? 'days').toLowerCase();
+    if (unit.startsWith('week')) return value * 7;
+    if (unit.startsWith('month')) return value * 30;
+    if (unit.startsWith('hour')) return Math.max(1, Math.ceil(value / 24));
+    return value;
+  }
+
   private async calculateProjectBudgetUsdCents(phases: any[]): Promise<number> {
     const CARD: Record<string, number> = {
       student: 2500,
@@ -796,15 +809,51 @@ export class PublishService {
       this.logger.warn(`Failed to derive deliverables for project ${projectId}: ${(err as Error).message}`);
     }
 
-    return {
-      scope,
-      budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
-    };
+    const budgetUsdCents = await this.calculateProjectBudgetUsdCents(scope);
+
+    let totalDays = 0;
+    for (const phase of scope) {
+      let phaseDays = 0;
+      for (const task of phase.task ?? []) {
+        phaseDays = Math.max(phaseDays, this.taskDurationDays(task));
+      }
+      totalDays += phaseDays;
+    }
+    const durationWeeks =
+      totalDays > 0 ? Math.max(1, Math.ceil(totalDays / 7)) : 0;
+
+    let totalHours = 0;
+    const scopeSnapshot = scope.map((phase, index) => ({
+      phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
+      order: phase.order ?? index,
+      tasks: (phase.task ?? []).map((task) => {
+        const hours = this.taskHours(task);
+        totalHours += hours;
+        return {
+          title: task.taskName,
+          roleName: task.role,
+          location: task.location ?? [],
+          experienceLevel:
+            task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
+          estimatedHours: hours,
+        };
+      }),
+    }));
+
+    await this.projectRepository.updatePublishedSnapshot(projectId, {
+      budget: budgetUsdCents / 100,
+      scope: scopeSnapshot,
+      duration: durationWeeks > 0 ? String(durationWeeks) : null,
+      estimatedHours: totalHours > 0 ? Math.round(totalHours) : null,
+    });
+
+    return { scope, budgetUsdCents };
   }
 
   async publishExistingProject(
     userId: string,
     projectId: string,
+    authToken?: string,
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
@@ -842,6 +891,7 @@ export class PublishService {
       const moderationResult = await this.projectModerationService.moderateProject(
         project.id!,
         moderationInput,
+        authToken,
       );
 
       return await this.applyModerationDecision(project.id!, moderationResult);

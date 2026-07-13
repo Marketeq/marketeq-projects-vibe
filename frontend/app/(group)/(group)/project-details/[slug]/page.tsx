@@ -776,8 +776,75 @@ export default function ProjectDetails({
                             (c: any) => c?.subCategories ?? []
                           )
                         : []
+                  const durToDays = (dur: any): number => {
+                    if (!dur) return 0
+                    if (typeof dur === "object") {
+                      const v = Number(dur.value) || 0
+                      return dur.type === "weeks"
+                        ? v * 7
+                        : dur.type === "months"
+                          ? v * 30
+                          : dur.type === "hours"
+                            ? Math.max(1, Math.ceil(v / 24))
+                            : v
+                    }
+                    const [rv, ru] = String(dur).trim().split(/\s+/)
+                    const v = Number(rv) || 0
+                    const u = (ru || "days").toLowerCase()
+                    return u.startsWith("week")
+                      ? v * 7
+                      : u.startsWith("month")
+                        ? v * 30
+                        : u.startsWith("hour")
+                          ? Math.max(1, Math.ceil(v / 24))
+                          : v
+                  }
+                  const draftPhases: any[] = Array.isArray(d.scope)
+                    ? d.scope
+                    : []
+                  const normalizedScope = draftPhases.map(
+                    (ph: any, i: number) => ({
+                      phaseName:
+                        ph.phaseName ??
+                        ph.name ??
+                        ph.stageName ??
+                        `Phase ${i + 1}`,
+                      order: ph.order ?? i,
+                      tasks: (ph.tasks ?? ph.task ?? []).map((t: any) => ({
+                        title: t.title ?? t.taskName ?? "",
+                        roleName: t.roleName ?? t.role ?? "",
+                        location: Array.isArray(t.location)
+                          ? t.location
+                          : t.location
+                            ? [t.location]
+                            : [],
+                        experienceLevel:
+                          t.experienceLevel ??
+                          (Array.isArray(t.experience)
+                            ? t.experience[0]
+                            : t.experience) ??
+                          "Medior",
+                        estimatedHours: Number(t.estimatedHours) || 0,
+                      })),
+                    })
+                  )
+                  let draftTotalDays = 0
+                  for (const ph of draftPhases) {
+                    let phaseDays = 0
+                    for (const t of ph.tasks ?? ph.task ?? [])
+                      phaseDays = Math.max(phaseDays, durToDays(t.duration))
+                    draftTotalDays += phaseDays
+                  }
+                  const draftWeeks =
+                    draftTotalDays > 0
+                      ? Math.max(1, Math.ceil(draftTotalDays / 7))
+                      : 0
                   setProject({
                     ...d,
+                    scope: normalizedScope.length ? normalizedScope : d.scope,
+                    duration:
+                      d.duration ??
+                      (draftWeeks > 0 ? String(draftWeeks) : undefined),
                     role:
                       d.category || d.categories?.[0] || "Software Development",
                     summary: d.shortDescription || d.fullDescription || "",
