@@ -217,22 +217,6 @@ export class PublishController {
     }
   }
 
-  @Put('project/:projectId/unpublish')
-  async unpublishProject(
-    @Req() req: AuthenticatedRequest,
-    @Param('projectId') projectId: string,
-  ) {
-    try {
-      return await this.publishService.unpublishProject(
-        req.user.sub,
-        projectId,
-      );
-    } catch (error) {
-      console.log('err', error);
-      throw error;
-    }
-  }
-
   @Post('media')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
