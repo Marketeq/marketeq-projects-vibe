@@ -193,6 +193,23 @@ export class PublishController {
       return await this.publishService.publishExistingProject(
         req.user.sub,
         projectId,
+        req.headers.authorization,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/unpublish')
+  async unpublishProject(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.unpublishProject(
+        req.user.sub,
+        projectId,
       );
     } catch (error) {
       console.log('err', error);

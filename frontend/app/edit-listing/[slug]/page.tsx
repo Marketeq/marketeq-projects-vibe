@@ -108,6 +108,16 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
 import {
+  AddRoleDialog,
+  countryFromLocation,
+  estimateScopeBudgetCents,
+  RolePicker,
+  type TeamMember,
+} from "@/components/scope-builder"
+import { TeamsAPI } from "@/service/http/teams"
+import { useInviteWindowStore } from "@/components/invite-window"
+import { getCurrentUser } from "@/utils/auth"
+import {
   Row,
   flexRender,
   getCoreRowModel,
@@ -200,6 +210,9 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Progress,
   ScrollArea,
   ScrollBar,
@@ -236,8 +249,13 @@ declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    batchUpdateData?: (
+      rowIndex: number,
+      updates: Record<string, unknown>
+    ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
+    teamMembers?: TeamMember[]
   }
 }
 
@@ -485,6 +503,8 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
             experience: [experienceLevel],
             experienceLevel,
             duration: `${durationValue} ${durationType}`,
+            assigneeUserId:
+              row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
             phaseId: "temporary-required-string",
           }
         })
@@ -4893,6 +4913,8 @@ type PhaseRow = Prettify<
     role?: string
     location?: string
     experience?: string
+    assignedMember?: TeamMember | null
+    assigneeUserId?: string | null
   } & TaskFormValues
 >
 
@@ -5015,35 +5037,133 @@ const columns = [
     header: "Task Name",
   }),
   columnHelper.accessor("role", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
+    cell: ({ row: { index, original }, table }) => {
+      const value = original.role ?? ""
+      const teamMembers = table.options.meta?.teamMembers ?? []
+      const allRoles = table.options.meta?.roles ?? []
+      const member =
+        original.assignedMember ??
+        teamMembers.find((m) => m.id === original.assigneeUserId) ??
+        null
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      const [popoverOpen, setPopoverOpen] = useState(false)
+      // eslint-disable-next-line
+      const [addRoleOpen, setAddRoleOpen] = useState(false)
+
+      const handleSelectMember = (tm: TeamMember) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role: tm.role,
+          assignedMember: tm,
+          assigneeUserId: tm.id,
+          location: tm.location ?? "",
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleSelectVacantRole = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleAddRole = () => {
+        setPopoverOpen(false)
+        setAddRoleOpen(true)
+      }
+
+      const handleAddRoleDone = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+      }
+
+      const pickerPopover = (
+        <>
+          <PopoverContent className="w-[220px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+            <RolePicker
+              teamMembers={teamMembers}
+              roles={allRoles}
+              onSelectMember={handleSelectMember}
+              onSelectRole={handleSelectVacantRole}
+              onAddRole={handleAddRole}
+            />
+          </PopoverContent>
+          <AddRoleDialog
+            open={addRoleOpen}
+            onOpenChange={setAddRoleOpen}
+            roles={allRoles}
+            onDone={handleAddRoleDone}
+          />
+        </>
+      )
+
+      if (member) {
+        return (
+          <TableCell className="py-4 px-3">
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
+                  <Avatar className="size-6 shrink-0">
+                    {member.avatarUrl ? (
+                      <AvatarImage
+                        src={member.avatarUrl}
+                        alt={member.firstName}
+                      />
+                    ) : null}
+                    <AvatarFallback className="text-[10px]">
+                      {member.firstName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-medium text-gray-900 truncate leading-tight">
+                      {member.firstName}
+                      <span className="text-gray-400 font-normal ml-0.5">
+                        @{member.username}...
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-gray-500 truncate leading-tight">
+                      {member.role}
+                    </p>
+                  </div>
+                </button>
+              </PopoverTrigger>
+              {pickerPopover}
+            </Popover>
+          </TableCell>
+        )
+      }
 
       return (
-        <TableCell className="py-4 px-6">
-          <OwnCombobox
-            value={value}
-            onValueChange={setValue}
-            placeholder="Add Role"
-            options={table.options.meta?.roles}
-            triggerClassName="max-w-full"
-          />
+        <TableCell className="py-4 px-3">
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
+                  value ? "text-gray-600" : "text-gray-400"
+                )}
+              >
+                <span className="block truncate">{value || "Add Role"}</span>
+              </button>
+            </PopoverTrigger>
+            {pickerPopover}
+          </Popover>
         </TableCell>
       )
     },
-    header: "Role",
+    header: "Team Member",
   }),
   columnHelper.accessor("location", {
     cell: ({ getValue, row: { index }, column: { id }, table }) => {
       // eslint-disable-next-line
       const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: () => {
-          table.options.meta?.updateData(index, id, value)
-        },
+        defaultValue: countryFromLocation(getValue()),
+        onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
       return (
         <TableCell className="px-3 py-4">
@@ -5102,6 +5222,7 @@ interface PhaseTableProps {
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
+  teamMembers: TeamMember[]
 }
 
 const ROLES = [
@@ -5195,6 +5316,7 @@ const PhaseTable = ({
   rows,
   onRowsChange,
   openDurationDialog,
+  teamMembers,
 }: PhaseTableProps) => {
   const [data, setData] = useControllableState({
     value: rows,
@@ -5223,8 +5345,16 @@ const PhaseTable = ({
           })
         )
       },
+      batchUpdateData: (rowIndex, patch) => {
+        setData((prev) =>
+          prev.map((row, index) =>
+            index === rowIndex ? ({ ...row, ...patch } as PhaseRow) : row
+          )
+        )
+      },
       openDurationDialog,
       roles: ROLES,
+      teamMembers,
     },
   })
 
@@ -5384,11 +5514,61 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = res?.data?.data ?? res?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        const mapped: TeamMember[] = roster.map((m: any) => {
+          const jobTitleList = Array.isArray(m.jobTitles)
+            ? m.jobTitles
+                .map((j: any) =>
+                  typeof j === "string" ? j : (j?.jobTitle ?? j?.headline ?? "")
+                )
+                .filter(Boolean)
+            : []
+          const jobTitle = m.recentJobTitle || jobTitleList[0] || ""
+          return {
+            id: m.userId || m.id,
+            firstName: m.firstName || m.username || "User",
+            username: m.username || "",
+            avatarUrl: m.avatarUrl || null,
+            role: jobTitle,
+            jobTitles: jobTitleList,
+            hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+            workSchedule: m.workSchedule ?? null,
+            customHoursPerWeek: m.customHoursPerWeek ?? null,
+            location: m.location ?? m.country ?? null,
+            experience: m.experience ?? m.experienceLevel ?? null,
+          }
+        })
+        if (!cancelled) setScopeTeam(mapped)
+      } catch {
+        /* roster fetch failed — picker shows empty state */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const {
     projectScopeMethods,
     isTaskSearchDialogOpen,
     setTaskSearchDialogOpen,
+    teamMemberIds,
+    pricingBudgetCents,
   } = useProjectScopeContext()
+  const projectTeam = useMemo(
+    () =>
+      teamMemberIds.length > 0
+        ? scopeTeam.filter((m) => teamMemberIds.includes(m.id))
+        : scopeTeam,
+    [scopeTeam, teamMemberIds]
+  )
   const { toggleValidation } = useStepContext()
 
   const [projectScopeState, setProjectScopeState] = projectScopeMethods
@@ -5401,6 +5581,64 @@ const ProjectScope = ({
     },
   })
   const success = projectScopeSchema.safeParse(phases)
+
+  // Budget + duration computed from the scope (same helper/rate-card as the
+  // inline my-listings view) — replaces the hardcoded sidebar figures.
+  const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
+    const scopePhases = Array.isArray(phases) ? phases : []
+    let totalDays = 0
+    for (const phase of scopePhases) {
+      const taskDays = (((phase as any)?.rows ?? []) as any[])
+        .map((row: any) => {
+          const dur = row?.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val
+        })
+        .filter((d: number) => d > 0)
+      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
+    }
+    let label = "—"
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const w = Math.max(1, Math.ceil(totalDays / 7))
+        label = `${w} Week${w !== 1 ? "s" : ""}`
+      } else {
+        const m = Math.max(1, Math.ceil(totalDays / 30))
+        label = `${m} Month${m !== 1 ? "s" : ""}`
+      }
+    }
+    const computedCents = estimateScopeBudgetCents(scopePhases)
+    return {
+      budgetTotalCents:
+        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      durationLabel: label,
+      durationDays: totalDays,
+    }
+  }, [phases, pricingBudgetCents])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: string) => {
+      if (cents <= 0) return "$0"
+      const total = cents / 100
+      const periodDays: Record<string, number> = {
+        week: 7,
+        "2-week": 14,
+        month: 30,
+        quarter: 90,
+        year: 365,
+      }
+      const daysPerPeriod = periodDays[period] ?? 7
+      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
+      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [durationDays]
+  )
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(success)
@@ -5983,7 +6221,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      $5,000
+                      {formatBudget(budgetTotalCents, "week")}
                     </span>
                     <span className="text-sm text-dark-blue-400">per</span>
                     <Badge visual="gray" className="rounded-[5px]">
@@ -6011,7 +6249,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      6 Months
+                      {durationLabel}
                     </span>
                   </div>
                 </div>
@@ -6156,6 +6394,7 @@ const ProjectScope = ({
                                 open: true,
                               })
                             }
+                            teamMembers={projectTeam}
                           />
                         </DisclosureContent>
                       </div>
@@ -6397,12 +6636,84 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   >
   isTaskSearchDialogOpen: boolean
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
+  teamMemberIds: string[]
+  setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  draftProjectId: string | null
+  pricingBudgetCents: number
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
 })
 
 const Team = () => {
+  const [members, setMembers] = React.useState<any[]>([])
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = (res as any)?.data?.data ?? (res as any)?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        if (!cancelled) setMembers(roster)
+      } catch {
+        /* no roster — render empty */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentUserId = getCurrentUser()?.id
+  const owner =
+    members.find((m: any) => m.role === "owner") ?? members[0] ?? null
+  const mapRole = (role?: string) =>
+    role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
+
+  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
+    useProjectScopeContext()
+  const inviteWindow = useInviteWindowStore()
+  const [addQuery, setAddQuery] = React.useState("")
+
+  const inProject = (m: any) =>
+    m.role === "owner" || teamMemberIds.includes(String(m.userId || m.id))
+  const projectMembers = members.filter(inProject)
+  const addable = members.filter(
+    (m: any) =>
+      !inProject(m) &&
+      (m.firstName || m.username || "")
+        .toLowerCase()
+        .includes(addQuery.trim().toLowerCase())
+  )
+
+  const persistTeam = (next: string[]) => {
+    setTeamMemberIds(next)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        teamMemberIds: next,
+      } as any).catch(() => {})
+    }
+  }
+  const addToProject = (userId: string) => {
+    persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
+    setAddQuery("")
+  }
+  const removeFromProject = (userId: string) => {
+    persistTeam(teamMemberIds.filter((id) => id !== String(userId)))
+    const [, setPhases] = projectScopeMethods
+    setPhases((prev) =>
+      prev.map((phase) => ({
+        ...phase,
+        rows: (phase.rows ?? []).map((row) =>
+          String(row.assigneeUserId ?? row.assignedMember?.id ?? "") ===
+          String(userId)
+            ? { ...row, assigneeUserId: null, assignedMember: null }
+            : row
+        ),
+      }))
+    )
+  }
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
@@ -6428,19 +6739,26 @@ const Team = () => {
             <div className="mt-3 flex items-center justify-between">
               <div className="flex items-center gap-x-3">
                 <Avatar size="md">
-                  <AvatarImage src="/man.jpg" alt="Chris" />
-                  <AvatarFallback>C</AvatarFallback>
+                  <AvatarImage
+                    src={owner?.avatarUrl || ""}
+                    alt={owner?.firstName || "Owner"}
+                  />
+                  <AvatarFallback>
+                    {(owner?.firstName || owner?.username || "?")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
                 <div>
                   <span className="text-sm font-bold text-dark-blue-400">
-                    Chris
+                    {owner?.firstName || owner?.username || "—"}
                   </span>
                   <span className="text-sm font-light text-gray-500">
                     {" "}
-                    @ux23isee
+                    @{owner?.username || ""}
                   </span>
                   <p className="text-xs font-light text-dark-blue-400">
-                    Full Stack Designer
+                    {owner ? "Project Owner" : ""}
                   </p>
                 </div>
               </div>
@@ -6463,9 +6781,14 @@ const Team = () => {
                     placeholder="Add user from team"
                   />
                   <ListboxOptions>
-                    <ListboxOption value="Chris">Chris</ListboxOption>
-                    <ListboxOption value="Sarah">Sarah</ListboxOption>
-                    <ListboxOption value="Laura">Laura</ListboxOption>
+                    {members.map((m: any) => (
+                      <ListboxOption
+                        key={m.userId}
+                        value={m.username || m.firstName || m.userId}
+                      >
+                        {m.firstName || m.username || "User"}
+                      </ListboxOption>
+                    ))}
                   </ListboxOptions>
                 </Listbox>
               </div>
@@ -6505,7 +6828,11 @@ const Team = () => {
               <h2 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
                 Team Members
               </h2>
-              <Button variant="outlined" visual="gray">
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+              >
                 <Plus className="size-[15px]" />
                 Add Team Member
               </Button>
@@ -6513,7 +6840,7 @@ const Team = () => {
 
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-dark-blue-400">
-                All assignees (3)
+                All assignees ({projectMembers.length})
               </h3>
               <p className="mt-1 text-xs font-light text-dark-blue-400">
                 View and manage all users currently assigned to Project name
@@ -6521,16 +6848,51 @@ const Team = () => {
               </p>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 relative">
               <span className="text-sm font-semibold text-dark-blue-400">
                 Add team members to this project
               </span>
               <InputGroup className="mt-2">
-                <Input placeholder="Add users to this project" />
+                <Input
+                  placeholder="Add users to this project"
+                  value={addQuery}
+                  onChange={(e) => setAddQuery(e.target.value)}
+                />
                 <InputLeftElement>
                   <SearchMd className="text-gray-500 h-4 w-4" />
                 </InputLeftElement>
               </InputGroup>
+              {addQuery.trim().length > 0 && addable.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden max-h-[232px] overflow-y-auto">
+                  {addable.map((m: any) => (
+                    <button
+                      key={m.userId || m.id}
+                      type="button"
+                      className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50 transition duration-150"
+                      onClick={() => addToProject(m.userId || m.id)}
+                    >
+                      <Avatar className="size-6 shrink-0">
+                        {m.avatarUrl ? (
+                          <AvatarImage src={m.avatarUrl} alt={m.firstName} />
+                        ) : null}
+                        <AvatarFallback className="text-[10px]">
+                          {(m.firstName || m.username || "U")
+                            .charAt(0)
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-gray-900 truncate leading-tight">
+                          {m.firstName || m.username || "User"}
+                          <span className="text-gray-400 font-normal ml-0.5">
+                            @{m.username}
+                          </span>
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-6">
@@ -6550,45 +6912,17 @@ const Team = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[
-                    {
-                      name: "Chris",
-                      username: "ux23isee",
-                      role: "Owner",
+                  {projectMembers.map((m: any, mi: number) => {
+                    const member = {
+                      name: m.firstName || m.username || "User",
+                      username: m.username || "",
+                      role: mapRole(m.role),
                       status: "Active",
-                      you: true,
-                      avatar: "/man.jpg",
-                    },
-                    {
-                      name: "Sarah",
-                      username: "ux23isee",
-                      role: "Manager",
-                      status: "Active",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Laura",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Active",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Tina",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Inactive",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Shelly",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Inactive",
-                      avatar: "/woman.jpg",
-                    },
-                  ].map((member, mi) => (
-                    <TableRow key={mi}>
+                      you: m.userId === currentUserId,
+                      avatar: m.avatarUrl || "",
+                    }
+                    return (
+                    <TableRow key={m.userId || mi}>
                       <TableCell className="py-4">
                         <div className="flex items-center gap-x-3">
                           <Avatar size="sm">
@@ -6658,12 +6992,20 @@ const Team = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Remove</DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={m.role === "owner"}
+                              onClick={() =>
+                                removeFromProject(m.userId || m.id)
+                              }
+                            >
+                              Remove
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -7521,6 +7863,8 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
   const [isPublishing, setIsPublishing] = useState(false)
 
   const handlePublish = async () => {
@@ -7615,6 +7959,37 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setTeamMemberIds(
+          Array.isArray(draft?.teamMemberIds)
+            ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+
+        const rawCategorySelections = Array.isArray(draft?.categorySelections)
+          ? draft.categorySelections
+          : []
+        const fallbackSubcategories = Array.isArray(draft?.subcategories)
+          ? draft.subcategories
+          : Array.isArray(draft?.subCategories)
+            ? draft.subCategories
+            : []
+        const categoryRows =
+          rawCategorySelections.length > 0
+            ? rawCategorySelections.map((cs: any) => ({
+                category: cs?.category || "",
+                subCategories: Array.isArray(cs?.subCategories)
+                  ? cs.subCategories
+                  : [],
+              }))
+            : Array.isArray(draft?.categories) && draft.categories.length > 0
+              ? draft.categories.map((cat: string, i: number) => ({
+                  category: cat,
+                  subCategories: i === 0 ? fallbackSubcategories : [],
+                }))
+              : []
+        while (categoryRows.length < 3)
+          categoryRows.push({ category: "", subCategories: [] })
 
         const rawCategorySelections = Array.isArray(draft?.categorySelections)
           ? draft.categorySelections
@@ -7749,6 +8124,7 @@ function PublishProject({
                       id: String(task?.id ?? getId()),
                       task: task?.taskName ?? "",
                       role: task?.role ?? "",
+                      assigneeUserId: task?.assigneeUserId ?? null,
                       location: Array.isArray(task?.location)
                         ? (task.location[0] ?? "")
                         : "",
@@ -7853,7 +8229,14 @@ function PublishProject({
       if (serializedPayload === lastScopePayloadRef.current) return
 
       try {
-        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
+        const scopeRes = await ProjectAPI.ReplaceProjectScope(
+          draftProjectId,
+          payload
+        )
+        const nextBudget = Number((scopeRes as any)?.data?.budgetUsdCents)
+        if (Number.isFinite(nextBudget) && nextBudget > 0) {
+          setPricingBudgetCents(nextBudget)
+        }
         lastScopePayloadRef.current = serializedPayload
         setLastSavedAt(new Date())
       } catch (error) {
@@ -8075,6 +8458,10 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
     }),
     [
       projectScopeMethods,
@@ -8084,6 +8471,10 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
     ]
   )
   //  Validate the current step when Next is clicked

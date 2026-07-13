@@ -26,6 +26,7 @@ import { BrevoService } from '../brevo/brevo.service';
 
 import { User } from '../user/entities/user.entity';
 import { Session } from '../session/entities/session.entity';
+import { PasswordHistory } from '../password-history/entities/password-history.entity';
 import { SessionResponseDto } from './dto/session-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -84,6 +85,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
 const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
 const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
   'Too many requests. Please try again later.';
+const PASSWORD_HISTORY_LIMIT = 5;
 
 type RateLimitBucket = {
   count: number;
@@ -108,6 +110,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(PasswordHistory)
+    private readonly passwordHistoryRepository: Repository<PasswordHistory>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly brevoService: BrevoService,
@@ -502,8 +506,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       'If an account exists for this email, password reset instructions will be sent.';
 
     if (!user) {
-      return { message };
+      this.logger.log(
+        `forgotPassword: reset requested for unknown email (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      return { accountFound: false };
     }
+
+    this.logger.log(
+      `forgotPassword: reset requested for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
 
     user.passwordResetVersion = randomUUID();
     await this.userRepository.save(user);
@@ -538,12 +549,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
 
     return {
+      accountFound: true,
       message,
       ...(isDev && { reset_token: resetToken, reset_url: resetUrl }),
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto, ipAddress = '') {
+  async resetPassword(dto: ResetPasswordDto, ipAddress = '', userAgent = '') {
     this.enforcePasswordResetRateLimit(
       `reset-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
       'AUTH_RESET_PASSWORD_IP_LIMIT',
@@ -564,10 +576,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         algorithms: ['RS256'],
       });
     } catch {
+      this.logger.warn(
+        `resetPassword: rejected invalid/expired token (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected malformed token payload (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
@@ -577,8 +595,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!user || user.passwordResetVersion !== payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected reused/stale token for userId=${payload.sub} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
+
+    await this.assertPasswordNotReused(user, dto.password);
 
     const nextResetVersion = randomUUID();
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -597,7 +620,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         throw new UnauthorizedException('Invalid or expired reset token');
       }
 
-      await manager.getRepository(Session).delete({ userId: user.id });
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager
+        .getRepository(PasswordHistory)
+        .find({
+          where: { userId: user.id },
+          order: { createdAt: 'DESC' },
+          skip: PASSWORD_HISTORY_LIMIT,
+        });
+
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
     });
 
     user.hasPassword = true;
@@ -605,7 +645,47 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.syncUserProfile(user);
 
-    return { success: true };
+    this.logger.log(
+      `resetPassword: password reset for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    const sessionId = randomUUID();
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+
+    return {
+      success: true,
+      ...tokens,
+      sessionId,
+      user: this.serializeUser(user),
+    };
+  }
+
+  private async assertPasswordNotReused(
+    user: Pick<User, 'id' | 'password'>,
+    newPassword: string,
+  ): Promise<void> {
+    const recentHashes: string[] = [];
+
+    if (user.password) {
+      recentHashes.push(user.password);
+    }
+
+    const history = await this.passwordHistoryRepository.find({
+      where: { userId: user.id },
+      order: { createdAt: 'DESC' },
+      take: PASSWORD_HISTORY_LIMIT - 1,
+      select: ['passwordHash'],
+    });
+    recentHashes.push(...history.map((entry) => entry.passwordHash));
+
+    for (const hash of recentHashes) {
+      if (await bcrypt.compare(newPassword, hash)) {
+        throw new BadRequestException(
+          `You cannot reuse one of your last ${PASSWORD_HISTORY_LIMIT} passwords.`,
+        );
+      }
+    }
   }
 
   async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
@@ -1600,7 +1680,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
+      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '24h',
     );
 
     return this.jwtService.signAsync(
