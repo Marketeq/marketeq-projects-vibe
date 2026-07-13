@@ -38,6 +38,14 @@ export class CreateProjectTaskDto {
   @IsInt()
   estimatedHours?: number;
 
+  @ApiProperty({
+    description: 'User ID of the assigned team member',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  assigneeUserId?: string | null;
+
   @ApiProperty({ description: 'Phase ID this task belongs to' })
   @IsString()
   phaseId: string;

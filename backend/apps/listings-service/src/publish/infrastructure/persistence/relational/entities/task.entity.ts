@@ -41,6 +41,9 @@ export class TaskEntity extends EntityRelationalHelper implements Task {
   @Column({ type: 'int', nullable: true })
   estimatedHours: number;
 
+  @Column({ name: 'assigneeUserId', type: 'uuid', nullable: true })
+  assigneeUserId?: string | null;
+
   @Column({ type: String, nullable: false })
   duration: string;
 

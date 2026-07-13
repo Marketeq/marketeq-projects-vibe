@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { estimateScopeBudgetCents } from "@/components/scope-builder"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -150,6 +151,67 @@ import {
   TooltipTrigger,
   useCarousel,
 } from "@/components/ui"
+
+const CollapsibleCard = ({
+  maxHeight,
+  className,
+  children,
+}: {
+  maxHeight: number
+  className?: string
+  children?: React.ReactNode
+}) => {
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [needsTruncation, setNeedsTruncation] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  useEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const check = () => setNeedsTruncation(el.scrollHeight > maxHeight)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [maxHeight])
+
+  return (
+    <div
+      className={cn(
+        "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+        className
+      )}
+      style={
+        needsTruncation && !isExpanded ? { height: maxHeight } : undefined
+      }
+    >
+      <div ref={innerRef}>{children}</div>
+
+      {needsTruncation &&
+        (isExpanded ? (
+          <div className="flex mt-6 items-center justify-center">
+            <Button
+              visual="gray"
+              variant="link"
+              onClick={() => setIsExpanded(false)}
+            >
+              View Less
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
+            <Button
+              visual="gray"
+              variant="link"
+              onClick={() => setIsExpanded(true)}
+            >
+              View More
+            </Button>
+          </div>
+        ))}
+    </div>
+  )
+}
 
 const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const [pinnedChats, setPinnedChats] = React.useState(0)
@@ -525,7 +587,17 @@ export default function ProjectDetails({
   // --- Sidebar pricing (docs §01, §14) ---
   const sidebarPricing = React.useMemo(() => {
     if (!project) return null
-    const totalCost = Number(project.priceMin ?? project.budget ?? 0)
+    // Budget (docs §14.7): compute from the scope when it's populated — same
+    // helper/rate-card as the edit view — so both views show the same number.
+    // Fall back to a stored price only when there's no scope to price.
+    const pricingCost = (Number(project.budgetUsdCents) || 0) / 100
+    const computedCost = estimateScopeBudgetCents(project.scope) / 100
+    const totalCost =
+      pricingCost > 0
+        ? pricingCost
+        : computedCost > 0
+          ? computedCost
+          : Number(project.priceMin ?? project.budget ?? 0)
 
     // Derive duration + roles from scope (matches edit mode). Handles both the
     // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
@@ -693,8 +765,75 @@ export default function ProjectDetails({
                             (c: any) => c?.subCategories ?? []
                           )
                         : []
+                  const durToDays = (dur: any): number => {
+                    if (!dur) return 0
+                    if (typeof dur === "object") {
+                      const v = Number(dur.value) || 0
+                      return dur.type === "weeks"
+                        ? v * 7
+                        : dur.type === "months"
+                          ? v * 30
+                          : dur.type === "hours"
+                            ? Math.max(1, Math.ceil(v / 24))
+                            : v
+                    }
+                    const [rv, ru] = String(dur).trim().split(/\s+/)
+                    const v = Number(rv) || 0
+                    const u = (ru || "days").toLowerCase()
+                    return u.startsWith("week")
+                      ? v * 7
+                      : u.startsWith("month")
+                        ? v * 30
+                        : u.startsWith("hour")
+                          ? Math.max(1, Math.ceil(v / 24))
+                          : v
+                  }
+                  const draftPhases: any[] = Array.isArray(d.scope)
+                    ? d.scope
+                    : []
+                  const normalizedScope = draftPhases.map(
+                    (ph: any, i: number) => ({
+                      phaseName:
+                        ph.phaseName ??
+                        ph.name ??
+                        ph.stageName ??
+                        `Phase ${i + 1}`,
+                      order: ph.order ?? i,
+                      tasks: (ph.tasks ?? ph.task ?? []).map((t: any) => ({
+                        title: t.title ?? t.taskName ?? "",
+                        roleName: t.roleName ?? t.role ?? "",
+                        location: Array.isArray(t.location)
+                          ? t.location
+                          : t.location
+                            ? [t.location]
+                            : [],
+                        experienceLevel:
+                          t.experienceLevel ??
+                          (Array.isArray(t.experience)
+                            ? t.experience[0]
+                            : t.experience) ??
+                          "Medior",
+                        estimatedHours: Number(t.estimatedHours) || 0,
+                      })),
+                    })
+                  )
+                  let draftTotalDays = 0
+                  for (const ph of draftPhases) {
+                    let phaseDays = 0
+                    for (const t of ph.tasks ?? ph.task ?? [])
+                      phaseDays = Math.max(phaseDays, durToDays(t.duration))
+                    draftTotalDays += phaseDays
+                  }
+                  const draftWeeks =
+                    draftTotalDays > 0
+                      ? Math.max(1, Math.ceil(draftTotalDays / 7))
+                      : 0
                   setProject({
                     ...d,
+                    scope: normalizedScope.length ? normalizedScope : d.scope,
+                    duration:
+                      d.duration ??
+                      (draftWeeks > 0 ? String(draftWeeks) : undefined),
                     role:
                       d.category || d.categories?.[0] || "Software Development",
                     summary: d.shortDescription || d.fullDescription || "",
@@ -1089,7 +1228,10 @@ export default function ProjectDetails({
               </div>
 
               <div className="mt-3 relative">
-                <p className="text-sm font-extralight text-dark-blue-400">
+                <p
+                  style={{ whiteSpace: "pre-line" }}
+                  className="text-sm font-extralight break-words line-clamp-3 text-dark-blue-400"
+                >
                   {project.summary}
                 </p>
               </div>
@@ -1307,74 +1449,34 @@ export default function ProjectDetails({
 
                   <div>
                     <div id="section-description" className="pt-6">
-                      <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing, scrollHeight }) => (
+                      <CollapsibleCard maxHeight={599}>
+                        <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
+                          {project.title}
+                        </h1>
+
+                        <div className="mt-6 border-t pt-6 border-gray-200">
+                          {/*
+                            project.description is HTML generated from the
+                            Payload Lexical rich-text editor by the
+                            listings-service ProjectSyncService. Editor
+                            content is admin-authored (not user-submitted)
+                            so `dangerouslySetInnerHTML` is safe here — see
+                            the lexicalToHtml() helper on the service which
+                            escapes text content before wrapping in tags.
+                          */}
                           <div
-                            className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              scrollHeight > 506 && !isShowing ? "h-[506px]" : "h-auto"
-                            )}
-                          >
-                            <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                              {project.title}
-                            </h1>
+                            className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                            dangerouslySetInnerHTML={{
+                              __html:
+                                project.description ||
+                                project.summary ||
+                                "",
+                            }}
+                          />
+                        </div>
+                      </CollapsibleCard>
 
-                            <div className="mt-6 border-t pt-6 border-gray-200">
-                              {/*
-                                project.description is HTML generated from the
-                                Payload Lexical rich-text editor by the
-                                listings-service ProjectSyncService. Editor
-                                content is admin-authored (not user-submitted)
-                                so `dangerouslySetInnerHTML` is safe here — see
-                                the lexicalToHtml() helper on the service which
-                                escapes text content before wrapping in tags.
-                              */}
-                              <div
-                                className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                                dangerouslySetInnerHTML={{
-                                  __html:
-                                    project.description ||
-                                    project.summary ||
-                                    "",
-                                }}
-                              />
-                            </div>
-
-                            {scrollHeight > 506 && (
-                              isShowing ? (
-                                <div className="flex mt-6 items-center justify-center">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(false)}
-                                  >
-                                    View Less
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(true)}
-                                  >
-                                    View More
-                                  </Button>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </ShowMoreLessRoot>
-
-                      <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing, scrollHeight }) => (
-                          <div
-                            className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              scrollHeight > 456 && !isShowing ? "h-[456px]" : "h-auto"
-                            )}
-                          >
+                      <CollapsibleCard maxHeight={456} className="mt-6">
                             <h2 id="section-deliverables" className="text-xl leading-none text-dark-blue-400 font-semibold scroll-mt-[120px]">
                               Deliverables
                             </h2>
@@ -1469,33 +1571,7 @@ export default function ProjectDetails({
                                 </AlertDescription>
                               </AlertContent>
                             </Alert>
-
-                            {scrollHeight > 456 && (
-                              isShowing ? (
-                                <div className="flex mt-6 items-center justify-center">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(false)}
-                                  >
-                                    View Less
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(true)}
-                                  >
-                                    View More
-                                  </Button>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </ShowMoreLessRoot>
+                      </CollapsibleCard>
 
                       <div id="section-project-details" className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[120px]">
                         <div className="p-6 border-b border-gray-200">

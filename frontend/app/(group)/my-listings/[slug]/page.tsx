@@ -139,7 +139,7 @@ import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import { RichTextEditor } from "@/components/rich-text-editor"
-import { ScopeBuilder } from "@/components/scope-builder"
+import { ScopeBuilder, estimateScopeBudgetCents } from "@/components/scope-builder"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -861,6 +861,27 @@ const renderProjectStaticIcon = (
       return <ShieldZap className={className} />
   }
 }
+
+// Profiles may deliver languages/skills/location as objects
+// ({ name, fluency, ... }) rather than plain strings; coerce to a display
+// string so they never get rendered as a raw object.
+const coerceName = (x: any): string =>
+  typeof x === "string" ? x : (x?.name ?? x?.label ?? x?.title ?? "")
+
+const jobTitlesOf = (m: any): string[] =>
+  Array.isArray(m?.jobTitles)
+    ? m.jobTitles
+        .map((j: any) =>
+          typeof j === "string" ? j : (j?.jobTitle ?? j?.headline ?? "")
+        )
+        .filter(Boolean)
+    : []
+
+const jobTitleOf = (m: any): string =>
+  coerceName(m?.recentJobTitle) ||
+  jobTitlesOf(m)[0] ||
+  coerceName(m?.jobTitle) ||
+  ""
 
 // Seed team data used until real team data comes from the API
 const SEED_TEAM_MEMBERS = [
@@ -2516,12 +2537,20 @@ export default function ProjectDetails() {
                     ? `${row.duration.value} ${row.duration.type}`
                     : row.duration || "1 days",
                 estimatedHours: row.estimatedHours || undefined,
-                assignedMemberId: row.assignedMember?.id || null,
+                assigneeUserId: row.assignedMember?.id || null,
                 phaseId: "",
               })),
             })
           )
-          await ProjectAPI.ReplaceProjectScope(project.id, scopePayload)
+          const scopeRes = await ProjectAPI.ReplaceProjectScope(
+            project.id,
+            scopePayload
+          )
+          const nextBudget = Number((scopeRes as any)?.data?.budgetUsdCents)
+          if (Number.isFinite(nextBudget) && nextBudget > 0) {
+            setProject((prev: any) => ({ ...prev, budgetUsdCents: nextBudget }))
+          }
+
           // Re-fetch to get updated deliverables from backend
           try {
             const res = await ProjectAPI.GetProjectDraft(project.id)
@@ -2540,7 +2569,7 @@ export default function ProjectDetails() {
         }
       }, 1500)
     },
-    [project?.id]
+    [project?.id, saveProjectFields]
   )
 
   // Cleanup scope save timer on unmount
@@ -2600,10 +2629,28 @@ export default function ProjectDetails() {
         }
       }
 
-      const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
+      // Budget (docs §14.7 startingPriceTotal): compute from the scope when
+      // it's populated — Σ (hours × HOURLY_RATE_BY_LEVEL) — mirroring the
+      // backend stand-in rate card. Fall back to a stored budget otherwise.
+      const storedCents =
+        Number(project.budgetAmountUsdCents) ||
+        Math.round((Number(project.budget) || 0) * 100)
+      const pricingCents = Number(project.budgetUsdCents) || 0
+      const computedCents = estimateScopeBudgetCents(phases)
+      const budgetTotalCents =
+        pricingCents > 0
+          ? pricingCents
+          : computedCents > 0
+            ? computedCents
+            : storedCents
 
       return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
-    }, [project.scope, project.budgetAmountUsdCents])
+    }, [
+      project.scope,
+      project.budgetUsdCents,
+      project.budgetAmountUsdCents,
+      project.budget,
+    ])
 
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
   const formatBudget = React.useCallback(
@@ -2760,6 +2807,7 @@ export default function ProjectDetails() {
             faqs: d.faqs ?? [],
             recentQuestions: d.recentQuestions ?? [],
             team: d.team ?? [],
+            assignedTeam: Array.isArray(d.team) ? d.team : [],
             deliverables: d.deliverables ?? [],
             scope: (() => {
               // Build team member lookup for rehydrating assignedMember
@@ -2791,6 +2839,7 @@ export default function ProjectDetails() {
                           const taskName = t.task || t.taskName || ""
                           const taskKey = `${phaseIdx}:${taskName}`
                           const memberId =
+                            t.assigneeUserId ||
                             t.assignedMemberId ||
                             t.assignedMember?.id ||
                             savedAssignments[taskKey] ||
@@ -2808,8 +2857,8 @@ export default function ProjectDetails() {
                                   teamMate.email?.split("@")[0] ||
                                   "",
                                 avatarUrl: teamMate.avatarUrl || null,
-                                role: teamMate.role || teamMate.jobTitle || "",
-                                jobTitles: teamMate.jobTitles ?? [],
+                                role: jobTitleOf(teamMate),
+                                jobTitles: jobTitlesOf(teamMate),
                                 hourlyRate:
                                   teamMate.hourlyRate ??
                                   teamMate.rateMax ??
@@ -2912,11 +2961,11 @@ export default function ProjectDetails() {
         const fetchTeamData = async () => {
           try {
             const teamRes = await TeamsAPI.getMyTeam()
-            const teamData = teamRes?.data
-            if (!teamData?.id) return
-            const membersRes = await TeamsAPI.getTeamMembers(teamData.id)
-            const members = membersRes?.data
-            if (!Array.isArray(members) || members.length === 0) return
+            const teamData = teamRes?.data?.data ?? teamRes?.data
+            const members = Array.isArray(teamData?.members)
+              ? teamData.members
+              : []
+            if (members.length === 0) return
             // Hydrate team members with profile data
             const hydratedMembers = await Promise.all(
               members.map(async (m: any) => {
@@ -2941,19 +2990,25 @@ export default function ProjectDetails() {
                   hourlyRate: profile?.hourlyRate ?? null,
                   workSchedule: profile?.workSchedule ?? null,
                   customHoursPerWeek: profile?.customHoursPerWeek ?? null,
-                  location: profile?.location || profile?.country || null,
-                  languages: profile?.languages ?? [],
-                  skills: profile?.skills ?? [],
-                  experience: profile?.experienceLevel || profile?.experience || null,
+                  location:
+                    profile?.location || profile?.country || m.location || null,
+                  languages: (profile?.languages ?? []).map(coerceName),
+                  skills: (profile?.skills ?? []).map(coerceName),
+                  experience: coerceName(profile?.experienceLevel) || null,
                   isLead: m.role === "owner" || m.role === "lead",
                   isOnline: false,
                 }
               })
             )
-            setProject((prev: any) => ({
-              ...prev,
-              team: hydratedMembers,
-            }))
+            setProject((prev: any) => {
+              // Union the roster with anyone already assigned to this project
+              // so assigned members never drop out of the picker even if they
+              // aren't (yet) in the roster.
+              const byId = new Map<string, any>()
+              for (const m of prev.team ?? []) byId.set(m.id || m.userId, m)
+              for (const m of hydratedMembers) byId.set(m.id || m.userId, m)
+              return { ...prev, team: Array.from(byId.values()) }
+            })
           } catch {
             // team fetch failed — leave as seed/empty
           }
@@ -5211,21 +5266,36 @@ export default function ProjectDetails() {
                                     isOnline: boolean
                                   }
                                   const members = project.team as TeamMember[]
+                                  // Profiles may deliver languages/skills/location
+                                  // as objects ({ name, fluency, ... }); coerce to
+                                  // display strings before rendering.
+                                  const toName = (x: any): string =>
+                                    typeof x === "string"
+                                      ? x
+                                      : (x?.name ?? x?.label ?? x?.title ?? "")
                                   const lead =
                                     members.find((m) => m.isLead) ?? members[0]
                                   const allLocations = Array.from(
                                     new Set(
                                       members
-                                        .map((m) => m.location)
-                                        .filter((l): l is string => !!l)
+                                        .map((m) => toName(m.location))
+                                        .filter(Boolean)
                                     )
                                   )
                                   const allLanguages = Array.from(
-                                    new Set(members.flatMap((m) => m.languages))
-                                  )
+                                    new Set(
+                                      members.flatMap((m) =>
+                                        (m.languages ?? []).map(toName)
+                                      )
+                                    )
+                                  ).filter(Boolean)
                                   const allSkills = Array.from(
-                                    new Set(members.flatMap((m) => m.skills))
-                                  )
+                                    new Set(
+                                      members.flatMap((m) =>
+                                        (m.skills ?? []).map(toName)
+                                      )
+                                    )
+                                  ).filter(Boolean)
                                   const visibleSkills = allSkills.slice(0, 5)
                                   const extraSkillCount =
                                     allSkills.length - visibleSkills.length
@@ -9011,20 +9081,38 @@ export default function ProjectDetails() {
                     }
                     onPhasesChange={handleScopeChange}
                     teamMembers={(() => {
-                      const apiTeam = (project.team ?? []).map((m: any) => ({
-                        id: m.id || m.userId || crypto.randomUUID(),
-                        firstName: m.firstName || m.name || "User",
-                        username: m.username || m.email?.split("@")[0] || "",
-                        avatarUrl: m.avatarUrl || null,
-                        role: m.role || m.jobTitle || "",
-                        jobTitles: m.jobTitles ?? [],
-                        hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
-                        workSchedule: m.workSchedule ?? m.availability ?? null,
-                        customHoursPerWeek: m.customHoursPerWeek ?? null,
-                        location: m.location ?? m.country ?? null,
-                        experience: m.experience ?? m.experienceLevel ?? null,
-                      }))
-                      return apiTeam.length > 0 ? apiTeam : SEED_TEAM_MEMBERS
+                      const apiTeam = (project.team ?? []).map((m: any) => {
+                        return {
+                          id: m.id || m.userId || crypto.randomUUID(),
+                          firstName: m.firstName || m.name || "User",
+                          username: m.username || m.email?.split("@")[0] || "",
+                          avatarUrl: m.avatarUrl || null,
+                          role: jobTitleOf(m),
+                          jobTitles: jobTitlesOf(m),
+                          hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+                          workSchedule:
+                            m.workSchedule ?? m.availability ?? null,
+                          customHoursPerWeek: m.customHoursPerWeek ?? null,
+                          location:
+                            coerceName(m.location) ||
+                            coerceName(m.country) ||
+                            null,
+                          experience:
+                            coerceName(m.experience) ||
+                            coerceName(m.experienceLevel) ||
+                            null,
+                        }
+                      })
+                      const ids = Array.isArray(project.teamMemberIds)
+                        ? project.teamMemberIds.map(String)
+                        : []
+                      const subset =
+                        ids.length > 0
+                          ? apiTeam.filter((m: any) =>
+                              ids.includes(String(m.id))
+                            )
+                          : apiTeam
+                      return subset.length > 0 ? subset : SEED_TEAM_MEMBERS
                     })()}
                   />
                 </div>
@@ -9096,14 +9184,47 @@ export default function ProjectDetails() {
                     Current Team
                   </span>
 
-                  <Avatar size="sm" className="border-2 border-white">
-                    {user?.avatarUrl && (
-                      <AvatarImage src={user.avatarUrl} alt={user.firstName || "Owner"} />
-                    )}
-                    <AvatarFallback>
-                      {user?.firstName?.[0]?.toUpperCase() || "O"}
-                    </AvatarFallback>
-                  </Avatar>
+                  {Array.isArray(project.assignedTeam) &&
+                  project.assignedTeam.length > 0 ? (
+                    <div className="flex items-center -space-x-2">
+                      {project.assignedTeam
+                        .slice(0, 5)
+                        .map((m: any, i: number) => (
+                          <Avatar
+                            key={m.userId ?? m.username ?? i}
+                            size="sm"
+                            className="border-2 border-white"
+                          >
+                            {m.avatarUrl && (
+                              <AvatarImage
+                                src={m.avatarUrl}
+                                alt={m.firstName || "Member"}
+                              />
+                            )}
+                            <AvatarFallback>
+                              {(m.firstName || "?").charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        ))}
+                      {project.assignedTeam.length > 5 && (
+                        <span className="pl-3 text-xs font-medium text-dark-blue-400">
+                          +{project.assignedTeam.length - 5}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <Avatar size="sm" className="border-2 border-white">
+                      {user?.avatarUrl && (
+                        <AvatarImage
+                          src={user.avatarUrl}
+                          alt={user.firstName || "Owner"}
+                        />
+                      )}
+                      <AvatarFallback>
+                        {user?.firstName?.[0]?.toUpperCase() || "O"}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
                 </div>
 
                 <div className="mt-6 space-y-3">

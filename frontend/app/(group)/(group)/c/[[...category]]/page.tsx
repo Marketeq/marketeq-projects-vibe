@@ -6783,13 +6783,14 @@ export default function Projects() {
                                   Find {currentName.toLowerCase()} talent to
                                   bring your projects to life.
                                 </p>
-                              </div>
                               <div className="flex flex-col gap-y-4">
                                 <Button
                                   asChild
                                   className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-[#2459DB] hover:text-[#2459DB] px-6 h-12 text-base font-semibold"
                                   size="lg"
                                 >
+
+
                                   <NextLink href={listingHref("talent")}>
                                     Explore More{" "}
                                     <ArrowRight className="size-[15px] ml-2" />
@@ -7503,7 +7504,6 @@ export default function Projects() {
                                   Find {currentName.toLowerCase()} talent to
                                   bring your projects to life.
                                 </p>
-                              </div>
                               <div className="flex flex-col gap-y-4">
                                 <Button
                                   asChild

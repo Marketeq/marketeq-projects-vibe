@@ -49,5 +49,15 @@ export abstract class ProjectRepository {
     payload: DeepPartial<Project>,
   ): Promise<Project | null>;
 
+  abstract updatePublishedSnapshot(
+    id: Project['id'],
+    data: {
+      budget: number;
+      scope: unknown;
+      duration: string | null;
+      estimatedHours: number | null;
+    },
+  ): Promise<void>;
+
   abstract softDelete(id: Project['id']): Promise<void>;
 }

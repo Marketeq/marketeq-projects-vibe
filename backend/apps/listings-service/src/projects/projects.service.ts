@@ -372,6 +372,7 @@ export class ProjectsService {
       updatedAt: project.updatedAt,
       budget,
       priceMin: budget,
+      budgetUsdCents: budget != null ? Math.round(budget * 100) : null,
       estimatedHours: project.estimatedHours ?? null,
       duration: project.duration ?? null,
       mediaUrls: this.resolveMediaUrls(project.mediaUrls, project.categories ?? project.category),
