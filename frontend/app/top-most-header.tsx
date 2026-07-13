@@ -1,11 +1,11 @@
 "use client"
 
-import React, { useCallback, useEffect, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  useAuth,
   hasCompletedClientOnboarding,
   hasCompletedTalentOnboarding,
+  useAuth,
 } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
 import {
@@ -49,10 +49,14 @@ import {
 } from "@blend-metrics/icons"
 import { createPortal } from "react-dom"
 import { ROLE } from "@/types/user"
-import { CounterOfferDialog } from "@/components/counter-offer-dialog"
+import {
+  CounterOfferDialog,
+  type CounterOfferSubmissionData,
+} from "@/components/counter-offer-dialog"
 import { Campaigns, Logo3, Project, Talent } from "@/components/icons"
 import { InviteWindowTrigger } from "@/components/invite-window"
 import NextLink from "@/components/next-link"
+import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
@@ -94,6 +98,8 @@ import {
 import { ScrollBar } from "@/components/ui"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
+const OFFER_ACCEPTED_STORAGE_PREFIX = "inbox_offer_accepted"
+const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
 
 const readMetadataString = (metadata: NotificationMetadata, key: string) => {
   const value = metadata?.[key]
@@ -103,9 +109,7 @@ const readMetadataString = (metadata: NotificationMetadata, key: string) => {
 }
 
 const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    value
-  )
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 
 const getOfferJobHref = (
   metadata: NotificationMetadata,
@@ -156,12 +160,72 @@ const getInboxHref = (href?: string) => {
   return normalizeInboxHref(href)
 }
 
+const withAcceptedOfferState = (href: string, contractId?: string) => {
+  try {
+    const url = new URL(
+      href,
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://localhost"
+    )
+    url.searchParams.set("offerStatus", "accepted")
+    if (contractId) url.searchParams.set("contractId", contractId)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    const separator = href.includes("?") ? "&" : "?"
+    const contractParam = contractId
+      ? `&contractId=${encodeURIComponent(contractId)}`
+      : ""
+    return `${href}${separator}offerStatus=accepted${contractParam}`
+  }
+}
+
+const storeAcceptedOfferCard = (
+  contractId: string | undefined,
+  details: OfferDialogData,
+  acceptanceMessage?: string
+) => {
+  if (!contractId || typeof window === "undefined") return
+
+  sessionStorage.setItem(
+    `${OFFER_ACCEPTED_STORAGE_PREFIX}:${contractId}`,
+    JSON.stringify({
+      status: "accepted",
+      contractId,
+      offerTitle: details.offerTitle,
+      offerType: details.offerType,
+      offerRate: details.offerRate,
+      role: details.role,
+      duration: details.duration,
+      schedule: details.schedule,
+      startDate: details.startDate,
+      acceptanceMessage,
+    })
+  )
+}
+
+const storeCounterOfferCard = (
+  contractId: string | undefined,
+  details: OfferDialogData,
+  counterOffer: CounterOfferSubmissionData
+) => {
+  if (!contractId || typeof window === "undefined") return
+
+  sessionStorage.setItem(
+    `${COUNTER_OFFER_STORAGE_PREFIX}:${contractId}`,
+    JSON.stringify({
+      status: "submitted",
+      contractId,
+      offerTitle: details.offerTitle,
+      offerType: details.offerType,
+      expiresLabel: details.expiresLabel,
+      ...counterOffer,
+    })
+  )
+}
+
 const normalizeContactText = (value?: string) =>
-  value
-    ?.trim()
-    .replace(/^@/, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
+  value?.trim().replace(/^@/, "").toLowerCase().replace(/\s+/g, " ")
 
 const getOfferThreadHref = (
   threads: InboxThreadSummary[],
@@ -410,9 +474,13 @@ const Notifications = () => {
     },
   })
 
-  const selectedOfferDetails = selectedOfferNotification
-    ? getOfferNotificationDetails(selectedOfferNotification)
-    : null
+  const selectedOfferDetails = useMemo(
+    () =>
+      selectedOfferNotification
+        ? getOfferNotificationDetails(selectedOfferNotification)
+        : null,
+    [selectedOfferNotification]
+  )
   const resetOfferDialogState = useCallback(() => {
     setOfferDialogMode("details")
     setOfferAcceptanceNote("")
@@ -480,7 +548,14 @@ const Notifications = () => {
         setOfferDialogOpen(false)
         setSelectedOfferNotification(null)
         resetOfferDialogState()
-        router.push(acceptedMessageHref)
+        storeAcceptedOfferCard(
+          details.contractId,
+          details,
+          offerAcceptanceNote.trim()
+        )
+        router.push(
+          withAcceptedOfferState(acceptedMessageHref, details.contractId)
+        )
         return
       }
 
@@ -501,14 +576,22 @@ const Notifications = () => {
           setOfferDialogOpen(false)
           setSelectedOfferNotification(null)
           resetOfferDialogState()
+          storeAcceptedOfferCard(
+            details.contractId,
+            details,
+            offerAcceptanceNote.trim()
+          )
           router.push(
-            getOfferAcceptedMessageHref(
-              metadata,
-              details.messageHref,
-              offerContract.clientId,
-              inboxThreads,
-              details.senderUsername,
-              details.senderDisplayName
+            withAcceptedOfferState(
+              getOfferAcceptedMessageHref(
+                metadata,
+                details.messageHref,
+                offerContract.clientId,
+                inboxThreads,
+                details.senderUsername,
+                details.senderDisplayName
+              ),
+              details.contractId
             )
           )
         }
@@ -519,14 +602,22 @@ const Notifications = () => {
       setSelectedOfferNotification(null)
       resetOfferDialogState()
       if (accepted) {
+        storeAcceptedOfferCard(
+          details.contractId,
+          details,
+          offerAcceptanceNote.trim()
+        )
         router.push(
-          getOfferAcceptedMessageHref(
-            metadata,
-            details.messageHref,
-            response.clientId ?? offerContract?.clientId,
-            inboxThreads,
-            details.senderUsername,
-            details.senderDisplayName
+          withAcceptedOfferState(
+            getOfferAcceptedMessageHref(
+              metadata,
+              details.messageHref,
+              response.clientId ?? offerContract?.clientId,
+              inboxThreads,
+              details.senderUsername,
+              details.senderDisplayName
+            ),
+            details.contractId
           )
         )
       }
@@ -889,6 +980,35 @@ const Notifications = () => {
           data={selectedOfferDetails}
           onCancel={() => setOfferDialogMode("details")}
           onReview={() => {}}
+          onSubmit={(counterOffer) => {
+            const messageHref = getOfferAcceptedMessageHref(
+              selectedOfferNotification?.metadata,
+              selectedOfferDetails.messageHref,
+              undefined,
+              inboxThreads,
+              selectedOfferDetails.senderUsername,
+              selectedOfferDetails.senderDisplayName
+            )
+
+            storeCounterOfferCard(
+              selectedOfferDetails.contractId,
+              selectedOfferDetails,
+              counterOffer
+            )
+            setOfferDialogOpen(false)
+            setSelectedOfferNotification(null)
+            resetOfferDialogState()
+
+            const separator = messageHref.includes("?") ? "&" : "?"
+            const contractParam = selectedOfferDetails.contractId
+              ? `&contractId=${encodeURIComponent(
+                  selectedOfferDetails.contractId
+                )}`
+              : ""
+            router.push(
+              `${messageHref}${separator}offerStatus=counter-submitted${contractParam}`
+            )
+          }}
         />
       ) : null}
     </>

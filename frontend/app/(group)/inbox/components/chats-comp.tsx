@@ -2,6 +2,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
@@ -63,6 +64,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
   CircularProgressDropzone,
   CircularProgressDropzoneState,
   Dialog,
@@ -131,6 +133,8 @@ interface ChatsProps {
     createdAt: string
     attachments?: Message["attachments"]
   }) => void
+  acceptedOfferCard?: AcceptedOfferCardData | null
+  counterOfferCard?: CounterOfferCardData | null
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -208,6 +212,32 @@ const DateSeparator = ({ label }: { label: string }) => (
   </div>
 )
 
+export interface AcceptedOfferCardData {
+  status: "accepted"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  role: string
+  duration: string
+  schedule: string
+  startDate: string
+  acceptanceMessage?: string
+}
+
+export interface CounterOfferCardData {
+  status: "submitted"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  duration: string
+  schedule: string
+  startDate: string
+  expiresLabel: string
+  message?: string
+}
+
 export function Chats({
   selectedConversation,
   jwtToken,
@@ -218,7 +248,10 @@ export function Chats({
   highlightMessageId,
   onHighlightConsumed,
   onIndexNewMessage,
+  acceptedOfferCard,
+  counterOfferCard,
 }: ChatsProps) {
+  const router = useRouter()
   const [textareaValue, setTextareaValue] = useState("")
   const lastTypedAtRef = useRef(0)
   const userTypedRef = useRef(false)
@@ -230,6 +263,38 @@ export function Chats({
   const [receiverUser, setReceiverUser] = useState<User | null>(null)
   const [counterpartDeleted, setCounterpartDeleted] = useState(false)
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
+  const acceptedOfferToastRef = useRef<string | null>(null)
+  const submittedCounterOfferRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (
+      !acceptedOfferCard ||
+      acceptedOfferToastRef.current === acceptedOfferCard.contractId
+    ) {
+      return
+    }
+
+    acceptedOfferToastRef.current = acceptedOfferCard.contractId
+    toast({
+      title: "Offer Accepted",
+      description: "Your contract is now active.",
+    })
+  }, [acceptedOfferCard])
+
+  useEffect(() => {
+    if (
+      !counterOfferCard ||
+      submittedCounterOfferRef.current === counterOfferCard.contractId
+    ) {
+      return
+    }
+
+    submittedCounterOfferRef.current = counterOfferCard.contractId
+    toast({
+      title: "Counter Offer Submitted",
+      description: "Sent to the client. We'll notify you when they respond.",
+    })
+  }, [counterOfferCard])
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
     "Messages"
   )
@@ -2033,12 +2098,17 @@ export function Chats({
                 <p className="text-sm font-medium">{keyError}</p>
               </div>
             )}
-            {!isSwitching && displayedMessages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
-                <Send className="size-8 stroke-[1.5]" />
-                <p className="text-sm">No messages yet. Say hello!</p>
-              </div>
-            )}
+            {!isSwitching &&
+              displayedMessages.length === 0 &&
+              !(
+                selectedTab === "Messages" &&
+                (acceptedOfferCard || counterOfferCard)
+              ) && (
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                  <Send className="size-8 stroke-[1.5]" />
+                  <p className="text-sm">No messages yet. Say hello!</p>
+                </div>
+              )}
             {!isSwitching &&
               displayedMessages.map((m, i) => {
                 const prev = i > 0 ? displayedMessages[i - 1] : null
@@ -2136,6 +2206,105 @@ export function Chats({
                   </React.Fragment>
                 )
               })}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              acceptedOfferCard && (
+                <div className="flex justify-end rounded-lg">
+                  <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                    <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                      <span className="font-bold">Me</span>{" "}
+                      {currentUser.username ? (
+                        <span>@{currentUser.username} </span>
+                      ) : null}
+                      <span className="font-semibold underline decoration-primary-500 decoration-2 underline-offset-2">
+                        accepted the offer
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {acceptedOfferCard.acceptanceMessage ||
+                        "Excited to get started!"}
+                    </p>
+
+                    <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                        Offer Accepted!
+                      </h3>
+                      <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                        {acceptedOfferCard.offerTitle}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {acceptedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-xs leading-[14.52px] text-gray-500">
+                          {acceptedOfferCard.startDate.startsWith("Starts")
+                            ? acceptedOfferCard.startDate
+                            : `Starts on ${acceptedOfferCard.startDate}`}
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-4 w-fit px-5 text-primary-500"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() =>
+                          router.push(
+                            `/my-contracts?contractId=${encodeURIComponent(
+                              acceptedOfferCard.contractId
+                            )}`
+                          )
+                        }
+                      >
+                        View Contract
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching && selectedTab === "Messages" && counterOfferCard && (
+              <div className="flex justify-end rounded-lg">
+                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                    <span className="font-bold">You</span>{" "}
+                    {currentUser.username ? (
+                      <span>@{currentUser.username} </span>
+                    ) : null}
+                    <span className="font-semibold">sent a counter offer</span>
+                  </div>
+
+                  {counterOfferCard.message ? (
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {counterOfferCard.message}
+                    </p>
+                  ) : null}
+
+                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                      Counter Offer Submitted
+                    </h3>
+                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                      {counterOfferCard.offerTitle}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {counterOfferCard.offerType}
+                      </Badge>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        This counteroffer expires{" "}
+                        {counterOfferCard.expiresLabel}.
+                      </span>
+                    </div>
+                    <Button
+                      className="mt-4 w-fit px-5 text-primary-500"
+                      variant="outlined"
+                      visual="gray"
+                    >
+                      View Details
+                    </Button>
+                  </Card>
+                </article>
+              </div>
+            )}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
