@@ -19,6 +19,18 @@ import { JwtUser } from '../auth/types/jwt-user.type';
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
+  @ApiOperation({ summary: "Get the caller's own team roster (incl. owner)" })
+  @Get('my-team')
+  @HttpCode(HttpStatus.OK)
+  async getMyTeam(@CurrentUser() user: JwtUser) {
+    const team = await this.teamsService.getMyTeam(user.sub);
+    return {
+      success: true,
+      data: team,
+      message: 'Team retrieved successfully',
+    };
+  }
+
   @ApiOperation({ summary: 'Add a member to a team' })
   @Post(':teamId/members')
   @HttpCode(HttpStatus.CREATED)
