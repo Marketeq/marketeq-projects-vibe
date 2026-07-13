@@ -7991,31 +7991,6 @@ function PublishProject({
         while (categoryRows.length < 3)
           categoryRows.push({ category: "", subCategories: [] })
 
-        const rawCategorySelections = Array.isArray(draft?.categorySelections)
-          ? draft.categorySelections
-          : []
-        const fallbackSubcategories = Array.isArray(draft?.subcategories)
-          ? draft.subcategories
-          : Array.isArray(draft?.subCategories)
-            ? draft.subCategories
-            : []
-        const categoryRows =
-          rawCategorySelections.length > 0
-            ? rawCategorySelections.map((cs: any) => ({
-                category: cs?.category || "",
-                subCategories: Array.isArray(cs?.subCategories)
-                  ? cs.subCategories
-                  : [],
-              }))
-            : Array.isArray(draft?.categories) && draft.categories.length > 0
-              ? draft.categories.map((cat: string, i: number) => ({
-                  category: cat,
-                  subCategories: i === 0 ? fallbackSubcategories : [],
-                }))
-              : []
-        while (categoryRows.length < 3)
-          categoryRows.push({ category: "", subCategories: [] })
-
         projectInfoMethods.reset({
           title: draft?.title ?? "",
           category: categoryRows.slice(0, 3),
