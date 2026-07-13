@@ -118,6 +118,37 @@ export class PublishController {
     }
   }
 
+  @Post('project/:projectId/faqs/suggest')
+  async suggestFaqs(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.suggestFaqs(req.user.sub, projectId);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Post('project/:projectId/faqs/answer')
+  async suggestFaqAnswer(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body('question') question: string,
+  ) {
+    try {
+      return await this.publishService.suggestFaqAnswer(
+        req.user.sub,
+        projectId,
+        question,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Get('projects/mine')
   async getMyProjects(@Req() req: AuthenticatedRequest) {
     try {
@@ -169,6 +200,22 @@ export class PublishController {
     }
   }
 
+  @Put('project/:projectId/unpublish')
+  async unpublishProject(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.unpublishProject(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Post('media')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -201,7 +248,7 @@ export class PublishController {
     const featuredVideoFile =
       files?.featuredVideo?.[0] ?? files?.videoUrl?.[0];
 
-    if (!featuredImageFile) {
+    if (!featuredImageFile && !dto.featuredImage) {
       throw new BadRequestException('Featured image is required.');
     }
 
@@ -213,7 +260,7 @@ export class PublishController {
       }
     });
 
-    if (!this.imageValidator.isValid(featuredImageFile)) {
+    if (featuredImageFile && !this.imageValidator.isValid(featuredImageFile)) {
       throw new BadRequestException(
         this.imageValidator.buildErrorMessage(featuredImageFile),
       );
@@ -234,12 +281,13 @@ export class PublishController {
   async updateGalleryImages(
     @Req() req: AuthenticatedRequest,
     @Param('projectId') projectId: string,
-    @Body() body: { additionalImages: string[] },
+    @Body() body: { additionalImages: string[]; hiddenImages?: string[] },
   ) {
     return this.publishService.updateMediaGallery(
       req.user.sub,
       projectId,
       body.additionalImages ?? [],
+      body.hiddenImages,
     );
   }
 

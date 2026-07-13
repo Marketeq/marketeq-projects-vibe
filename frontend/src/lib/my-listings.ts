@@ -321,9 +321,11 @@ async function fetchBackendListings(): Promise<MyListing[]> {
       category: p.categories?.[0] || "Uncategorized",
       description: p.shortDescription || p.fullDescription,
       mediaUrl:
+        p.mediaUrls?.[0] ||
         (Array.isArray(p.media)
           ? p.media[0]?.featuredImage
-          : p.media?.featuredImage) || undefined,
+          : p.media?.featuredImage) ||
+        undefined,
       budget: p.budget
         ? `$${Number(p.budget).toLocaleString()} budget`
         : "Budget TBD",

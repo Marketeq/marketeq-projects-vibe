@@ -21,6 +21,9 @@ import { useCallbackRef, useControllableState } from "@/utils/hooks"
 import * as hooks from "@/utils/hooks"
 import {
   Check,
+  Edit03,
+  Eye,
+  EyeOff,
   File,
   Image as ImageIcon,
   Plus,
@@ -557,13 +560,32 @@ const SquareShapeDropzoneSuccess = ({
   meta,
   onRemove,
   open,
+  hidden,
+  onToggleHidden,
 }: {
   meta: File
   onRemove: () => void
   open: () => void
+  hidden?: boolean
+  onToggleHidden?: (hidden: boolean) => void
 }) => {
   const [dataUrl, setDataUrl] = React.useState<string>()
+  const [isHidden, setIsHidden] = React.useState(hidden ?? false)
   React.useEffect(() => {
+    setIsHidden(hidden ?? false)
+  }, [hidden])
+  const toggleHidden = () => {
+    const next = !isHidden
+    setIsHidden(next)
+    onToggleHidden?.(next)
+  }
+  const persistedUrl = (meta as File & { __persistedUrl?: string })
+    .__persistedUrl
+  React.useEffect(() => {
+    if (persistedUrl) {
+      setDataUrl(persistedUrl)
+      return
+    }
     const reader = new FileReader()
     const onLoad = () => {
       setDataUrl(reader.result as string)
@@ -574,43 +596,62 @@ const SquareShapeDropzoneSuccess = ({
     return () => {
       reader.removeEventListener("load", onLoad)
     }
-  }, [meta])
+  }, [meta, persistedUrl])
   return (
     <div className="group relative border-2 border-gray-300 rounded-[5px] h-[100px] overflow-hidden">
       {dataUrl ? (
         <img
-          className="size-full object-cover"
+          className={cn(
+            "size-full object-cover transition-all duration-300",
+            isHidden && "opacity-40 blur-[1px]"
+          )}
           src={dataUrl}
           alt={getFileName(meta)}
         />
       ) : null}
 
-      <div className="absolute inset-0 bg-black/20 opacity-0 transition duration-300 group-hover:opacity-100">
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center gap-x-2 px-2">
-          <button
-            className="hover:bg-black inline-flex text-xs items-center font-semibold text-white gap-x-1.5 py-1.5 px-2.5 rounded-[5px] bg-black/40 focus-visible:outline-none"
-            onClick={open}
-            type="button"
-          >
-            <Repeat04 className="size-3.5" /> Change Image
-          </button>
-          <button
-            className="hover:bg-black hover:text-error-500 inline-flex text-xs items-center font-semibold text-white gap-x-1.5 py-1.5 px-2.5 rounded-[5px] bg-black/40 focus-visible:outline-none"
-            onClick={onRemove}
-            type="button"
-          >
-            <Trash01 className="size-3.5" /> Remove
-          </button>
+      {isHidden && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-100 group-hover:opacity-0 transition-opacity duration-300">
+          <div className="flex items-center gap-1 bg-white/80 rounded px-2 py-1">
+            <EyeOff className="size-3 text-gray-500" />
+            <span className="text-[10px] font-medium text-gray-600">Hidden</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      <button
-        className="absolute right-2.5 transition duration-300 group-hover:opacity-100 opacity-0 text-white hover:text-error-500 top-2.5 size-7 focus-visible:outline-none bg-black/20 hover:bg-black rounded-full inline-flex items-center justify-center"
-        onClick={onRemove}
-        type="button"
-      >
-        <Trash01 className="size-4" />
-      </button>
+      <div className="absolute inset-0 bg-black/40 opacity-0 transition duration-200 group-hover:opacity-100 flex items-center justify-center gap-x-1.5">
+        <button
+          className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition focus-visible:outline-none"
+          onClick={open}
+          type="button"
+          aria-label="Change image"
+        >
+          <Edit03 className="size-4 text-white" />
+        </button>
+        <button
+          className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition focus-visible:outline-none"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleHidden()
+          }}
+          type="button"
+          aria-label={isHidden ? "Show image" : "Hide image"}
+        >
+          {isHidden ? (
+            <Eye className="size-4 text-white" />
+          ) : (
+            <EyeOff className="size-4 text-white" />
+          )}
+        </button>
+        <button
+          className="size-8 rounded-full bg-white/20 hover:bg-red-500/80 inline-flex items-center justify-center transition focus-visible:outline-none"
+          onClick={onRemove}
+          type="button"
+          aria-label="Remove image"
+        >
+          <Trash2 className="size-4 text-white" />
+        </button>
+      </div>
     </div>
   )
 }
@@ -625,6 +666,8 @@ export const SquareShapeDropzone = ({
   acceptedExtensions = ACCEPTED_EXTENSIONS,
   onBlur,
   className,
+  isHidden,
+  onToggleHidden,
 }: {
   maxSize?: number
   maxFiles?: number
@@ -635,6 +678,8 @@ export const SquareShapeDropzone = ({
   acceptedExtensions?: string[]
   onBlur?: () => void
   className?: string
+  isHidden?: boolean
+  onToggleHidden?: (hidden: boolean) => void
 }) => {
   const [, setErrors] = useControllableState<undefined | string[]>({
     onChange: (errors) => {
@@ -792,6 +837,8 @@ export const SquareShapeDropzone = ({
                         meta={meta}
                         onRemove={() => onRemove(idx)}
                         open={open}
+                        hidden={isHidden}
+                        onToggleHidden={onToggleHidden}
                       />
                     ) : (
                       <div className="border-2 border-gray-300 border-dashed rounded-[5px] h-[100px]">

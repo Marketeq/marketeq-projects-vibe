@@ -16,6 +16,7 @@ export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
   synchronize: false,
+  migrationsTableName: 'sug_migrations', // avoids colliding with public.migrations (shared by other services with an identically named InitSchema1710000000000 migration)
   entities: [__dirname + '/**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 });

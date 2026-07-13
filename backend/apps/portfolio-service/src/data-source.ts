@@ -1,10 +1,12 @@
+import 'reflect-metadata';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
-import { PortfolioItem } from './portfolio/portfolio.entity';
+import { PortfolioItem } from './entities/portfolio-item.entity';
 
 export default new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
+  synchronize: false,
   entities: [PortfolioItem],
-  migrations: ['apps/portfolio-service/migrations/*.ts'],
+  migrations: [__dirname + '/migrations/*{.ts,.js}'],
 });

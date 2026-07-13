@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -8,6 +9,18 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ProjectCategorySelectionDto } from './project-category-selection.dto';
+
+export class FaqItemDto {
+  @IsString()
+  question: string;
+
+  @IsString()
+  answer: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_ai_generated?: boolean;
+}
 
 export class UpsertProjectDraftDto {
   @ApiProperty({ required: false })
@@ -111,4 +124,21 @@ export class UpsertProjectDraftDto {
   @IsOptional()
   @IsString()
   listingType?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  projectType?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  videoUrl?: string;
+
+  @ApiProperty({ type: [FaqItemDto], required: false })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FaqItemDto)
+  faqs?: FaqItemDto[];
 }

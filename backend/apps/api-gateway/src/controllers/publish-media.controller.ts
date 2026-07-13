@@ -95,6 +95,8 @@ export class PublishMediaController {
     }
     if (req.headers.authorization) {
       headers['authorization'] = req.headers.authorization as string
+    } else if ((req as any).cookies?.access_token) {
+      headers['authorization'] = `Bearer ${(req as any).cookies.access_token}`
     }
     const user = (req as any).user
     if (user) {

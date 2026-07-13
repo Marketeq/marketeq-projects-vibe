@@ -64,6 +64,18 @@ export const ProjectAPI = {
   GetMyProjects: () => {
     return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
   },
+  SuggestFaqs: (projectId: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,
+      {}
+    )
+  },
+  SuggestFaqAnswer: (projectId: string, question: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/faqs/answer`,
+      { question }
+    )
+  },
   ReplaceProjectScope: (
     projectId: string,
     scope: Array<{
@@ -113,10 +125,14 @@ export const ProjectAPI = {
       },
     })
   },
-  UpdateGalleryImages: (projectId: string, additionalImages: string[]) => {
+  UpdateGalleryImages: (
+    projectId: string,
+    additionalImages: string[],
+    hiddenImages?: string[]
+  ) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/media/${projectId}/gallery`,
-      { additionalImages }
+      { additionalImages, hiddenImages }
     )
   },
   UploadRichTextImage: (data: FormData) => {
@@ -153,6 +169,12 @@ export const ProjectAPI = {
       {}
     )
   },
+  UnpublishProject: (projectId: string) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/unpublish`,
+      {}
+    )
+  },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
   },
@@ -166,5 +188,10 @@ export const ProjectAPI = {
       // not found
     }
     return null
+  },
+  getRecommended: (skills: string[], limit = 10) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (skills.length) params.set("skills", skills.join(","))
+    return AxiosRequest.get(`${LISTINGS_BASE}/v1/projects/recommended?${params}`)
   },
 }

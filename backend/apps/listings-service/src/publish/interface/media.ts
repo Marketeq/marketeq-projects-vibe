@@ -3,6 +3,7 @@ export class Media {
 
   featuredImage: string;
   additionalImages?: string[];
+  hiddenImages?: string[];
   featuredVideo?: string;
 
   projectId: string;

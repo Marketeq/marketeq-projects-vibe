@@ -31,7 +31,6 @@ export class PortfolioController {
     return this.svc.archive(dto.slug);
   }
 
-  // Owner extracted from JWT — users can only see their own portfolios; admins can pass ?owner=
   @UseGuards(AuthGuard('jwt'))
   @Get('list')
   list(@Request() req: any, @Query('owner') ownerParam?: string) {
@@ -51,11 +50,16 @@ export class PortfolioController {
     return this.svc.getPreviewBySlug(slug);
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'))
   @Delete(':slug')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('slug') slug: string, @Body('ownerUserId') ownerUserId: string) {
-    return this.svc.delete(slug, ownerUserId);
+  delete(@Param('slug') slug: string, @Request() req: any) {
+    return this.svc.delete(slug, req.user.userId);
+  }
+
+  @Get('health')
+  health() {
+    return { status: 'ok', service: 'portfolio-service', timestamp: new Date().toISOString() };
   }
 
   // RabbitMQ

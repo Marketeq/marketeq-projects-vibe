@@ -239,8 +239,9 @@ export default function InboxRoot() {
       if (!token) return
 
       // 0) Fetch full user profile (includes username)
+      let me: any = null
       try {
-        const me = await apiFetch<any>("/user/me", {
+        me = await apiFetch<any>("/user/me", {
           headers: { Authorization: `Bearer ${token}` },
         })
         setCurrentUserProfile(me)
@@ -249,10 +250,10 @@ export default function InboxRoot() {
       }
 
       // 1) Ensure keypair exists, device registered, public key pushed
-      await ensureEncryptionKeysExist()
+      const uid = me?.id ?? me?.data?.user?.id ?? getCurrentUser()?.id
+      await ensureEncryptionKeysExist(uid)
 
       // 2) Load private key from IndexedDB (keyed by userId)
-      const uid = getCurrentUser()?.id
       if (!uid) {
         console.error("No userId available after key setup")
         return
