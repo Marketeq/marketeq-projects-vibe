@@ -229,9 +229,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Reset password' })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
-    const { ipAddress } = extractRequestMeta(req);
-    return this.authService.resetPassword(dto, ipAddress);
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const { userAgent, ipAddress } = extractRequestMeta(req);
+    const result = await this.authService.resetPassword(dto, ipAddress, userAgent);
+    this.setAuthCookies(res, result);
+    return result;
   }
 
   @ApiOperation({ summary: 'Login using Google' })
