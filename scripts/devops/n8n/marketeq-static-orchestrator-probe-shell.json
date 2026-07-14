@@ -26,7 +26,7 @@
     },
     {
       "parameters": {
-        "command": "/bin/zsh -lc \"GH_TOKEN='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' VERCEL_TOKEN='vca_2fX5b9LjyDsOhsL6PkYNNFqg646Gz5BgZlC3NwxgQehqXnSMXR1bWedm' RENDER_TOKEN='rnd_aUwmRjyg2E07MFnNhHeZPJn9jPbm' EVENT='push' BRANCH='dev-main' SHA_INPUT='b586a2ef466e56b6c1fc365221f6d09e37fa8904' /usr/bin/curl -fsSL https://gist.githubusercontent.com/CTorres9800/640b424e591178b4b2f8a570cd099798/raw/bcb563b6b1fe4fa1fa9ace73df4e59ac90f34faa/marketeq_orchestrator_public.sh | /bin/zsh\""
+        "command": "/bin/zsh -lc \"GH_TOKEN=\\\"$GH_TOKEN\\\" VERCEL_TOKEN=\\\"$VERCEL_TOKEN\\\" RENDER_TOKEN=\\\"$RENDER_TOKEN\\\" EVENT='push' BRANCH='dev-main' SHA_INPUT='b586a2ef466e56b6c1fc365221f6d09e37fa8904' /usr/bin/curl -fsSL https://gist.githubusercontent.com/CTorres9800/640b424e591178b4b2f8a570cd099798/raw/bcb563b6b1fe4fa1fa9ace73df4e59ac90f34faa/marketeq_orchestrator_public.sh | /bin/zsh\""
       },
       "id": "exec-static-orch-shell",
       "name": "Exec",
