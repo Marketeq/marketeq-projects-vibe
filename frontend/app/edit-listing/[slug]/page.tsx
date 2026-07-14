@@ -53,6 +53,7 @@ import {
   ArrowUpLeft,
   ChartBreakoutCircle,
   Check,
+  XCircle,
   CheckCircle,
   CheckCircleBroken,
   ChevronDown,
@@ -6674,6 +6675,38 @@ const Team = () => {
     useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
+  const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
+    {}
+  )
+  const [wizardStatus, setWizardStatus] = React.useState<
+    Record<string, string>
+  >({})
+  const [wizardLeadLabel, setWizardLeadLabel] = React.useState("")
+  const [wizardLeadId, setWizardLeadId] = React.useState<string | null>(null)
+  const [wizardLeadSearch, setWizardLeadSearch] = React.useState("")
+  const { toast: wizardToast } = useToast()
+  const [wizardRemoveTarget, setWizardRemoveTarget] = React.useState<{
+    id: string
+    firstName: string
+  } | null>(null)
+  const confirmWizardRemove = (deactivate: boolean) => {
+    const t = wizardRemoveTarget
+    if (!t) return
+    if (deactivate) {
+      setWizardStatus((s) => ({ ...s, [t.id]: "Inactive" }))
+      wizardToast({
+        title: `${t.firstName} has been deactivated`,
+        variant: "success",
+      })
+    } else {
+      removeFromProject(t.id)
+      wizardToast({
+        title: `${t.firstName} has been removed`,
+        variant: "success",
+      })
+    }
+    setWizardRemoveTarget(null)
+  }
 
   const inProject = (m: any) =>
     m.role === "owner" || teamMemberIds.includes(String(m.userId || m.id))
@@ -6685,6 +6718,61 @@ const Team = () => {
         .toLowerCase()
         .includes(addQuery.trim().toLowerCase())
   )
+
+  const wizardHydratedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!draftProjectId || wizardHydratedRef.current) return
+    ;(async () => {
+      try {
+        const res = await ProjectAPI.GetProjectMembers(draftProjectId)
+        const pm = ((res as any)?.data ?? []) as any[]
+        if (Array.isArray(pm) && pm.length > 0) {
+          const roles: Record<string, string> = {}
+          const statuses: Record<string, string> = {}
+          let leadId: string | null = null
+          let leadLabel = ""
+          for (const m of pm) {
+            const uid = String(m.userId)
+            if (m.projectRole) roles[uid] = m.projectRole
+            if (m.status) statuses[uid] = m.status
+            if (m.isLead) {
+              leadId = uid
+              leadLabel = m.leadLabel || ""
+            }
+          }
+          setWizardRoles(roles)
+          setWizardStatus(statuses)
+          if (leadId) setWizardLeadId(leadId)
+          if (leadLabel) setWizardLeadLabel(leadLabel)
+        }
+      } catch {
+        /* no members yet */
+      }
+      wizardHydratedRef.current = true
+    })()
+  }, [draftProjectId])
+
+  React.useEffect(() => {
+    if (!draftProjectId || !wizardHydratedRef.current) return
+    const payload = projectMembers.map((m: any) => {
+      const id = String(m.userId || m.id)
+      const isOwner = m.role === "owner" || m.userId === currentUserId
+      const isLead = wizardLeadId ? id === wizardLeadId : isOwner
+      return {
+        userId: id,
+        projectRole: isOwner ? "Owner" : (wizardRoles[id] ?? "Contributor"),
+        status: wizardStatus[id] ?? "Active",
+        isLead,
+        leadLabel: isLead ? wizardLeadLabel || null : null,
+      }
+    })
+    if (payload.length === 0) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectMembers(draftProjectId, payload).catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardRoles, wizardStatus, wizardLeadId, wizardLeadLabel, teamMemberIds])
 
   const persistTeam = (next: string[]) => {
     setTeamMemberIds(next)
@@ -6699,6 +6787,7 @@ const Team = () => {
     setAddQuery("")
   }
   const removeFromProject = (userId: string) => {
+    if (wizardLeadId === String(userId)) setWizardLeadId(null)
     persistTeam(teamMemberIds.filter((id) => id !== String(userId)))
     const [, setPhases] = projectScopeMethods
     setPhases((prev) =>
@@ -6775,22 +6864,119 @@ const Team = () => {
                 Assign Project Lead
               </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton
-                    className="w-full h-[44px]"
-                    placeholder="Add user from team"
-                  />
-                  <ListboxOptions>
-                    {members.map((m: any) => (
-                      <ListboxOption
-                        key={m.userId}
-                        value={m.username || m.firstName || m.userId}
-                      >
-                        {m.firstName || m.username || "User"}
-                      </ListboxOption>
-                    ))}
-                  </ListboxOptions>
-                </Listbox>
+                {wizardLeadId ? (
+                  (() => {
+                    const lead = members.find(
+                      (mm: any) => String(mm.userId || mm.id) === wizardLeadId
+                    )
+                    return lead ? (
+                      <div className="flex h-[44px] items-center justify-between rounded-lg border border-gray-200 px-3">
+                        <div className="flex items-center gap-x-2">
+                          <Avatar size="sm">
+                            <AvatarImage
+                              src={lead.avatarUrl || undefined}
+                              alt={lead.firstName}
+                            />
+                            <AvatarFallback>
+                              {(lead.firstName || "U").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {lead.firstName || lead.username || "User"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-sm font-semibold text-gray-700 hover:text-dark-blue-400 focus-visible:outline-none"
+                          onClick={() => setWizardLeadId(null)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null
+                  })()
+                ) : (
+                  <>
+                    <InputGroup>
+                      <Input
+                        className="h-[44px]"
+                        placeholder="Search team members"
+                        value={wizardLeadSearch}
+                        onChange={(e) => setWizardLeadSearch(e.target.value)}
+                      />
+                      <InputLeftElement>
+                        <SearchMd className="text-gray-500 h-4 w-4" />
+                      </InputLeftElement>
+                    </InputGroup>
+                    {wizardLeadSearch &&
+                      (() => {
+                        const q = wizardLeadSearch.trim().toLowerCase()
+                        const candidates = members.filter(
+                          (mm: any) =>
+                            !q ||
+                            (mm.firstName || "").toLowerCase().includes(q) ||
+                            (mm.username || "").toLowerCase().includes(q)
+                        )
+                        return (
+                          <div className="mt-1 max-h-[240px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-lg">
+                            {candidates.length > 0 ? (
+                              candidates.map((mm: any) => (
+                                <button
+                                  key={mm.userId || mm.id}
+                                  type="button"
+                                  className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50"
+                                  onClick={() => {
+                                    setWizardLeadId(String(mm.userId || mm.id))
+                                    setWizardLeadSearch("")
+                                  }}
+                                >
+                                  <Avatar size="sm">
+                                    <AvatarImage
+                                      src={mm.avatarUrl || undefined}
+                                      alt={mm.firstName}
+                                    />
+                                    <AvatarFallback>
+                                      {(
+                                        mm.firstName ||
+                                        mm.username ||
+                                        "U"
+                                      ).charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <span className="text-sm font-semibold text-dark-blue-400">
+                                      {mm.firstName || mm.username || "User"}
+                                    </span>
+                                    {mm.username && (
+                                      <span className="text-sm font-light text-gray-500">
+                                        {" "}
+                                        @{mm.username}
+                                      </span>
+                                    )}
+                                    {mm.userId === currentUserId && (
+                                      <span className="text-sm font-semibold text-dark-blue-400">
+                                        {" "}
+                                        (You)
+                                      </span>
+                                    )}
+                                    {mm.recentJobTitle && (
+                                      <p className="text-xs font-light text-dark-blue-400">
+                                        {mm.recentJobTitle}
+                                      </p>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                No matching members.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                  </>
+                )}
               </div>
             </div>
             <div>
@@ -6798,26 +6984,56 @@ const Team = () => {
                 Select label
               </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton
-                    className="w-full h-[44px]"
-                    placeholder="None selected"
-                  />
-                  <ListboxOptions>
-                    <ListboxOption value="Project Lead">
-                      Project Lead
-                    </ListboxOption>
-                    <ListboxOption value="Account Manager">
-                      Account Manager
-                    </ListboxOption>
-                    <ListboxOption value="Technical Lead">
-                      Technical Lead
-                    </ListboxOption>
-                    <ListboxOption value="Design Lead">
-                      Design Lead
-                    </ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
+                    >
+                      <span
+                        className={
+                          wizardLeadLabel
+                            ? "text-dark-blue-400"
+                            : "text-gray-500"
+                        }
+                      >
+                        {wizardLeadLabel || "None selected"}
+                      </span>
+                      <ChevronDown className="size-4 text-gray-500" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    style={{
+                      width: "var(--radix-dropdown-menu-trigger-width)",
+                    }}
+                  >
+                    {[
+                      "Account Manager",
+                      "Project Manager",
+                      "Client Relations Manager",
+                      "Team Manager",
+                    ].map((l) => (
+                      <DropdownMenuItem
+                        key={l}
+                        onClick={() => setWizardLeadLabel(l)}
+                      >
+                        {l}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Use Profile Job Title")}
+                    >
+                      Use Profile Job Title
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Create Custom Label")}
+                    >
+                      Create Custom Label
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -6913,14 +7129,19 @@ const Team = () => {
                 </TableHeader>
                 <TableBody>
                   {projectMembers.map((m: any, mi: number) => {
+                    const id = String(m.userId || m.id || "")
+                    const isOwner =
+                      m.role === "owner" || m.userId === currentUserId
                     const member = {
                       name: m.firstName || m.username || "User",
                       username: m.username || "",
-                      role: mapRole(m.role),
-                      status: "Active",
                       you: m.userId === currentUserId,
                       avatar: m.avatarUrl || "",
                     }
+                    const role = isOwner
+                      ? "Owner"
+                      : (wizardRoles[id] ?? mapRole(m.role))
+                    const status = wizardStatus[id] ?? "Active"
                     return (
                     <TableRow key={m.userId || mi}>
                       <TableCell className="py-4">
@@ -6955,32 +7176,75 @@ const Team = () => {
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
-                        <Listbox defaultValue={member.role}>
-                          <ListboxButton
-                            className="h-[36px] w-[140px] text-sm"
-                            placeholder="Select role"
-                          />
-                          <ListboxOptions>
-                            <ListboxOption value="Owner">Owner</ListboxOption>
-                            <ListboxOption value="Manager">
-                              Manager
-                            </ListboxOption>
-                            <ListboxOption value="Contributor">
-                              Contributor
-                            </ListboxOption>
-                          </ListboxOptions>
-                        </Listbox>
+                        {isOwner ? (
+                          <div className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                            Owner
+                            <ChevronDown className="size-4 opacity-50" />
+                          </div>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
+                              >
+                                {role}
+                                <ChevronDown className="size-4 text-gray-500" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="start"
+                              className="w-[288px]"
+                            >
+                              {["Manager", "Contributor", "Viewer"].map((r) => (
+                                <DropdownMenuItem
+                                  key={r}
+                                  className="flex flex-col items-start gap-0.5 py-2"
+                                  onClick={() =>
+                                    setWizardRoles((mr) => ({ ...mr, [id]: r }))
+                                  }
+                                >
+                                  <span className="flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+                                    {role === r ? (
+                                      <Check className="size-4 text-primary-500" />
+                                    ) : (
+                                      <span className="size-4" />
+                                    )}
+                                    {r}
+                                  </span>
+                                  <span className="pl-6 text-xs font-light text-gray-500">
+                                    This is where the role&apos;s permissions and
+                                    limitations are briefly explained.
+                                  </span>
+                                </DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-error-600 focus:text-error-600"
+                                onClick={() =>
+                                  setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                }
+                              >
+                                <XCircle className="size-4" />
+                                Remove from project
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                       <TableCell className="py-4">
                         <span
                           className={cn(
                             "text-sm font-semibold",
-                            member.status === "Active"
+                            status === "Active"
                               ? "text-success-500"
                               : "text-gray-500"
                           )}
                         >
-                          {member.status}
+                          {status}
                         </span>
                       </TableCell>
                       <TableCell className="py-4">
@@ -6990,16 +7254,46 @@ const Team = () => {
                               <MoreHorizontal className="size-4" />
                             </IconButton>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={m.role === "owner"}
-                              onClick={() =>
-                                removeFromProject(m.userId || m.id)
-                              }
-                            >
-                              Remove
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-[200px]"
+                          >
+                            <DropdownMenuItem>Manage User</DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Assign Team Lead
                             </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Transfer Ownership
+                            </DropdownMenuItem>
+                            {status === "Inactive" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setWizardStatus((s) => ({
+                                    ...s,
+                                    [id]: "Active",
+                                  }))
+                                }
+                              >
+                                Activate User
+                              </DropdownMenuItem>
+                            )}
+                            {!isOwner && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-error-600 focus:text-error-600"
+                                  onClick={() =>
+                                    setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                  }
+                                >
+                                  <XCircle className="size-4" />
+                                  Remove from project
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -7015,6 +7309,55 @@ const Team = () => {
           <ProjectInfoTip showArrow />
         </div>
       </div>
+
+      <Dialog
+        open={!!wizardRemoveTarget}
+        onOpenChange={(o) => !o && setWizardRemoveTarget(null)}
+      >
+        <DialogContent className="max-w-[540px] p-0">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dark-blue-400">
+              Remove this user?
+            </h3>
+            <p className="mt-2 text-sm font-light text-gray-500">
+              <span className="font-semibold text-dark-blue-400">
+                {wizardRemoveTarget?.firstName}
+              </span>{" "}
+              will no longer have access to this project, including any tasks,
+              files, or chat threads previously assigned. This will not delete
+              any tasks, files, or comments.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 py-4 px-6">
+            <Button
+              type="button"
+              variant="link"
+              visual="gray"
+              onClick={() => setWizardRemoveTarget(null)}
+            >
+              <X className="size-[15px]" />
+              Cancel
+            </Button>
+            <div className="flex items-center gap-x-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                className="text-error-600"
+                onClick={() => confirmWizardRemove(true)}
+              >
+                Deactivate Instead
+              </Button>
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => confirmWizardRemove(false)}
+              >
+                Yes, Remove
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ScrollArea>
   )
 }

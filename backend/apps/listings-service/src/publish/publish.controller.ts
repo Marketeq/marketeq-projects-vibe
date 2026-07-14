@@ -177,6 +177,40 @@ export class PublishController {
     }
   }
 
+  @Get('project/:projectId/members')
+  async getProjectMembers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getProjectMembers(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/members')
+  async saveProjectMembers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { members: any[] },
+  ) {
+    try {
+      return await this.publishService.saveProjectMembers(
+        req.user.sub,
+        projectId,
+        body?.members ?? [],
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Post('category/subcategory')
   async createModeratedSubcategory(
     @Body() dto: CreateModeratedSubcategoryDto,
@@ -194,22 +228,6 @@ export class PublishController {
         req.user.sub,
         projectId,
         req.headers.authorization,
-      );
-    } catch (error) {
-      console.log('err', error);
-      throw error;
-    }
-  }
-
-  @Put('project/:projectId/unpublish')
-  async unpublishProject(
-    @Req() req: AuthenticatedRequest,
-    @Param('projectId') projectId: string,
-  ) {
-    try {
-      return await this.publishService.unpublishProject(
-        req.user.sub,
-        projectId,
       );
     } catch (error) {
       console.log('err', error);
