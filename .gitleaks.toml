@@ -32,7 +32,19 @@ paths = [
   '''(.*?)node_modules/''',
   '''(.*?)\.next/''',
   '''docs/''',
-  # Vendored cal.diy scheduling-service ships this as a git symlink (mode 120000)
-  # pointing to "../../.env" -- no secret content, just a relative path string.
-  '''^backend/apps/scheduling-service/app/packages/prisma/\.env$''',
+  # Vendored cal.diy scheduling-service source (backend/apps/scheduling-service/app/).
+  # Third-party code we don't author -- test fixtures, example docs, and a
+  # git symlink (mode 120000) all trip the default/custom rules with no real
+  # secret content. Marketeq's own wrapper files for this service live
+  # outside app/ (package.json, scripts/, README.md) and stay scanned.
+  '''^backend/apps/scheduling-service/app/''',
+  # sop-check.yml contains the pem-private-key-file regex above as a literal
+  # string (it's the check that detects PEM headers elsewhere), not a real key.
+  '''^\.github/workflows/sop-check\.yml$''',
+  # Root README's smoke-test example uses a placeholder header value
+  # ("dev-internal-token"), not a real credential.
+  '''^README\.md$''',
+  # keys.ts strips a PEM header substring via .replace() -- the literal
+  # "-----BEGIN PRIVATE KEY-----" appears as a pattern argument, not a key.
+  '''^frontend/src/crypto/keys\.ts$''',
 ]
