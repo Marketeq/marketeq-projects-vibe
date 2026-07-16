@@ -1,26 +1,13 @@
 import axios from "axios"
-import Cookies from "js-cookie"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 
-const EARNINGS_BASE = process.env.NEXT_PUBLIC_EARNINGS_SERVICE_URL ?? "http://localhost:3026/v1"
+// Routed through api-gateway (not earnings-service directly): access_token is an
+// HttpOnly cookie, invisible to JS, so a manually-read "Bearer <token>" header was
+// always empty here. The gateway reads the httpOnly cookie server-side and forwards
+// it as a real Authorization header — withCredentials lets the browser attach it.
+const EARNINGS_BASE = `${getPublicApiUrl()}/v1`
 
-function getToken() {
-  return (
-    Cookies.get("access_token") ||
-    Cookies.get("accessToken") ||
-    (typeof window !== "undefined"
-      ? window.localStorage.getItem("access_token") ||
-        window.localStorage.getItem("token")
-      : null) ||
-    ""
-  )
-}
-
-const earningsAxios = axios.create({ baseURL: EARNINGS_BASE, timeout: 15000 })
-earningsAxios.interceptors.request.use((config) => {
-  const token = getToken()
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+const earningsAxios = axios.create({ baseURL: EARNINGS_BASE, timeout: 15000, withCredentials: true })
 
 export interface SummaryCard {
   amount: string
@@ -144,6 +131,27 @@ export interface BalanceResponse {
 }
 
 export async function getBalance(): Promise<BalanceResponse> {
-  const res = await earningsAxios.get("/earnings/balance")
-  return res.data
+  try {
+    const res = await earningsAxios.get("/earnings/balance")
+    return res.data
+  } catch (e: any) {
+    // earnings-service returns 404 when a contractor has no BalanceSnapshot row
+    // yet (never earned anything) — that's a real, valid state, not a service
+    // failure. Callers shouldn't have to special-case it: it means $0.00, not
+    // "unavailable" (which is reserved for genuine errors — 5xx/network/timeout).
+    if (e?.response?.status === 404) {
+      return {
+        availableBalance: "0.00",
+        availableBalanceDisplay: "0.00",
+        displayCurrency: "USD",
+        reserveBalance: "0.00",
+        pendingHoldUsd: "0.00",
+        totalEarnedUsd: "0.00",
+        totalPaidOutUsd: "0.00",
+        displayLabel: "After reserve & threshold deductions",
+        lastUpdatedAt: new Date().toISOString(),
+      }
+    }
+    throw e
+  }
 }
