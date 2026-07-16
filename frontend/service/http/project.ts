@@ -64,6 +64,26 @@ export const ProjectAPI = {
   GetMyProjects: () => {
     return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
   },
+  GetProjectMembers: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`
+    )
+  },
+  SaveProjectMembers: (
+    projectId: string,
+    members: Array<{
+      userId: string
+      projectRole?: string | null
+      status?: string | null
+      isLead?: boolean | null
+      leadLabel?: string | null
+    }>
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`,
+      { members }
+    )
+  },
   SuggestFaqs: (projectId: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { EntityCondition } from '../utils/types/entity-condition.type';
 import { IPaginationOptions } from '../utils/types/pagination-options';
+import { hourlyRateForTask } from '../shared/utils/pricing';
 import { NullableType } from '../utils/types/nullable.type';
 import { ProjectRepository } from './infrastructure/persistence/project.repository';
 import { Project } from './interface/project';
@@ -543,13 +544,6 @@ export class PublishService {
   }
 
   private async calculateProjectBudgetUsdCents(phases: any[]): Promise<number> {
-    const CARD: Record<string, number> = {
-      student: 2500,
-      junior: 5500,
-      medior: 8500,
-      senior: 12500,
-      guru: 17500,
-    };
     const tasks: any[] = [];
     for (const phase of phases) {
       for (const task of phase.task ?? []) tasks.push(task);
@@ -588,7 +582,15 @@ export class PublishService {
           task.experienceLevel ?? level,
         );
         const rateCents =
-          pricingCents > 0 ? pricingCents : (CARD[level] ?? CARD.medior);
+          pricingCents > 0
+            ? pricingCents
+            : Math.round(
+                hourlyRateForTask({
+                  roleName: task.role,
+                  experienceLevel: task.experienceLevel ?? level,
+                  location: task.location,
+                }) * 100,
+              );
         return Math.round(hours * rateCents);
       }),
     );
@@ -622,14 +624,46 @@ export class PublishService {
     const team = await this.userProfileClient.hydrateTeam(
       project.teamMemberIds,
     );
+    const projectMembers = await this.projectRepository.getProjectMembers(
+      project.id,
+    );
+    const leadUserId = projectMembers.find((m) => m.isLead)?.userId;
+    const teamWithLead = leadUserId
+      ? team.map((t: any) => ({
+          ...t,
+          isLead: String(t.userId ?? t.id ?? '') === String(leadUserId),
+        }))
+      : team;
 
     return {
       ...project,
       media: media ?? null,
       scope,
-      team,
+      team: teamWithLead,
+      projectMembers,
       budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
     };
+  }
+
+  async getProjectMembers(userId: string, projectId: string) {
+    await this.ensureProjectOwnership(projectId, userId);
+    return this.projectRepository.getProjectMembers(projectId);
+  }
+
+  async saveProjectMembers(
+    userId: string,
+    projectId: string,
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ) {
+    await this.ensureProjectOwnership(projectId, userId);
+    await this.projectRepository.upsertProjectMembers(projectId, members ?? []);
+    return this.projectRepository.getProjectMembers(projectId);
   }
 
   async updateProjectDraft(

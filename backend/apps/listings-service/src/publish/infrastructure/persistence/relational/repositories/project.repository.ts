@@ -170,6 +170,70 @@ export class ProjectRelationalRepository implements ProjectRepository {
     );
   }
 
+  async getProjectMembers(id: Project['id']): Promise<
+    Array<{
+      userId: string;
+      projectRole: string;
+      status: string;
+      isLead: boolean;
+      leadLabel: string | null;
+    }>
+  > {
+    return this.projectRepository.manager.query(
+      `SELECT "userId"::text AS "userId", "projectRole", "status", "isLead", "leadLabel"
+       FROM listings.project_members WHERE "projectId" = $1`,
+      [id?.toString()],
+    );
+  }
+
+  async upsertProjectMembers(
+    id: Project['id'],
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ): Promise<void> {
+    const userIds = members
+      .map((m) => (m?.userId ? String(m.userId) : null))
+      .filter((x): x is string => !!x);
+    if (userIds.length > 0) {
+      await this.projectRepository.manager.query(
+        `DELETE FROM listings.project_members WHERE "projectId" = $1 AND "userId" <> ALL($2::uuid[])`,
+        [id?.toString(), userIds],
+      );
+    } else {
+      await this.projectRepository.manager.query(
+        `DELETE FROM listings.project_members WHERE "projectId" = $1`,
+        [id?.toString()],
+      );
+    }
+    for (const m of members) {
+      if (!m?.userId) continue;
+      await this.projectRepository.manager.query(
+        `INSERT INTO listings.project_members
+           ("projectId", "userId", "projectRole", "status", "isLead", "leadLabel", "updatedAt")
+         VALUES ($1, $2, COALESCE($3, 'Contributor'), COALESCE($4, 'Active'), COALESCE($5, false), $6, now())
+         ON CONFLICT ("projectId", "userId") DO UPDATE SET
+           "projectRole" = EXCLUDED."projectRole",
+           "status" = EXCLUDED."status",
+           "isLead" = EXCLUDED."isLead",
+           "leadLabel" = EXCLUDED."leadLabel",
+           "updatedAt" = now()`,
+        [
+          id?.toString(),
+          String(m.userId),
+          m.projectRole ?? null,
+          m.status ?? null,
+          m.isLead ?? null,
+          m.leadLabel ?? null,
+        ],
+      );
+    }
+  }
+
   async softDelete(id: Project['id']): Promise<void> {
     await this.projectRepository.softDelete(id!);
   }

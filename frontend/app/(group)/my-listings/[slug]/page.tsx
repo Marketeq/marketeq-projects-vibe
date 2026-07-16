@@ -36,6 +36,7 @@ import {
   Attachment01,
   ChartBreakoutCircle,
   Check,
+  XCircle,
   CheckCircle,
   ChevronDown,
   ChevronLeft,
@@ -178,6 +179,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Favorite,
   FavoriteRoot,
@@ -1905,6 +1907,192 @@ export default function ProjectDetails() {
   const [openFaqIndex, setOpenFaqIndex] = React.useState<number | null>(null)
   const [teamTab, setTeamTab] = React.useState("Team Lead")
   const inviteWindow = useInviteWindowStore()
+  const [memberRoles, setMemberRoles] = React.useState<Record<string, string>>(
+    {}
+  )
+  const [memberStatus, setMemberStatus] = React.useState<
+    Record<string, string>
+  >({})
+  const [teamLeadId, setTeamLeadId] = React.useState<string | null>(null)
+  const [teamLeadLabel, setTeamLeadLabel] = React.useState<string>("")
+  const [removeTarget, setRemoveTarget] = React.useState<any | null>(null)
+  const [leadSearch, setLeadSearch] = React.useState("")
+
+  const projectAssignees = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team) ? (project as any).team : []
+    const mapped = team.map((m: any) => ({
+      id: String(m.id || m.userId || ""),
+      firstName: m.firstName || m.name || "User",
+      username: m.username || m.email?.split("@")[0] || "",
+      avatarUrl: m.avatarUrl || null,
+      jobTitle: jobTitleOf(m),
+    }))
+    const ids = Array.isArray((project as any)?.teamMemberIds)
+      ? (project as any).teamMemberIds.map(String)
+      : []
+    return ids.length > 0
+      ? mapped.filter((m: any) => ids.includes(m.id))
+      : mapped
+  }, [project])
+
+  const confirmRemoveMember = async (deactivateInstead: boolean) => {
+    const target = removeTarget
+    if (!target) return
+    if (deactivateInstead) {
+      setMemberStatus((s) => ({ ...s, [target.id]: "Inactive" }))
+      setRemoveTarget(null)
+      toast({
+        title: `${target.firstName} has been deactivated`,
+        variant: "success",
+      })
+      return
+    }
+    const nextIds = (
+      Array.isArray((project as any)?.teamMemberIds)
+        ? (project as any).teamMemberIds
+        : []
+    )
+      .map(String)
+      .filter((id: string) => id !== target.id)
+    // Un-assign them from any scope tasks (persists via the scope autosave).
+    const currentScope = Array.isArray((project as any)?.scope)
+      ? (project as any).scope
+      : []
+    handleScopeChange(
+      currentScope.map((phase: any) => ({
+        ...phase,
+        rows: Array.isArray(phase.rows)
+          ? phase.rows.map((row: any) =>
+              String(row.assigneeUserId ?? row.assignedMember?.id ?? "") ===
+              String(target.id)
+                ? { ...row, assigneeUserId: null, assignedMember: null }
+                : row
+            )
+          : phase.rows,
+      }))
+    )
+    const removedWasLead = teamLeadId === target.id
+    const nextLeadId = removedWasLead ? null : teamLeadId
+    if (removedWasLead) setTeamLeadId(null)
+    const memberPayload = projectAssignees
+      .filter((m: any) => m.id !== target.id)
+      .map((m: any, i: number) => {
+        const isLead = nextLeadId ? m.id === nextLeadId : i === 0
+        return {
+          userId: m.id,
+          projectRole: i === 0 ? "Owner" : (memberRoles[m.id] ?? "Contributor"),
+          status: memberStatus[m.id] ?? "Active",
+          isLead,
+          leadLabel: isLead ? teamLeadLabel || null : null,
+        }
+      })
+    setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
+    try {
+      if ((project as any)?.id) {
+        await ProjectAPI.UpdateProjectDraft((project as any).id, {
+          teamMemberIds: nextIds,
+        } as any)
+        await ProjectAPI.SaveProjectMembers((project as any).id, memberPayload)
+      }
+    } catch {
+      // non-blocking
+    }
+    setRemoveTarget(null)
+    toast({
+      title: `${target.firstName} has been removed`,
+      variant: "success",
+    })
+  }
+
+  const addableMembers = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team)
+      ? (project as any).team
+      : []
+    const ids = new Set(
+      (Array.isArray((project as any)?.teamMemberIds)
+        ? (project as any).teamMemberIds
+        : []
+      ).map(String)
+    )
+    return team
+      .map((m: any) => ({
+        id: String(m.id || m.userId || ""),
+        firstName: m.firstName || m.name || "User",
+        username: m.username || m.email?.split("@")[0] || "",
+        avatarUrl: m.avatarUrl || null,
+      }))
+      .filter((m: any) => m.id && !ids.has(m.id))
+  }, [project])
+
+  const addMemberToProject = async (userId: string) => {
+    const ids = (
+      Array.isArray((project as any)?.teamMemberIds)
+        ? (project as any).teamMemberIds
+        : []
+    ).map(String)
+    if (ids.includes(String(userId))) return
+    const nextIds = [...ids, String(userId)]
+    setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
+    try {
+      if ((project as any)?.id)
+        await ProjectAPI.UpdateProjectDraft((project as any).id, {
+          teamMemberIds: nextIds,
+        } as any)
+    } catch {
+      // non-blocking
+    }
+    toast({ title: "Team member added to project", variant: "success" })
+  }
+
+  const saveTeamSettings = async () => {
+    const members = projectAssignees.map((m: any, i: number) => {
+      const isLead = teamLeadId ? m.id === teamLeadId : i === 0
+      return {
+        userId: m.id,
+        projectRole: i === 0 ? "Owner" : (memberRoles[m.id] ?? "Contributor"),
+        status: memberStatus[m.id] ?? "Active",
+        isLead,
+        leadLabel: isLead ? teamLeadLabel || null : null,
+      }
+    })
+    try {
+      if ((project as any)?.id)
+        await ProjectAPI.SaveProjectMembers((project as any).id, members)
+      toast({ title: "Team settings saved", variant: "success" })
+    } catch {
+      toast({
+        title: "Failed to save team settings",
+        variant: "destructive",
+      })
+    }
+    setTeamDialogOpen(false)
+  }
+
+  const hydratedMembersRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    const pid = (project as any)?.id
+    const pm = (project as any)?.projectMembers
+    if (!pid || hydratedMembersRef.current === pid) return
+    if (!Array.isArray(pm) || pm.length === 0) return
+    hydratedMembersRef.current = pid
+    const roles: Record<string, string> = {}
+    const statuses: Record<string, string> = {}
+    let leadId: string | null = null
+    let leadLabel = ""
+    for (const m of pm) {
+      const uid = String(m.userId)
+      if (m.projectRole) roles[uid] = m.projectRole
+      if (m.status) statuses[uid] = m.status
+      if (m.isLead) {
+        leadId = uid
+        leadLabel = m.leadLabel || ""
+      }
+    }
+    setMemberRoles(roles)
+    setMemberStatus(statuses)
+    if (leadId) setTeamLeadId(leadId)
+    if (leadLabel) setTeamLeadLabel(leadLabel)
+  }, [project])
   const [detailsLangs, setDetailsLangs] = React.useState<string[]>([])
   const [detailsTech, setDetailsTech] = React.useState<string[]>([])
   const [detailsIndustry, setDetailsIndustry] = React.useState<string[]>([])
@@ -5273,8 +5461,26 @@ export default function ProjectDetails() {
                                     typeof x === "string"
                                       ? x
                                       : (x?.name ?? x?.label ?? x?.title ?? "")
+                                  const leadUserId = (
+                                    (project as any).projectMembers ?? []
+                                  ).find((pm: any) => pm.isLead)?.userId
+                                  const foundLead =
+                                    leadUserId != null
+                                      ? members.find(
+                                          (m: any) =>
+                                            String(
+                                              (m as any).userId ??
+                                                (m as any).id ??
+                                                ""
+                                            ) === String(leadUserId)
+                                        )
+                                      : undefined
                                   const lead =
-                                    members.find((m) => m.isLead) ?? members[0]
+                                    foundLead ??
+                                    members.find((m) => m.isLead) ??
+                                    members[0]
+                                  const showLeadBadge =
+                                    !!foundLead || !!lead?.isLead
                                   const allLocations = Array.from(
                                     new Set(
                                       members
@@ -5325,7 +5531,7 @@ export default function ProjectDetails() {
                                               className="rounded-[4px] bg-primary-50"
                                               visual="primary"
                                             >
-                                              {lead.isLead
+                                              {showLeadBadge
                                                 ? "Project Lead"
                                                 : "Team Member"}
                                             </Badge>
@@ -6028,90 +6234,290 @@ export default function ProjectDetails() {
                                     value="Team Lead"
                                     className="pt-6 pb-6"
                                   >
-                                    <div>
-                                      <span className="text-sm font-semibold text-dark-blue-400">
-                                        Current Team Lead
-                                      </span>
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex items-center gap-x-3">
-                                          <Avatar size="md">
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Chris"
-                                            />
-                                            <AvatarFallback>C</AvatarFallback>
-                                          </Avatar>
+                                    {(() => {
+                                      const currentLead = projectAssignees[0]
+                                      const pendingLead =
+                                        teamLeadId &&
+                                        teamLeadId !== currentLead?.id
+                                          ? projectAssignees.find(
+                                              (m: any) => m.id === teamLeadId
+                                            )
+                                          : null
+                                      const q = leadSearch.trim().toLowerCase()
+                                      const candidates =
+                                        projectAssignees.filter(
+                                          (m: any) =>
+                                            m.id !== currentLead?.id &&
+                                            (!q ||
+                                              m.firstName
+                                                ?.toLowerCase()
+                                                .includes(q) ||
+                                              m.username
+                                                ?.toLowerCase()
+                                                .includes(q))
+                                        )
+                                      return (
+                                        <>
                                           <div>
-                                            <span className="text-sm font-bold text-dark-blue-400">
-                                              Chris
+                                            <span className="text-sm font-semibold text-dark-blue-400">
+                                              Current Team Lead
                                             </span>
-                                            <span className="text-sm font-light text-gray-500">
-                                              {" "}
-                                              @ux23isee
-                                            </span>
-                                            <p className="text-xs font-light text-dark-blue-400">
-                                              Full Stack Designer
-                                            </p>
+                                            <div className="mt-3 flex items-center justify-between">
+                                              <div className="flex items-center gap-x-3">
+                                                <Avatar size="md">
+                                                  <AvatarImage
+                                                    src={
+                                                      currentLead?.avatarUrl ||
+                                                      undefined
+                                                    }
+                                                    alt={currentLead?.firstName}
+                                                  />
+                                                  <AvatarFallback>
+                                                    {currentLead?.firstName?.charAt(
+                                                      0
+                                                    ) || "U"}
+                                                  </AvatarFallback>
+                                                </Avatar>
+                                                <div>
+                                                  <span className="text-sm font-bold text-dark-blue-400">
+                                                    {currentLead?.firstName ||
+                                                      "—"}
+                                                  </span>
+                                                  {currentLead?.username && (
+                                                    <span className="text-sm font-light text-gray-500">
+                                                      {" "}
+                                                      @{currentLead.username}
+                                                    </span>
+                                                  )}
+                                                  {currentLead?.jobTitle && (
+                                                    <p className="text-xs font-light text-dark-blue-400">
+                                                      {currentLead.jobTitle}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              {teamLeadLabel && (
+                                                <Badge
+                                                  visual="primary"
+                                                  className="rounded-[4px] bg-primary-50"
+                                                >
+                                                  {teamLeadLabel}
+                                                </Badge>
+                                              )}
+                                            </div>
                                           </div>
-                                        </div>
-                                        <Badge
-                                          visual="primary"
-                                          className="rounded-[4px] bg-primary-50"
-                                        >
-                                          Account Manager
-                                        </Badge>
-                                      </div>
-                                    </div>
 
-                                    <div className="mt-8 grid grid-cols-2 gap-x-6">
-                                      <div>
-                                        <span className="text-sm font-semibold text-dark-blue-400">
-                                          Assign Project Lead
-                                        </span>
-                                        <InputGroup className="mt-2">
-                                          <Input placeholder="Search team members" />
-                                          <InputLeftElement>
-                                            <SearchMd className="text-gray-500 h-4 w-4" />
-                                          </InputLeftElement>
-                                        </InputGroup>
-                                      </div>
-                                      <div>
-                                        <span className="text-sm font-semibold text-dark-blue-400 inline-flex items-center gap-x-1">
-                                          Select Label
-                                          <TooltipProvider>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <HelpCircle className="size-3.5 text-gray-400 cursor-help" />
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                Assign a role label to the team
-                                                lead
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        </span>
-                                        <Listbox defaultValue="">
-                                          <ListboxButton
-                                            className="mt-2 w-full"
-                                            placeholder="None selected"
-                                          />
-                                          <ListboxOptions>
-                                            <ListboxOption value="Project Lead">
-                                              Project Lead
-                                            </ListboxOption>
-                                            <ListboxOption value="Account Manager">
-                                              Account Manager
-                                            </ListboxOption>
-                                            <ListboxOption value="Technical Lead">
-                                              Technical Lead
-                                            </ListboxOption>
-                                            <ListboxOption value="Design Lead">
-                                              Design Lead
-                                            </ListboxOption>
-                                          </ListboxOptions>
-                                        </Listbox>
-                                      </div>
-                                    </div>
+                                          <div className="mt-8 grid grid-cols-2 gap-x-6">
+                                            <div>
+                                              {pendingLead ? (
+                                                <>
+                                                  <span className="text-sm font-semibold text-dark-blue-400">
+                                                    New Team Lead
+                                                  </span>
+                                                  <div className="mt-3 flex items-center justify-between">
+                                                    <div className="flex items-center gap-x-3">
+                                                      <Avatar size="md">
+                                                        <AvatarImage
+                                                          src={
+                                                            pendingLead.avatarUrl ||
+                                                            undefined
+                                                          }
+                                                          alt={
+                                                            pendingLead.firstName
+                                                          }
+                                                        />
+                                                        <AvatarFallback>
+                                                          {pendingLead.firstName?.charAt(
+                                                            0
+                                                          ) || "U"}
+                                                        </AvatarFallback>
+                                                      </Avatar>
+                                                      <div>
+                                                        <span className="text-sm font-bold text-dark-blue-400">
+                                                          {pendingLead.firstName}
+                                                        </span>
+                                                        {pendingLead.jobTitle && (
+                                                          <p className="text-xs font-light text-dark-blue-400">
+                                                            {
+                                                              pendingLead.jobTitle
+                                                            }
+                                                          </p>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                    <button
+                                                      type="button"
+                                                      className="text-sm font-semibold text-gray-700 hover:text-dark-blue-400 focus-visible:outline-none"
+                                                      onClick={() =>
+                                                        setTeamLeadId(null)
+                                                      }
+                                                    >
+                                                      Remove
+                                                    </button>
+                                                  </div>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className="text-sm font-semibold text-dark-blue-400">
+                                                    Assign Project Lead
+                                                  </span>
+                                                  <InputGroup className="mt-2">
+                                                    <Input
+                                                      placeholder="Search team members"
+                                                      value={leadSearch}
+                                                      onChange={(e) =>
+                                                        setLeadSearch(
+                                                          e.target.value
+                                                        )
+                                                      }
+                                                    />
+                                                    <InputLeftElement>
+                                                      <SearchMd className="text-gray-500 h-4 w-4" />
+                                                    </InputLeftElement>
+                                                  </InputGroup>
+                                                  {leadSearch && (
+                                                    <div className="mt-1 rounded-lg border border-gray-100 bg-white shadow-lg max-h-[240px] overflow-y-auto">
+                                                      {candidates.length > 0 ? (
+                                                        candidates.map(
+                                                          (m: any) => (
+                                                            <button
+                                                              key={m.id}
+                                                              type="button"
+                                                              className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50"
+                                                              onClick={() => {
+                                                                setTeamLeadId(
+                                                                  m.id
+                                                                )
+                                                                setLeadSearch("")
+                                                              }}
+                                                            >
+                                                              <Avatar size="sm">
+                                                                <AvatarImage
+                                                                  src={
+                                                                    m.avatarUrl ||
+                                                                    undefined
+                                                                  }
+                                                                  alt={
+                                                                    m.firstName
+                                                                  }
+                                                                />
+                                                                <AvatarFallback>
+                                                                  {m.firstName?.charAt(
+                                                                    0
+                                                                  ) || "U"}
+                                                                </AvatarFallback>
+                                                              </Avatar>
+                                                              <div>
+                                                                <span className="text-sm font-semibold text-dark-blue-400">
+                                                                  {m.firstName}
+                                                                </span>
+                                                                {m.username && (
+                                                                  <span className="text-sm font-light text-gray-500">
+                                                                    {" "}
+                                                                    @{m.username}
+                                                                  </span>
+                                                                )}
+                                                                {m.jobTitle && (
+                                                                  <p className="text-xs font-light text-dark-blue-400">
+                                                                    {m.jobTitle}
+                                                                  </p>
+                                                                )}
+                                                              </div>
+                                                            </button>
+                                                          )
+                                                        )
+                                                      ) : (
+                                                        <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                                          No matching members.
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                            <div>
+                                              <span className="text-sm font-semibold text-dark-blue-400 inline-flex items-center gap-x-1">
+                                                Select Label
+                                                <TooltipProvider>
+                                                  <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <HelpCircle className="size-3.5 text-gray-400 cursor-help" />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                      Assign a role label to the
+                                                      team lead
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                </TooltipProvider>
+                                              </span>
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                  <button
+                                                    type="button"
+                                                    className="mt-2 inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
+                                                  >
+                                                    <span
+                                                      className={
+                                                        teamLeadLabel
+                                                          ? "text-dark-blue-400"
+                                                          : "text-gray-500"
+                                                      }
+                                                    >
+                                                      {teamLeadLabel ||
+                                                        "None selected"}
+                                                    </span>
+                                                    <ChevronDown className="size-4 text-gray-500" />
+                                                  </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent
+                                                  align="start"
+                                                  style={{
+                                                    width:
+                                                      "var(--radix-dropdown-menu-trigger-width)",
+                                                  }}
+                                                >
+                                                  {[
+                                                    "Account Manager",
+                                                    "Project Manager",
+                                                    "Client Relations Manager",
+                                                    "Team Manager",
+                                                  ].map((l) => (
+                                                    <DropdownMenuItem
+                                                      key={l}
+                                                      onClick={() =>
+                                                        setTeamLeadLabel(l)
+                                                      }
+                                                    >
+                                                      {l}
+                                                    </DropdownMenuItem>
+                                                  ))}
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuItem
+                                                    onClick={() =>
+                                                      setTeamLeadLabel(
+                                                        "Use Profile Job Title"
+                                                      )
+                                                    }
+                                                  >
+                                                    Use Profile Job Title
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    onClick={() =>
+                                                      setTeamLeadLabel(
+                                                        "Create Custom Label"
+                                                      )
+                                                    }
+                                                  >
+                                                    Create Custom Label
+                                                  </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
+                                            </div>
+                                          </div>
+                                        </>
+                                      )
+                                    })()}
                                   </TabsContent>
 
                                   <TabsContent
@@ -6121,26 +6527,84 @@ export default function ProjectDetails() {
                                     <div className="flex items-start justify-between">
                                       <div>
                                         <h3 className="text-sm font-semibold text-dark-blue-400">
-                                          All assignees (10)
+                                          All assignees ({projectAssignees.length})
                                         </h3>
                                         <p className="mt-1 text-xs font-light text-dark-blue-400">
                                           View and manage all users currently
                                           assigned to this project below.
                                         </p>
                                       </div>
-                                      <Button
-                                        variant="outlined"
-                                        visual="gray"
-                                        onClick={() =>
-                                          inviteWindow.toggle(
-                                            true,
-                                            "Invite Team Members"
-                                          )
-                                        }
-                                      >
-                                        <Plus className="size-[15px]" />
-                                        Add Team Member
-                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                          >
+                                            <Plus className="size-[15px]" />
+                                            Add Team Member
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                          align="end"
+                                          className="w-[260px]"
+                                        >
+                                          {addableMembers.length > 0 ? (
+                                            addableMembers.map((m: any) => (
+                                              <DropdownMenuItem
+                                                key={m.id}
+                                                onClick={() =>
+                                                  addMemberToProject(m.id)
+                                                }
+                                              >
+                                                <div className="flex items-center gap-x-2">
+                                                  <Avatar size="sm">
+                                                    <AvatarImage
+                                                      src={
+                                                        m.avatarUrl || undefined
+                                                      }
+                                                      alt={m.firstName}
+                                                    />
+                                                    <AvatarFallback>
+                                                      {m.firstName?.charAt(0) ||
+                                                        "U"}
+                                                    </AvatarFallback>
+                                                  </Avatar>
+                                                  <div>
+                                                    <span className="text-sm font-medium text-dark-blue-400">
+                                                      {m.firstName}
+                                                    </span>
+                                                    {m.username && (
+                                                      <span className="text-xs font-light text-gray-500">
+                                                        {" "}
+                                                        @{m.username}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </DropdownMenuItem>
+                                            ))
+                                          ) : (
+                                            <DropdownMenuItem
+                                              disabled
+                                              className="text-gray-500"
+                                            >
+                                              Everyone on your team is already
+                                              added
+                                            </DropdownMenuItem>
+                                          )}
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              inviteWindow.toggle(
+                                                true,
+                                                "Invite Team Members"
+                                              )
+                                            }
+                                          >
+                                            <Plus className="size-3.5" />
+                                            Invite new member…
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
                                     </div>
 
                                     <div className="mt-6 max-h-[40vh] overflow-y-auto">
@@ -6160,132 +6624,228 @@ export default function ProjectDetails() {
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                          {[
-                                            {
-                                              name: "Chris",
-                                              username: "ux23isee",
-                                              role: "Owner",
-                                              status: "Active",
-                                              you: true,
-                                              avatar: "/man.jpg",
-                                            },
-                                            {
-                                              name: "Sarah",
-                                              username: "ux23isee",
-                                              role: "Manager",
-                                              status: "Active",
-                                              avatar: "/woman.jpg",
-                                            },
-                                            {
-                                              name: "Laura",
-                                              username: "ux23isee",
-                                              role: "Contributor",
-                                              status: "Active",
-                                              avatar: "/woman.jpg",
-                                            },
-                                            {
-                                              name: "Tina",
-                                              username: "ux23isee",
-                                              role: "Contributor",
-                                              status: "Inactive",
-                                              avatar: "/woman.jpg",
-                                            },
-                                            {
-                                              name: "Shelly",
-                                              username: "ux23isee",
-                                              role: "Contributor",
-                                              status: "Inactive",
-                                              avatar: "/woman.jpg",
-                                            },
-                                          ].map((member, mi) => (
-                                            <TableRow key={mi}>
-                                              <TableCell className="py-4">
-                                                <div className="flex items-center gap-x-3">
-                                                  <Avatar size="sm">
-                                                    <AvatarImage
-                                                      src={member.avatar}
-                                                      alt={member.name}
-                                                    />
-                                                    <AvatarFallback>
-                                                      {member.name.charAt(0)}
-                                                    </AvatarFallback>
-                                                  </Avatar>
-                                                  <div>
-                                                    <span className="text-sm font-semibold text-dark-blue-400">
-                                                      {member.name}
-                                                    </span>
-                                                    <span className="text-sm font-light text-gray-500">
-                                                      {" "}
-                                                      @{member.username}
-                                                    </span>
-                                                    {member.you && (
-                                                      <span className="text-sm font-semibold text-dark-blue-400">
-                                                        {" "}
-                                                        (You)
-                                                      </span>
+                                          {projectAssignees.map(
+                                            (member: any, mi: number) => {
+                                              const isOwner = mi === 0
+                                              const role = isOwner
+                                                ? "Owner"
+                                                : memberRoles[member.id] ??
+                                                  "Contributor"
+                                              const status =
+                                                memberStatus[member.id] ??
+                                                "Active"
+                                              return (
+                                                <TableRow key={member.id || mi}>
+                                                  <TableCell className="py-4">
+                                                    <div className="flex items-center gap-x-3">
+                                                      <Avatar size="sm">
+                                                        <AvatarImage
+                                                          src={
+                                                            member.avatarUrl ||
+                                                            undefined
+                                                          }
+                                                          alt={member.firstName}
+                                                        />
+                                                        <AvatarFallback>
+                                                          {member.firstName?.charAt(
+                                                            0
+                                                          ) || "U"}
+                                                        </AvatarFallback>
+                                                      </Avatar>
+                                                      <div>
+                                                        <span className="text-sm font-semibold text-dark-blue-400">
+                                                          {member.firstName}
+                                                        </span>
+                                                        {member.username && (
+                                                          <span className="text-sm font-light text-gray-500">
+                                                            {" "}
+                                                            @{member.username}
+                                                          </span>
+                                                        )}
+                                                        {isOwner && (
+                                                          <span className="text-sm font-semibold text-dark-blue-400">
+                                                            {" "}
+                                                            (You)
+                                                          </span>
+                                                        )}
+                                                        {member.jobTitle && (
+                                                          <p className="text-xs font-light text-dark-blue-400">
+                                                            {member.jobTitle}
+                                                          </p>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  </TableCell>
+                                                  <TableCell className="py-4">
+                                                    {isOwner ? (
+                                                      <div className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                                                        Owner
+                                                        <ChevronDown className="size-4 opacity-50" />
+                                                      </div>
+                                                    ) : (
+                                                      <DropdownMenu>
+                                                        <DropdownMenuTrigger
+                                                          asChild
+                                                        >
+                                                          <button
+                                                            type="button"
+                                                            className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
+                                                          >
+                                                            {role}
+                                                            <ChevronDown className="size-4 text-gray-500" />
+                                                          </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent
+                                                          align="start"
+                                                          className="w-[288px]"
+                                                        >
+                                                          {[
+                                                            "Manager",
+                                                            "Contributor",
+                                                            "Viewer",
+                                                          ].map((r) => (
+                                                            <DropdownMenuItem
+                                                              key={r}
+                                                              className="flex flex-col items-start gap-0.5 py-2"
+                                                              onClick={() =>
+                                                                setMemberRoles(
+                                                                  (mr) => ({
+                                                                    ...mr,
+                                                                    [member.id]:
+                                                                      r,
+                                                                  })
+                                                                )
+                                                              }
+                                                            >
+                                                              <span className="flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+                                                                {role === r ? (
+                                                                  <Check className="size-4 text-primary-500" />
+                                                                ) : (
+                                                                  <span className="size-4" />
+                                                                )}
+                                                                {r}
+                                                              </span>
+                                                              <span className="pl-6 text-xs font-light text-gray-500">
+                                                                This is where the
+                                                                role&apos;s
+                                                                permissions and
+                                                                limitations are
+                                                                briefly
+                                                                explained.
+                                                              </span>
+                                                            </DropdownMenuItem>
+                                                          ))}
+                                                          <DropdownMenuSeparator />
+                                                          <DropdownMenuItem
+                                                            className="text-error-600 focus:text-error-600"
+                                                            onClick={() =>
+                                                              setRemoveTarget(
+                                                                member
+                                                              )
+                                                            }
+                                                          >
+                                                            <XCircle className="size-4" />
+                                                            Remove from project
+                                                          </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                      </DropdownMenu>
                                                     )}
-                                                    <p className="text-xs font-light text-dark-blue-400">
-                                                      Full Stack Designer
-                                                    </p>
-                                                  </div>
-                                                </div>
-                                              </TableCell>
-                                              <TableCell className="py-4">
-                                                <Listbox
-                                                  defaultValue={member.role}
-                                                >
-                                                  <ListboxButton
-                                                    className="h-[36px] w-[140px] text-sm"
-                                                    placeholder="Select role"
-                                                  />
-                                                  <ListboxOptions>
-                                                    <ListboxOption value="Owner">
-                                                      Owner
-                                                    </ListboxOption>
-                                                    <ListboxOption value="Manager">
-                                                      Manager
-                                                    </ListboxOption>
-                                                    <ListboxOption value="Contributor">
-                                                      Contributor
-                                                    </ListboxOption>
-                                                  </ListboxOptions>
-                                                </Listbox>
-                                              </TableCell>
-                                              <TableCell className="py-4">
-                                                <span
-                                                  className={cn(
-                                                    "text-sm font-semibold",
-                                                    member.status === "Active"
-                                                      ? "text-success-500"
-                                                      : "text-gray-500"
-                                                  )}
-                                                >
-                                                  {member.status}
-                                                </span>
-                                              </TableCell>
-                                              <TableCell className="py-4">
-                                                <DropdownMenu>
-                                                  <DropdownMenuTrigger asChild>
-                                                    <IconButton
-                                                      variant="ghost"
-                                                      visual="gray"
-                                                      size="sm"
+                                                  </TableCell>
+                                                  <TableCell className="py-4">
+                                                    <span
+                                                      className={cn(
+                                                        "text-sm font-semibold",
+                                                        status === "Active"
+                                                          ? "text-success-500"
+                                                          : "text-gray-500"
+                                                      )}
                                                     >
-                                                      <MoreHorizontal className="size-4" />
-                                                    </IconButton>
-                                                  </DropdownMenuTrigger>
-                                                  <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem>
-                                                      View Profile
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem>
-                                                      Remove
-                                                    </DropdownMenuItem>
-                                                  </DropdownMenuContent>
-                                                </DropdownMenu>
-                                              </TableCell>
-                                            </TableRow>
-                                          ))}
+                                                      {status}
+                                                    </span>
+                                                  </TableCell>
+                                                  <TableCell className="py-4">
+                                                    <DropdownMenu>
+                                                      <DropdownMenuTrigger
+                                                        asChild
+                                                      >
+                                                        <IconButton
+                                                          variant="ghost"
+                                                          visual="gray"
+                                                          size="sm"
+                                                        >
+                                                          <MoreHorizontal className="size-4" />
+                                                        </IconButton>
+                                                      </DropdownMenuTrigger>
+                                                      <DropdownMenuContent
+                                                        align="end"
+                                                        className="w-[200px]"
+                                                      >
+                                                        <DropdownMenuItem>
+                                                          Manage User
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                          onClick={() => {
+                                                            setTeamLeadId(
+                                                              member.id
+                                                            )
+                                                            setTeamTab(
+                                                              "Team Lead"
+                                                            )
+                                                            toast({
+                                                              title: `Project lead role assigned to ${member.firstName}`,
+                                                              variant:
+                                                                "success",
+                                                            })
+                                                          }}
+                                                        >
+                                                          Assign Team Lead
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem>
+                                                          Transfer Ownership
+                                                        </DropdownMenuItem>
+                                                        {status === "Inactive" && (
+                                                          <DropdownMenuItem
+                                                            onClick={() => {
+                                                              setMemberStatus(
+                                                                (s) => ({
+                                                                  ...s,
+                                                                  [member.id]:
+                                                                    "Active",
+                                                                })
+                                                              )
+                                                              toast({
+                                                                title: `${member.firstName} has been activated`,
+                                                                variant:
+                                                                  "success",
+                                                              })
+                                                            }}
+                                                          >
+                                                            Activate User
+                                                          </DropdownMenuItem>
+                                                        )}
+                                                        {!isOwner && (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              className="text-error-600 focus:text-error-600"
+                                                              onClick={() =>
+                                                                setRemoveTarget(
+                                                                  member
+                                                                )
+                                                              }
+                                                            >
+                                                              <XCircle className="size-4" />
+                                                              Remove from project
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        )}
+                                                      </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                  </TableCell>
+                                                </TableRow>
+                                              )
+                                            }
+                                          )}
                                         </TableBody>
                                       </Table>
                                     </div>
@@ -6303,11 +6863,59 @@ export default function ProjectDetails() {
                                   <X className="size-[15px]" />
                                   Cancel
                                 </Button>
-                                <Button
-                                  onClick={() => setTeamDialogOpen(false)}
-                                >
+                                <Button onClick={saveTeamSettings}>
                                   Save
                                 </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          <Dialog
+                            open={!!removeTarget}
+                            onOpenChange={(o) => !o && setRemoveTarget(null)}
+                          >
+                            <DialogContent className="max-w-[540px] p-0">
+                              <div className="p-6">
+                                <h3 className="text-lg font-semibold text-dark-blue-400">
+                                  Remove this user?
+                                </h3>
+                                <p className="mt-2 text-sm font-light text-gray-500">
+                                  <span className="font-semibold text-dark-blue-400">
+                                    {removeTarget?.firstName}
+                                  </span>{" "}
+                                  will no longer have access to this project,
+                                  including any tasks, files, or chat threads
+                                  previously assigned. This will not delete any
+                                  tasks, files, or comments.
+                                </p>
+                              </div>
+                              <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  visual="gray"
+                                  onClick={() => setRemoveTarget(null)}
+                                >
+                                  <X className="size-[15px]" />
+                                  Cancel
+                                </Button>
+                                <div className="flex items-center gap-x-3">
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    className="text-error-600"
+                                    onClick={() => confirmRemoveMember(true)}
+                                  >
+                                    Deactivate Instead
+                                  </Button>
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => confirmRemoveMember(false)}
+                                  >
+                                    Yes, Remove
+                                  </Button>
+                                </div>
                               </div>
                             </DialogContent>
                           </Dialog>
@@ -9186,7 +9794,8 @@ export default function ProjectDetails() {
 
                   {Array.isArray(project.assignedTeam) &&
                   project.assignedTeam.length > 0 ? (
-                    <div className="flex items-center -space-x-2">
+                    <div className="group relative w-fit">
+                      <div className="flex items-center -space-x-2">
                       {project.assignedTeam
                         .slice(0, 5)
                         .map((m: any, i: number) => (
@@ -9211,6 +9820,30 @@ export default function ProjectDetails() {
                           +{project.assignedTeam.length - 5}
                         </span>
                       )}
+                      </div>
+                      <div className="pointer-events-none absolute left-0 top-full z-20 pt-2 w-[300px] opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+                          <div className="flex items-center gap-x-2 text-sm font-light text-dark-blue-400">
+                            <Users03 className="size-4 shrink-0 text-primary-500" />
+                            <span>
+                              Your project currently has{" "}
+                              <span className="font-bold">
+                                {project.assignedTeam.length} team members
+                              </span>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
+                            onClick={() => {
+                              setTeamTab("Team Members")
+                              setTeamDialogOpen(true)
+                            }}
+                          >
+                            Manage Team <span aria-hidden>→</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <Avatar size="sm" className="border-2 border-white">
