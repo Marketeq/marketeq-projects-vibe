@@ -172,6 +172,15 @@ const LeftSidebar = ({
   const token = getAccessToken()
 
   const router = useRouter()
+  const clearSelectionParam = useCallback(
+    (param: "threadId" | "participantId") => {
+      const params = new URLSearchParams(window.location.search)
+      params.delete(param)
+      const query = params.toString()
+      router.replace(query ? `/inbox?${query}` : "/inbox", { scroll: false })
+    },
+    [router]
+  )
   const CACHE_KEY = currentUserId ? `inbox_conversations_${currentUserId}` : ""
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -511,7 +520,7 @@ const LeftSidebar = ({
             }
             // Clear threadId from URL so refreshes don't re-trigger
             // auto-select or auto-untrash.
-            router.replace("/inbox", { scroll: false })
+            clearSelectionParam("threadId")
           }
         }
 
@@ -641,7 +650,7 @@ const LeftSidebar = ({
     return () => {
       cancelled = true
     }
-  }, [privateKey, token, conversations.length])
+  }, [privateKey, token, conversations.length, clearSelectionParam])
 
   // Handle ?participantId= independently of the thread-list fetch so it works
   // even when GET /v1/threads is unavailable.
@@ -654,7 +663,7 @@ const LeftSidebar = ({
   useEffect(() => {
     if (!initialParticipantId || !currentUserId || !token) return
     if (initialParticipantId === currentUserId) {
-      router.replace("/inbox", { scroll: false })
+      clearSelectionParam("participantId")
       return
     }
     if (createdForParticipantRef.current === initialParticipantId) return
@@ -679,7 +688,7 @@ const LeftSidebar = ({
       } else {
         setSelectedConversation(local)
       }
-      router.replace("/inbox", { scroll: false })
+      clearSelectionParam("participantId")
       return
     }
 
@@ -743,7 +752,7 @@ const LeftSidebar = ({
           )
           setSelectedConversation(placeholder)
         }
-        router.replace("/inbox", { scroll: false })
+        clearSelectionParam("participantId")
       } catch (err) {
         console.error("[LeftSidebar] participantId thread create failed:", err)
       }
@@ -751,7 +760,14 @@ const LeftSidebar = ({
     return () => {
       cancelled = true
     }
-  }, [currentUserId, token, initialParticipantId, isLoading, conversations])
+  }, [
+    currentUserId,
+    token,
+    initialParticipantId,
+    isLoading,
+    conversations,
+    clearSelectionParam,
+  ])
 
   const skipAutoSelectRef = useRef(false)
   const [blockedSenderIds, setBlockedSenderIds] = useState<Set<string>>(

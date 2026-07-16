@@ -4,12 +4,22 @@ const https = require('https');
 const { v4: uuidv4 } = require('uuid');
 const { Client } = require('pg');
 
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return value;
+}
+
+// R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / DATABASE_URL must be set in your
+// shell env before running (see backend/.env.local.example).
 const s3 = new S3Client({
   region: 'auto',
   endpoint: 'https://94ccb1ac46d66f225f369bd07f044f56.r2.cloudflarestorage.com',
   credentials: {
-    accessKeyId: '020b9b97a526421028214dacadd810f3',
-    secretAccessKey: 'a6de0a9c8438a1fcd3f4991ded970c4f9cf46068578f5e3319a056794d9a346d',
+    accessKeyId: requireEnv('R2_ACCESS_KEY_ID'),
+    secretAccessKey: requireEnv('R2_SECRET_ACCESS_KEY'),
   },
 });
 
@@ -41,7 +51,7 @@ const images = {
 
 async function main() {
   const db = new Client({
-    connectionString: 'postgres://supabase_admin:VVLjT29C33ZrP4vzhzmBEGEit3529MAa@72.61.77.231:5433/postgres',
+    connectionString: requireEnv('DATABASE_URL'),
   });
   await db.connect();
 

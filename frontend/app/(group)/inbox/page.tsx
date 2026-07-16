@@ -14,9 +14,18 @@ import { Message } from "@/types/message"
 import { User } from "@/types/user"
 import { ChatsContextProvider } from "@/components/chat"
 import { EditContextProvider } from "@/components/inbox-comps"
-import { Chats } from "./components/chats-comp"
+import {
+  type AcceptedOfferCardData,
+  Chats,
+  type CounterOfferCardData,
+  type DeclinedOfferCardData,
+} from "./components/chats-comp"
 import LeftSidebar from "./components/left-sidebar"
 import RightSidebar from "./components/right-sidebar"
+
+const OFFER_ACCEPTED_STORAGE_PREFIX = "inbox_offer_accepted"
+const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+const OFFER_DECLINED_STORAGE_PREFIX = "inbox_offer_declined"
 
 const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const [pinnedChats, setPinnedChats] = useState(0)
@@ -108,9 +117,17 @@ export default function InboxRoot() {
   const searchParams = useSearchParams()
   const initialThreadId = searchParams?.get("threadId") ?? null
   const initialParticipantId = searchParams?.get("participantId") ?? null
+  const acceptedOfferStatus = searchParams?.get("offerStatus") ?? null
+  const acceptedOfferContractId = searchParams?.get("contractId") ?? null
 
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null)
+  const [acceptedOfferCard, setAcceptedOfferCard] =
+    useState<AcceptedOfferCardData | null>(null)
+  const [counterOfferCard, setCounterOfferCard] =
+    useState<CounterOfferCardData | null>(null)
+  const [declinedOfferCard, setDeclinedOfferCard] =
+    useState<DeclinedOfferCardData | null>(null)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
@@ -125,6 +142,110 @@ export default function InboxRoot() {
   useEffect(() => {
     setToken(getAccessToken() || "")
   }, [])
+
+  useEffect(() => {
+    if (
+      acceptedOfferStatus !== "accepted" ||
+      !acceptedOfferContractId ||
+      typeof window === "undefined"
+    ) {
+      setAcceptedOfferCard(null)
+      return
+    }
+
+    const storageKey = `${OFFER_ACCEPTED_STORAGE_PREFIX}:${acceptedOfferContractId}`
+    try {
+      const stored = sessionStorage.getItem(storageKey)
+      if (stored) {
+        setAcceptedOfferCard(JSON.parse(stored))
+        return
+      }
+    } catch {}
+
+    setAcceptedOfferCard({
+      status: "accepted",
+      contractId: acceptedOfferContractId,
+      offerTitle: "The Ultimate Mobile App Experience",
+      offerType: "Project",
+      offerRate: "$45/hr",
+      role: "UX Designer",
+      duration: "4 Months",
+      schedule: "Full Time",
+      startDate: "Starts on Mon, Jun 14",
+      acceptanceMessage: "Excited to get started!",
+    })
+  }, [acceptedOfferStatus, acceptedOfferContractId])
+
+  useEffect(() => {
+    if (
+      acceptedOfferStatus !== "declined" ||
+      !acceptedOfferContractId ||
+      typeof window === "undefined"
+    ) {
+      setDeclinedOfferCard(null)
+      return
+    }
+
+    const storageKey = `${OFFER_DECLINED_STORAGE_PREFIX}:${acceptedOfferContractId}`
+    try {
+      const stored = sessionStorage.getItem(storageKey)
+      if (stored) {
+        setDeclinedOfferCard(JSON.parse(stored))
+        return
+      }
+    } catch {}
+
+    setDeclinedOfferCard({
+      status: "declined",
+      contractId: acceptedOfferContractId,
+      offerTitle: "The Ultimate Mobile App Experience",
+      offerType: "Project",
+      receivedLabel: "Feb 1, 2025",
+      declinedAt: new Date().toISOString(),
+      declinedLabel: "Feb 1, 2025",
+      offerRate: "$45/hr",
+      role: "UX Designer",
+      duration: "4 Months",
+      schedule: "Full Time",
+      startDate: "Feb 5th, 2025",
+      senderDisplayName: "Laura",
+      senderUsername: "@lauradesign21",
+      declineMessage: "Thanks, unfortunately I can't take this on right now.",
+    })
+  }, [acceptedOfferStatus, acceptedOfferContractId])
+
+  useEffect(() => {
+    if (
+      acceptedOfferStatus !== "counter-submitted" ||
+      !acceptedOfferContractId ||
+      typeof window === "undefined"
+    ) {
+      setCounterOfferCard(null)
+      return
+    }
+
+    const storageKey = `${COUNTER_OFFER_STORAGE_PREFIX}:${acceptedOfferContractId}`
+    try {
+      const stored = sessionStorage.getItem(storageKey)
+      if (stored) {
+        setCounterOfferCard(JSON.parse(stored))
+        return
+      }
+    } catch {}
+
+    setCounterOfferCard({
+      status: "submitted",
+      contractId: acceptedOfferContractId,
+      offerTitle: "The Ultimate Mobile App Experience",
+      offerType: "Project",
+      offerRate: "$85/hr",
+      duration: "3 Months",
+      schedule: "Full Time",
+      startDate: "Feb 5, 2025",
+      expiresLabel: "Aug 2, 2025",
+      message: "I would like to increase the hourly rate if it's ok.",
+    })
+  }, [acceptedOfferStatus, acceptedOfferContractId])
 
   const selectedConversationCacheKey = currentUserProfile?.id
     ? `inbox_selected_conversation_${currentUserProfile.id}`
@@ -212,44 +333,47 @@ export default function InboxRoot() {
 
   return (
     <AuthenticatedRoute>
-    <Inbox>
-      <div
-        className="flex w-full bg-white overflow-hidden"
-        style={{ height: "calc(100vh - 65px)" }}
-      >
-        <LeftSidebar
-          selectedConversation={selectedConversation}
-          setSelectedConversation={setSelectedConversation}
-          // We pass the whole map so Sidebar can show previews:
-          messagesByConversation={messagesByConversation}
-          initialThreadId={initialThreadId}
-          initialParticipantId={initialParticipantId}
-          searchIndex={searchIndex}
-          onHighlightMessage={setHighlightMessageId}
-          privateKey={privateKey}
-        />
+      <Inbox>
+        <div
+          className="flex w-full bg-white overflow-hidden"
+          style={{ height: "calc(100vh - 65px)" }}
+        >
+          <LeftSidebar
+            selectedConversation={selectedConversation}
+            setSelectedConversation={setSelectedConversation}
+            // We pass the whole map so Sidebar can show previews:
+            messagesByConversation={messagesByConversation}
+            initialThreadId={initialThreadId}
+            initialParticipantId={initialParticipantId}
+            searchIndex={searchIndex}
+            onHighlightMessage={setHighlightMessageId}
+            privateKey={privateKey}
+          />
 
-        {/* pass only the conversation and token into Chats */}
-        <Chats
-          selectedConversation={selectedConversation}
-          jwtToken={token}
-          privateKey={privateKey}
-          currentUserProfile={currentUserProfile}
-          onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
-          onMessagesLoaded={handleMessagesLoaded}
-          highlightMessageId={highlightMessageId}
-          onHighlightConsumed={() => setHighlightMessageId(null)}
-          onIndexNewMessage={searchIndex.addDoc}
-        />
-
-        {rightSidebarOpen && (
-          <RightSidebar
+          {/* pass only the conversation and token into Chats */}
+          <Chats
             selectedConversation={selectedConversation}
             jwtToken={token}
+            privateKey={privateKey}
+            currentUserProfile={currentUserProfile}
+            onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
+            onMessagesLoaded={handleMessagesLoaded}
+            highlightMessageId={highlightMessageId}
+            onHighlightConsumed={() => setHighlightMessageId(null)}
+            onIndexNewMessage={searchIndex.addDoc}
+            acceptedOfferCard={acceptedOfferCard}
+            counterOfferCard={counterOfferCard}
+            declinedOfferCard={declinedOfferCard}
           />
-        )}
-      </div>
-    </Inbox>
+
+          {rightSidebarOpen && (
+            <RightSidebar
+              selectedConversation={selectedConversation}
+              jwtToken={token}
+            />
+          )}
+        </div>
+      </Inbox>
     </AuthenticatedRoute>
   )
 }

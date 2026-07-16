@@ -59,5 +59,26 @@ export abstract class ProjectRepository {
     },
   ): Promise<void>;
 
+  abstract getProjectMembers(id: Project['id']): Promise<
+    Array<{
+      userId: string;
+      projectRole: string;
+      status: string;
+      isLead: boolean;
+      leadLabel: string | null;
+    }>
+  >;
+
+  abstract upsertProjectMembers(
+    id: Project['id'],
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ): Promise<void>;
+
   abstract softDelete(id: Project['id']): Promise<void>;
 }
