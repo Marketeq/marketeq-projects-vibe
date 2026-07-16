@@ -100,6 +100,7 @@ import { ScrollBar } from "@/components/ui"
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
 const OFFER_ACCEPTED_STORAGE_PREFIX = "inbox_offer_accepted"
 const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+const OFFER_DECLINED_STORAGE_PREFIX = "inbox_offer_declined"
 
 const readMetadataString = (metadata: NotificationMetadata, key: string) => {
   const value = metadata?.[key]
@@ -180,6 +181,26 @@ const withAcceptedOfferState = (href: string, contractId?: string) => {
   }
 }
 
+const withDeclinedOfferState = (href: string, contractId?: string) => {
+  try {
+    const url = new URL(
+      href,
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://localhost"
+    )
+    url.searchParams.set("offerStatus", "declined")
+    if (contractId) url.searchParams.set("contractId", contractId)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    const separator = href.includes("?") ? "&" : "?"
+    const contractParam = contractId
+      ? `&contractId=${encodeURIComponent(contractId)}`
+      : ""
+    return `${href}${separator}offerStatus=declined${contractParam}`
+  }
+}
+
 const storeAcceptedOfferCard = (
   contractId: string | undefined,
   details: OfferDialogData,
@@ -200,6 +221,40 @@ const storeAcceptedOfferCard = (
       schedule: details.schedule,
       startDate: details.startDate,
       acceptanceMessage,
+    })
+  )
+}
+
+const storeDeclinedOfferCard = (
+  contractId: string | undefined,
+  details: OfferDialogData,
+  declineMessage: string
+) => {
+  if (!contractId || typeof window === "undefined") return
+  const declinedDetails = details as OfferDialogData & {
+    senderAvatarSrc?: string
+  }
+  const declinedAt = new Date().toISOString()
+
+  sessionStorage.setItem(
+    `${OFFER_DECLINED_STORAGE_PREFIX}:${contractId}`,
+    JSON.stringify({
+      status: "declined",
+      contractId,
+      offerTitle: details.offerTitle,
+      offerType: details.offerType,
+      receivedLabel: details.receivedLabel,
+      declinedAt,
+      declinedLabel: details.receivedLabel,
+      offerRate: details.offerRate,
+      role: details.role,
+      duration: details.duration,
+      schedule: details.schedule,
+      startDate: details.startDate,
+      senderDisplayName: details.senderDisplayName,
+      senderUsername: details.senderUsername,
+      senderAvatarSrc: declinedDetails.senderAvatarSrc,
+      declineMessage,
     })
   )
 }
@@ -346,6 +401,10 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
     "@lauradesign21"
   const senderDisplayName =
     readMetadataString(metadata, "senderDisplayName") || "Offer from"
+  const senderAvatarSrc =
+    readMetadataString(metadata, "senderAvatarUrl") ||
+    readMetadataString(metadata, "senderAvatarSrc") ||
+    readMetadataString(metadata, "senderAvatar")
   const offerTitle =
     readMetadataString(metadata, "offerTitle") ||
     readMetadataString(metadata, "projectTitle") ||
@@ -365,6 +424,7 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
     contractId: readMetadataString(metadata, "contractId"),
     senderUsername,
     senderDisplayName,
+    senderAvatarSrc,
     offerType: readMetadataString(metadata, "offerType") || "Project",
     receivedLabel,
     offerTitle,
@@ -558,6 +618,22 @@ const Notifications = () => {
         )
         return
       }
+      if (!accepted && !isUuid(details.contractId)) {
+        setOfferDialogOpen(false)
+        setSelectedOfferNotification(null)
+        resetOfferDialogState()
+        storeDeclinedOfferCard(
+          details.contractId,
+          details,
+          offerDeclineNote.trim() ||
+            offerDeclineReason.trim() ||
+            "Thanks, unfortunately I can't take this on right now."
+        )
+        router.push(
+          withDeclinedOfferState(acceptedMessageHref, details.contractId)
+        )
+        return
+      }
 
       const offerContract = accepted
         ? await getContract(details.contractId)
@@ -595,6 +671,21 @@ const Notifications = () => {
             )
           )
         }
+        if (!accepted) {
+          setOfferDialogOpen(false)
+          setSelectedOfferNotification(null)
+          resetOfferDialogState()
+          storeDeclinedOfferCard(
+            details.contractId,
+            details,
+            offerDeclineNote.trim() ||
+              offerDeclineReason.trim() ||
+              "Thanks, unfortunately I can't take this on right now."
+          )
+          router.push(
+            withDeclinedOfferState(acceptedMessageHref, details.contractId)
+          )
+        }
         return
       }
 
@@ -613,6 +704,27 @@ const Notifications = () => {
               metadata,
               details.messageHref,
               response.clientId ?? offerContract?.clientId,
+              inboxThreads,
+              details.senderUsername,
+              details.senderDisplayName
+            ),
+            details.contractId
+          )
+        )
+      } else {
+        storeDeclinedOfferCard(
+          details.contractId,
+          details,
+          offerDeclineNote.trim() ||
+            offerDeclineReason.trim() ||
+            "Thanks, unfortunately I can't take this on right now."
+        )
+        router.push(
+          withDeclinedOfferState(
+            getOfferAcceptedMessageHref(
+              metadata,
+              details.messageHref,
+              response.clientId,
               inboxThreads,
               details.senderUsername,
               details.senderDisplayName
