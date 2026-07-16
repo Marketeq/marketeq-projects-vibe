@@ -47,7 +47,7 @@ export class ScheduleService {
         primarySplitPercent: 100.00,
         secondarySplitPercent: 0,
         primaryMethod: null, secondaryMethod: null,
-        nextRunAt: null, lastRunAt: null,
+        nextRunAt: null, lastRunAt: null, updatedAt: null,
       };
     }
 
@@ -89,6 +89,7 @@ export class ScheduleService {
       splitDisabledAt: schedule.splitDisabledAt?.toISOString() ?? null,
       nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
       lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
+      updatedAt: schedule.updatedAt?.toISOString() ?? null,
     };
   }
 

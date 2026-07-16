@@ -15,11 +15,15 @@ export class OAuthCallbackController {
     @Query('state') state: string,
     @Res() res: Response,
   ) {
+    // AC-07.03/07.04, AC-08.03/08.04: return the contractor to the actual Transactions
+    // page (Payouts tab) rather than a hardcoded, nonexistent route. Uses the same
+    // FE_ORIGIN env var main.ts already uses for CORS — never hardcode the frontend origin.
+    const feOrigin = process.env.FE_ORIGIN || 'http://localhost:3000';
     try {
       const result = await this.oauthSvc.handleCallback(provider.toUpperCase(), code, state);
-      res.redirect(`http://localhost:3000/settings/payouts?oauth=success&methodId=${result.methodId}`);
+      res.redirect(`${feOrigin}/earnings?tab=payouts&oauth=success&methodId=${result.methodId}`);
     } catch (err: any) {
-      res.redirect(`http://localhost:3000/settings/payouts?oauth=error&code=${err.errorCode ?? 'unknown'}`);
+      res.redirect(`${feOrigin}/earnings?tab=payouts&oauth=error&code=${err.errorCode ?? 'unknown'}`);
     }
   }
 }

@@ -16,6 +16,13 @@ export interface KycStatusResponse {
   tier: string;
   firstPayoutHold: boolean;
   suspended: boolean;
+  // Doc07 Domain 9 / Doc08 ERR-35/36/37: kyc-identity-service's identity-review
+  // status, forwarded through unmodified when present. Optional because the
+  // current kyc-identity-service contract only guarantees `tier` — when it
+  // omits `status`, callers fall back to the existing tier-based checks so
+  // behavior for the already-integrated fields is unchanged.
+  status?: 'not_started' | 'in_review' | 'approved' | 'rejected';
+  rejectionReason?: string;
 }
 
 @Injectable()
