@@ -32,4 +32,7 @@ paths = [
   '''(.*?)node_modules/''',
   '''(.*?)\.next/''',
   '''docs/''',
+  # Vendored cal.diy scheduling-service ships this as a git symlink (mode 120000)
+  # pointing to "../../.env" -- no secret content, just a relative path string.
+  '''^backend/apps/scheduling-service/app/packages/prisma/\.env$''',
 ]
