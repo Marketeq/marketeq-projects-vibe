@@ -15,6 +15,9 @@ export class Thread {
   @Column({ nullable: true })
   groupName: string;
 
+  @Column('uuid', { nullable: true })
+  projectId: string | null;
+
   @OneToMany(() => Message, (m) => m.thread, { cascade: true })
   messages: Message[];
 

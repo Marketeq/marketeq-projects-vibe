@@ -62,6 +62,7 @@ export class ProjectsService {
 
     return {
       ...this.shapeProject(item),
+      ownerId: item.userId ? String(item.userId) : null,
       similarProjects,
       relatedCategories: this.getRelatedCategories(item),
       relatedSkills: this.getRelatedSkills(item),
