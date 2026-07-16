@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-const LOCATIONIQ_API_KEY = "pk.8d6cd3795ace5efa9a0a3469b55d08cb" // Your key
+const LOCATIONIQ_API_KEY = process.env.NEXT_PUBLIC_LOCATIONIQ_API_KEY ?? ""
 
 export const useLocationSearch = (query: string) => {
   const [results, setResults] = useState<string[]>([])
