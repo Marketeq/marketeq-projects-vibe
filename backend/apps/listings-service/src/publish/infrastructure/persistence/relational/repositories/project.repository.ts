@@ -147,6 +147,29 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return ProjectMapper.toDomain(updatedEntity);
   }
 
+  async updatePublishedSnapshot(
+    id: Project['id'],
+    data: {
+      budget: number;
+      scope: unknown;
+      duration: string | null;
+      estimatedHours: number | null;
+    },
+  ): Promise<void> {
+    await this.projectRepository.manager.query(
+      `UPDATE listings.project
+       SET budget = $1, scope = $2::jsonb, duration = $3, "estimatedHours" = $4
+       WHERE id = $5`,
+      [
+        data.budget,
+        JSON.stringify(data.scope ?? []),
+        data.duration,
+        data.estimatedHours,
+        id?.toString(),
+      ],
+    );
+  }
+
   async softDelete(id: Project['id']): Promise<void> {
     await this.projectRepository.softDelete(id!);
   }

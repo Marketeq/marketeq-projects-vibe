@@ -76,6 +76,9 @@ export class Project {
   @Column('text', { array: true, default: [] })
   locations: string[];
 
+  @Column({ type: 'uuid', array: true, default: [] })
+  teamMemberIds: string[];
+
   @Column('text', { array: true, default: [] })
   mediaUrls: string[];
 

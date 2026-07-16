@@ -212,7 +212,9 @@ export function OwnCombobox({
           )}
         >
           <span className="block truncate">
-            {state ? options?.find((option) => option === state) : placeholder}
+            {state
+              ? (options?.find((option) => option === state) ?? state)
+              : placeholder}
           </span>
         </button>
       </PopoverTrigger>
@@ -316,6 +318,76 @@ export function getFlagUrlByName(countryName: string): string | null {
   )
   if (!country) return null
   return getFlagUrl(country)
+}
+
+const COUNTRY_CODES: Record<string, string> = {
+  "United States": "us",
+  "United Kingdom": "gb",
+  Canada: "ca",
+  India: "in",
+  Germany: "de",
+  Australia: "au",
+  Brazil: "br",
+  Philippines: "ph",
+  Ukraine: "ua",
+  Poland: "pl",
+  France: "fr",
+  Japan: "jp",
+  "South Korea": "kr",
+  China: "cn",
+  Mexico: "mx",
+  Spain: "es",
+  Italy: "it",
+  Netherlands: "nl",
+  Sweden: "se",
+  Norway: "no",
+  Denmark: "dk",
+  Finland: "fi",
+  Switzerland: "ch",
+  Austria: "at",
+  Belgium: "be",
+  Ireland: "ie",
+  "New Zealand": "nz",
+  Singapore: "sg",
+  Israel: "il",
+  Portugal: "pt",
+  Argentina: "ar",
+  Colombia: "co",
+  Chile: "cl",
+  Romania: "ro",
+  "Czech Republic": "cz",
+  Hungary: "hu",
+  Turkey: "tr",
+  Thailand: "th",
+  Vietnam: "vn",
+  Indonesia: "id",
+  Malaysia: "my",
+  Nigeria: "ng",
+  Kenya: "ke",
+  "South Africa": "za",
+  Egypt: "eg",
+  Pakistan: "pk",
+  Bangladesh: "bd",
+  "Sri Lanka": "lk",
+  Russia: "ru",
+  Estonia: "ee",
+  Latvia: "lv",
+  Lithuania: "lt",
+  Croatia: "hr",
+  Serbia: "rs",
+  Bulgaria: "bg",
+  Greece: "gr",
+}
+
+/**
+ * Flag URL for a country name that works without the countries API loaded,
+ * using a static flag CDN. Falls back to the loaded-countries lookup.
+ */
+export function getStaticFlagUrl(countryName: string): string | null {
+  if (!countryName) return null
+  const code = COUNTRY_CODES[countryName]
+  if (code) return `https://flagcdn.com/36x27/${code}.png`
+  return getFlagUrlByName(countryName)
 }
 
 function sortCountries(countries: Country[]): {
@@ -459,10 +531,23 @@ export const CountriesCombobox = ({
                 }}
               />
             </span>
+          ) : state && getStaticFlagUrl(state) ? (
+            <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden bg-gray-100">
+              <img
+                className="w-full h-full object-cover"
+                src={getStaticFlagUrl(state) ?? undefined}
+                alt={state}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                }}
+              />
+            </span>
           ) : null}
 
           <span className="text-xs inline-block truncate max-w-[120px] leading-[18px] font-medium text-gray-700">
-            {selectedCountry ? selectedCountry.name.common : placeholder}
+            {selectedCountry
+              ? selectedCountry.name.common
+              : state || placeholder}
           </span>
 
           <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />

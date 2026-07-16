@@ -193,6 +193,7 @@ export class PublishController {
       return await this.publishService.publishExistingProject(
         req.user.sub,
         projectId,
+        req.headers.authorization,
       );
     } catch (error) {
       console.log('err', error);

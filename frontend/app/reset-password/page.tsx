@@ -3,64 +3,33 @@
 import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { AuthAPI } from "@/service/http/auth"
-import { hookFormHasError } from "@/utils/functions"
-import { Eye, EyeOff, Lock01 } from "@blend-metrics/icons"
-import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { SubmitHandler, useForm } from "react-hook-form"
-import { useToggle } from "react-use"
-import { z } from "zod"
-import { Spinner } from "@/components/ui/spinner/spinner"
-import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import {
-  Button,
-  ErrorMessage,
-  Input,
-  InputGroup,
-  InputRightElement,
-  Label,
-  useToast,
-} from "@/components/ui"
-
-const schema = z
-  .object({
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-      .regex(/\d/, "Password must contain at least one number")
-      .regex(/[^a-zA-Z0-9]/, "Password must contain at least one special character"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    path: ["confirmPassword"],
-    message: "Passwords do not match",
-  })
-
-type FormValues = z.infer<typeof schema>
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
+import { AuthAPI } from "@/service/http/auth"
+import { UserAPI } from "@/service/http/user"
+import { Lock01 } from "@blend-metrics/icons"
+import { MarketeqLogo } from "@/components/icons/marketeq-logo"
+import { UpdatePasswordForm } from "@/components/update-password-form"
+import { NavigationForm, SessionChoice } from "@/components/navigation-form"
+import { Button, useToast } from "@/components/ui"
 
 function ResetPassword() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { setUser } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
-  const [isVisible, toggleIsVisible] = useToggle(false)
-  const [isConfirmVisible, toggleIsConfirmVisible] = useToggle(false)
+  const [isContinuing, setIsContinuing] = useState(false)
+  const [resetComplete, setResetComplete] = useState(false)
+  const [nextUser, setNextUser] = useState<any>(null)
+  const [sessionId, setSessionId] = useState("")
 
   const token = searchParams?.get("token") ?? ""
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { password: "", confirmPassword: "" },
-  })
-
-  const onSubmit: SubmitHandler<FormValues> = async ({ password }) => {
+  const onSubmit = async ({ password }: { password: string }) => {
     if (!token) {
       toast({
         title: "Missing or invalid reset token",
@@ -70,9 +39,32 @@ function ResetPassword() {
     }
     setIsLoading(true)
     try {
-      await AuthAPI.ResetPassword({ token, password })
-      toast({ title: "Password reset successfully. Please sign in." })
-      router.push("/sign-in")
+      const response = await AuthAPI.ResetPassword({ token, password })
+
+      let resolvedUser = response?.data?.user
+      try {
+        const meResponse = await UserAPI.me()
+        if (meResponse?.status === 200) {
+          const profileUser =
+            meResponse?.data?.user ??
+            meResponse?.data?.data?.user ??
+            meResponse?.data
+
+          if (profileUser && typeof profileUser === "object") {
+            resolvedUser = mergeDashboardUserFields(resolvedUser, profileUser)
+          }
+        }
+      } catch {
+        // fall back to auth payload
+      }
+
+      if (resolvedUser && typeof resolvedUser === "object") {
+        setUser(resolvedUser)
+      }
+
+      setNextUser(resolvedUser)
+      setSessionId(response?.data?.sessionId ?? "")
+      setResetComplete(true)
     } catch (error: any) {
       toast({
         title:
@@ -83,6 +75,26 @@ function ResetPassword() {
       })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const onContinue = async (choice: SessionChoice) => {
+    setIsContinuing(true)
+    try {
+      if (choice === "sign-out-others" && sessionId) {
+        await AuthAPI.RevokeAllOtherSessions(sessionId)
+      }
+      router.push(resolveDashboardRoute(nextUser))
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.errors?.message ??
+          error?.response?.data?.message ??
+          "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsContinuing(false)
     }
   }
 
@@ -104,136 +116,43 @@ function ResetPassword() {
         </div>
       </div>
 
-      <div className="py-10 px-5 md:p-10 3xl:px-[120px] 3xl:py-[50px]">
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="max-w-[467px] w-full mx-auto p-5 md:p-[50px] bg-white border rounded-xl border-gray-100 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.05)]"
-        >
-          <h1 className="text-lg font-semibold text-dark-blue-400">
-            Set a new password
-          </h1>
-          <p className="mt-2 text-sm leading-5 text-dark-blue-400">
-            Choose a new password for your account. Your reset link expires
-            after 24 hours.
-          </p>
-
+      {resetComplete ? (
+        <NavigationForm onContinue={onContinue} isSubmitting={isContinuing} />
+      ) : (
+        <>
           {!token && (
-            <div className="mt-[30px] rounded-md border border-red-200 bg-red-50 p-4 text-sm text-dark-blue-400">
-              Missing reset token. Please use the link from your email or{" "}
-              <Link
-                href="/forgot-password"
-                className="underline font-semibold text-primary-500"
-              >
-                request a new one
-              </Link>
-              .
+            <div className="max-w-[592px] w-full mx-auto mt-10 px-5 md:px-[50px]">
+              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-dark-blue-400">
+                Missing reset token. Please use the link from your email or{" "}
+                <Link
+                  href="/forgot-password"
+                  className="underline font-semibold text-primary-500"
+                >
+                  request a new one
+                </Link>
+                .
+              </div>
             </div>
           )}
 
-          <div className="mt-[30px]">
-            <Label htmlFor="password" size="sm">
-              New password
-            </Label>
-            <InputGroup className="mt-1.5">
-              <Input
-                id="password"
-                type={isVisible ? "text" : "password"}
-                placeholder="Enter your new password"
-                {...register("password")}
-                isInvalid={hookFormHasError({ errors, name: "password" })}
-              />
-              <InputRightElement>
-                <button
-                  type="button"
-                  className="focus-visible:outline-none"
-                  onClick={toggleIsVisible}
-                >
-                  {isVisible ? (
-                    <EyeOff className="size-4 text-gray-500" />
-                  ) : (
-                    <Eye className="size-4 text-gray-500" />
-                  )}
-                </button>
-              </InputRightElement>
-            </InputGroup>
-            <HookFormErrorMessage
-              errors={errors}
-              name="password"
-              render={({ message }) => (
-                <ErrorMessage className="mt-1.5">{message}</ErrorMessage>
-              )}
-            />
-          </div>
+          <UpdatePasswordForm onSubmit={onSubmit} />
 
-          <div className="mt-5">
-            <Label htmlFor="confirmPassword" size="sm">
-              Confirm new password
-            </Label>
-            <InputGroup className="mt-1.5">
-              <Input
-                id="confirmPassword"
-                type={isConfirmVisible ? "text" : "password"}
-                placeholder="Re-enter your new password"
-                {...register("confirmPassword")}
-                isInvalid={hookFormHasError({
-                  errors,
-                  name: "confirmPassword",
-                })}
-              />
-              <InputRightElement>
-                <button
-                  type="button"
-                  className="focus-visible:outline-none"
-                  onClick={toggleIsConfirmVisible}
-                >
-                  {isConfirmVisible ? (
-                    <EyeOff className="size-4 text-gray-500" />
-                  ) : (
-                    <Eye className="size-4 text-gray-500" />
-                  )}
-                </button>
-              </InputRightElement>
-            </InputGroup>
-            <HookFormErrorMessage
-              errors={errors}
-              name="confirmPassword"
-              render={({ message }) => (
-                <ErrorMessage className="mt-1.5">{message}</ErrorMessage>
-              )}
-            />
+          <div className="max-w-[592px] mx-auto -mt-6 px-5 md:px-[50px] pb-10 w-full">
+            <div className="flex items-center gap-x-2">
+              <Lock01 className="size-5 text-primary-500" />
+              <span className="text-sm font-bold leading-5 text-dark-blue-400">
+                Security Tip
+              </span>
+            </div>
+            <div className="mt-2.5">
+              <span className="text-sm leading-5 text-dark-blue-400">
+                Use a unique password you don't use on other sites. A mix of
+                letters, numbers, and symbols makes it much harder to guess.
+              </span>
+            </div>
           </div>
-
-          <div className="mt-6 flex flex-col gap-y-3">
-            <Button size="sm" disabled={isLoading || !token} type="submit">
-              {isLoading ? (
-                <Spinner
-                  size={20}
-                  className="stroke-white"
-                  trackClassName="stroke-primary-500"
-                  strokeWidth={2}
-                />
-              ) : (
-                "Reset password"
-              )}
-            </Button>
-          </div>
-        </form>
-
-        <div className="max-w-[467px] mt-10 3xl:mt-[50px] mx-auto px-5 md:px-[50px] w-full">
-          <div className="flex items-center gap-x-2">
-            <Lock01 className="size-5 text-primary-500" />
-            <span className="text-sm font-bold leading-5 text-dark-blue-400">
-              Security Tip
-            </span>
-          </div>
-          <div className="mt-2.5">
-            <span className="text-sm leading-5 text-dark-blue-400">
-              Use a unique password you don't use on other sites. A mix of
-              letters, numbers, and symbols makes it much harder to guess.
-            </span>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </>
   )
 }
