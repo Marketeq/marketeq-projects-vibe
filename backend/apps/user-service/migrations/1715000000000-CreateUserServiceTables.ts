@@ -109,6 +109,9 @@ export class CreateUserServiceTables1715000000000 implements MigrationInterface 
       )
     `);
 
+    // Ensure userType column exists even if the table was created by an older synchronize run
+    await queryRunner.query(`ALTER TABLE user_service.users ADD COLUMN IF NOT EXISTS "userType" text CHECK ("userType" IN ('client', 'talent'))`);
+
     // Indexes
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON user_service.users("email")`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_users_username ON user_service.users("username")`);

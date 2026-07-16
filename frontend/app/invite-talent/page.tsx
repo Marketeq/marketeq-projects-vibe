@@ -781,11 +781,11 @@ export default function InviteTalentPage() {
               <Button
                 variant="ghost"
                 visual="gray"
-                onClick={() => router.push("/checkout/demo")}
+                onClick={() => router.push("/projects")}
               >
                 Skip & Continue
               </Button>
-              <Button onClick={() => router.push("/checkout/demo")}>
+              <Button onClick={() => router.push("/projects")}>
                 Send 30 invites
                 <Send01 className="size-4" />
               </Button>

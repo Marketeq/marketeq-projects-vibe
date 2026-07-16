@@ -4,15 +4,15 @@ export class AddJobTitles1778006506707 implements MigrationInterface {
     name = 'AddJobTitles1778006506707'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP INDEX "user_service"."idx_languages_user"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_certifications_user"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_users_email"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_users_username"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_users_user_type"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_skills_user"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_experience_user"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_education_user"`);
-        await queryRunner.query(`DROP INDEX "user_service"."idx_user_industries_user"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_languages_user"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_certifications_user"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_users_email"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_users_username"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_users_user_type"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_skills_user"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_experience_user"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_education_user"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "user_service"."idx_user_industries_user"`);
         await queryRunner.query(`ALTER TABLE "user_service"."languages" DROP COLUMN "proficiency"`);
         await queryRunner.query(`ALTER TABLE "user_service"."certifications" DROP COLUMN "issuingOrganization"`);
         await queryRunner.query(`ALTER TABLE "user_service"."certifications" DROP COLUMN "expiryDate"`);

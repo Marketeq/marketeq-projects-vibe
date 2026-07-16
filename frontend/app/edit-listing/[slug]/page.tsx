@@ -13,7 +13,12 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import options from "@/public/mock/options.json"
 import {
@@ -5498,8 +5503,12 @@ const ProjectScope = ({
 }: {
   setProgress?: (val: number) => void
 }) => {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
+  const handledCheckoutActionRef = useRef(false)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
@@ -5674,6 +5683,26 @@ const ProjectScope = ({
     },
     [phases]
   )
+
+  useEffect(() => {
+    if (handledCheckoutActionRef.current) return
+    if (searchParams.get("checkoutAction") !== "add-task") return
+    if (phases.length < 1) return
+
+    handledCheckoutActionRef.current = true
+    setAccordionState((current) =>
+      current.includes("item-0") ? current : [...current, "item-0"]
+    )
+    handleOpenTaskDialog(0)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    nextSearchParams.delete("checkoutAction")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [handleOpenTaskDialog, pathname, phases.length, router, searchParams])
 
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
@@ -8217,6 +8246,25 @@ function PublishProject({
   } = useStepper({
     steps,
   })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const handledCheckoutStepRef = useRef(false)
+
+  useEffect(() => {
+    if (handledCheckoutStepRef.current) return
+    if (searchParams.get("checkoutStep") !== "scope") return
+
+    handledCheckoutStepRef.current = true
+    setStep(2)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [pathname, router, searchParams, setStep])
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -8233,7 +8281,6 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
-  const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {

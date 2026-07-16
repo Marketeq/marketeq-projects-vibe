@@ -8,6 +8,11 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
+import {
+  getCheckoutProjectSummary,
+  titleizeCheckoutSlug,
+  type CheckoutProjectSummary,
+} from "@/lib/checkout/project-summary"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
 import {
@@ -198,6 +203,26 @@ const parseCurrencyAmount = (value?: string | null) => {
   return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
+const getUsPhoneDigits = (value: string) => {
+  const digits = value.replace(/\D/g, "")
+  const nationalDigits =
+    digits.length > 10 && digits.startsWith("1") ? digits.slice(1) : digits
+
+  return nationalDigits.slice(0, 10)
+}
+
+const formatUsPhoneNumber = (value: string) => {
+  const digits = getUsPhoneDigits(value)
+  const areaCode = digits.slice(0, 3)
+  const prefix = digits.slice(3, 6)
+  const lineNumber = digits.slice(6, 10)
+
+  if (digits.length <= 3) return areaCode ? `(${areaCode}` : ""
+  if (digits.length <= 6) return `(${areaCode}) ${prefix}`
+
+  return `(${areaCode}) ${prefix}-${lineNumber}`
+}
+
 const isValidAbaRoutingNumber = (value: string) => {
   if (!/^\d{9}$/.test(value)) return false
   const digits = value.split("").map(Number)
@@ -330,6 +355,8 @@ type StripeLinkStep = "intro" | "select" | "login" | "account" | "success"
 type PaymentPageSnapshot = {
   pay: "AT_ONCE" | "IN_INSTALLMENTS"
   selectedTalentPaymentPlanId: string
+  useBalance: boolean
+  customAmount: string
   savedInstallmentPaymentMethods: InstallmentPaymentMethod[]
   fullPaymentMethods: InstallmentPaymentMethod[]
   hasSplitFullPayment: boolean
@@ -925,40 +952,14 @@ const CreditCardPreview = ({
   )
 }
 
-const savedBillingAddresses = [
-  {
-    id: "jarvis-1",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-  {
-    id: "jarvis-2",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-  {
-    id: "jarvis-3",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-  {
-    id: "jarvis-4",
-    fullName: "Jarvis Batman",
-    line: "2614 Rio Grande St, APT 1, Austin, TX 78705-4017",
-    addressLine1: "2614 Rio Grande St, Apt 211",
-    cityStateZip: "Austin, TX 78705-4017",
-    phoneNumber: "+1 (737) 436-4562",
-  },
-]
+const savedBillingAddresses: Array<{
+  id: string
+  fullName: string
+  line: string
+  addressLine1: string
+  cityStateZip: string
+  phoneNumber: string
+}> = []
 
 export default function PaymentPage() {
   const params = useParams()
@@ -973,6 +974,8 @@ export default function PaymentPage() {
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
+  const [projectSummary, setProjectSummary] =
+    React.useState<CheckoutProjectSummary | null>(null)
 
   React.useEffect(() => {
     if (!isTalentCheckout) return
@@ -993,6 +996,31 @@ export default function PaymentPage() {
     }
 
     loadTalentProfile()
+
+    return () => {
+      isActive = false
+    }
+  }, [decodedSlug, isTalentCheckout])
+
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+
+    let isActive = true
+
+    const loadProjectSummary = async () => {
+      try {
+        const summary = await getCheckoutProjectSummary(decodedSlug)
+        if (isActive) {
+          setProjectSummary(summary)
+        }
+      } catch {
+        if (isActive) {
+          setProjectSummary(null)
+        }
+      }
+    }
+
+    loadProjectSummary()
 
     return () => {
       isActive = false
@@ -1022,6 +1050,10 @@ export default function PaymentPage() {
     () => `checkout-payment-state:${basePath}:${decodedSlug}`,
     [basePath, decodedSlug]
   )
+  const submittedOrderStorageKey = React.useMemo(
+    () => `checkout-order-submitted:${basePath}:${decodedSlug}`,
+    [basePath, decodedSlug]
+  )
   const installmentSubjectLabel = isTalentCheckout
     ? "contract"
     : checkoutTypeParam === "team"
@@ -1047,6 +1079,16 @@ export default function PaymentPage() {
     "Alex"
   const talentAvatarUrl = talentProfile?.avatarUrl || ""
   const talentJobTitle = getDefaultJobTitle(talentProfile)
+  const checkoutProjectTitle =
+    projectSummary?.title || titleizeCheckoutSlug(decodedSlug)
+  const checkoutProjectImage = projectSummary?.mediaUrl || "/dashboard.png"
+  const checkoutProjectTeamLabel =
+    projectSummary?.teamMemberCount !== null &&
+    projectSummary?.teamMemberCount !== undefined
+      ? `${projectSummary.teamMemberCount} team members`
+      : "Team details unavailable"
+  const checkoutProjectDateRange =
+    projectSummary?.dateRangeLabel || "Timeline unavailable"
   const scheduleTitle =
     selectedSchedule === "part-time" ? "Part time" : "Full time"
   const scheduleDetail =
@@ -1281,8 +1323,12 @@ export default function PaymentPage() {
   const [hasAttemptedCardSubmit, setHasAttemptedCardSubmit] =
     React.useState(false)
   const [savedCardNotification, setSavedCardNotification] = React.useState("")
+  const [legalDialog, setLegalDialog] = React.useState<
+    "terms" | "privacy" | null
+  >(null)
 
   // Billing address
+  const hasSavedBillingAddresses = savedBillingAddresses.length > 0
   const [fullName, setFullName] = React.useState("")
   const [addressLine1, setAddressLine1] = React.useState("")
   const [addressLine2, setAddressLine2] = React.useState("")
@@ -1291,9 +1337,11 @@ export default function PaymentPage() {
   const [zipcode, setZipcode] = React.useState("")
   const [phoneNumber, setPhoneNumber] = React.useState("")
   const [billingAddressMode, setBillingAddressMode] =
-    React.useState<BillingAddressMode>("summary")
+    React.useState<BillingAddressMode>(
+      hasSavedBillingAddresses ? "summary" : "new"
+    )
   const [selectedBillingAddressId, setSelectedBillingAddressId] =
-    React.useState(savedBillingAddresses[0].id)
+    React.useState(savedBillingAddresses[0]?.id ?? "")
   const [isConfirmAddressDialogOpen, setIsConfirmAddressDialogOpen] =
     React.useState(false)
 
@@ -1402,6 +1450,8 @@ export default function PaymentPage() {
     if (typeof window === "undefined") return
 
     try {
+      window.sessionStorage.removeItem(submittedOrderStorageKey)
+
       const rawSnapshot = window.sessionStorage.getItem(paymentStateStorageKey)
 
       if (!rawSnapshot) {
@@ -1417,6 +1467,14 @@ export default function PaymentPage() {
 
       if (typeof snapshot.selectedTalentPaymentPlanId === "string") {
         setSelectedTalentPaymentPlanId(snapshot.selectedTalentPaymentPlanId)
+      }
+
+      if (typeof snapshot.useBalance === "boolean") {
+        setUseBalance(snapshot.useBalance)
+      }
+
+      if (typeof snapshot.customAmount === "string") {
+        setCustomAmount(snapshot.customAmount)
       }
 
       if (Array.isArray(snapshot.savedInstallmentPaymentMethods)) {
@@ -1488,7 +1546,7 @@ export default function PaymentPage() {
     } finally {
       setHasHydratedPaymentState(true)
     }
-  }, [paymentStateStorageKey])
+  }, [paymentStateStorageKey, submittedOrderStorageKey])
 
   React.useEffect(() => {
     if (!hasHydratedPaymentState || typeof window === "undefined") return
@@ -1496,6 +1554,8 @@ export default function PaymentPage() {
     const snapshot: PaymentPageSnapshot = {
       pay,
       selectedTalentPaymentPlanId,
+      useBalance,
+      customAmount,
       savedInstallmentPaymentMethods,
       fullPaymentMethods,
       hasSplitFullPayment,
@@ -1515,6 +1575,7 @@ export default function PaymentPage() {
     )
   }, [
     firstInstallmentMethods,
+    customAmount,
     fullPaymentMethods,
     giftCards,
     hasHydratedPaymentState,
@@ -1528,6 +1589,7 @@ export default function PaymentPage() {
     selectedTalentPaymentPlanId,
     showFullPaymentMethods,
     splitPaymentAllocations,
+    useBalance,
     wireTransferDetails,
   ])
 
@@ -1586,20 +1648,13 @@ export default function PaymentPage() {
       ),
     [fullPaymentMethods]
   )
-  const splitMethodTypeSet = React.useMemo(
-    () => new Set(splitPaymentMethods.map((method) => method.method)),
-    [splitPaymentMethods]
-  )
   const availableSplitPaymentOptions = React.useMemo(
     () =>
       PAYMENT_METHODS.filter((method) => {
         const methodType = getPaymentMethodTypeFromSelection(method.value)
-        if (!methodType) return false
-        return (
-          method.value === paymentMethod || !splitMethodTypeSet.has(methodType)
-        )
+        return Boolean(methodType)
       }),
-    [paymentMethod, splitMethodTypeSet]
+    []
   )
   const canAddAnotherSplitPaymentMethod =
     hasSplitFullPayment &&
@@ -1683,6 +1738,13 @@ export default function PaymentPage() {
   const hasKlarnaPaymentMethod = fullPaymentMethods.some(
     (method) => method.method === "KLARNA"
   )
+  const isAddingSplitPaymentMethod =
+    pay === "AT_ONCE" && hasSplitFullPayment && !showFullPaymentMethods
+  const shouldShowFullPaymentCardForm =
+    paymentMethod === "item-0" &&
+    (pay !== "AT_ONCE" ||
+      fullPaymentMethods.length < 1 ||
+      isAddingSplitPaymentMethod)
   const isGooglePaySelectedWithoutSavedMethod =
     isGooglePaySelected && !hasGooglePayPaymentMethod
   const isApplePaySelectedWithoutSavedMethod =
@@ -2058,7 +2120,13 @@ export default function PaymentPage() {
   const handleSubmitOrder = async () => {
     setPaymentError("")
 
-    if (isCardPaymentSelected && totalAmountToBePaid > 0) {
+    if (
+      isCardPaymentSelected &&
+      fullPaymentMethods.every(
+        (method) => method.method !== "CREDIT_DEBIT_CARD"
+      ) &&
+      totalAmountToBePaid > 0
+    ) {
       setHasAttemptedCardSubmit(true)
       if (!isFullPaymentCardFormValid) return
 
@@ -2179,6 +2247,7 @@ export default function PaymentPage() {
     setIsProcessing(true)
     setTimeout(() => {
       navigateToConfirmation()
+      setIsProcessing(false)
     }, 1500)
   }
 
@@ -2678,10 +2747,15 @@ export default function PaymentPage() {
     setIsBalanceCustom(false)
   }
 
-  const selectedBillingAddress =
-    savedBillingAddresses.find(
-      (address) => address.id === selectedBillingAddressId
-    ) ?? savedBillingAddresses[0]
+  const selectedBillingAddress = savedBillingAddresses.find(
+    (address) => address.id === selectedBillingAddressId
+  ) ??
+    savedBillingAddresses[0] ?? {
+      fullName: "",
+      addressLine1: "",
+      cityStateZip: "",
+      phoneNumber: "",
+    }
   const billingAddressSummary = {
     fullName: fullName || selectedBillingAddress.fullName,
     addressLine1: addressLine1 || selectedBillingAddress.addressLine1,
@@ -2723,7 +2797,8 @@ export default function PaymentPage() {
       addressLine1.trim().length > 0 &&
       city.trim().length > 0 &&
       billingState.trim().length > 0 &&
-      /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()))
+      /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
+      getUsPhoneDigits(phoneNumber).length === 10)
   const isFullPaymentCardFormValid =
     !cardNumberError &&
     !cardNameError &&
@@ -2797,9 +2872,7 @@ export default function PaymentPage() {
         return "This payment method is not available for split payment. Please choose a different one."
       }
 
-      if (
-        fullPaymentMethods.some((current) => current.method === method.method)
-      ) {
+      if (fullPaymentMethods.some((current) => current.id === method.id)) {
         return "You have already added this payment method. Please choose a different one."
       }
 
@@ -2813,9 +2886,7 @@ export default function PaymentPage() {
       savedInstallmentPaymentMethods.filter(
         (method) =>
           SPLIT_ELIGIBLE_METHOD_TYPES.includes(method.method) &&
-          !fullPaymentMethods.some(
-            (current) => current.method === method.method
-          )
+          !fullPaymentMethods.some((current) => current.id === method.id)
       ),
     [fullPaymentMethods, savedInstallmentPaymentMethods]
   )
@@ -3078,7 +3149,7 @@ export default function PaymentPage() {
     setBillingState("")
     setZipcode("")
     setPhoneNumber("")
-    setBillingAddressMode("summary")
+    setBillingAddressMode(hasSavedBillingAddresses ? "summary" : "new")
   }
 
   const resetFullPaymentBankForm = () => {
@@ -3915,7 +3986,9 @@ export default function PaymentPage() {
                     )}
                   </div>
                   <span className="inline-block text-xs leading-none text-[#858585]">
-                    Credit ****{method.cardNumber?.slice(-4) || "1234"}
+                    {method.cardNumber?.slice(-4)
+                      ? `Credit ****${method.cardNumber.slice(-4)}`
+                      : "Credit card"}
                   </span>
                 </div>
               </div>
@@ -3932,7 +4005,11 @@ export default function PaymentPage() {
 
                 <RmDialog
                   title="Remove Payment Method?"
-                  description={`Are you sure you want to remove ${getInstallmentCardBrandName(method.cardNumber)} Credit ****${method.cardNumber?.slice(-4) || "1234"} from your payment methods?`}
+                  description={`Are you sure you want to remove ${getInstallmentCardBrandName(method.cardNumber)} ${
+                    method.cardNumber?.slice(-4)
+                      ? `Credit ****${method.cardNumber.slice(-4)}`
+                      : "credit card"
+                  } from your payment methods?`}
                   onRemove={options.onRemove}
                   trigger={({ isOpen, setIsOpen }) => (
                     <IconButton
@@ -4281,6 +4358,7 @@ export default function PaymentPage() {
         {/* Navigation */}
         <CheckoutNavigation
           currentStep={2}
+          logoHref=""
           firstStepLabel={
             isTalentCheckout ? "Contract Details" : "Project Details"
           }
@@ -5397,19 +5475,6 @@ export default function PaymentPage() {
                         <RadioGroup
                           value={paymentMethod}
                           onValueChange={(value) => {
-                            const methodType =
-                              getPaymentMethodTypeFromSelection(value)
-
-                            if (
-                              methodType &&
-                              splitMethodTypeSet.has(methodType)
-                            ) {
-                              setSplitPaymentError(
-                                "You have already added this payment method. Please choose a different one."
-                              )
-                              return
-                            }
-
                             setSplitPaymentError("")
                             setPaymentMethod(value)
                           }}
@@ -6080,7 +6145,7 @@ export default function PaymentPage() {
                 )}
 
                 {/* Credit / Debit Card Form */}
-                {paymentMethod === "item-0" && (
+                {shouldShowFullPaymentCardForm && (
                   <div className="mt-[50px]">
                     <h1 className="text-lg leading-none font-bold text-dark-blue-400">
                       Add Your Credit / Debit Card
@@ -6337,7 +6402,8 @@ export default function PaymentPage() {
                         <h3 className="text-lg leading-none font-bold text-dark-blue-400">
                           Billing Address
                         </h3>
-                        {billingAddressMode === "new" ? (
+                        {billingAddressMode === "new" &&
+                        hasSavedBillingAddresses ? (
                           <Button
                             className="underline"
                             variant="link"
@@ -6531,8 +6597,14 @@ export default function PaymentPage() {
                                 className="pl-[68px]"
                                 placeholder="(555) 000-0000"
                                 id="phone-number"
+                                inputMode="numeric"
+                                autoComplete="tel-national"
                                 value={phoneNumber}
-                                onChange={(e) => setPhoneNumber(e.target.value)}
+                                onChange={(e) =>
+                                  setPhoneNumber(
+                                    formatUsPhoneNumber(e.target.value)
+                                  )
+                                }
                               />
                               <div className="absolute inset-y-0 left-0 my-auto flex w-[58px] items-center justify-center gap-x-1 rounded-l-[5px] border-r border-gray-200 text-sm text-dark-blue-400">
                                 🇺🇸 +1
@@ -6544,6 +6616,9 @@ export default function PaymentPage() {
                               {!/^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
                               zipcode.trim()
                                 ? "Please enter a valid zip code."
+                                : phoneNumber.trim() &&
+                                    getUsPhoneDigits(phoneNumber).length !== 10
+                                  ? "Please enter a valid US phone number."
                                 : "Please complete all required billing address fields."}
                             </span>
                           ) : null}
@@ -6632,16 +6707,18 @@ export default function PaymentPage() {
                                   <span className="block font-bold">
                                     {title}
                                   </span>
-                                  <span className="block">Jarvis Batman</span>
+                                  <span className="block">
+                                    {billingAddressSummary.fullName}
+                                  </span>
                                   <span className="block font-bold">
-                                    2614 Rio Grande St, Apt 211
+                                    {billingAddressSummary.addressLine1}
                                   </span>
                                   <span className="block">
-                                    Austin, TX 78705-4017
+                                    {billingAddressSummary.cityStateZip}
                                   </span>
                                   <span className="block">United States</span>
                                   <span className="block">
-                                    +1 (737) 436-4562
+                                    {billingAddressSummary.phoneNumber}
                                   </span>
                                 </span>
                               </button>
@@ -7095,7 +7172,9 @@ export default function PaymentPage() {
                             }
                             onClick={handleManualBankContinue}
                           >
-                            {isBankSubmitting ? "Saving..." : "Save Account"}
+                            {isBankSubmitting
+                              ? "Saving..."
+                              : "Save Bank Account"}
                           </Button>
                         </div>
                         <div className="mt-3.5 flex items-center justify-end">
@@ -7984,7 +8063,7 @@ export default function PaymentPage() {
                               disabled={!isInstallmentBankFormValid}
                               onClick={handleSaveInstallmentBank}
                             >
-                              Save Account
+                              Save Bank Account
                             </Button>
                           </div>
                         </div>
@@ -8223,6 +8302,7 @@ export default function PaymentPage() {
                               <Button
                                 className="text-[10px] leading-[14px] underline"
                                 variant="link"
+                                onClick={() => setLegalDialog("terms")}
                               >
                                 Terms of Use
                               </Button>{" "}
@@ -8230,6 +8310,7 @@ export default function PaymentPage() {
                               <Button
                                 className="text-[10px] leading-[14px] underline"
                                 variant="link"
+                                onClick={() => setLegalDialog("privacy")}
                               >
                                 Privacy Policy
                               </Button>
@@ -8258,22 +8339,21 @@ export default function PaymentPage() {
                         <div className="relative h-[92px] rounded-md overflow-hidden">
                           <NextImage
                             className="object-cover"
-                            src="/dashboard.png"
-                            alt="Dashboard"
+                            src={checkoutProjectImage}
+                            alt={checkoutProjectTitle}
                             sizes="50vw"
                             fill
                           />
                         </div>
 
                         <h3 className="text-sm font-medium text-dark-blue-400 leading-[18px]">
-                          Marketeq Client Portal - Redesigning and Optimizing
-                          Website for Enhanced User Experience.
+                          {checkoutProjectTitle}
                         </h3>
 
                         <div className="flex items-center gap-x-2">
                           <UserGroup className="size-[15px]" />
                           <span className="inline-block text-xs leading-5 font-semibold text-primary-500">
-                            8 team members
+                            {checkoutProjectTeamLabel}
                           </span>
                         </div>
 
@@ -8283,7 +8363,7 @@ export default function PaymentPage() {
                               Total Duration
                             </h3>
                             <h1 className="text-xs font-semibold leading-none text-dark-blue-400">
-                              Jan 2025 - Aug 2025
+                              {checkoutProjectDateRange}
                             </h1>
                           </div>
                           <Badge size="sm" visual="primary">
@@ -8406,6 +8486,7 @@ export default function PaymentPage() {
                             <Button
                               className="text-[10px] leading-[14px] underline"
                               variant="link"
+                              onClick={() => setLegalDialog("terms")}
                             >
                               Terms of Use
                             </Button>{" "}
@@ -8413,6 +8494,7 @@ export default function PaymentPage() {
                             <Button
                               className="text-[10px] leading-[14px] underline"
                               variant="link"
+                              onClick={() => setLegalDialog("privacy")}
                             >
                               Privacy Policy
                             </Button>
@@ -8485,6 +8567,27 @@ export default function PaymentPage() {
           </p>
           <div className="mt-6 flex justify-end">
             <Button onClick={() => router.push("/sign-in")}>Log In</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={legalDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setLegalDialog(null)
+        }}
+      >
+        <DialogContent className="max-w-[480px] p-6">
+          <h2 className="text-lg font-semibold text-dark-blue-400">
+            {legalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
+          </h2>
+          <p className="mt-3 text-sm leading-5 text-gray-500">
+            {legalDialog === "privacy"
+              ? "This privacy policy explains how Marketeq collects, uses, and protects checkout information. Payment details are handled securely and are only used to process and support your order."
+              : "These terms explain the basic conditions for using Marketeq checkout. By continuing, you confirm that your order details are accurate and authorize Marketeq to process the selected payment method."}
+          </p>
+          <div className="mt-6 flex justify-end">
+            <Button onClick={() => setLegalDialog(null)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>

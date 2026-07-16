@@ -18,8 +18,8 @@ export class CreatePaymentIntentDto {
   currency?: string = 'usd';
 
   @IsOptional()
-  @IsEnum(['card', 'ach'])
-  paymentMethod?: 'card' | 'ach' = 'card';
+  @IsEnum(['card', 'ach', 'klarna'])
+  paymentMethod?: 'card' | 'ach' | 'klarna' = 'card';
 
   @IsOptional()
   @IsString()
