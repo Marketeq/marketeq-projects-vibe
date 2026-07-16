@@ -2377,7 +2377,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.month"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Month"
                                 displayValue={(value: number) =>
@@ -2421,7 +2427,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.year"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Year"
                                 displayValue={(value: number) => value}
@@ -4466,7 +4478,10 @@ export const CertificationsDialog = ({
                           }
                           placeholder="MM/DD/YYYY"
                           value={value}
-                          onValueChange={onChange}
+                          onValueChange={(v) => {
+                            onChange(v)
+                            trigger("expirationDate")
+                          }}
                         />
                       )}
                     />
