@@ -61,6 +61,9 @@ type AuthUserPayload = {
   twoFactorMethod?: string | null;
   firstName?: string;
   lastName?: string;
+  isNewUser?: boolean;
+  accountLinked?: boolean;
+  linkedProvider?: string;
 };
 
 type LoginResult =
@@ -140,7 +143,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private serializeUser(
     user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'> & { twoFactorMethod?: string | null },
-    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
+    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName' | 'isNewUser' | 'accountLinked' | 'linkedProvider'>,
   ): AuthUserPayload {
     return {
       id: user.id,
@@ -860,6 +863,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -877,6 +881,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'GOOGLE') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with Google for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'GOOGLE';
+      await this.userRepository.update({ id: user.id }, { provider: 'GOOGLE' });
     }
 
     try {
@@ -906,7 +917,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'GOOGLE' }),
+      }),
     };
   }
 
@@ -983,6 +999,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -1000,6 +1017,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'LINKEDIN') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with LinkedIn for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'LINKEDIN';
+      await this.userRepository.update({ id: user.id }, { provider: 'LINKEDIN' });
     }
 
     try {
@@ -1026,7 +1050,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'LINKEDIN' }),
+      }),
     };
   }
 
