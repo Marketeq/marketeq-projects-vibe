@@ -18,12 +18,14 @@ import {
   type AcceptedOfferCardData,
   Chats,
   type CounterOfferCardData,
+  type DeclinedOfferCardData,
 } from "./components/chats-comp"
 import LeftSidebar from "./components/left-sidebar"
 import RightSidebar from "./components/right-sidebar"
 
 const OFFER_ACCEPTED_STORAGE_PREFIX = "inbox_offer_accepted"
 const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+const OFFER_DECLINED_STORAGE_PREFIX = "inbox_offer_declined"
 
 const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const [pinnedChats, setPinnedChats] = useState(0)
@@ -124,6 +126,8 @@ export default function InboxRoot() {
     useState<AcceptedOfferCardData | null>(null)
   const [counterOfferCard, setCounterOfferCard] =
     useState<CounterOfferCardData | null>(null)
+  const [declinedOfferCard, setDeclinedOfferCard] =
+    useState<DeclinedOfferCardData | null>(null)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
@@ -169,6 +173,44 @@ export default function InboxRoot() {
       schedule: "Full Time",
       startDate: "Starts on Mon, Jun 14",
       acceptanceMessage: "Excited to get started!",
+    })
+  }, [acceptedOfferStatus, acceptedOfferContractId])
+
+  useEffect(() => {
+    if (
+      acceptedOfferStatus !== "declined" ||
+      !acceptedOfferContractId ||
+      typeof window === "undefined"
+    ) {
+      setDeclinedOfferCard(null)
+      return
+    }
+
+    const storageKey = `${OFFER_DECLINED_STORAGE_PREFIX}:${acceptedOfferContractId}`
+    try {
+      const stored = sessionStorage.getItem(storageKey)
+      if (stored) {
+        setDeclinedOfferCard(JSON.parse(stored))
+        return
+      }
+    } catch {}
+
+    setDeclinedOfferCard({
+      status: "declined",
+      contractId: acceptedOfferContractId,
+      offerTitle: "The Ultimate Mobile App Experience",
+      offerType: "Project",
+      receivedLabel: "Feb 1, 2025",
+      declinedAt: new Date().toISOString(),
+      declinedLabel: "Feb 1, 2025",
+      offerRate: "$45/hr",
+      role: "UX Designer",
+      duration: "4 Months",
+      schedule: "Full Time",
+      startDate: "Feb 5th, 2025",
+      senderDisplayName: "Laura",
+      senderUsername: "@lauradesign21",
+      declineMessage: "Thanks, unfortunately I can't take this on right now.",
     })
   }, [acceptedOfferStatus, acceptedOfferContractId])
 
@@ -321,6 +363,7 @@ export default function InboxRoot() {
             onIndexNewMessage={searchIndex.addDoc}
             acceptedOfferCard={acceptedOfferCard}
             counterOfferCard={counterOfferCard}
+            declinedOfferCard={declinedOfferCard}
           />
 
           {rightSidebarOpen && (

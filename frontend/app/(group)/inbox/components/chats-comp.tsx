@@ -31,6 +31,7 @@ import {
   Image03,
   Info,
   Mail05,
+  MessageSquare,
   MoreHorizontal,
   Pin02,
   Plus,
@@ -135,6 +136,7 @@ interface ChatsProps {
   }) => void
   acceptedOfferCard?: AcceptedOfferCardData | null
   counterOfferCard?: CounterOfferCardData | null
+  declinedOfferCard?: DeclinedOfferCardData | null
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -238,6 +240,25 @@ export interface CounterOfferCardData {
   message?: string
 }
 
+export interface DeclinedOfferCardData {
+  status: "declined"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  receivedLabel?: string
+  declinedAt?: string
+  declinedLabel?: string
+  offerRate: string
+  role: string
+  duration: string
+  schedule: string
+  startDate: string
+  senderDisplayName?: string
+  senderUsername?: string
+  senderAvatarSrc?: string
+  declineMessage?: string
+}
+
 export function Chats({
   selectedConversation,
   jwtToken,
@@ -250,6 +271,7 @@ export function Chats({
   onIndexNewMessage,
   acceptedOfferCard,
   counterOfferCard,
+  declinedOfferCard,
 }: ChatsProps) {
   const router = useRouter()
   const [textareaValue, setTextareaValue] = useState("")
@@ -263,8 +285,11 @@ export function Chats({
   const [receiverUser, setReceiverUser] = useState<User | null>(null)
   const [counterpartDeleted, setCounterpartDeleted] = useState(false)
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
+  const [declinedOfferDetailsOpen, setDeclinedOfferDetailsOpen] =
+    useState(false)
   const acceptedOfferToastRef = useRef<string | null>(null)
   const submittedCounterOfferRef = useRef<string | null>(null)
+  const declinedOfferToastRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (
@@ -295,6 +320,45 @@ export function Chats({
       description: "Sent to the client. We'll notify you when they respond.",
     })
   }, [counterOfferCard])
+
+  useEffect(() => {
+    if (
+      !declinedOfferCard ||
+      declinedOfferToastRef.current === declinedOfferCard.contractId
+    ) {
+      return
+    }
+
+    declinedOfferToastRef.current = declinedOfferCard.contractId
+    toast({
+      title: "Offer Declined",
+      description: "This offer is now closed.",
+    })
+  }, [declinedOfferCard])
+  const declinedOfferSenderName =
+    declinedOfferCard?.senderDisplayName || "Laura"
+  const declinedOfferSenderUsername =
+    declinedOfferCard?.senderUsername || "@lauradesign21"
+  const declinedOfferSenderInitial =
+    declinedOfferSenderName.slice(0, 1) ||
+    declinedOfferSenderUsername.replace(/^@/, "").slice(0, 1) ||
+    "L"
+  const declinedAtDate = declinedOfferCard?.declinedAt
+    ? new Date(declinedOfferCard.declinedAt)
+    : null
+  const canRequestExtension =
+    !declinedAtDate ||
+    Number.isNaN(declinedAtDate.getTime()) ||
+    Date.now() - declinedAtDate.getTime() < 30 * 24 * 60 * 60 * 1000
+  const declinedDisplayLabel =
+    declinedOfferCard?.declinedLabel ||
+    declinedOfferCard?.receivedLabel ||
+    "Feb 1, 2025"
+  const askNowMessage = declinedOfferCard
+    ? canRequestExtension
+      ? `Hi ${declinedOfferSenderName}! Can you extend the offer for the project ${declinedOfferCard.offerTitle}? I'm still interested.`
+      : `Hi ${declinedOfferSenderName}! I wanted to check in and see if the ${declinedOfferCard.role} role for the project ${declinedOfferCard.offerTitle} is still available. If so, I'm still interested.`
+    : ""
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
     "Messages"
   )
@@ -667,6 +731,18 @@ export function Chats({
     typingUserIds,
   } = useAblyPresence(selectedConversation?.id ?? "")
   const { isOnline } = useOnlineUsers()
+  const handleAskNow = useCallback(() => {
+    if (!askNowMessage || counterpartDeleted) return
+
+    setDeclinedOfferDetailsOpen(false)
+    setTextareaValue(askNowMessage)
+    lastTypedAtRef.current = Date.now()
+    userTypedRef.current = true
+    sendTyping(true)
+    requestAnimationFrame(() => {
+      composerRef.current?.focus()
+    })
+  }, [askNowMessage, counterpartDeleted, sendTyping])
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -2102,7 +2178,7 @@ export function Chats({
               displayedMessages.length === 0 &&
               !(
                 selectedTab === "Messages" &&
-                (acceptedOfferCard || counterOfferCard)
+                (acceptedOfferCard || counterOfferCard || declinedOfferCard)
               ) && (
                 <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
                   <Send className="size-8 stroke-[1.5]" />
@@ -2298,6 +2374,49 @@ export function Chats({
                       className="mt-4 w-fit px-5 text-primary-500"
                       variant="outlined"
                       visual="gray"
+                    >
+                      View Details
+                    </Button>
+                  </Card>
+                </article>
+              </div>
+            )}
+            {!isSwitching && selectedTab === "Messages" && declinedOfferCard && (
+              <div className="flex justify-end rounded-lg">
+                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                    <span className="font-bold">You</span>{" "}
+                    {currentUser.username ? (
+                      <span>@{currentUser.username} </span>
+                    ) : null}
+                    <span className="font-semibold">declined the offer</span>
+                  </div>
+
+                  <p className="text-sm leading-[20px] text-dark-blue-400">
+                    {declinedOfferCard.declineMessage ||
+                      "Thanks, unfortunately I can't take this on right now."}
+                  </p>
+
+                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                      Offer Declined
+                    </h3>
+                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                      {declinedOfferCard.offerTitle}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {declinedOfferCard.offerType}
+                      </Badge>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        This offer is now closed.
+                      </span>
+                    </div>
+                    <Button
+                      className="mt-4 w-fit px-5 text-primary-500"
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => setDeclinedOfferDetailsOpen(true)}
                     >
                       View Details
                     </Button>
@@ -2949,6 +3068,154 @@ export function Chats({
         }
         contextThreadId={selectedConversation?.id ?? null}
       />
+
+      {declinedOfferCard ? (
+        <Dialog
+          open={declinedOfferDetailsOpen}
+          onOpenChange={setDeclinedOfferDetailsOpen}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setDeclinedOfferDetailsOpen(false)
+              }
+            }}
+          >
+            <div className="pointer-events-auto flex w-[520px] flex-col overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
+              <div className="flex h-[60px] shrink-0 items-center justify-between border-b border-gray-100 px-6 py-3">
+                <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
+                  This Offer Expired
+                </DialogTitle>
+
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <ScrollArea
+                className="h-[446px] flex-1"
+                scrollBar={<ScrollBar className="w-4 px-1" />}
+              >
+                <div className="space-y-6 px-6 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {declinedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-sm leading-5 text-gray-500">
+                          Expired on {declinedDisplayLabel}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 text-[18px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.offerTitle}
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-1.5 text-sm leading-5 text-dark-blue-400">
+                        <span>Offer from</span>
+                        <Avatar size="xs">
+                          <AvatarImage
+                            src={declinedOfferCard.senderAvatarSrc}
+                            alt={declinedOfferSenderName}
+                          />
+                          <AvatarFallback>
+                            {declinedOfferSenderInitial}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{declinedOfferSenderName}</span>
+                        <span className="text-primary-500">
+                          {declinedOfferSenderUsername}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      leftIcon={<MessageSquare className="size-4" />}
+                      onClick={() => setDeclinedOfferDetailsOpen(false)}
+                    >
+                      Message
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4 border-y border-gray-100 py-6">
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        Offer Rate
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.offerRate}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Role
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.role}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Contract Duration
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.duration}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Work Schedule
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.schedule}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Start Date
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.startDate}
+                      </span>
+                    </div>
+                  </div>
+
+                </div>
+              </ScrollArea>
+
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-100 px-6 py-4">
+                <div className="flex items-start gap-2 text-sm leading-5 text-gray-400">
+                  <Info className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    {canRequestExtension
+                      ? "Want to revisit this? You can ask the client to extend the offer."
+                      : "Want to revisit this? Ask the client to see if the role is still available."}
+                  </span>
+                </div>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  disabled={counterpartDeleted}
+                  onClick={handleAskNow}
+                >
+                  {canRequestExtension ? "Request Extension" : "Ask Now"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <OneDrivePickerDialog
         open={onedriveDialogOpen}

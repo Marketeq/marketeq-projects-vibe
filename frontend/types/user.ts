@@ -41,6 +41,9 @@ export type User = {
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
+  isNewUser?: boolean
+  accountLinked?: boolean
+  linkedProvider?: AUTH_PROVIDERS
 }
 
 export type UserSkill = {
