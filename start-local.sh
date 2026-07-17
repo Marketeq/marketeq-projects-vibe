@@ -13,11 +13,6 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
-# Prefer Homebrew's supported Node line for this project when present.
-if [ -d "/opt/homebrew/opt/node@24/bin" ]; then
-  export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
-fi
-
 # ── Ensure local infrastructure ──────────────────────────────────
 ensure_infra() {
   echo -e "${YELLOW}Checking local infrastructure...${NC}"
@@ -61,29 +56,6 @@ ensure_deps() {
   fi
 }
 
-# ── Port lookup (mirrors ecosystem.config.js) ────────────────────
-# Returns the port for a given service name; empty string if unknown.
-svc_port() {
-  case "$1" in
-    api-gateway)         echo 4000 ;;
-    auth-service)        echo 3001 ;;
-    user-service)        echo 3002 ;;
-    listings-service)    echo 3004 ;;
-    messaging-service)   echo 3005 ;;
-    notification-service) echo 3006 ;;
-    checkout-service)    echo 3009 ;;
-    contracts-service)   echo 3010 ;;
-    favorites-service)   echo 3012 ;;
-    invitations-service) echo 3013 ;;
-    autocomplete-service) echo 3016 ;;
-    time-tracking-service) echo 3017 ;;
-    category-service)    echo 3023 ;;
-    scheduling-service)  echo 3024 ;;
-    portfolio-service)   echo 3025 ;;
-    *)                   echo "" ;;
-  esac
-}
-
 # ── Core services (required for the app to work) ─────────────────
 CORE_SERVICES=(
   api-gateway
@@ -118,21 +90,23 @@ start_backend() {
   local names=()
   for svc in "${services[@]}"; do
     if [ -d "apps/$svc" ]; then
-      local port
-      port="$(svc_port "$svc")"
-      if [ -n "$port" ]; then
-        cmds+=("PORT=$port npx nest start $svc --watch")
-      else
-        cmds+=("npx nest start $svc --watch")
-      fi
+      cmds+=("npx nest start $svc --watch")
       names+=("$svc")
     fi
   done
 
   local name_str=$(IFS=,; echo "${names[*]}")
+  local cmd_str=""
+  for cmd in "${cmds[@]}"; do
+    if [ -n "$cmd_str" ]; then
+      cmd_str="$cmd_str \"$cmd\""
+    else
+      cmd_str="\"$cmd\""
+    fi
+  done
 
   echo -e "${GREEN}Starting: ${name_str}${NC}"
-  npx concurrently --names "$name_str" --prefix-colors "auto" --kill-others-on-fail "${cmds[@]}"
+  npx concurrently --names "$name_str" --prefix-colors "auto" --kill-others-on-fail $cmd_str
 }
 
 start_frontend() {
@@ -146,24 +120,18 @@ start_all() {
   cd "$ROOT_DIR"
 
   # Build concurrently commands for core backend + frontend
-  local backend_cmds=()
+  local backend_cmds=""
   local names="frontend"
   for svc in "${CORE_SERVICES[@]}"; do
     if [ -d "$BACKEND_DIR/apps/$svc" ]; then
-      local port
-      port="$(svc_port "$svc")"
-      if [ -n "$port" ]; then
-        backend_cmds+=("cd $BACKEND_DIR && PORT=$port npx nest start $svc --watch")
-      else
-        backend_cmds+=("cd $BACKEND_DIR && npx nest start $svc --watch")
-      fi
+      backend_cmds="$backend_cmds \"cd $BACKEND_DIR && npx nest start $svc --watch\""
       names="$names,$svc"
     fi
   done
 
   npx concurrently --names "$names" --prefix-colors "auto" --kill-others-on-fail \
     "cd $FRONTEND_DIR && npm run dev" \
-    "${backend_cmds[@]}"
+    $backend_cmds
 }
 
 # ── Main ─────────────────────────────────────────────────────────
