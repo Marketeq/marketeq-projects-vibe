@@ -84,6 +84,32 @@ export const ProjectAPI = {
       { members }
     )
   },
+  GetProjectQuestions: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`
+    )
+  },
+  SaveProjectQuestions: (
+    projectId: string,
+    questions: Array<{
+      id?: string
+      question: string
+      answer?: string | null
+      askedByName?: string | null
+      askedByUsername?: string | null
+      askedAt?: string | null
+      answeredByUserId?: string | null
+      answeredByName?: string | null
+      answeredByRole?: string | null
+      assignedToUserId?: string | null
+      hidden?: boolean
+    }>
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`,
+      { questions }
+    )
+  },
   SuggestFaqs: (projectId: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,

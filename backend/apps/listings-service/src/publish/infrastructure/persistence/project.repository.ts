@@ -10,6 +10,20 @@ import {
   SortProjectDto,
 } from '../../dto/query-project.dto';
 
+export type RecentQuestion = {
+  id?: string;
+  question: string;
+  answer: string | null;
+  askedByName?: string | null;
+  askedByUsername?: string | null;
+  askedAt?: string | null;
+  answeredByUserId?: string | null;
+  answeredByName?: string | null;
+  answeredByRole?: string | null;
+  assignedToUserId?: string | null;
+  hidden?: boolean;
+};
+
 export abstract class ProjectRepository {
   abstract create(
     data: Omit<Project, 'id' | 'createdAt' | 'deletedAt' | 'updatedAt'>,
@@ -78,6 +92,13 @@ export abstract class ProjectRepository {
       isLead?: boolean | null;
       leadLabel?: string | null;
     }>,
+  ): Promise<void>;
+
+  abstract getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]>;
+
+  abstract updateRecentQuestions(
+    id: Project['id'],
+    questions: RecentQuestion[],
   ): Promise<void>;
 
   abstract softDelete(id: Project['id']): Promise<void>;
