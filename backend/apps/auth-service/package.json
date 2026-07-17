@@ -5,7 +5,10 @@
     "build": "nest build auth-service",
     "start": "node dist/apps/auth-service/src/main",
     "start:dev": "nest start auth-service --watch",
-    "start:prod": "node dist/apps/auth-service/src/main"
+    "start:prod": "node dist/apps/auth-service/src/main",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage"
   },
   "dependencies": {
     "@nestjs/axios": "^3.0.0",
@@ -35,5 +38,22 @@
     "@types/bcrypt": "^5.0.0",
     "@types/cookie-parser": "^1.4.6",
     "@types/passport-jwt": "^3.0.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
   }
 }

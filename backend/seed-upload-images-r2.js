@@ -11,15 +11,24 @@ const http = require('http');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 
-const DATABASE_URL =
-  'postgres://supabase_admin:VVLjT29C33ZrP4vzhzmBEGEit3529MAa@72.61.77.231:5433/postgres';
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return value;
+}
+
+const DATABASE_URL = requireEnv('DATABASE_URL');
 
 const SCHEMA = 'listings';
 
-// R2 credentials
+// R2 credentials -- set R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY in your shell env
+// before running (see backend/.env.local.example). Endpoint/bucket/public URL
+// below are not secrets, just this script's fixed target.
 const R2_ENDPOINT = 'https://94ccb1ac46d66f225f369bd07f044f56.r2.cloudflarestorage.com';
-const R2_ACCESS_KEY = '020b9b97a526421028214dacadd810f3';
-const R2_SECRET_KEY = 'a6de0a9c8438a1fcd3f4991ded970c4f9cf46068578f5e3319a056794d9a346d';
+const R2_ACCESS_KEY = requireEnv('R2_ACCESS_KEY_ID');
+const R2_SECRET_KEY = requireEnv('R2_SECRET_ACCESS_KEY');
 const R2_BUCKET = 'marketeq-profile-images';
 const PUBLIC_URL = 'https://pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev';
 

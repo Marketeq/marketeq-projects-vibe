@@ -2377,7 +2377,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.month"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Month"
                                 displayValue={(value: number) =>
@@ -2421,7 +2427,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.year"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Year"
                                 displayValue={(value: number) => value}
@@ -4466,7 +4478,10 @@ export const CertificationsDialog = ({
                           }
                           placeholder="MM/DD/YYYY"
                           value={value}
-                          onValueChange={onChange}
+                          onValueChange={(v) => {
+                            onChange(v)
+                            trigger("expirationDate")
+                          }}
                         />
                       )}
                     />
@@ -4667,13 +4682,35 @@ export const CertificationsDialog = ({
                                           {skill.name}
                                         </ComboboxOption>
                                       ))
-                                    ) : (
-                                      <div className="px-3 py-2 text-sm font-light text-gray-500">
-                                        {query.trim()
-                                          ? "No matching skills found."
-                                          : "Start typing to search skills."}
-                                      </div>
-                                    )}
+                                    ) : (() => {
+                                      const q = query.trim()
+                                      const alreadySelected = (
+                                        value ?? []
+                                      ).some(
+                                        (s) =>
+                                          s.name.toLowerCase() ===
+                                          q.toLowerCase()
+                                      )
+                                      if (q && !alreadySelected) {
+                                        return (
+                                          <ComboboxOption
+                                            value={{
+                                              id: `custom-${q}`,
+                                              name: q,
+                                            }}
+                                          >
+                                            Add &ldquo;{q}&rdquo;
+                                          </ComboboxOption>
+                                        )
+                                      }
+                                      return (
+                                        <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                          {q
+                                            ? "No matching skills found."
+                                            : "Start typing to search skills."}
+                                        </div>
+                                      )
+                                    })()}
                                   </ScrollArea>
                                 </ComboboxOptions>
                               </ScaleOutIn>
@@ -4702,6 +4739,16 @@ export const CertificationsDialog = ({
                       Add Skills
                     </Button>
                   )}
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="skills"
+                    render={({ message }) => (
+                      <ErrorMessage className="mt-1.5" size="sm">
+                        {message}
+                      </ErrorMessage>
+                    )}
+                  />
 
                   <div className="mt-3 flex gap-3 flex-wrap">
                     {selected?.map((skill, index) => (

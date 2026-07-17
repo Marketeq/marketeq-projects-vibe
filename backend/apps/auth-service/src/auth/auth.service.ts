@@ -26,6 +26,7 @@ import { BrevoService } from '../brevo/brevo.service';
 
 import { User } from '../user/entities/user.entity';
 import { Session } from '../session/entities/session.entity';
+import { PasswordHistory } from '../password-history/entities/password-history.entity';
 import { SessionResponseDto } from './dto/session-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -60,6 +61,9 @@ type AuthUserPayload = {
   twoFactorMethod?: string | null;
   firstName?: string;
   lastName?: string;
+  isNewUser?: boolean;
+  accountLinked?: boolean;
+  linkedProvider?: string;
 };
 
 type LoginResult =
@@ -84,6 +88,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
 const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
 const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
   'Too many requests. Please try again later.';
+const PASSWORD_HISTORY_LIMIT = 5;
 
 type RateLimitBucket = {
   count: number;
@@ -108,6 +113,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(PasswordHistory)
+    private readonly passwordHistoryRepository: Repository<PasswordHistory>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly brevoService: BrevoService,
@@ -136,7 +143,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private serializeUser(
     user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'> & { twoFactorMethod?: string | null },
-    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
+    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName' | 'isNewUser' | 'accountLinked' | 'linkedProvider'>,
   ): AuthUserPayload {
     return {
       id: user.id,
@@ -551,7 +558,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto, ipAddress = '') {
+  async resetPassword(dto: ResetPasswordDto, ipAddress = '', userAgent = '') {
     this.enforcePasswordResetRateLimit(
       `reset-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
       'AUTH_RESET_PASSWORD_IP_LIMIT',
@@ -572,10 +579,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         algorithms: ['RS256'],
       });
     } catch {
+      this.logger.warn(
+        `resetPassword: rejected invalid/expired token (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected malformed token payload (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
@@ -585,8 +598,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!user || user.passwordResetVersion !== payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected reused/stale token for userId=${payload.sub} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
+
+    await this.assertPasswordNotReused(user, dto.password);
 
     const nextResetVersion = randomUUID();
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -605,7 +623,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         throw new UnauthorizedException('Invalid or expired reset token');
       }
 
-      await manager.getRepository(Session).delete({ userId: user.id });
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager
+        .getRepository(PasswordHistory)
+        .find({
+          where: { userId: user.id },
+          order: { createdAt: 'DESC' },
+          skip: PASSWORD_HISTORY_LIMIT,
+        });
+
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
     });
 
     user.hasPassword = true;
@@ -613,7 +648,47 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.syncUserProfile(user);
 
-    return { success: true };
+    this.logger.log(
+      `resetPassword: password reset for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    const sessionId = randomUUID();
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+
+    return {
+      success: true,
+      ...tokens,
+      sessionId,
+      user: this.serializeUser(user),
+    };
+  }
+
+  private async assertPasswordNotReused(
+    user: Pick<User, 'id' | 'password'>,
+    newPassword: string,
+  ): Promise<void> {
+    const recentHashes: string[] = [];
+
+    if (user.password) {
+      recentHashes.push(user.password);
+    }
+
+    const history = await this.passwordHistoryRepository.find({
+      where: { userId: user.id },
+      order: { createdAt: 'DESC' },
+      take: PASSWORD_HISTORY_LIMIT - 1,
+      select: ['passwordHash'],
+    });
+    recentHashes.push(...history.map((entry) => entry.passwordHash));
+
+    for (const hash of recentHashes) {
+      if (await bcrypt.compare(newPassword, hash)) {
+        throw new BadRequestException(
+          `You cannot reuse one of your last ${PASSWORD_HISTORY_LIMIT} passwords.`,
+        );
+      }
+    }
   }
 
   async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
@@ -788,6 +863,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -805,6 +881,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'GOOGLE') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with Google for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'GOOGLE';
+      await this.userRepository.update({ id: user.id }, { provider: 'GOOGLE' });
     }
 
     try {
@@ -834,7 +917,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'GOOGLE' }),
+      }),
     };
   }
 
@@ -911,6 +999,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -928,6 +1017,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'LINKEDIN') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with LinkedIn for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'LINKEDIN';
+      await this.userRepository.update({ id: user.id }, { provider: 'LINKEDIN' });
     }
 
     try {
@@ -954,7 +1050,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'LINKEDIN' }),
+      }),
     };
   }
 

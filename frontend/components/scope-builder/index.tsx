@@ -88,7 +88,7 @@ import { Network4 } from "@/components/icons/network-4"
 import {
   CountriesCombobox,
   OwnCombobox,
-  getFlagUrlByName,
+  getStaticFlagUrl,
 } from "@/components/own-combobox"
 import {
   DropdownMenu,
@@ -271,7 +271,7 @@ export interface TeamMember {
 }
 
 /** Convert a duration to billable hours based on work schedule */
-function durationToHours(
+export function durationToHours(
   durationValue: number,
   durationType: string,
   workSchedule?: string | null,
@@ -289,6 +289,77 @@ function durationToHours(
   if (durationType === "weeks") return durationValue * hoursPerWeek
   // days
   return durationValue * hoursPerDay
+}
+
+// Stand-in rate card (USD/hour by experience level) — mirrors the backend's
+// cms-projects deriveBudgetFromScope. Swap for pricing-service rates once the
+// roles/rate table is wired (docs §14.7 HOURLY_RATE_BY_LEVEL stand-in).
+export const HOURLY_RATE_BY_LEVEL: Record<string, number> = {
+  Student: 25,
+  Junior: 55,
+  Medior: 85,
+  Senior: 125,
+  Guru: 175,
+}
+
+// Role-specific hourly rates (USD/hr), reusing the pricing-service test seed
+// (PS-07 / ps_platform_rate_averages median). Roles not listed fall back to
+// HOURLY_RATE_BY_LEVEL by experience level.
+export const HOURLY_RATE_BY_ROLE: Record<string, number> = {
+  "ux designer": 100,
+  "backend developer": 70,
+  "product manager": 55,
+  "devops engineer": 45,
+}
+
+// startingPriceTotal (docs §14.7): Σ (hours × rate), returned in USD cents.
+// Hours come from an explicit estimatedHours, else derived from the task's
+// duration via durationToHours (respecting workSchedule).
+export function estimateScopeBudgetCents(
+  phases: any[] | null | undefined
+): number {
+  if (!Array.isArray(phases)) return 0
+  let totalUsd = 0
+  for (const phase of phases) {
+    const rows = phase?.rows ?? phase?.tasks ?? []
+    for (const row of rows) {
+      if (!row) continue
+      const explicit = Number(row.estimatedHours)
+      let hours = Number.isFinite(explicit) && explicit > 0 ? explicit : 0
+      if (hours <= 0 && row.duration) {
+        const dur = row.duration
+        const value =
+          typeof dur === "object"
+            ? Number(dur?.value)
+            : Number(String(dur).trim().split(/\s+/)[0])
+        const type =
+          typeof dur === "object"
+            ? dur?.type
+            : String(dur).trim().split(/\s+/)[1]
+        if (Number.isFinite(value) && value > 0) {
+          hours = durationToHours(value, type ?? "days", row.workSchedule)
+        }
+      }
+      if (hours <= 0) continue
+      const level = Array.isArray(row.experience)
+        ? row.experience[0]
+        : row.experienceLevel || row.experience || "Medior"
+      const roleKey = String(row.role ?? "")
+        .trim()
+        .toLowerCase()
+      const memberRate = Number(row.assignedMember?.hourlyRate)
+      const fallbackRate =
+        HOURLY_RATE_BY_ROLE[roleKey] ??
+        HOURLY_RATE_BY_LEVEL[level] ??
+        HOURLY_RATE_BY_LEVEL.Medior
+      const rate =
+        Number.isFinite(memberRate) && memberRate > 0
+          ? memberRate
+          : fallbackRate
+      totalUsd += hours * rate
+    }
+  }
+  return Math.round(totalUsd * 100)
 }
 
 /** Calculate task cost for an assigned team member */
@@ -401,70 +472,56 @@ const numberToWord = (num: number) => {
   return words[num] || num + 1 // fallback for numbers > 10
 }
 
-// ─── Country code lookup (static fallback for flags before API loads) ────
-const COUNTRY_CODES: Record<string, string> = {
-  "United States": "us",
-  "United Kingdom": "gb",
-  Canada: "ca",
-  India: "in",
-  Germany: "de",
-  Australia: "au",
-  Brazil: "br",
-  Philippines: "ph",
-  Ukraine: "ua",
-  Poland: "pl",
-  France: "fr",
-  Japan: "jp",
-  "South Korea": "kr",
-  China: "cn",
-  Mexico: "mx",
-  Spain: "es",
-  Italy: "it",
-  Netherlands: "nl",
-  Sweden: "se",
-  Norway: "no",
-  Denmark: "dk",
-  Finland: "fi",
-  Switzerland: "ch",
-  Austria: "at",
-  Belgium: "be",
-  Ireland: "ie",
-  "New Zealand": "nz",
-  Singapore: "sg",
-  Israel: "il",
-  Portugal: "pt",
-  Argentina: "ar",
-  Colombia: "co",
-  Chile: "cl",
-  Romania: "ro",
-  "Czech Republic": "cz",
-  Hungary: "hu",
-  Turkey: "tr",
-  Thailand: "th",
-  Vietnam: "vn",
-  Indonesia: "id",
-  Malaysia: "my",
-  Nigeria: "ng",
-  Kenya: "ke",
-  "South Africa": "za",
-  Egypt: "eg",
-  Pakistan: "pk",
-  Bangladesh: "bd",
-  "Sri Lanka": "lk",
-  Russia: "ru",
-  Estonia: "ee",
-  Latvia: "lv",
-  Lithuania: "lt",
-  Croatia: "hr",
-  Serbia: "rs",
-  Bulgaria: "bg",
-  Greece: "gr",
+// Member locations are free-text and inconsistent: "City, Country"
+// (Munich, Germany), "City, State, Country" (San Francisco, California,
+// United States), US "City, State" with no country (New York, NY), or a
+// bare country (USA). This column is country-based (flag + country), so
+// reduce any of those to a country name COUNTRY_CODES understands.
+//
+// "Georgia" is intentionally NOT treated as a US state — it collides with the
+// country of the same name, so we default the ambiguous case to the country.
+const US_STATES = new Set<string>([
+  "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id",
+  "il", "in", "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms",
+  "mo", "mt", "ne", "nv", "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok",
+  "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv",
+  "wi", "wy", "dc",
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+  "connecticut", "delaware", "florida", "hawaii", "idaho", "illinois",
+  "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
+  "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
+  "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+  "new mexico", "new york", "north carolina", "north dakota", "ohio",
+  "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
+  "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+  "washington", "west virginia", "wisconsin", "wyoming",
+])
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "United States",
+  "u.s.": "United States",
+  "u.s.a.": "United States",
+  "united states of america": "United States",
+  us: "United States",
+  uk: "United Kingdom",
+  "u.k.": "United Kingdom",
+  "great britain": "United Kingdom",
+  uae: "United Arab Emirates",
 }
 
-function getStaticFlagUrl(countryName: string): string | null {
-  const code = COUNTRY_CODES[countryName]
-  if (code) return `https://flagcdn.com/36x27/${code}.png`
-  return getFlagUrlByName(countryName)
+export function countryFromLocation(location?: string | null): string {
+  const parts = (location ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!parts.length) return ""
+
+  const last = parts[parts.length - 1]
+  const key = last.toLowerCase()
+
+  if (US_STATES.has(key)) return "United States"
+  if (COUNTRY_ALIASES[key]) return COUNTRY_ALIASES[key]
+  return last
 }
 
 // ─── Roles ──────────────────────────────────────────────────────────────
@@ -1415,7 +1472,7 @@ const CUSTOM_PERIODS = [
   "per quarter",
 ] as const
 
-function AddRoleDialog({
+export function AddRoleDialog({
   open,
   onOpenChange,
   roles,
@@ -1597,7 +1654,7 @@ function AddRoleDialog({
   )
 }
 
-function RolePicker({
+export function RolePicker({
   teamMembers,
   roles,
   onSelectMember,
@@ -1779,7 +1836,6 @@ const columns = [
           role: tm.role,
           assignedMember: tm,
           location: tm.location ?? "",
-          experience: tm.experience ?? "",
         })
         setPopoverOpen(false)
       }
@@ -1905,9 +1961,8 @@ const columns = [
       const assigned = original.assignedMember
       const currentValue = original.location ?? ""
       if (assigned) {
-        const flagUrl = assigned.location
-          ? getStaticFlagUrl(assigned.location)
-          : null
+        const country = countryFromLocation(original.location)
+        const flagUrl = country ? getStaticFlagUrl(country) : null
         return (
           <TableCell className="px-3 py-4">
             <span className="inline-flex items-center gap-x-1.5 px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
@@ -1916,11 +1971,11 @@ const columns = [
                   <img
                     className="w-full h-full object-cover"
                     src={flagUrl}
-                    alt={assigned.location || ""}
+                    alt={country}
                   />
                 </span>
               )}
-              {assigned.location || "—"}
+              {country || "—"}
             </span>
           </TableCell>
         )
@@ -1949,7 +2004,7 @@ const columns = [
         return (
           <TableCell className="py-4 px-6">
             <span className="inline-flex items-center px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
-              {assigned.experience || "—"}
+              {original.experience || "—"}
             </span>
           </TableCell>
         )

@@ -86,6 +86,11 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
               if (nextUser && typeof nextUser === "object") {
                 setUser(nextUser)
               }
+              if (response.data.user?.accountLinked) {
+                toast({
+                  title: "Your LinkedIn account has been linked to your existing Marketeq account.",
+                })
+              }
               if (onSuccess) {
                 onSuccess()
               } else {

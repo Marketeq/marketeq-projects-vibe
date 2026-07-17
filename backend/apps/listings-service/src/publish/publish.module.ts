@@ -13,9 +13,10 @@ import { DeliverablesAdapterHuggingFace } from '../project-sync/deliverables/del
 import { FAQ_ADAPTER } from './faq/faq.adapter';
 import { FaqAdapterHeuristic } from './faq/faq.adapter.heuristic';
 import { FaqAdapterHuggingFace } from './faq/faq.adapter.huggingface';
+import { UserProfileModule } from '../shared/user-profile/user-profile.module';
 
 @Module({
-  imports: [HttpModule, RelationalProjectPersistenceModule],
+  imports: [HttpModule, RelationalProjectPersistenceModule, UserProfileModule],
   controllers: [PublishController],
   providers: [
     PublishService,

@@ -4,16 +4,26 @@ import { ConfigService } from '@nestjs/config';
 export function createRedisClient(config: ConfigService): Redis {
   const redisUrl = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
   const client = new Redis(redisUrl, {
-    // Retry with exponential backoff up to 10 seconds between attempts.
-    retryStrategy: (times: number) => Math.min(times * 200, 10_000),
+    // Retry a few times, then give up so we don't spam reconnect errors while
+    // Redis is down — pricing-service reads from PostgreSQL in that case.
+    retryStrategy: (times: number) => (times > 5 ? null : Math.min(times * 200, 2_000)),
     // Do not crash the process if Redis is temporarily unreachable.
     // pricing-service falls back to PostgreSQL reads when Redis is down.
     enableReadyCheck: false,
     lazyConnect: true,
+    // Fail commands immediately when disconnected instead of queueing them —
+    // otherwise `await redis.get()` hangs while Redis is down, blocking the
+    // DB fallback. With this off, the read rejects fast and the catch handler
+    // reads from Postgres.
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 1,
   });
 
+  let loggedError = false;
   client.on('error', (err) => {
-    console.error('Redis client error:', err.message);
+    if (loggedError) return;
+    loggedError = true;
+    console.error('Redis unavailable, using PostgreSQL fallback:', err.message);
   });
 
   return client;
