@@ -14,6 +14,7 @@ type CheckoutNavigationProps = {
   firstStepLabel?: string
   showSteps?: boolean
   logoHref?: string
+  allStepsCompleted?: boolean
 }
 
 const Step = ({
@@ -53,6 +54,7 @@ export function CheckoutNavigation({
   firstStepLabel = "Project Details",
   showSteps = true,
   logoHref = "/",
+  allStepsCompleted = false,
 }: CheckoutNavigationProps) {
   return (
     <div className="fixed inset-x-0 top-0 z-40 bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
@@ -83,7 +85,7 @@ export function CheckoutNavigation({
               step={1}
               label={firstStepLabel}
               active={currentStep === 1}
-              completed={currentStep > 1}
+              completed={allStepsCompleted || currentStep > 1}
             />
             <span className="h-0 w-[35px] shrink-0 border-t-2 border-dashed border-gray-300" />
             <Step
@@ -91,7 +93,7 @@ export function CheckoutNavigation({
               label="Payment Details"
               disabled={currentStep < 2}
               active={currentStep === 2}
-              completed={currentStep > 2}
+              completed={allStepsCompleted || currentStep > 2}
             />
             <span className="h-0 w-[35px] shrink-0 border-t-2 border-dashed border-gray-300" />
             <Step
@@ -99,6 +101,7 @@ export function CheckoutNavigation({
               label="Review & Pay"
               disabled={currentStep < 3}
               active={currentStep === 3}
+              completed={allStepsCompleted}
             />
           </div>
         ) : null}

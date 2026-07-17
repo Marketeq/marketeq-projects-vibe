@@ -277,7 +277,7 @@ type UploadedSignatureFile = {
   dataUrl: string
 }
 
-type ReviewErrorState = "unavailable"
+type ReviewErrorState = "unavailable" | "voided"
 
 type SignErrorState =
   | "unavailable"
@@ -1511,7 +1511,7 @@ export default function JobDetailsPage({
                     </span>
                   </span>
                   <NextLink
-                    href="/checkout/demo"
+                    href={`/checkout/${slug}`}
                     className="shrink-0 whitespace-nowrap text-[12px] font-medium leading-6 text-primary-500 hover:underline"
                   >
                     View Details

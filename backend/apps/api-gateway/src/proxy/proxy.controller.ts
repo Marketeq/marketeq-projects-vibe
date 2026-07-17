@@ -108,7 +108,7 @@ export class ProxyController {
     const serviceUrls: Record<string, string> = {
       'auth-service': process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
       'user-service': process.env.USER_SERVICE_URL || 'http://localhost:3002',
-      'listings-service': process.env.LISTINGS_SERVICE_URL || 'http://localhost:3003',
+      'listings-service': process.env.LISTINGS_SERVICE_URL || 'http://localhost:3004',
       'messaging-service': process.env.MESSAGING_SERVICE_URL || 'http://localhost:3005',
       'notification-service': process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
       'search-service': process.env.SEARCH_SERVICE_URL || 'http://localhost:3007',
