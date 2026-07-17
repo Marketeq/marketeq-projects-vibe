@@ -76,9 +76,12 @@ import { PauseModule } from './pause/pause.module';
     DatabaseModule,
     CommonModule,
     AuditModule,
+    // ScheduleConfigModule's literal `v1/payouts/schedule` route must register before
+    // PayoutModule's `v1/payouts/:id` — Express matches routes in registration order,
+    // so :id would otherwise shadow it and try (and fail) to parse "schedule" as a UUID.
+    ScheduleConfigModule,
     PayoutModule,
     MethodsModule,
-    ScheduleConfigModule,
     ProvidersModule,
     MagicLinkModule,
     ConsumersModule,

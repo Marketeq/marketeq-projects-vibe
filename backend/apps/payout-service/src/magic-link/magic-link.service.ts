@@ -22,6 +22,7 @@ import { PayoutError } from '../common/errors/payout.error';
 
 const TTL_SECONDS = 15 * 60; // 15 minutes — hard, no extension
 const MAX_RESENDS = 3;
+const RESEND_COOLDOWN_SECONDS = 30;
 
 @Injectable()
 export class MagicLinkService {
@@ -131,7 +132,11 @@ export class MagicLinkService {
   async verifyEmailToken(
     rawToken: string,
     payoutRequestId: string,
-  ): Promise<{ payoutRequestId: string; status: string; message: string }> {
+  ): Promise<{
+    payoutRequestId: string; status: string; message: string;
+    amountUsd?: string; netAmountUsd?: string; currency?: string;
+    methodType?: string; methodLabel?: string | null;
+  }> {
     // 1. Hash incoming token — never compare raw values
     const incomingHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
@@ -184,12 +189,27 @@ export class MagicLinkService {
 
     // 7. Advance payout request to QUEUED (matching existing PS-02 flow)
     const payout = await this.payoutRepo.findOne({
-      where: { id: payoutRequestId, status: PayoutStatus.PENDING_VERIFICATION },
+      where: { id: payoutRequestId },
+      relations: ['depositMethod'],
     });
 
     if (!payout) {
+      throw new PayoutError('Payout request not found.', HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
+    }
+
+    // AC-20.01: the success screen needs amount/method regardless of branch below,
+    // so build this once and reuse it for both the idempotent-replay and fresh-verify returns.
+    const detail = {
+      amountUsd: payout.amountUsd,
+      netAmountUsd: payout.netAmountUsd,
+      currency: payout.currency,
+      methodType: payout.depositMethod?.methodType,
+      methodLabel: payout.depositMethod?.displayLabel ?? payout.depositMethod?.nickname ?? null,
+    };
+
+    if (payout.status !== PayoutStatus.PENDING_VERIFICATION) {
       // Payout already advanced or cancelled — idempotent
-      return { payoutRequestId, status: 'already_processed', message: 'This withdrawal has already been processed.' };
+      return { payoutRequestId, status: 'already_processed', message: 'This withdrawal has already been processed.', ...detail };
     }
 
     await this.dataSource.transaction(async (em) => {
@@ -214,6 +234,7 @@ export class MagicLinkService {
       payoutRequestId,
       status: 'verified',
       message: 'Your withdrawal has been confirmed and is being processed.',
+      ...detail,
     };
   }
 
@@ -250,6 +271,20 @@ export class MagicLinkService {
       where: { payoutRequestId, used: false, superseded: false },
       order: { createdAt: 'DESC' },
     });
+
+    // ERR-52: server-defined resend cooldown — must not be reconstructible
+    // client-side, so the remaining seconds are returned in the error body.
+    if (previous) {
+      const elapsedSeconds = (Date.now() - previous.createdAt.getTime()) / 1000;
+      const remaining = Math.ceil(RESEND_COOLDOWN_SECONDS - elapsedSeconds);
+      if (remaining > 0) {
+        throw new PayoutError(
+          'Please wait before requesting another link.',
+          HttpStatus.TOO_MANY_REQUESTS, 'ERR_MAGIC_LINK_RESEND_COOLDOWN',
+          { cooldownRemainingSeconds: remaining },
+        );
+      }
+    }
 
     if (previous) {
       await this.redis.del(`magiclink:${previous.tokenHash}`);

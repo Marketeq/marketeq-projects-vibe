@@ -37,8 +37,12 @@ export class ProxyService {
       admin: config.get('ADMIN_SERVICE_URL') || 'http://localhost:3024',
       affiliateReferral: config.get('AFFILIATE_REFERRAL_SERVICE_URL') || 'http://localhost:3025',
       billing: config.get('BILLING_SERVICE_URL') || 'http://localhost:3026',
-      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3027',
-      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3028',
+      // Defaults matched to ecosystem.config.js's actual assigned ports (earnings-service:3026,
+      // payout-service:3022) — the previous 3027/3028 fallbacks didn't correspond to any running
+      // service, so gateway-proxied earnings/payouts calls always 502'd unless the env vars
+      // happened to be set to override them.
+      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3026',
+      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3022',
       pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
       wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
