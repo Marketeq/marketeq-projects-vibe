@@ -635,12 +635,17 @@ export class PublishService {
         }))
       : team;
 
+    const recentQuestions = await this.projectRepository.getRecentQuestions(
+      project.id,
+    );
+
     return {
       ...project,
       media: media ?? null,
       scope,
       team: teamWithLead,
       projectMembers,
+      recentQuestions,
       budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
     };
   }
@@ -664,6 +669,48 @@ export class PublishService {
     await this.ensureProjectOwnership(projectId, userId);
     await this.projectRepository.upsertProjectMembers(projectId, members ?? []);
     return this.projectRepository.getProjectMembers(projectId);
+  }
+
+  async getRecentQuestions(userId: string, projectId: string) {
+    await this.ensureProjectOwnership(projectId, userId);
+    return this.projectRepository.getRecentQuestions(projectId);
+  }
+
+  async saveRecentQuestions(
+    userId: string,
+    projectId: string,
+    questions: Array<{
+      id?: string;
+      question: string;
+      answer?: string | null;
+      askedByName?: string | null;
+      askedByUsername?: string | null;
+      askedAt?: string | null;
+      answeredByUserId?: string | null;
+      answeredByName?: string | null;
+      answeredByRole?: string | null;
+      assignedToUserId?: string | null;
+      hidden?: boolean;
+    }>,
+  ) {
+    await this.ensureProjectOwnership(projectId, userId);
+    const normalized = (questions ?? [])
+      .filter((q) => q && typeof q.question === 'string' && q.question.trim())
+      .map((q) => ({
+        id: q.id ?? undefined,
+        question: q.question,
+        answer: q.answer?.trim() ? q.answer : null,
+        askedByName: q.askedByName ?? null,
+        askedByUsername: q.askedByUsername ?? null,
+        askedAt: q.askedAt ?? null,
+        answeredByUserId: q.answer?.trim() ? (q.answeredByUserId ?? null) : null,
+        answeredByName: q.answer?.trim() ? (q.answeredByName ?? null) : null,
+        answeredByRole: q.answer?.trim() ? (q.answeredByRole ?? null) : null,
+        assignedToUserId: q.assignedToUserId ?? null,
+        hidden: !!q.hidden,
+      }));
+    await this.projectRepository.updateRecentQuestions(projectId, normalized);
+    return this.projectRepository.getRecentQuestions(projectId);
   }
 
   async updateProjectDraft(

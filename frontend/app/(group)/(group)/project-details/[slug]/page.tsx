@@ -4,6 +4,9 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { apiFetch } from "@/src/lib/api"
+import { useAblyChannel } from "@/utils/useAblyChannel"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { estimateScopeBudgetCents } from "@/components/scope-builder"
 import {
   addFavorite,
@@ -108,7 +111,6 @@ import {
   DialogTitle,
   DialogTrigger,
   DisclosureContent,
-  DisclosureTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -283,11 +285,24 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
   )
 }
 
-const Chats = () => {
+const Chats = ({
+  projectId,
+  teamMemberIds = [],
+  ownerId,
+  initialDraft,
+}: {
+  projectId?: string
+  teamMemberIds?: string[]
+  ownerId?: string | null
+  initialDraft?: string
+}) => {
   const [state, setState] = React.useState<CircularProgressDropzoneState>()
   const [open, toggle] = useToggle(false)
+  const router = useRouter()
+  const { user } = useAuth()
+  const myId = user?.id ? String(user.id) : ""
 
-  const { onChatChange, onSave, chat } = useEditContext()
+  const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
     value: chat,
     onChange: onChatChange,
@@ -300,6 +315,117 @@ const Chats = () => {
     setTextareaValue(value)
   }
   const [bottomBarRef, bottomBarBounds] = useMeasure()
+
+  const [threadId, setThreadId] = React.useState<string | null>(null)
+  const [messages, setMessages] = React.useState<
+    Array<{ id: string; senderId: string; content?: string | null; createdAt: string }>
+  >([])
+  const chatBottomRef = React.useRef<HTMLDivElement | null>(null)
+
+  const participantIds = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [...(teamMemberIds ?? []).map(String), ownerId ? String(ownerId) : ""].filter(
+            Boolean
+          )
+        )
+      ),
+    [teamMemberIds, ownerId]
+  )
+
+  // Guard against concurrent creates (e.g. double-mount) making duplicate
+  // threads — a create in flight is shared by all callers.
+  const createInFlight = React.useRef<Promise<string | null> | null>(null)
+
+  const ensureThread = React.useCallback(async () => {
+    if (threadId) return threadId
+    if (!projectId || !myId) return null
+    if (createInFlight.current) return createInFlight.current
+    const pending = (async () => {
+      const t = await apiFetch<{ id: string }>(`/v1/threads/project`, {
+        method: "POST",
+        body: { projectId, teamMemberIds: participantIds },
+      })
+      setThreadId(t.id)
+      return t.id
+    })()
+    createInFlight.current = pending
+    try {
+      return await pending
+    } finally {
+      createInFlight.current = null
+    }
+  }, [threadId, projectId, myId, participantIds])
+
+  // On open, LOAD the visitor's existing thread (if any) so prior chat shows.
+  // Do NOT create one from viewing — creation happens on first send.
+  React.useEffect(() => {
+    if (!myId || !projectId) return
+    let cancelled = false
+    apiFetch<Array<{ id: string }>>(`/v1/threads?projectId=${projectId}`)
+      .then(async (rows) => {
+        const existing = rows?.[0]
+        if (!existing || cancelled) return
+        setThreadId(existing.id)
+        const hist = await apiFetch<{ messages: typeof messages }>(
+          `/v1/messages/thread/${existing.id}?all=true`
+        ).catch(() => ({ messages: [] as typeof messages }))
+        if (!cancelled) setMessages(hist?.messages ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [myId, projectId])
+
+  const onIncoming = React.useCallback((data: any) => {
+    if (!data?.id) return
+    setMessages((prev) =>
+      prev.some((m) => m.id === data.id) ? prev : [...prev, data]
+    )
+  }, [])
+  useAblyChannel(threadId ?? "", onIncoming)
+
+  React.useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ block: "end" })
+  }, [messages])
+
+  // Prefill the composer from the "Ask a Question" input once.
+  const draftApplied = React.useRef(false)
+  React.useEffect(() => {
+    if (!draftApplied.current && initialDraft && initialDraft.trim()) {
+      setTextareaValue(initialDraft)
+      draftApplied.current = true
+    }
+  }, [initialDraft, setTextareaValue])
+
+  const handleSend = React.useCallback(async () => {
+    const text = (textareaValue ?? "").trim()
+    if (!text) return
+    // Doc 15: login required before a message is sent.
+    if (!myId) {
+      router.push("/sign-in")
+      return
+    }
+    setTextareaValue("")
+    const tid = await ensureThread()
+    if (!tid) return
+    const saved = await apiFetch<{
+      id: string
+      senderId: string
+      content?: string | null
+      createdAt: string
+    }>(`/v1/messages`, {
+      method: "POST",
+      body: { threadId: tid, content: text, messageType: "text" },
+    }).catch(() => null)
+    if (saved?.id) {
+      setMessages((prev) =>
+        prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
+      )
+    }
+  }, [textareaValue, myId, ensureThread, router, setTextareaValue])
 
   return (
     <div
@@ -326,59 +452,55 @@ const Chats = () => {
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="p-8 pb-[100px] grid gap-y-6">
-          <div className="flex gap-x-3 py-6 items-center">
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-            <span className="text-xs leading-[14.52px] font-medium text-gray-500">
-              Jun 14, 2024
-            </span>
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-          </div>
-
-          <div className="flex justify-start">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<YourBubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua." />*/}
-          </div>
-
-          <div className="flex justify-end">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<Bubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit." />*/}
-          </div>
-
-          <div className="flex justify-start">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<YourBubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua." />*/}
-          </div>
-
-          <div className="flex gap-x-3 py-6 items-center">
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-            <span className="text-xs leading-[14.52px] font-medium text-gray-500">
-              Jun 14, 2024
-            </span>
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-          </div>
-
-          <div className="flex justify-end">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<Bubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit." />*/}
-          </div>
-
-          <div className="flex justify-start">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<YourBubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua." />*/}
-          </div>
-
-          <div className="flex gap-x-3 py-6 items-center">
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-            <span className="text-xs leading-[14.52px] font-medium text-gray-500">
-              Jun 14, 2024
-            </span>
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-          </div>
-
-          <div className="flex justify-end">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<Bubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit." />*/}
-          </div>
+          {messages.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">
+              {myId
+                ? "Start the conversation — ask the team a question about this project."
+                : "Log in to ask the team a question about this project."}
+            </p>
+          ) : (
+            (() => {
+              let lastDay = ""
+              return messages.map((m) => {
+                const mine = String(m.senderId) === myId
+                const day = formatChatDay(m.createdAt)
+                const showDay = day !== lastDay
+                lastDay = day
+                return (
+                  <React.Fragment key={m.id}>
+                    {showDay && (
+                      <div className="flex gap-x-3 py-6 items-center">
+                        <span className="inline-block bg-gray-200 flex-auto h-px" />
+                        <span className="text-xs leading-[14.52px] font-medium text-gray-500">
+                          {day}
+                        </span>
+                        <span className="inline-block bg-gray-200 flex-auto h-px" />
+                      </div>
+                    )}
+                    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-[70%] rounded-lg px-4 py-3",
+                          mine ? "bg-primary-50" : "bg-gray-50"
+                        )}
+                      >
+                        <p className="text-sm text-dark-blue-400">{m.content}</p>
+                        <p
+                          className={cn(
+                            "mt-1 text-xs text-gray-400",
+                            mine && "text-right"
+                          )}
+                        >
+                          Sent {formatChatTime(m.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </React.Fragment>
+                )
+              })
+            })()
+          )}
+          <div ref={chatBottomRef} />
         </div>
       </ScrollArea>
 
@@ -484,13 +606,19 @@ const Chats = () => {
             className="[field-sizing:content] h-auto pr-11 w-full"
             value={textareaValue}
             onChange={onChange}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                if (textareaValue) handleSend()
+              }
+            }}
           />
           <InputRightElement className="items-end pb-[13px]">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
                   className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
-                  onClick={() => textareaValue && onSave()}
+                  onClick={() => textareaValue && handleSend()}
                   disabled={!textareaValue}
                 >
                   <Send className="size-[18px]" />
@@ -507,6 +635,23 @@ const Chats = () => {
     </div>
   )
 }
+
+const formatChatDay = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : ""
+
+const formatChatTime = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : ""
 
 const toEmbedUrl = (raw?: string | null): string => {
   if (!raw) return ""
@@ -576,6 +721,32 @@ export default function ProjectDetails({
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
+  const [pendingQuestion, setPendingQuestion] = React.useState("")
+  const { isOnline } = useOnlineUsers()
+
+  // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
+  // ≥1 assigned team member is online; their names are surfaced.
+  const onlineTeam = React.useMemo(
+    () =>
+      ((project as any)?.team ?? []).filter((m: any) =>
+        isOnline(String(m.userId ?? m.id ?? ""))
+      ),
+    [project, isOnline]
+  )
+
+  const openLiveChat = React.useCallback((question?: string) => {
+    if (question !== undefined) setPendingQuestion(question)
+    setSelected("Live Chat")
+  }, [])
+
+  // Owner viewing their own listing shouldn't be able to ask questions on it
+  // (Chris: "hide that for your own"). True in view-as-client preview, or when
+  // the logged-in user is the project owner.
+  const isOwnerViewing =
+    isPreview ||
+    (!!user?.id &&
+      String((project as any)?.ownerId ?? (project as any)?.userId ?? "") ===
+        String(user.id))
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
@@ -1263,19 +1434,16 @@ export default function ProjectDetails({
                 </Button>
               </div>
 
-              <DisclosureTrigger
-                value={
-                  selected === "Details" || selected === "View Project Scope"
-                    ? "Live Chat"
-                    : "Details"
+              <Button
+                variant="link"
+                className="!text-primary-500 shrink-0"
+                onClick={() =>
+                  setSelected(selected === "Live Chat" ? "Details" : "Live Chat")
                 }
-                asChild
               >
-                <Button variant="link">
-                  <MessageTextCircle01 className="size-5" />
-                  Live Chat
-                </Button>
-              </DisclosureTrigger>
+                <MessageTextCircle01 className="size-5" />
+                {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
+              </Button>
 
               <div className="flex-1 flex justify-end">
                 <Button
@@ -1302,7 +1470,14 @@ export default function ProjectDetails({
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
               <Inbox>
-                <Chats />
+                <Chats
+                  projectId={project?.id ? String(project.id) : undefined}
+                  teamMemberIds={(project?.team ?? [])
+                    .map((m: any) => String(m.userId ?? m.id ?? ""))
+                    .filter(Boolean)}
+                  ownerId={project?.ownerId ?? project?.userId ?? null}
+                  initialDraft={pendingQuestion}
+                />
               </Inbox>
             </TabsContent>
 
@@ -1915,18 +2090,36 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
+                        {onlineTeam.length > 0 && (
                         <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
                           <Avatar size="md">
-                            <AvatarImage src="/man.jpg" alt="Man" />
-                            <AvatarFallback>M</AvatarFallback>
+                            <AvatarImage
+                              src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                              alt={onlineTeam[0].firstName || "Team member"}
+                            />
+                            <AvatarFallback>
+                              {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                            </AvatarFallback>
                           </Avatar>
 
                           <div className="flex flex-col items-start gap-y-2">
                             <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                              Kevin{" "}
-                              <span className="text-xs leading-none text-extralight text-gray-500">
-                                @username
-                              </span>
+                              {onlineTeam.length >= 2
+                                ? onlineTeam
+                                    .slice(0, 2)
+                                    .map((m: any) => m.firstName || m.username)
+                                    .join(", ")
+                                : onlineTeam[0].firstName ||
+                                  onlineTeam[0].username}
+                              {onlineTeam.length > 2
+                                ? ` +${onlineTeam.length - 2}`
+                                : ""}{" "}
+                              {onlineTeam.length < 2 &&
+                                onlineTeam[0].username && (
+                                  <span className="text-xs leading-none text-extralight text-gray-500">
+                                    @{onlineTeam[0].username}
+                                  </span>
+                                )}
                             </span>
 
                             <div className="flex items-center gap-x-1">
@@ -1937,7 +2130,9 @@ export default function ProjectDetails({
                             </div>
                           </div>
                         </div>
+                        )}
 
+                        {!isOwnerViewing && (
                         <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                           <Label
                             className="font-semibold inline-flex items-center gap-x-2"
@@ -1951,8 +2146,17 @@ export default function ProjectDetails({
                             <Input
                               className="flex-auto"
                               placeholder="Type your question..."
+                              value={pendingQuestion}
+                              onChange={(e) => setPendingQuestion(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") openLiveChat()
+                              }}
                             />
-                            <Button className="text-xs leading-none" size="lg">
+                            <Button
+                              className="text-xs leading-none"
+                              size="lg"
+                              onClick={() => openLiveChat()}
+                            >
                               Ask Question
                             </Button>
                           </div>
@@ -2041,6 +2245,7 @@ export default function ProjectDetails({
                             </Badge>
                           </div>
                         </div>
+                        )}
 
                         <div className="mt-8">
                           <Tabs defaultValue="FAQs">
@@ -2215,17 +2420,23 @@ export default function ProjectDetails({
                             </TabsContent>
                           </Tabs>
 
-                          <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
-                            <h1 className="text-base font-semibold text-dark-blue-400 text-center">
-                              Can’t find what you’re looking for?
-                            </h1>
+                          {!isOwnerViewing && (
+                            <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
+                              <h1 className="text-base font-semibold text-dark-blue-400 text-center">
+                                Can’t find what you’re looking for?
+                              </h1>
 
-                            <div className="flex items-center justify-center mt-5">
-                              <Button variant="outlined" visual="gray">
-                                Ask a question
-                              </Button>
+                              <div className="flex items-center justify-center mt-5">
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  onClick={() => openLiveChat()}
+                                >
+                                  Ask a question
+                                </Button>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </div>
 
@@ -4656,7 +4867,7 @@ export default function ProjectDetails({
                 )}
               </div>
 
-              {!isPreview && (
+              {!isOwnerViewing && (
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button

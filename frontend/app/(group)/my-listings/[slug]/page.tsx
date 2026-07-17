@@ -4,6 +4,7 @@ import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useParams, useRouter } from "next/navigation"
+import { ProjectChatPanel } from "./project-chat-panel"
 
 const ClientListingView = dynamic(
   () => import("@/app/(group)/(group)/project-details/[slug]/page"),
@@ -27,6 +28,7 @@ import {
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { useAuth } from "@/contexts/auth"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import { TagsInputHiddenInput } from "@ark-ui/react"
@@ -1914,9 +1916,38 @@ export default function ProjectDetails() {
     Record<string, string>
   >({})
   const [teamLeadId, setTeamLeadId] = React.useState<string | null>(null)
+  // The persisted lead at load, so we can show "Current" vs a pending "New" lead.
+  const [originalLeadId, setOriginalLeadId] = React.useState<string | null>(null)
   const [teamLeadLabel, setTeamLeadLabel] = React.useState<string>("")
   const [removeTarget, setRemoveTarget] = React.useState<any | null>(null)
   const [leadSearch, setLeadSearch] = React.useState("")
+
+  // The project owner. my-listings is owner-scoped, so the logged-in user is
+  // the owner; prefer the project's stored userId when present. Never derive
+  // "owner" from list position.
+  const ownerId = String(
+    (project as any)?.userId ??
+      (project as any)?.ownerId ??
+      (user as any)?.id ??
+      ""
+  )
+
+  // my-listings is the owner's own listing — hide "Ask a Question" (you don't
+  // ask questions on your own project). Always true here, but keep the check
+  // explicit and safe.
+  const isOwnerViewing =
+    !(user as any)?.id ||
+    !ownerId ||
+    ownerId === String((user as any).id)
+
+  const { isOnline } = useOnlineUsers()
+  const onlineTeam = React.useMemo(
+    () =>
+      ((project as any)?.team ?? []).filter((m: any) =>
+        isOnline(String(m.userId ?? m.id ?? ""))
+      ),
+    [project, isOnline]
+  )
 
   const projectAssignees = React.useMemo(() => {
     const team = Array.isArray((project as any)?.team) ? (project as any).team : []
@@ -1977,10 +2008,17 @@ export default function ProjectDetails() {
     const memberPayload = projectAssignees
       .filter((m: any) => m.id !== target.id)
       .map((m: any, i: number) => {
-        const isLead = nextLeadId ? m.id === nextLeadId : i === 0
+        const isLead = nextLeadId
+          ? m.id === nextLeadId
+          : ownerId
+            ? m.id === ownerId
+            : i === 0
         return {
           userId: m.id,
-          projectRole: i === 0 ? "Owner" : (memberRoles[m.id] ?? "Contributor"),
+          projectRole:
+            ownerId && m.id === ownerId
+              ? "Owner"
+              : (memberRoles[m.id] ?? "Contributor"),
           status: memberStatus[m.id] ?? "Active",
           isLead,
           leadLabel: isLead ? teamLeadLabel || null : null,
@@ -2046,10 +2084,17 @@ export default function ProjectDetails() {
 
   const saveTeamSettings = async () => {
     const members = projectAssignees.map((m: any, i: number) => {
-      const isLead = teamLeadId ? m.id === teamLeadId : i === 0
+      const isLead = teamLeadId
+        ? m.id === teamLeadId
+        : ownerId
+          ? m.id === ownerId
+          : i === 0
       return {
         userId: m.id,
-        projectRole: i === 0 ? "Owner" : (memberRoles[m.id] ?? "Contributor"),
+        projectRole:
+          ownerId && m.id === ownerId
+            ? "Owner"
+            : (memberRoles[m.id] ?? "Contributor"),
         status: memberStatus[m.id] ?? "Active",
         isLead,
         leadLabel: isLead ? teamLeadLabel || null : null,
@@ -2081,7 +2126,9 @@ export default function ProjectDetails() {
     let leadLabel = ""
     for (const m of pm) {
       const uid = String(m.userId)
-      if (m.projectRole) roles[uid] = m.projectRole
+      // "Owner" is derived from the real owner id, never from stored roles —
+      // ignore any stale/persisted "Owner" on non-owner members.
+      if (m.projectRole && m.projectRole !== "Owner") roles[uid] = m.projectRole
       if (m.status) statuses[uid] = m.status
       if (m.isLead) {
         leadId = uid
@@ -2090,6 +2137,7 @@ export default function ProjectDetails() {
     }
     setMemberRoles(roles)
     setMemberStatus(statuses)
+    setOriginalLeadId(leadId)
     if (leadId) setTeamLeadId(leadId)
     if (leadLabel) setTeamLeadLabel(leadLabel)
   }, [project])
@@ -4080,11 +4128,7 @@ export default function ProjectDetails() {
                   }
                 >
                   <MessageTextCircle01 className="size-5" />
-                  {selected === "Live Chat"
-                    ? !(project.chats?.length > 0)
-                      ? "Close Chat"
-                      : "End Chat"
-                    : "Live Chat"}
+                  {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
                 </Button>
 
                 <div className="flex-1 flex justify-end">
@@ -4113,50 +4157,33 @@ export default function ProjectDetails() {
                 </div>
               </RadixTabs.TabsList>
               <TabsContent value="Live Chat">
-                <div className="flex flex-col items-center justify-center py-16 gap-4">
-                  <div className="relative w-[72px] h-[56px]">
-                    <svg
-                      viewBox="0 0 72 56"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="w-full h-full"
-                    >
-                      <rect
-                        x="0"
-                        y="8"
-                        width="40"
-                        height="32"
-                        rx="8"
-                        fill="#E5E7EB"
-                      />
-                      <rect
-                        x="14"
-                        y="2"
-                        width="40"
-                        height="32"
-                        rx="8"
-                        fill="#D1D5DB"
-                      />
-                      <rect
-                        x="28"
-                        y="14"
-                        width="40"
-                        height="32"
-                        rx="8"
-                        fill="#354764"
-                      />
-                    </svg>
+                {project?.id && isRealBackendId(String(project.id)) ? (
+                  <ProjectChatPanel projectId={String(project.id)} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <div className="relative w-[72px] h-[56px]">
+                      <svg
+                        viewBox="0 0 72 56"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-full h-full"
+                      >
+                        <rect x="0" y="8" width="40" height="32" rx="8" fill="#E5E7EB" />
+                        <rect x="14" y="2" width="40" height="32" rx="8" fill="#D1D5DB" />
+                        <rect x="28" y="14" width="40" height="32" rx="8" fill="#354764" />
+                      </svg>
+                    </div>
+                    <div className="flex flex-col items-center gap-1.5 text-center">
+                      <h3 className="text-base font-semibold text-dark-blue-400">
+                        You Have No Recent Chats
+                      </h3>
+                      <p className="text-sm text-dark-blue-400 max-w-[320px]">
+                        Once your project is live, chat threads will be visible
+                        here when visitors message you.
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-center gap-1.5 text-center">
-                    <h3 className="text-base font-semibold text-dark-blue-400">
-                      You Have No Recent Chats
-                    </h3>
-                    <p className="text-sm text-dark-blue-400 max-w-[320px]">
-                      Once your project is live, chat threads will be visible
-                      here when visitors message you.
-                    </p>
-                  </div>
-                </div>
+                )}
               </TabsContent>
 
               <TabsContent
@@ -6235,7 +6262,15 @@ export default function ProjectDetails() {
                                     className="pt-6 pb-6"
                                   >
                                     {(() => {
-                                      const currentLead = projectAssignees[0]
+                                      // The actual current lead is the persisted
+                                      // lead (or the owner by default) — never
+                                      // just the first row.
+                                      const effectiveLeadId =
+                                        originalLeadId || ownerId
+                                      const currentLead =
+                                        projectAssignees.find(
+                                          (m: any) => m.id === effectiveLeadId
+                                        ) ?? projectAssignees[0]
                                       const pendingLead =
                                         teamLeadId &&
                                         teamLeadId !== currentLead?.id
@@ -6626,7 +6661,16 @@ export default function ProjectDetails() {
                                         <TableBody>
                                           {projectAssignees.map(
                                             (member: any, mi: number) => {
-                                              const isOwner = mi === 0
+                                              const isOwner = ownerId
+                                                ? String(member.id) === ownerId
+                                                : mi === 0
+                                              const isYou =
+                                                !!user &&
+                                                (String(member.id) ===
+                                                  String((user as any).id) ||
+                                                  (!!member.username &&
+                                                    member.username ===
+                                                      (user as any).username))
                                               const role = isOwner
                                                 ? "Owner"
                                                 : memberRoles[member.id] ??
@@ -6662,7 +6706,7 @@ export default function ProjectDetails() {
                                                             @{member.username}
                                                           </span>
                                                         )}
-                                                        {isOwner && (
+                                                        {isYou && (
                                                           <span className="text-sm font-semibold text-dark-blue-400">
                                                             {" "}
                                                             (You)
@@ -6953,18 +6997,38 @@ export default function ProjectDetails() {
                           {(project.faqs?.length > 0 ||
                             project.recentQuestions?.length > 0) && (
                             <>
+                              {onlineTeam.length > 0 && (
                               <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
                                 <Avatar size="md">
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
+                                  <AvatarImage
+                                    src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                    alt={onlineTeam[0].firstName || "Team member"}
+                                  />
+                                  <AvatarFallback>
+                                    {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                  </AvatarFallback>
                                 </Avatar>
 
                                 <div className="flex flex-col items-start gap-y-2">
                                   <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                    Kevin{" "}
-                                    <span className="text-xs leading-none text-extralight text-gray-500">
-                                      @username
-                                    </span>
+                                    {onlineTeam.length >= 2
+                                      ? onlineTeam
+                                          .slice(0, 2)
+                                          .map(
+                                            (m: any) => m.firstName || m.username
+                                          )
+                                          .join(", ")
+                                      : onlineTeam[0].firstName ||
+                                        onlineTeam[0].username}
+                                    {onlineTeam.length > 2
+                                      ? ` +${onlineTeam.length - 2}`
+                                      : ""}{" "}
+                                    {onlineTeam.length < 2 &&
+                                      onlineTeam[0].username && (
+                                        <span className="text-xs leading-none text-extralight text-gray-500">
+                                          @{onlineTeam[0].username}
+                                        </span>
+                                      )}
                                   </span>
 
                                   <div className="flex items-center gap-x-1">
@@ -6975,7 +7039,9 @@ export default function ProjectDetails() {
                                   </div>
                                 </div>
                               </div>
+                              )}
 
+                              {!isOwnerViewing && (
                               <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                                 <Label
                                   className="font-semibold inline-flex items-center gap-x-2"
@@ -7082,6 +7148,7 @@ export default function ProjectDetails() {
                                   </Badge>
                                 </div>
                               </div>
+                              )}
                             </>
                           )}
 
@@ -7282,27 +7349,35 @@ export default function ProjectDetails() {
                               </TabsContent>
 
                               <TabsContent value="section-recent">
-                                {!project.recentQuestions ||
-                                project.recentQuestions.length === 0 ? (
-                                  <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6">
-                                    <h1 className="text-lg font-semibold text-dark-blue-400">
-                                      No Recent Questions
-                                    </h1>
-                                    <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                      You will see recent questions here once
-                                      your project is live in the marketplace
-                                      and visitors engage in chat with you and
-                                      your team.
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <Accordion
-                                    type="single"
-                                    className="pt-6 space-y-[15px]"
-                                    defaultValue="rq-0"
-                                  >
-                                    {(project.recentQuestions as string[]).map(
-                                      (q, idx) => (
+                                {(() => {
+                                  const publicQuestions = (
+                                    (project.recentQuestions as Array<{
+                                      question: string
+                                      answer?: string | null
+                                      answeredByName?: string | null
+                                      answeredByRole?: string | null
+                                      hidden?: boolean
+                                    }>) ?? []
+                                  ).filter((q) => q && !q.hidden)
+                                  return publicQuestions.length === 0 ? (
+                                    <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6">
+                                      <h1 className="text-lg font-semibold text-dark-blue-400">
+                                        No Recent Questions
+                                      </h1>
+                                      <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                        You will see recent questions here once
+                                        your project is live in the marketplace
+                                        and visitors engage in chat with you and
+                                        your team.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <Accordion
+                                      type="single"
+                                      className="pt-6 space-y-[15px]"
+                                      defaultValue="rq-0"
+                                    >
+                                      {publicQuestions.map((q, idx) => (
                                         <AccordionItem
                                           key={`rq-${idx}`}
                                           className="rounded-lg bg-white border border-gray-300"
@@ -7310,20 +7385,62 @@ export default function ProjectDetails() {
                                         >
                                           <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
                                             <span className="flex-auto text-left inline-block">
-                                              {q}
+                                              {q.question}
                                             </span>
                                             <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                           </AccordionTrigger>
+                                          {q.answer && q.answer.trim() && (
+                                            <DisclosureContent className="px-5 pb-5">
+                                              <div className="flex items-center gap-2">
+                                                <Avatar size="xs">
+                                                  <AvatarImage
+                                                    src="/man.jpg"
+                                                    alt=""
+                                                  />
+                                                  <AvatarFallback>
+                                                    {(
+                                                      q.answeredByName ?? "T"
+                                                    ).slice(0, 1)}
+                                                  </AvatarFallback>
+                                                </Avatar>
+                                                <Badge
+                                                  visual="primary"
+                                                  className="rounded-[4px] bg-primary-50 text-[10px]"
+                                                >
+                                                  {q.answeredByRole ??
+                                                    "Project Lead"}
+                                                </Badge>
+                                                <span className="text-sm font-semibold text-dark-blue-400">
+                                                  {q.answeredByName ?? "Team"}
+                                                </span>
+                                              </div>
+                                              <p
+                                                className="mt-2 text-base leading-[1.5] font-light text-dark-blue-400 break-words"
+                                                style={{
+                                                  whiteSpace: "pre-line",
+                                                }}
+                                              >
+                                                {q.answer}
+                                              </p>
+                                              <button
+                                                type="button"
+                                                className="mt-3 text-sm font-medium text-gray-500 hover:text-dark-blue-400"
+                                              >
+                                                Report Answer
+                                              </button>
+                                            </DisclosureContent>
+                                          )}
                                         </AccordionItem>
-                                      )
-                                    )}
-                                  </Accordion>
-                                )}
+                                      ))}
+                                    </Accordion>
+                                  )
+                                })()}
                               </TabsContent>
                             </Tabs>
 
-                            {(project.faqs?.length > 0 ||
-                              project.recentQuestions?.length > 0) && (
+                            {!isOwnerViewing &&
+                              (project.faqs?.length > 0 ||
+                                project.recentQuestions?.length > 0) && (
                               <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
                                 <h1 className="text-base font-semibold text-dark-blue-400 text-center">
                                   Can&apos;t find what you&apos;re looking for?

@@ -4,7 +4,7 @@ import { FindOptionsWhere, ILike, Repository } from 'typeorm';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { EntityCondition } from '../../../../../utils/types/entity-condition.type';
-import { ProjectRepository } from '../../project.repository';
+import { ProjectRepository, RecentQuestion } from '../../project.repository';
 import { ProjectEntity } from '../entities/project.entity';
 import { Project } from '../../../../interface/project';
 import { ProjectMapper } from '../mappers/project.mapper';
@@ -232,6 +232,24 @@ export class ProjectRelationalRepository implements ProjectRepository {
         ],
       );
     }
+  }
+
+  async getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]> {
+    const rows = await this.projectRepository.manager.query(
+      `SELECT "recentQuestions" FROM listings.project WHERE id = $1`,
+      [id?.toString()],
+    );
+    return (rows?.[0]?.recentQuestions ?? []) as RecentQuestion[];
+  }
+
+  async updateRecentQuestions(
+    id: Project['id'],
+    questions: RecentQuestion[],
+  ): Promise<void> {
+    await this.projectRepository.manager.query(
+      `UPDATE listings.project SET "recentQuestions" = $1::jsonb WHERE id = $2`,
+      [JSON.stringify(questions ?? []), id?.toString()],
+    );
   }
 
   async softDelete(id: Project['id']): Promise<void> {

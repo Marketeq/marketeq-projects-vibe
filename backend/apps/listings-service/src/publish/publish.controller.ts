@@ -211,6 +211,40 @@ export class PublishController {
     }
   }
 
+  @Get('project/:projectId/questions')
+  async getRecentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getRecentQuestions(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/questions')
+  async saveRecentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { questions: any[] },
+  ) {
+    try {
+      return await this.publishService.saveRecentQuestions(
+        req.user.sub,
+        projectId,
+        body?.questions ?? [],
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Post('category/subcategory')
   async createModeratedSubcategory(
     @Body() dto: CreateModeratedSubcategoryDto,

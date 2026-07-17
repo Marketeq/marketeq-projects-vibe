@@ -242,6 +242,10 @@ export class ProxyController {
       prefix = 'notifications'
     } else if (prefix === 'v1' && segments[1] === 'payouts') {
       prefix = 'payouts'
+    } else if (prefix === 'v1' && segments[1] === 'earnings') {
+      // Without this branch, /v1/earnings/* silently fell through to the 'v1'
+      // default (transaction-service) instead of earnings-service.
+      prefix = 'earnings'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'offers') {
@@ -283,9 +287,9 @@ export class ProxyController {
     if (serviceName === 'categories') {
       downstreamPath = `/api${downstreamPath}`
     }
-    if (serviceName === 'earnings') {
-      downstreamPath = `/v1${downstreamPath}`
-    }
+    // earnings-service sets a global 'v1' prefix, so its real routes are
+    // /v1/earnings/... — matching the incoming path already; no rewrite needed
+    // here (the previous `/v1${downstreamPath}` rewrite doubled it to /v1/v1/...).
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')
     }

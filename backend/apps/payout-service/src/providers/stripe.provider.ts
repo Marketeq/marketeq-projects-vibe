@@ -29,6 +29,14 @@ export class StripeProvider {
     this.initStripe();
   }
 
+  // A real Stripe secret key is sk_test_/sk_live_ followed by ~24+ alphanumeric
+  // characters. Checking only for the scaffold's exact placeholder string
+  // (sk_test_YOUR...) let a *different* placeholder (e.g. "sk_test_...") pass
+  // as "configured", causing real (and doomed) Stripe API calls in dev.
+  private isRealStripeKey(): boolean {
+    return /^sk_(test|live)_[A-Za-z0-9]{20,}$/.test(this.secretKey);
+  }
+
   private initStripe() {
     try {
       const Stripe = require('stripe');
@@ -41,7 +49,7 @@ export class StripeProvider {
 
   // ─── Step 1: Create Financial Connections Session ─────────────
   async initiateBankStripe(contractorId: string) {
-    if (!this.stripe || this.secretKey.startsWith('sk_test_YOUR')) {
+    if (!this.stripe || !this.isRealStripeKey()) {
       // Dev mode — return mock session
       const mockSessionId = `fcsess_mock_${Date.now()}`;
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -88,7 +96,7 @@ export class StripeProvider {
 
   // ─── Step 3: Finalise account link ────────────────────────────
   async finaliseBankStripe(contractorId: string, sessionId: string, linkedAccountId: string) {
-    if (!this.stripe || this.secretKey.startsWith('sk_test_YOUR')) {
+    if (!this.stripe || !this.isRealStripeKey()) {
       // Dev mode — create method directly as verified
       const method = await this.methodRepo.save({
         contractorId,
@@ -210,7 +218,7 @@ export class StripeProvider {
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_VERIFICATION_EXPIRED');
     }
 
-    if (!this.stripe || this.secretKey.startsWith('sk_test_YOUR')) {
+    if (!this.stripe || !this.isRealStripeKey()) {
       // Dev mode — check against stored amounts
       if (verification.amount1Cents === amount1 && verification.amount2Cents === amount2) {
         await this.methodRepo.update(methodId, { verificationStatus: VerificationStatus.VERIFIED });

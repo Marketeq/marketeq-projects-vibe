@@ -29,6 +29,14 @@ export class MethodsController {
     return this.methodsService.addMethod(req.user.userId, dto);
   }
 
+  // SCR-20: declared before ':id' below so 'config' is never swallowed by the
+  // UUID param route — feature-flag state must be server-fetched, not hardcoded.
+  @Get('config')
+  @HttpCode(200)
+  async config() {
+    return this.methodsService.getMethodTypeConfig();
+  }
+
   @Get(':id')
   @HttpCode(200)
   async getOne(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {

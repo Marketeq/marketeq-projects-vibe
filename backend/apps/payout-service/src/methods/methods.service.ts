@@ -2,7 +2,7 @@
 // PS-04 + PS-18 §7: Deposit method CRUD with split-aware deletion
 import { Injectable, Logger, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { ConfigService }       from '@nestjs/config';
 import { randomUUID, createHash } from 'crypto';
 
@@ -18,11 +18,13 @@ import { BankEncryptionService } from './bank-encryption.service';
 import { UpdateMethodDto }     from './dto/update-method.dto';
 import { CryptoConnectionService } from '../crypto/crypto-connection.service';
 
-const MAX_METHODS = 5;
-
 @Injectable()
 export class MethodsService {
   private readonly logger = new Logger(MethodsService.name);
+  // Doc07 Domain 10: method-count caps must come from server configuration,
+  // not a hardcoded constant — MAX_DEPOSIT_METHODS lets ops raise/lower the
+  // cap without a code deploy. 5 remains the default if unset.
+  private readonly maxMethods: number;
 
   constructor(
     @InjectRepository(DepositMethod)
@@ -38,7 +40,23 @@ export class MethodsService {
     private readonly bankValidator: BankValidationService,
     private readonly bankEncryption: BankEncryptionService,
     private readonly cryptoConnectionService: CryptoConnectionService,
-  ) {}
+  ) {
+    this.maxMethods = parseInt(this.config.get('MAX_DEPOSIT_METHODS', '5'), 10) || 5;
+  }
+
+  // ─── GET /v1/deposit-methods/config — SCR-20 ────────────────────
+  // Feature-flag state must come from server config, never a frontend build-time
+  // env var (a stale frontend build could otherwise show an option the backend
+  // will reject, or hide one the backend has since enabled).
+  getMethodTypeConfig() {
+    return {
+      featureFlags: {
+        debitCardEnabled: this.config.get('FEATURE_DEBIT_CARD_ENABLED', 'false') === 'true',
+        teqCoinEnabled: this.config.get('FEATURE_TEQ_COIN_ENABLED', 'false') === 'true',
+      },
+      maxMethods: this.maxMethods,
+    };
+  }
 
   // ─── GET /v1/deposit-methods ──────────────────────────────────
   async listMethods(contractorId: string) {
@@ -47,19 +65,36 @@ export class MethodsService {
       order: { isDefault: 'DESC', createdAt: 'ASC' },
     });
 
+    // AC-01.06: locked methods must surface their lock expiry in the list.
+    const lockedIds = methods
+      .filter(m => m.verificationStatus === VerificationStatus.LOCKED)
+      .map(m => m.id);
+    const lockedUntilByMethodId = new Map<string, Date>();
+    if (lockedIds.length) {
+      const verifications = await this.verifyRepo.find({
+        where: { depositMethodId: In(lockedIds) },
+        order: { createdAt: 'DESC' },
+      });
+      for (const v of verifications) {
+        if (v.depositMethodId && !lockedUntilByMethodId.has(v.depositMethodId) && v.lockedUntil) {
+          lockedUntilByMethodId.set(v.depositMethodId, v.lockedUntil);
+        }
+      }
+    }
+
     return {
-      methods: methods.map(m => this.toListItem(m)),
+      methods: methods.map(m => this.toListItem(m, lockedUntilByMethodId.get(m.id) ?? null)),
       totalCount: methods.length,
-      maxAllowed: MAX_METHODS,
-      canAddMore: methods.length < MAX_METHODS,
+      maxAllowed: this.maxMethods,
+      canAddMore: methods.length < this.maxMethods,
     };
   }
 
   // ─── POST /v1/deposit-methods ─────────────────────────────────
   async addMethod(contractorId: string, dto: AddMethodDto) {
     const count = await this.methodRepo.count({ where: { contractorId, isActive: true } });
-    if (count >= MAX_METHODS) {
-      throw new PayoutError(`You can have a maximum of ${MAX_METHODS} deposit methods.`,
+    if (count >= this.maxMethods) {
+      throw new PayoutError(`You can have a maximum of ${this.maxMethods} deposit methods.`,
         HttpStatus.BAD_REQUEST, 'ERR_DEPOSIT_METHOD_LIMIT_REACHED');
     }
 
@@ -416,13 +451,14 @@ export class MethodsService {
     }
   }
 
-  private toListItem(m: DepositMethod) {
+  private toListItem(m: DepositMethod, lockedUntil: Date | null = null) {
     return {
       id: m.id, methodType: m.methodType, displayLabel: m.displayLabel,
       nickname: m.nickname, isDefault: m.isDefault,
       verificationStatus: m.verificationStatus, reauthRequired: false,
       bankCountry: m.bankCountry, bankCurrency: m.bankCurrency,
       createdAt: m.createdAt.toISOString(),
+      lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
     };
   }
 

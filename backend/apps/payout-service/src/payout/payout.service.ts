@@ -6,7 +6,7 @@ import { Repository, DataSource } from 'typeorm';
 import { ConfigService }       from '@nestjs/config';
 import { InjectQueue }         from '@nestjs/bull';
 import { Queue }               from 'bull';
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 
 import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
@@ -16,6 +16,7 @@ import { KycClient }          from '../common/kyc.client';
 import { AuditService }       from '../audit/audit.service';
 import { MagicLinkService }   from '../magic-link/magic-link.service';
 import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
+import { KycGateService }     from '../kyc/kyc-gate.service';
 import { PayoutError }        from '../common/errors/payout.error';
 import { ValidateAmountDto, ValidateAmountResponseDto } from './dto/validate-amount.dto';
 import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-payout.dto';
@@ -42,9 +43,52 @@ export class PayoutService {
     private readonly auditService: AuditService,
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
+    private readonly kycGateService: KycGateService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
+  }
+
+  // ─── Enqueue a QUEUED payout for processing ────────────────────
+  // Shared by both the legacy verifyMagicLink() path and MagicLinkService's
+  // verifyEmailToken() path (magicLinkService has no queue access itself —
+  // the controller calls back into this after a successful verification).
+  async enqueueForProcessing(payoutRequestId: string): Promise<void> {
+    await this.queue.add('process-payout', { payoutRequestId }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: false,
+    });
+  }
+
+  // ─── US-30/31: GET /v1/payouts/gate-check ──────────────────────
+  // Pre-flight check so the withdrawal screen can show the KYC/hold block
+  // BEFORE the contractor fills out amount + method (AC-30.01/31.01), instead
+  // of only discovering it at final submission. Mirrors the same fail-closed
+  // checks initiate() already enforces server-side — this is a UI convenience,
+  // not a new authority; initiate() remains the real gate.
+  async checkGate(contractorId: string): Promise<{ allowed: boolean; blockedBy?: string; holdReleasesAt?: string; kycRejectionReason?: string }> {
+    const kyc = await this.kycClient.getStatus(contractorId);
+    // AC-30.04: KYC service unreachable → fail-closed, never fail-open.
+    if (kyc.tier === 'unknown') return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
+    if (kyc.suspended) return { allowed: false, blockedBy: 'ACCOUNT_SUSPENDED' };
+    // Doc08 ERR-35/36/37: identity-review status, when kyc-identity-service
+    // returns one — undefined `status` (current MVP contract) falls through to
+    // the existing tier-based checks below rather than blocking on absence,
+    // since this field isn't guaranteed by the upstream contract yet.
+    if (kyc.status === 'not_started') return { allowed: false, blockedBy: 'KYC_NOT_STARTED' };
+    if (kyc.status === 'in_review') return { allowed: false, blockedBy: 'KYC_IN_REVIEW' };
+    if (kyc.status === 'rejected') return { allowed: false, blockedBy: 'KYC_REJECTED', kycRejectionReason: kyc.rejectionReason };
+    // AC-31.02(b)/31.03: the hold-lift date must come from the backend, never be
+    // calculated client-side. kyc.firstPayoutHold (external kyc-identity-service)
+    // carries no date at all, so the self-contained, date-computing check in
+    // KycGateService (first-payout-hold based on this contractor's own payout
+    // history) is the authoritative source here — kept in sync with initiate().
+    const hold = await this.kycGateService.checkFirstPayoutHold(contractorId);
+    if (kyc.firstPayoutHold || hold.holdActive) {
+      return { allowed: false, blockedBy: 'FIRST_PAYOUT_HOLD', holdReleasesAt: hold.releasesAt?.toISOString() };
+    }
+    return { allowed: true };
   }
 
   // ─── Step 1+2: Validate Amount ────────────────────────────────
@@ -70,8 +114,10 @@ export class PayoutService {
     const available = parseFloat(balance.availableBalance);
 
     if (amount > available) {
+      // ERR-02/ERR-11: the mandated copy names the actual current balance —
+      // callers read availableBalanceUsd off the error body to interpolate it.
       throw new PayoutError('Your available balance is insufficient for this withdrawal.',
-        HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE');
+        HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE', { availableBalanceUsd: available.toFixed(2) });
     }
 
     const instantFee = parseFloat(INSTANT_FEE);
@@ -137,20 +183,38 @@ export class PayoutService {
     // PS-19 §3.3 + §3.5: Fresh balance check (insufficient balance)
     const balance = await this.earningsClient.getBalance(contractorId);
     if (!balance || parseFloat(balance.availableBalance) < requestedAmount) {
+      // ERR-11: same rationale as validateAmount() above — name the current balance.
       throw new PayoutError('Your available balance is insufficient for this withdrawal.',
-        HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE');
+        HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE',
+        { availableBalanceUsd: balance ? parseFloat(balance.availableBalance).toFixed(2) : undefined });
     }
 
-    // PS-19 §3.4: KYC check at initiation
+    // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
+    // contractor who passes the pre-flight gate can't still be blocked here (or
+    // vice versa) by two different hold computations.
     const kyc = await this.kycClient.getStatus(contractorId);
-    if (kyc.firstPayoutHold) {
-      throw new PayoutError(
-        'Your first payout is on hold. This is a standard verification step.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
-    }
+    const hold = await this.kycGateService.checkFirstPayoutHold(contractorId);
     if (kyc.suspended) {
       throw new PayoutError('Your account is suspended.',
         HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
+    }
+    // ERR-35/36/37: kept consistent with checkGate() — see comment there.
+    if (kyc.status === 'not_started') {
+      throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
+    }
+    if (kyc.status === 'in_review') {
+      throw new PayoutError('Your identity verification is under review.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_IN_REVIEW');
+    }
+    if (kyc.status === 'rejected') {
+      throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
+    }
+    if (kyc.firstPayoutHold || hold.holdActive) {
+      throw new PayoutError(
+        'Your first payout is on hold. This is a standard verification step.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
     }
 
     // Validate deposit method
@@ -176,45 +240,41 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_FEE_EXCEEDS_AMOUNT');
     }
 
-    // Create payout_request + magic_link_token in transaction
-    const result = await this.dataSource.transaction(async (em) => {
-      const rawToken = randomUUID();
-      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-      const expiresAt = new Date(Date.now() + this.magicLinkService.getTtlMs());
-
-      const mlToken = em.create(MagicLinkToken, {
-        contractorId, tokenHash, expiresAt,
-        payoutAmountUsd: dto.amountUsd,
-        depositMethodId: dto.depositMethodId,
-      });
-      await em.save(mlToken);
-
-      const request = em.create(PayoutRequest, {
+    // Create the payout_request first, then generate its magic-link token via
+    // MagicLinkService's own store (Redis + MagicLinkVerification) — this is the
+    // ONLY token store verify-email actually reads. Previously this method wrote
+    // to a separate, unrelated MagicLinkToken table that GET /verify-email never
+    // looked at, so every real withdrawal's confirmation link came back "expired"
+    // on first click. resendVerification() already used MagicLinkService's store,
+    // so this also makes the initial send and resend consistent with each other.
+    const request = await this.dataSource.transaction(async (em) => {
+      const req = em.create(PayoutRequest, {
         contractorId, idempotencyKey: dto.idempotencyKey,
         trigger: PayoutTrigger.MANUAL,
         status: PayoutStatus.PENDING_VERIFICATION,
         amountUsd: dto.amountUsd, feeUsd, netAmountUsd,
         currency: 'USD',
       });
-      (request as any).depositMethodId = dto.depositMethodId;
-      (request as any).magicLinkTokenId = mlToken.id;
-      await em.save(request);
+      (req as any).depositMethodId = dto.depositMethodId;
+      await em.save(req);
 
       await this.auditService.log({
-        contractorId, payoutRequestId: request.id,
+        contractorId, payoutRequestId: req.id,
         actorType: 'contractor', actorId: contractorId,
         action: 'withdrawal.initiated',
         newStatus: PayoutStatus.PENDING_VERIFICATION,
       });
 
-      this.magicLinkService.send(contractorId, rawToken, dto.amountUsd).catch(err =>
-        this.logger.error('Magic link send failed', err.message),
-      );
-
-      return { request, mlToken, rawToken };
+      return req;
     });
 
-    return this.toInitiateResponseFull(result.request, result.mlToken);
+    const rawToken = await this.magicLinkService.generateAndStore(request.id, contractorId);
+    const expiresAt = new Date(Date.now() + this.magicLinkService.getTtlMs());
+    this.magicLinkService.publishMagicLinkEvent(request, rawToken).catch(err =>
+      this.logger.error('Magic link send failed', err.message),
+    );
+
+    return this.toInitiateResponseFull(request, expiresAt);
   }
 
   // ─── PS-19 §3.3: Execution-time balance re-check ─────────────
@@ -379,6 +439,80 @@ export class PayoutService {
     return { status: 'cancelled' };
   }
 
+  // ─── US-27: GET /v1/payouts — paginated history list ──────────
+  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string) {
+    const clampedSize = Math.min(Math.max(pageSize, 1), 50);
+    const clampedPage = Math.max(page, 1);
+
+    // SCR-16: status filter — only accept real enum values, silently ignore
+    // anything else rather than erroring on an unrecognised query param.
+    const where: any = { contractorId };
+    if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
+      where.status = status as PayoutStatus;
+    }
+
+    const [rows, totalCount] = await this.payoutRepo.findAndCount({
+      where,
+      relations: ['depositMethod'],
+      order: { createdAt: 'DESC' },
+      skip: (clampedPage - 1) * clampedSize,
+      take: clampedSize,
+    });
+
+    return {
+      payouts: rows.map(r => this.toHistoryItem(r)),
+      page: clampedPage,
+      pageSize: clampedSize,
+      totalCount,
+      hasMore: clampedPage * clampedSize < totalCount,
+    };
+  }
+
+  // ─── US-28: GET /v1/payouts/:id — full detail ──────────────────
+  async getPayoutDetail(contractorId: string, payoutRequestId: string) {
+    const request = await this.payoutRepo.findOne({
+      where: { id: payoutRequestId, contractorId },
+      relations: ['depositMethod'],
+    });
+    if (!request) throw new PayoutError('Payout request not found.',
+      HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
+
+    return {
+      ...this.toHistoryItem(request),
+      idempotencyKey: request.idempotencyKey,
+      providerReference: request.providerReference,
+      retryCount: request.retryCount,
+      // AC-28.04: field is present-but-empty until the provider callback arrives —
+      // never omitted, per Doc 07 "never fabricate data" (no synthetic placeholder value).
+      timeline: {
+        initiatedAt: request.createdAt.toISOString(),
+        verifiedAt: request.verifiedAt?.toISOString() ?? null,
+        queuedAt: request.queuedAt?.toISOString() ?? null,
+        processingAt: request.processingAt?.toISOString() ?? null,
+        completedAt: request.completedAt?.toISOString() ?? null,
+        failedAt: request.failedAt?.toISOString() ?? null,
+        cancelledAt: request.cancelledAt?.toISOString() ?? null,
+      },
+    };
+  }
+
+  private toHistoryItem(r: PayoutRequest) {
+    return {
+      id: r.id,
+      amountUsd: r.amountUsd,
+      feeUsd: r.feeUsd,
+      netAmountUsd: r.netAmountUsd,
+      currency: r.currency,
+      status: r.status,
+      trigger: r.trigger,
+      failureReason: r.failureReason,
+      methodType: r.depositMethod?.methodType ?? null,
+      methodLabel: r.depositMethod?.displayLabel ?? r.depositMethod?.nickname ?? null,
+      createdAt: r.createdAt.toISOString(),
+      settledAt: r.completedAt?.toISOString() ?? null,
+    };
+  }
+
   // ─── Response Mappers ─────────────────────────────────────────
   private toInitiateResponse(request: PayoutRequest): InitiatePayoutResponseDto {
     return {
@@ -393,7 +527,7 @@ export class PayoutService {
     };
   }
 
-  private toInitiateResponseFull(request: PayoutRequest, mlToken: MagicLinkToken): InitiatePayoutResponseDto {
+  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date): InitiatePayoutResponseDto {
     return {
       payoutRequestId: request.id,
       status: request.status,
@@ -401,7 +535,7 @@ export class PayoutService {
       feeUsd: request.feeUsd,
       netAmountUsd: request.netAmountUsd,
       magicLinkSentTo: this.maskEmail(request.contractorId),
-      magicLinkExpiresAt: mlToken.expiresAt.toISOString(),
+      magicLinkExpiresAt: expiresAt.toISOString(),
       message: 'A verification link has been sent to your email. Please click the link to confirm your withdrawal.',
     };
   }

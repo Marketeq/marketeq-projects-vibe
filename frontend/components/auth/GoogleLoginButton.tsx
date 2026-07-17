@@ -53,6 +53,11 @@ const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
             if (nextUser && typeof nextUser === "object") {
               setUser(nextUser)
             }
+            if (response.data.user?.accountLinked) {
+              toast({
+                title: "Your Google account has been linked to your existing Marketeq account.",
+              })
+            }
             if (onSuccess) {
               onSuccess()
             } else {
