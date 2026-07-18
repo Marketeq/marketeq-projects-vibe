@@ -6122,183 +6122,148 @@ export default function Projects() {
                 </TabsContent>
               </div>
             </Tabs>
-          </div> */}
+          </div> 
 
           {/* Top {Category} Projects — Swiper with filter tabs */}
-          {isL1OrL2AllPage && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Featured">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top {currentName} Projects
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
+          {(l1 || l2) && !l3 && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Top {currentName} Projects
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {[
+                        "Featured",
+                        "Newest",
+                        "Most Popular",
+                        "Trending",
+                        "Top-Rated",
+                      ].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button
+                        asChild
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
+                      >
+                        <NextLink href={exploreMoreHref("projects")}>Explore More Projects</NextLink>
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
                     {[
                       "Featured",
                       "Newest",
                       "Most Popular",
                       "Trending",
                       "Top-Rated",
-                    ].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      size="lg"
-                      className="underline hover:text-dark-blue-400"
-                    >
-                      Explore More Projects
-                    </Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronLeft className="size-[18px]" />
-                        </IconButton>
-                      </SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronRight className="size-[18px]" />
-                        </IconButton>
-                      </SwiperNextTrigger>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  {[
-                    "Featured",
-                    "Newest",
-                    "Most Popular",
-                    "Trending",
-                    "Top-Rated",
-                  ].map((tabValue) => (
-                    <TabsContent key={tabValue} value={tabValue}>
-                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsProjects.length > 0
-                          ? listingsProjects.slice(0, 8)
-                          : fromLength(8)
-                        ).map((item: any, idx: number) => {
-                          const project =
-                            listingsProjects.length > 0 ? item : null
-                          const mock = projectCardMocks[idx % projectCardMocks.length]
-                          return (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={project?.id ?? idx}
-                            >
-                              <ListingCard
-                                kind="project"
-                                id={project?.id ?? `mock-${idx}`}
-                                title={
-                                  project?.title ||
-                                  mock.title
-                                }
-                                description={
-                                  project?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={
-                                  project?.mediaUrls?.[0] || mock.mediaUrl
-                                }
-                        budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
-                        duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
-                                rating={4.9}
-                                reviewCount={5}
-                                href={
-                                  project
-                                    ? buildProjectUrl(
-                                        currentCategoryPath,
-                                        project.slug,
-                                        project.id
-                                      )
-                                    : buildProjectUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                collaborators={(talentUsers.length > 0
-                                  ? talentUsers.slice(0, 6)
-                                  : Array(6).fill("/woman.jpg")
-                                ).map(
-                                  (u: any) =>
-                                    (typeof u === "string"
-                                      ? u
-                                      : u?.avatarUrl) || "/woman.jpg"
-                                )}
-                                favoriteSlot={
-                                  project ? (
-                                    <FavoriteRoot
-                                      value={favoritedItems.has(
-                                        String(project.id)
-                                      )}
-                                      onValueChange={(pressed) =>
-                                        handleFavoriteToggle(
-                                          String(project.id),
-                                          "project",
-                                          pressed
-                                        )
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  ) : null
-                                }
-                              />
-                            </SwiperSlide>
+                    ].map((tabValue) => (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          {getCarouselItemsForTab(
+                            listingsProjects.length > 0
+                              ? listingsProjects
+                              : displayedProjects,
+                            tabValue
                           )
-                        })}
-                      </SwiperContent>
-                    </TabsContent>
-                  ))}
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
+                            .filter(
+                              (project: any) =>
+                                project?.mediaUrls?.[0] &&
+                                project?.title &&
+                                (project.budget ??
+                                  project.scopeTotal?.budget ??
+                                  project.price)
+                            )
+                            .slice(0, 8)
+                            .map((project: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  className="w-[355px]"
+                                  key={project.id ?? idx}
+                                >
+                                  <ListingCard
+                                    kind="project"
+                                    id={project.id ?? `project-${idx}`}
+                                    title={project.title}
+                                    description={project?.shortDescription}
+                                    mediaUrl={project?.mediaUrls?.[0]}
+                                    duration={
+                                      project.duration
+                                        ? `Starting from ${project.duration}`
+                                        : ""
+                                    }
+                                    rating={Number(project.rating) || undefined}
+                                    reviewCount={project.reviewCount}
+                                    href={
+                                      project.slug && project.id
+                                        ? projectDetailsUrl(project.slug, project.id)
+                                        : listingHref("projects")
+                                    }
+                                    budget={String(
+                                      project.budget ??
+                                        project.scopeTotal?.budget ??
+                                        project.price ??
+                                        ""
+                                    )}
+                                    collaborators={getListingCollaborators(project)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={project.id}
+                                        type="project"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
           )}
 
           {/* Top {Category} Services — Swiper with filter tabs */}
-          {isL1AllPage && (
+          {l1 && !l2 && !l3 && pageKind === "show-all" && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
