@@ -146,6 +146,17 @@ const BANK_LOGOS: Record<string, string> = {
   'capital one':     '/bank-logos/capitalone.png',
 }
 
+// US-01 Last Updated Label: "Updated X min ago" from a cachedAt timestamp.
+function formatRelativeMinutes(iso: string, nowMs: number): string {
+  const diffMs = nowMs - new Date(iso).getTime()
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return "Updated just now"
+  if (mins === 1) return "Updated 1 min ago"
+  if (mins < 60) return `Updated ${mins} min ago`
+  const hrs = Math.floor(mins / 60)
+  return `Updated ${hrs} hr${hrs === 1 ? "" : "s"} ago`
+}
+
 function BankLogo({ bankName, size = 48 }: { bankName: string; size?: number }) {
   const name = (bankName || '').toLowerCase()
   const match = Object.entries(BANK_LOGOS).find(([key]) => name.includes(key))
@@ -877,6 +888,15 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   }
 
   const defaultMethod = methods.find(m => m.isDefault)
+
+  // US-01 Last Updated Label: "Updated X min ago" computed client-side from
+  // cachedAt, ticking forward without re-fetching — a 30s interval is frequent
+  // enough for a minute-granularity label without hammering re-renders.
+  const [nowTick, setNowTick] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const loadBalance = React.useCallback(() => {
     setBalanceError(false)
@@ -1985,10 +2005,23 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-1">
                 <p className="text-3xl font-bold text-dark-blue-400">
                   <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
                 </p>
+              </div>
+              {/* US-07: secondary local-currency amount, shown only when it actually
+                  differs from the display currency — the two are currently always
+                  forced to USD server-side (balance.controller.ts hardcodes both
+                  args), so this won't visibly trigger until that's resolved, but the
+                  frontend is now correctly wired to the real fields either way. */}
+              {balance && balance.localCurrency !== balance.displayCurrency && (
+                <p className="text-xs text-gray-400 mb-2">{balance.availableBalanceLocal} {balance.localCurrency}</p>
+              )}
+              {balance?.cachedAt && (
+                <p className="text-xs text-gray-400 mb-2">{formatRelativeMinutes(balance.cachedAt, nowTick)}</p>
+              )}
+              <div className="flex items-center gap-2 mb-4">
                 {defaultMethod && (
                   <div className="flex items-center gap-1.5 text-xs text-gray-400">
                     <BankIcon className="size-3.5" />

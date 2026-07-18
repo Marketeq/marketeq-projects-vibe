@@ -122,12 +122,21 @@ export interface BalanceResponse {
   availableBalance: string
   availableBalanceDisplay: string
   displayCurrency: string
+  // US-07: secondary amount shown only when localCurrency !== displayCurrency.
+  // Backend (balance.service.ts) already computes and returns both — the
+  // frontend type just never declared them, so this was silently unused.
+  availableBalanceLocal: string
+  localCurrency: string
   reserveBalance: string
   pendingHoldUsd: string
   totalEarnedUsd: string
   totalPaidOutUsd: string
   displayLabel: string
   lastUpdatedAt: string
+  // US-01 Last Updated Label: when the balance figure was cached, distinct
+  // from lastUpdatedAt (which reflects the underlying ledger snapshot, not
+  // the cache read that actually produced this response).
+  cachedAt?: string
 }
 
 export async function getBalance(): Promise<BalanceResponse> {
@@ -144,12 +153,15 @@ export async function getBalance(): Promise<BalanceResponse> {
         availableBalance: "0.00",
         availableBalanceDisplay: "0.00",
         displayCurrency: "USD",
+        availableBalanceLocal: "0.00",
+        localCurrency: "USD",
         reserveBalance: "0.00",
         pendingHoldUsd: "0.00",
         totalEarnedUsd: "0.00",
         totalPaidOutUsd: "0.00",
         displayLabel: "After reserve & threshold deductions",
         lastUpdatedAt: new Date().toISOString(),
+        cachedAt: new Date().toISOString(),
       }
     }
     throw e
