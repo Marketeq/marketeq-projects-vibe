@@ -554,6 +554,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       .finally(() => setRecentEarningsLoading(false))
   }, [])
 
+  // Sourced from real payout history — no dedicated activity-feed endpoint
+  // exists in payout-service; see toActivityItem(). Also the source of the
+  // US-93 persistent failure banner (failedPayout, derived further below).
+  const loadRecentActivity = React.useCallback(async () => {
+    try {
+      const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
+      if (res.ok) {
+        const d = await res.json()
+        setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
+      }
+    } catch (e) { console.error('Failed to fetch recent activity', e) }
+    finally { setRecentActivityLoading(false) }
+  }, [])
+
   // ── Deposit Methods state ──────────────────────────────────────
   const [methods, setMethods] = React.useState<any[]>([])
   const [methodsLoading, setMethodsLoading] = React.useState(true)
@@ -1032,24 +1046,6 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     return () => clearInterval(id)
   }, [loadBalance])
 
-  // US-92: same "no real-time transport" constraint as above — reversal
-  // detection is polling-based too. Each poll re-fetches Recent Earnings and
-  // diffs entry.status against what was last seen; an entry that flips to
-  // "failed" (this codebase's reversed-entry status, see EarningsRow.status)
-  // since the previous poll gets a toast. Never toasts on first load (nothing
-  // to diff against yet) or for entries already known to be failed.
-  const knownEntryStatusRef = React.useRef<Map<string, string>>(new Map())
-  React.useEffect(() => {
-    const seen = knownEntryStatusRef.current
-    for (const row of recentEarnings) {
-      const prevStatus = seen.get(row.id)
-      if (prevStatus && prevStatus !== "failed" && row.status === "failed") {
-        toast({ title: "Transaction reversed", description: `A transaction was reversed and your balance has been updated.`, variant: "destructive" })
-      }
-      seen.set(row.id, row.status)
-    }
-  }, [recentEarnings, toast])
-
   React.useEffect(() => {
     const id = setInterval(() => { if (!document.hidden) loadRecentEarnings() }, 60_000)
     return () => clearInterval(id)
@@ -1059,6 +1055,32 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     setSummaryError(false)
     getEarningsSummary().then(setSummary).catch((e) => { console.error("Earnings summary fetch failed:", e); setSummaryError(true) })
   }, [])
+
+  // US-92: same "no real-time transport" constraint as above — reversal
+  // detection is polling-based too. Each poll re-fetches Recent Earnings and
+  // diffs entry.status against what was last seen; an entry that flips to
+  // "failed" (this codebase's reversed-entry status, see EarningsRow.status)
+  // since the previous poll gets a toast. Never toasts on first load (nothing
+  // to diff against yet) or for entries already known to be failed.
+  const knownEntryStatusRef = React.useRef<Map<string, string>>(new Map())
+  React.useEffect(() => {
+    const seen = knownEntryStatusRef.current
+    let reversed = false
+    for (const row of recentEarnings) {
+      const prevStatus = seen.get(row.id)
+      if (prevStatus && prevStatus !== "failed" && row.status === "failed") reversed = true
+      seen.set(row.id, row.status)
+    }
+    if (reversed) {
+      // US-92.01: balance, history, and summary cards all re-fetch together —
+      // not just the recentEarnings poll that happened to notice the reversal.
+      // US-92.02/92.03: exact copy, treated as a correction (default/neutral
+      // toast styling), not an error.
+      toast({ title: "Transaction reversed", description: "A transaction has been reversed. Your balance has been updated." })
+      loadBalance()
+      loadSummary()
+    }
+  }, [recentEarnings, toast, loadBalance, loadSummary])
 
   useEffect(() => {
     loadSummary()
@@ -1101,17 +1123,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       } catch (e) { console.error('Failed to fetch previous payout', e) }
       finally { setPreviousPayoutLoading(false) }
     })()
-    ;(async () => {
-      try {
-        const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
-        if (res.ok) {
-          const d = await res.json()
-          setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
-        }
-      } catch (e) { console.error('Failed to fetch recent activity', e) }
-      finally { setRecentActivityLoading(false) }
-    })()
-  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings])
+    loadRecentActivity()
+  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity])
+
+  // US-93.01: the persistent failure banner must be able to appear live, not
+  // only on page load — recentActivity (its data source) previously fetched
+  // once on mount only, same "no Ably" polling-fallback pattern as balance
+  // and recentEarnings above.
+  React.useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) loadRecentActivity() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadRecentActivity])
 
   // US-93: persistent failure banner — recentActivity is already sourced from
   // real payout history (GET /v1/payouts, most-recent-first), so the first
@@ -3245,7 +3267,8 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const [earningsResult, setEarningsResult] = React.useState<EarningsListResponse | null>(null)
   const [earningsLoading, setEarningsLoading] = React.useState(true)
   const [earningsError, setEarningsError] = React.useState(false)
-  const [dateRange, setDateRange] = React.useState("all_time")
+  // US-24.02 QA spec: default/reset date range is "this_month", not "all_time".
+  const [dateRange, setDateRange] = React.useState("this_month")
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
 
@@ -3306,16 +3329,16 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
 
   useEffect(() => { loadEarnings() }, [loadEarnings])
 
-  // US-23/US-24: chips + Clear All. dateRange excluded — "all_time" is the
+  // US-23/US-24: chips + Clear All. dateRange excluded — "this_month" is the
   // default and isn't a contractor-applied filter to display as a chip.
   const activeFilterChips: { key: string; label: string; onRemove: () => void }[] = [
-    ...(dateRange !== "all_time" ? [{ key: "dateRange", label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange, onRemove: () => { setDateRange("all_time"); setCurrentPage(1) } }] : []),
+    ...(dateRange !== "this_month" ? [{ key: "dateRange", label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange, onRemove: () => { setDateRange("this_month"); setCurrentPage(1) } }] : []),
     ...(entryType ? [{ key: "entryType", label: entryType === "manual" ? "Manual" : "Automated", onRemove: () => { setEntryType(""); setCurrentPage(1) } }] : []),
     ...(statusFilter ? [{ key: "statusFilter", label: statusFilter === "paid" ? "Paid" : "Reversed", onRemove: () => { setStatusFilter(""); setCurrentPage(1) } }] : []),
   ]
   const hasActiveFilters = activeFilterChips.length > 0
   const clearAllFilters = React.useCallback(() => {
-    setDateRange("all_time")
+    setDateRange("this_month")
     setEntryType("")
     setStatusFilter("")
     setCurrentPage(1)

@@ -63,7 +63,7 @@ export default function TransactionsPage() {
   // Populated by EarningsTab via onFiltersChange — Export reuses whatever the
   // contractor currently has the earnings table filtered to, rather than always
   // exporting the full unfiltered dataset regardless of what's on screen.
-  const [earningsFilters, setEarningsFilters] = useState<EarningsFilters>({ dateRange: "all_time", entryType: "", statusFilter: "", search: "" })
+  const [earningsFilters, setEarningsFilters] = useState<EarningsFilters>({ dateRange: "this_month", entryType: "", statusFilter: "", search: "" })
   const [exporting, setExporting] = useState(false)
 
   const handleExport = useCallback(
