@@ -7196,261 +7196,205 @@ export default function Projects() {
                     ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                    <SwiperSlide className="w-[355px] h-auto">
-                      <article className="h-full min-h-[430px] rounded-lg bg-[#E86600] px-8 py-[50px] flex flex-col items-start justify-end text-white">
-                        <h2 className="text-[28px] font-bold leading-[1.2]">
-                          {currentName} {sectionLabel}
-                        </h2>
-                        <p className="mt-5 text-xl font-light leading-snug">
-                          Discover high-quality{" "}
-                          {currentName.toLowerCase()}{" "}
-                          {sectionLabel.toLowerCase()} ready to launch.
-                        </p>
-                        <Button
-                          asChild
-                          className="mt-12 rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white px-6 text-[#B54708] hover:bg-white/90 hover:text-[#B54708]"
-                          size="lg"
-                        >
-                          <NextLink href={listingHref(pageKind)}>
-                            Explore More <ArrowRight className="size-[15px]" />
-                          </NextLink>
-                        </Button>
-                      </article>
-                    </SwiperSlide>
-
-                    {pageKind === "projects" &&
-                      (listingsProjects.length > 0
-                        ? listingsProjects.slice(0, 8)
-                        : fromLength(8)
-                      ).map((item: any, idx: number) => {
-                        const project =
-                          listingsProjects.length > 0 ? item : null
-                        const mock =
-                          projectCardMocks[idx % projectCardMocks.length]
-                        return (
-                          <SwiperSlide
-                            className="w-[355px]"
-                            key={project?.id ?? idx}
-                          >
-                            <ListingCard
-                              kind="project"
-                              id={project?.id ?? `recommended-project-${idx}`}
-                              title={project?.title || mock.title}
-                              description={
-                                project?.description?.slice(0, 120) ||
-                                mock.description
-                              }
-                              mediaUrl={
-                                project?.mediaUrls?.[0] ||
-                                project?.coverImage ||
-                                mock.mediaUrl
-                              }
-                              budget={
-                                project?.budget
-                                  ? `$${Number(project.budget).toLocaleString()}/month`
-                                  : mock.budget
-                              }
-                              rating={4.9}
-                              reviewCount={5}
-                              href={
-                                project
-                                  ? buildProjectUrl(
-                                      currentCategoryPath,
-                                      project.slug,
-                                      project.id
-                                    )
-                                  : buildProjectUrl(
-                                      currentCategoryPath,
-                                      mock.slug,
-                                      mock.id
-                                    )
-                              }
-                              collaborators={(talentUsers.length > 0
-                                ? talentUsers.slice(0, 6)
-                                : Array(6).fill("/woman.jpg")
-                              ).map(
-                                (u: any) =>
-                                  (typeof u === "string"
-                                    ? u
-                                    : u?.avatarUrl) || "/woman.jpg"
-                              )}
-                              favoriteSlot={
-                                <FavoriteRoot>
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block">
-                                            <Favorite />
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (
-                                            <span className="inline-flex items-center gap-x-1">
-                                              <Check className="size-[15px] shrink-0 text-green-500" />
-                                              Saved
-                                            </span>
-                                          ) : (
-                                            "Save to favorites"
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
-                              }
-                            />
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article className="h-full rounded-lg bg-[#E86600] px-8 py-[50px] flex flex-col items-start justify-end text-white">
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                {currentName} {sectionLabel}
+                              </h1>
+                              <p className="mt-3 text-lg font-light leading-none text-white">
+                                Discover high-quality{" "}
+                                {currentName.toLowerCase()}{" "}
+                                {sectionLabel.toLowerCase()} ready to launch.
+                              </p>
+                              <div className="mt-8 flex flex-col gap-y-3">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 px-6 h-12 text-base font-semibold"
+                                  style={{ color: "#E86600" }}
+                                  size="lg"
+                                >
+                                  <NextLink
+                                    href={exploreMoreHref(
+                                      pageKind as "projects" | "services" | "teams" | "talent"
+                                    )}
+                                  >
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
                           </SwiperSlide>
-                        )
-                      })}
 
-                    {pageKind === "services" &&
-                      (listingsServices.length > 0
-                        ? listingsServices.slice(0, 8)
-                        : fromLength(8)
-                      ).map((item: any, idx: number) => {
-                        const service =
-                          listingsServices.length > 0 ? item : null
-                        const mock =
-                          serviceCardMocks[idx % serviceCardMocks.length]
-                        return (
-                          <SwiperSlide
-                            className="w-[355px]"
-                            key={service?.id ?? idx}
-                          >
-                            <ListingCard
-                              kind="service"
-                              id={service?.id ?? `recommended-service-${idx}`}
-                              title={
-                                service?.title ||
-                                mock.title
-                              }
-                              description={
-                                service?.description?.slice(0, 120) ||
-                                mock.description
-                              }
-                              mediaUrl={
-                                service?.mediaUrls?.[0] ||
-                                service?.coverImage ||
-                                mock.mediaUrl
-                              }
-                              budget={
-                                service?.priceMin
-                                  ? `$${Number(service.priceMin).toLocaleString()}/month`
-                                  : mock.budget
-                              }
-                              rating={4.9}
-                              reviewCount={5}
-                              href={
-                                service
-                                  ? buildServiceUrl(
-                                      currentCategoryPath,
-                                      service.slug,
-                                      service.id
-                                    )
-                                  : buildServiceUrl(
-                                      currentCategoryPath,
-                                      mock.slug,
-                                      mock.id
-                                    )
-                              }
-                              collaborators={(talentUsers.length > 0
-                                ? talentUsers.slice(0, 6)
-                                : Array(6).fill("/woman.jpg")
-                              ).map(
-                                (u: any) =>
-                                  (typeof u === "string"
-                                    ? u
-                                    : u?.avatarUrl) || "/woman.jpg"
-                              )}
-                              favoriteSlot={
-                                <FavoriteRoot>
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block">
-                                            <Favorite />
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (
-                                            <span className="inline-flex items-center gap-x-1">
-                                              <Check className="size-[15px] shrink-0 text-green-500" />
-                                              Saved
-                                            </span>
-                                          ) : (
-                                            "Save to favorites"
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
-                              }
-                            />
-                          </SwiperSlide>
-                        )
-                      })}
+                          {pageKind === "projects" &&
+                            getCarouselItemsForCategoryTab(
+                              displayedProjects,
+                              sub,
+                              "Featured"
+                            )
+                              .filter(
+                                (project: any) =>
+                                  project?.mediaUrls?.[0] &&
+                                  project?.title &&
+                                  (project.budget ??
+                                    project.scopeTotal?.budget ??
+                                    project.price)
+                              )
+                              .slice(0, 8)
+                              .map((project: any, idx: number) => {
+                                return (
+                                  <SwiperSlide
+                                    className="w-[355px]"
+                                    key={project.id ?? idx}
+                                  >
+                                    <ListingCard
+                                      kind="project"
+                                      id={
+                                        project.id ??
+                                        `recommended-project-${idx}`
+                                      }
+                                      title={project.title}
+                                      description={project?.shortDescription}
+                                      mediaUrl={project?.mediaUrls?.[0]}
+                                      duration={
+                                        project.duration
+                                          ? `Starting from ${project.duration}`
+                                          : ""
+                                      }
+                                      budget={String(
+                                        project.budget ??
+                                          project.scopeTotal?.budget ??
+                                          project.price ??
+                                          ""
+                                      )}
+                                      rating={Number(project.rating) || undefined}
+                                      reviewCount={project.reviewCount}
+                                      href={
+                                        project.slug && project.id
+                                          ? projectDetailsUrl(project.slug, project.id)
+                                          : listingHref("projects")
+                                      }
+                                      collaborators={getListingCollaborators(project)}
+                                      favoriteSlot={
+                                        <FavoriteButton
+                                          itemId={project.id}
+                                          type="project"
+                                          favoritedItems={favoritedItems}
+                                          onToggle={handleFavoriteToggle}
+                                        />
+                                      }
+                                    />
+                                  </SwiperSlide>
+                                )
+                              })}
 
-                    {pageKind === "teams" &&
-                      teamSeeds.map((team) => (
-                        <SwiperSlide
-                          className="w-[355px]"
-                          key={`recommended-team-${team.id}`}
-                        >
-                          <ListingCard
-                            kind="team"
-                            id={team.id}
-                            name={team.name}
-                            handle={team.handle}
-                            tagline={team.tagline}
-                            experience={team.experience}
-                            rate={team.rate}
-                            locations={team.location}
-                            rating={team.rating}
-                            projectCount={team.completedProjects}
-                            skills={team.skills}
-                            memberAvatars={team.memberAvatars}
-                            previousClientLogos={team.previousClientLogos}
-                            favoriteSlot={
-                              <FavoriteRoot>
-                                {({ pressed }) => (
-                                  <TooltipProvider delayDuration={75}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="inline-block">
-                                          <Favorite />
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {pressed ? (
-                                          <span className="inline-flex items-center gap-x-1">
-                                            <Check className="size-[15px] shrink-0 text-green-500" />
-                                            Saved
-                                          </span>
-                                        ) : (
-                                          "Save to favorites"
-                                        )}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-                              </FavoriteRoot>
-                            }
-                          />
-                        </SwiperSlide>
-                      ))}
+                          {pageKind === "services" &&
+                            getCarouselItemsForCategoryTab(
+                              serviceItems,
+                              sub,
+                              "Featured"
+                            )
+                              .filter(
+                                (service: any) =>
+                                  service?.mediaUrls?.[0] &&
+                                  service?.title &&
+                                  (service.priceMin ??
+                                    service.budget ??
+                                    service.price)
+                              )
+                              .slice(0, 8)
+                              .map((service: any, idx: number) => {
+                                return (
+                                  <SwiperSlide
+                                    className="h-auto w-[355px]"
+                                    key={service.id ?? idx}
+                                  >
+                                    <ListingCard
+                                      kind="service"
+                                      id={
+                                        service.id ??
+                                        `recommended-service-${idx}`
+                                      }
+                                      title={service.title}
+                                      description={service?.shortDescription}
+                                      mediaUrl={service?.mediaUrls?.[0]}
+                                      duration={
+                                        service.duration
+                                          ? `Starting from ${service.duration}`
+                                          : ""
+                                      }
+                                      budget={String(
+                                        service.priceMin ??
+                                          service.budget ??
+                                          service.price ??
+                                          ""
+                                      )}
+                                      rating={Number(service.rating) || undefined}
+                                      reviewCount={service.reviewCount}
+                                      href={
+                                        service.slug && service.id
+                                          ? serviceDetailsUrl(service.slug, service.id)
+                                          : listingHref("services")
+                                      }
+                                      collaborators={getListingCollaborators(service)}
+                                      favoriteSlot={
+                                        <FavoriteButton
+                                          itemId={service.id ?? `recommended-service-${idx}`}
+                                          type="service"
+                                          favoritedItems={favoritedItems}
+                                          onToggle={handleFavoriteToggle}
+                                        />
+                                      }
+                                    />
+                                  </SwiperSlide>
+                                )
+                              })}
 
-                    {pageKind === "talent" &&
-                      topTalentMock.map((talent) => (
-                        <SwiperSlide
-                          className="w-[355px]"
-                          key={`recommended-${talent.id}`}
-                        >
-                          <TopTalentCard talent={talent} />
-                        </SwiperSlide>
-                      ))}
+                          {/* Original: {pageKind === "teams" && teamItems.map((team: any) => ( */}
+                          {false &&
+                            pageKind === "teams" &&
+                            teamItems.map(
+                              (team: any) => (
+                                <SwiperSlide
+                                  className="w-[355px]"
+                                  key={`recommended-team-${team.id}`}
+                                >
+                                  <ListingCard
+                                    kind="team"
+                                    {...team}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={team.id}
+                                        type="team"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            )}
+
+                          {pageKind === "talent" &&
+                            talentUsers.map((talent: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-[448px] w-[355px]"
+                                key={`recommended-${talent.id}`}
+                              >
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(talent, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={talent.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
