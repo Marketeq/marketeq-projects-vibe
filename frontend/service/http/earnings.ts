@@ -113,7 +113,58 @@ export async function getEarnings(query: EarningsQuery = {}): Promise<EarningsLi
   return res.data
 }
 
-export async function getEarningDetail(id: string) {
+export interface EarningDetailLineItem {
+  label: string
+  amount: string
+  currency: string
+  amountRaw: string
+  currencyRaw: string
+  isTotal?: boolean
+}
+
+export interface EarningDetailFeeSection {
+  grossAmount: string
+  grossAmountDisplay: string
+  feeAmount: string
+  feeAmountDisplay: string
+  netAmount: string
+  netAmountDisplay: string
+  grossAmountUsd: string
+  feeAmountUsd: string
+  netAmountUsd: string
+  billingCurrency: string
+  displayCurrency: string
+  fxRateToUsd: string
+  fxRateLabel: string
+  feeLabel: string
+  feePercent: string
+  lineItems: EarningDetailLineItem[]
+}
+
+export interface EarningDetail {
+  id: string
+  entryType: "automated" | "manual"
+  status: "paid" | "failed" | "confirmed"
+  grossAmount: string
+  feeAmount: string
+  netAmount: string
+  netAmountDisplay: string
+  currency: string
+  displayCurrency: string
+  fxRateToUsd: string
+  workStartAt: string
+  workEndAt: string
+  durationMinutes: number
+  durationLabel: string
+  avgKeyboardPct: number | null
+  avgMousePct: number | null
+  reversedAt: string | null
+  contract: { id: string; title: string; status: string } | null
+  project: { id: string; name: string; clientHandle: string | null; clientName: string | null } | null
+  feeSection: EarningDetailFeeSection
+}
+
+export async function getEarningDetail(id: string): Promise<EarningDetail> {
   const res = await earningsAxios.get(`/earnings/${id}`)
   return res.data
 }

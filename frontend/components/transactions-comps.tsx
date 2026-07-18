@@ -6,7 +6,7 @@ import { SVGProps, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
-import { getEarningsSummary, getEarnings, getBalance, type EarningsSummary, type EarningsListResponse, type BalanceResponse } from "@/service/http/earnings"
+import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { formatDistanceToNowStrict } from "date-fns"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
@@ -2515,7 +2515,6 @@ export interface EarningsFilters {
 }
 
 export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: EarningsFilters) => void } = {}) => {
-  const { toast } = useToast()
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -2530,6 +2529,31 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const [dateRange, setDateRange] = React.useState("all_time")
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
+
+  // F-05 Entry Detail Drawer state. 404 shows an in-drawer message rather than
+  // auto-closing (spec: "do NOT auto-close" — the contractor should still see
+  // why nothing loaded, not have the drawer vanish out from under them).
+  const [detailEntryId, setDetailEntryId] = React.useState<string | null>(null)
+  const [detailData, setDetailData] = React.useState<EarningDetail | null>(null)
+  const [detailLoading, setDetailLoading] = React.useState(false)
+  const [detailError, setDetailError] = React.useState<"not-found" | "error" | null>(null)
+
+  const openEntryDetail = React.useCallback((id: string) => {
+    setDetailEntryId(id)
+    setDetailData(null)
+    setDetailError(null)
+    setDetailLoading(true)
+    getEarningDetail(id)
+      .then(setDetailData)
+      .catch((e) => setDetailError(e?.response?.status === 404 ? "not-found" : "error"))
+      .finally(() => setDetailLoading(false))
+  }, [])
+
+  const closeEntryDetail = React.useCallback(() => {
+    setDetailEntryId(null)
+    setDetailData(null)
+    setDetailError(null)
+  }, [])
 
   const loadSummary = React.useCallback(() => {
     setEarningsSummaryError(false)
@@ -2697,7 +2721,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 <TableCell colSpan={8} className="text-center text-sm text-gray-400 py-10">No earnings found for this period.</TableCell>
               </TableRow>
             ) : earningsResult?.data.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} className="cursor-pointer hover:bg-gray-25" onClick={() => openEntryDetail(row.id)}>
                 <TableCell className="text-sm text-gray-500 whitespace-nowrap">{row.date ?? row.weekRange ?? row.month ?? "—"}</TableCell>
                 <TableCell>
                   {row.project ? (
@@ -2727,7 +2751,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                   </div>
                 </TableCell>
                 {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.budget ?? "—"}</TableCell>}
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}
                     <DropdownMenu>
@@ -2737,7 +2761,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                         </IconButton>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => toast({ title: "Transaction Details", description: `${row.project?.name ?? ""} — ${row.durationLabel}` })}>View Details</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEntryDetail(row.id)}>View Details</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -2785,6 +2809,109 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
           </div>
         </div>
       </div>
+
+      {/* F-05 Entry Detail Drawer — slide-in from the right, overlaying the list
+          rather than navigating away. Built on the shared Dialog primitive
+          (variant="unanimated" + a full custom className) so it inherits Radix's
+          portal/focus-trap/ESC/backdrop-click handling instead of re-implementing
+          a raw fixed div, which earlier in this epic caused a real stacking-context
+          bug when co-mounted with another open Dialog. */}
+      <Dialog open={!!detailEntryId} onOpenChange={(open) => { if (!open) closeEntryDetail() }}>
+        <DialogContent
+          variant="unanimated"
+          className="fixed right-0 top-0 h-full w-full sm:max-w-md bg-white shadow-xl overflow-y-auto p-0 gap-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-300"
+        >
+          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 sticky top-0 bg-white z-10">
+            <DialogTitle className="text-base font-semibold text-dark-blue-400">Entry Details</DialogTitle>
+            <DialogClose asChild>
+              <IconButton size="sm" variant="ghost" visual="gray"><X className="size-4" /></IconButton>
+            </DialogClose>
+          </div>
+
+          {detailLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />)}
+            </div>
+          ) : detailError === "not-found" ? (
+            <div className="p-6 text-center space-y-4">
+              <p className="text-sm text-gray-500">This entry could not be found.</p>
+              <DialogClose asChild>
+                <Button variant="outlined" visual="gray" size="sm">Close</Button>
+              </DialogClose>
+            </div>
+          ) : detailError === "error" ? (
+            <div className="p-6 text-center space-y-4">
+              <p className="text-sm text-red-600">We couldn't load this entry. Please try again.</p>
+              <Button variant="outlined" visual="gray" size="sm" onClick={() => detailEntryId && openEntryDetail(detailEntryId)}>Retry</Button>
+            </div>
+          ) : detailData ? (
+            <div className="p-6 space-y-6">
+              {/* Project / task */}
+              <div>
+                <p className="text-sm font-semibold text-dark-blue-400">{detailData.project?.name ?? "Untitled project"}</p>
+                {detailData.project?.clientHandle && <p className="text-xs text-gray-400">{detailData.project.clientHandle}</p>}
+              </div>
+
+              {/* Time block */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time Block</p>
+                <p className="text-sm text-dark-blue-400">
+                  {new Date(detailData.workStartAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                  {" – "}
+                  {new Date(detailData.workEndAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                </p>
+                <p className="text-xs text-gray-500">{detailData.durationLabel}</p>
+              </div>
+
+              {/* Activity signals — only meaningful for automated (screenshot-tracked) entries */}
+              {detailData.entryType === "automated" && (detailData.avgKeyboardPct != null || detailData.avgMousePct != null) && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Activity</p>
+                  <div className="flex gap-4 text-sm text-dark-blue-400">
+                    {detailData.avgKeyboardPct != null && <span>⌨ {detailData.avgKeyboardPct}% keyboard</span>}
+                    {detailData.avgMousePct != null && <span>🖱 {detailData.avgMousePct}% mouse</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* Fee breakdown: Gross / Fee / You Receive */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fee Breakdown</p>
+                <div className="rounded-lg border border-gray-200 divide-y divide-gray-200">
+                  {detailData.feeSection.lineItems.map((item, i) => (
+                    <div key={i} className={cn("flex items-center justify-between px-4 py-2.5", item.isTotal && "bg-gray-25")}>
+                      <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.label}</span>
+                      <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.amount} {item.currency}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Locked FX rate — stale flag when display currency differs from what
+                  was actually billed, so the contractor never silently sees numbers
+                  that don't match what they were actually paid in. */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Exchange Rate</p>
+                <p className="text-sm text-gray-500">
+                  {detailData.feeSection.fxRateLabel}
+                  {detailData.feeSection.billingCurrency !== detailData.feeSection.displayCurrency && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="ml-1 text-amber-500 cursor-help align-super">*</span>
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>This entry was billed in {detailData.feeSection.billingCurrency}. Amounts shown in {detailData.feeSection.displayCurrency} use a live rate that may differ slightly from the rate locked at the time this entry was logged.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
