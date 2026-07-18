@@ -621,6 +621,24 @@ function ScreenshotThumbnail({
         <span className="text-[11px] text-gray-400">{screenshot.time}</span>
         {screenshot.apps.length > 0 && <AppIcons apps={screenshot.apps} />}
       </div>
+      {/* US-84: keyboard/mouse activity icons on every tile, not just the
+          detail-drawer sidebar. */}
+      {!screenshot.isNoActivity && (screenshot.keyboardPct != null || screenshot.mousePct != null) && (
+        <div className="flex items-center gap-2 mt-0.5">
+          {screenshot.keyboardPct != null && (
+            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+              <Keyboard01 className="size-3" />
+              {screenshot.keyboardPct}%
+            </span>
+          )}
+          {screenshot.mousePct != null && (
+            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+              <Mouse className="size-3" />
+              {screenshot.mousePct}%
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
