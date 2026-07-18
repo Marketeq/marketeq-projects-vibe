@@ -1952,6 +1952,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               <p className="text-sm text-red-600">Balance unavailable.</p>
               <button className="text-sm text-primary-600 underline mt-1" onClick={loadBalance}>Retry</button>
             </div>
+          ) : balance && parseFloat(balance.totalEarnedUsd) === 0 ? (
+            // US-04: "genuinely zero" means never earned anything at all — distinct
+            // from a contractor who has earned before but has $0 available right now
+            // (e.g. already withdrawn everything). totalEarnedUsd is the reliable
+            // signal for that distinction; availableBalance alone can't tell them apart.
+            <div className="py-2 space-y-2">
+              <p className="text-sm text-gray-500">You haven't earned anything yet. Once you log billable time, your available balance will show up here.</p>
+              <button
+                className="text-sm text-primary-600 underline"
+                onClick={() => toast({ title: "Help & Support", description: "Contact support at support@marketeq.com" })}
+              >
+                How does billing work?
+              </button>
+            </div>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-4">
