@@ -87,6 +87,7 @@ import {
 } from "@/components/ui"
 import { ToggleGroupRoot, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Label } from "@/components/ui/label/label"
+import { Accordion, AccordionItem, AccordionTrigger, DisclosureContent } from "@/components/ui/accordion"
 
 // ─── SVG Icons (inline, from designs) ───────────────────────────────────
 
@@ -454,7 +455,7 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
 
 // ─── Overview Tab ───────────────────────────────────────────────────────
 
-export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void }) => {
+export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void; onOpenHelp?: () => void }) => {
   const router = useRouter()
   const { toast } = useToast()
   const [showBanner, setShowBanner] = useState(true)
@@ -2252,9 +2253,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             // signal for that distinction; availableBalance alone can't tell them apart.
             <div className="py-2 space-y-2">
               <p className="text-sm text-gray-500">You haven't earned anything yet. Once you log billable time, your available balance will show up here.</p>
+              {/* US-99: takes the contractor straight to Help & Support (billing
+                  section expanded by default) rather than a toast that dead-ends. */}
               <button
                 className="text-sm text-primary-600 underline"
-                onClick={() => toast({ title: "Help & Support", description: "Contact support at support@marketeq.com" })}
+                onClick={() => onOpenHelp?.()}
               >
                 How does billing work?
               </button>
@@ -2385,6 +2388,74 @@ const SCHEDULE_ERROR_MESSAGES: Record<string, string> = {
   ERR_SPLIT_NOT_ENABLED: "Enable split payout before setting a percentage.",
   ERR_SCHEDULE_NOT_FOUND: "Save your schedule before configuring split payout.",
 }
+
+// F-13 Help & Support Tab (US-95–99). Facts below are pulled from the actual
+// backend constants rather than invented: 20% default platform fee (see
+// earnings.service.ts getRecentFeePercent fallback), 5-business-day
+// first-payout KYC hold (kyc-gate.service.ts), $600 USD annual tax
+// threshold (transaction-created.consumer.ts / earnings.service.ts).
+export const HelpSupportDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-lg p-0 gap-0">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
+        <DialogTitle className="text-base font-semibold text-dark-blue-400">Help & Support</DialogTitle>
+        <DialogClose asChild>
+          <IconButton size="sm" variant="ghost" visual="gray"><X className="size-4" /></IconButton>
+        </DialogClose>
+      </div>
+      <div className="p-6 max-h-[70vh] overflow-y-auto">
+        <Accordion type="multiple" className="space-y-3" defaultValue={["billing"]}>
+          {/* US-95 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="billing">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">How does billing work?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              Marketeq deducts a service fee — 20% by default — from each confirmed work session before it's added to your available balance. Your gross earnings (time logged × your rate) minus this fee equals your net balance. The exact fee percent for each entry is shown in that entry's Fee Breakdown.
+            </DisclosureContent>
+          </AccordionItem>
+
+          {/* US-96 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="kyc">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">Why is my first payout on hold?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              For your security, your first withdrawal from Marketeq is held for 5 business days before being released. This is a one-time step — after your first successful payout, future withdrawals are not subject to this hold.
+            </DisclosureContent>
+          </AccordionItem>
+
+          {/* US-97 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="fx">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">How are exchange rates applied?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              Your contract rate is locked in the currency it was created in — that locked amount is what you're actually paid. Your display currency is for reference only, converted at a live rate each time you view it, so amounts shown may differ slightly from what was billed.
+            </DisclosureContent>
+          </AccordionItem>
+
+          {/* US-98 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="tax">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">What are my tax reporting obligations?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              Once your earnings on Marketeq reach $600 USD in a calendar year, we're required to collect a completed W-9 (U.S. contractors) or W-8BEN (non-U.S. contractors) from you for tax reporting purposes. We'll notify you when you approach this threshold so you can prepare.
+            </DisclosureContent>
+          </AccordionItem>
+        </Accordion>
+        <p className="text-xs text-gray-400 mt-4">
+          Still have questions? Contact us at <a href="mailto:support@marketeqdigital.com" className="text-primary-600 underline">support@marketeqdigital.com</a>.
+        </p>
+      </div>
+    </DialogContent>
+  </Dialog>
+)
 
 export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; onSaved?: () => void }) => {
   const { toast } = useToast()

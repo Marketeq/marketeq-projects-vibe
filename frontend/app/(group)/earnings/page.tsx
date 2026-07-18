@@ -14,6 +14,7 @@ import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   EarningsTab,
   type EarningsFilters,
+  HelpSupportDialog,
   OverviewTab,
   PayoutScheduleDialog,
   PayoutsTab,
@@ -37,6 +38,7 @@ export default function TransactionsPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("overview")
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   // Bumped after a successful schedule save to remount OverviewTab — it fetches
   // schedule/balance/methods once on mount, and PayoutScheduleDialog is a sibling
   // (not a child), so there's otherwise no way to tell it to refetch after a save.
@@ -121,13 +123,7 @@ export default function TransactionsPage() {
                         visual="gray"
                         size="sm"
                         leftIcon={<Lightbulb01 className="size-4" />}
-                        onClick={() =>
-                          toast({
-                            title: "Help & Support",
-                            description:
-                              "Contact support at support@marketeq.com",
-                          })
-                        }
+                        onClick={() => setShowHelp(true)}
                       >
                         Help & Support
                       </Button>
@@ -263,6 +259,7 @@ export default function TransactionsPage() {
                   key={overviewRefreshKey}
                   onNavigateTab={setActiveTab}
                   onEditPayoutSchedule={() => setShowPayoutSchedule(true)}
+                  onOpenHelp={() => setShowHelp(true)}
                 />
               </TabsContent>
 
@@ -282,6 +279,7 @@ export default function TransactionsPage() {
           onOpenChange={setShowPayoutSchedule}
           onSaved={() => setOverviewRefreshKey((k) => k + 1)}
         />
+        <HelpSupportDialog open={showHelp} onOpenChange={setShowHelp} />
       </div>
     </AuthenticatedRoute>
   )
