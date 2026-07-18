@@ -958,6 +958,29 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     return () => clearInterval(id)
   }, [loadBalance])
 
+  // US-92: same "no real-time transport" constraint as above — reversal
+  // detection is polling-based too. Each poll re-fetches Recent Earnings and
+  // diffs entry.status against what was last seen; an entry that flips to
+  // "failed" (this codebase's reversed-entry status, see EarningsRow.status)
+  // since the previous poll gets a toast. Never toasts on first load (nothing
+  // to diff against yet) or for entries already known to be failed.
+  const knownEntryStatusRef = React.useRef<Map<string, string>>(new Map())
+  React.useEffect(() => {
+    const seen = knownEntryStatusRef.current
+    for (const row of recentEarnings) {
+      const prevStatus = seen.get(row.id)
+      if (prevStatus && prevStatus !== "failed" && row.status === "failed") {
+        toast({ title: "Transaction reversed", description: `A transaction was reversed and your balance has been updated.`, variant: "destructive" })
+      }
+      seen.set(row.id, row.status)
+    }
+  }, [recentEarnings, toast])
+
+  React.useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) loadRecentEarnings() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadRecentEarnings])
+
   const loadSummary = React.useCallback(() => {
     setSummaryError(false)
     getEarningsSummary().then(setSummary).catch((e) => { console.error("Earnings summary fetch failed:", e); setSummaryError(true) })
@@ -1016,10 +1039,28 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     })()
   }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings])
 
+  // US-93: persistent failure banner — recentActivity is already sourced from
+  // real payout history (GET /v1/payouts, most-recent-first), so the first
+  // 'failed' item there is a genuine failed withdrawal, not a fabricated one.
+  const failedPayout = React.useMemo(() => recentActivity.find((a) => a.kind === "failed") ?? null, [recentActivity])
+
   return (
     <div className="flex gap-6">
       {/* Main Content */}
       <div className="flex-1 space-y-5 min-w-0">
+        {/* US-93: persistent until the contractor navigates to it — no dismiss button. */}
+        {failedPayout && (
+          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">
+              <span className="mr-2">⚠️</span>
+              A withdrawal could not be completed — {failedPayout.title}.
+            </p>
+            <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
+              View Details
+            </Button>
+          </div>
+        )}
+
         {/* Congratulations Banner */}
         {showBanner && (
           <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
