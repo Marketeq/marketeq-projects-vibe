@@ -4277,223 +4277,72 @@ export default function Projects() {
                       value="Projects"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsProjects.length > 0
-                          ? listingsProjects.slice(0, 8)
-                          : recommendedProjectSeeds
-                        ).map((item: any, idx: number) => {
-                          const project = listingsProjects.length > 0 ? item : null
-                          const mock =
-                            listingsProjects.length > 0
-                              ? recommendedProjectSeeds[
-                                  idx % recommendedProjectSeeds.length
-                                ]
-                              : item
-                          const key = project?.id ?? idx
-                          return (
-                            <SwiperSlide className="w-[355px]" key={key}>
-                              <ListingCard
-                                kind="project"
-                                id={project?.id ?? `mock-${idx}`}
-                                title={
-                                  project?.title ||
-                                  mock.title
-                                }
-                                description={
-                                  project?.summary ||
-                                  project?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={
-                                  project?.mediaUrls?.[0] ||
-                                  project?.coverImage ||
-                                  project?.thumbnail ||
-                                  mock.mediaUrl
-                                }
-                                budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : project?.scopeTotal?.budget ? `$${Number(project.scopeTotal.budget).toLocaleString()} budget` : mock.budget}
-                                rating={Number(project?.rating) || 4.9}
-                                reviewCount={project?.reviewCount || 5}
-                                href={
-                                  project
-                                    ? buildProjectUrl(
-                                        currentCategoryPath,
-                                        project.slug,
-                                        project.id
-                                      )
-                                    : buildProjectUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                avatarsSlot={
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <AvatarGroup
-                                          max={5}
-                                          size="sm"
-                                          excess
-                                          excessClassName="border-gray-300 text-gray-500"
-                                        >
-                                          {fromLength(6).map((k) => (
-                                            <Avatar
-                                              key={k}
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          ))}
-                                        </AvatarGroup>
-                                      </TooltipTrigger>
-                                      <TooltipContent
-                                        className="p-0 max-w-[262px]"
-                                        size="md"
-                                      >
-                                        <ScrollArea
-                                          className="h-[192px] p-3"
-                                          scrollBar={
-                                            <ScrollBar
-                                              className="w-4 p-1"
-                                              thumbClassName="bg-white/20"
-                                            />
-                                          }
-                                        >
-                                          <div className="space-y-3 pr-5">
-                                            {fromLength(4).map((k) => (
-                                              <div
-                                                key={k}
-                                                className="flex items-center gap-x-[18px]"
-                                              >
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </ScrollArea>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                }
-                                favoriteSlot={
-                                  <FavoriteRoot
-                                    value={
-                                      project
-                                        ? favoritedItems.has(String(project.id))
-                                        : false
-                                    }
-                                    onValueChange={
-                                      project
-                                        ? async (pressed) => {
-                                            if (pressed) {
-                                              setFavoritedItems((prev) => {
-                                                const next = new Set(prev)
-                                                next.add(String(project.id))
-                                                return next
-                                              })
-                                              const result = await addFavorite({
-                                                type: "project",
-                                                itemId: String(project.id),
-                                              })
-                                              if (!result)
-                                                setFavoritedItems((prev) => {
-                                                  const next = new Set(prev)
-                                                  next.delete(
-                                                    String(project.id)
-                                                  )
-                                                  return next
-                                                })
-                                            } else {
-                                              setFavoritedItems((prev) => {
-                                                const next = new Set(prev)
-                                                next.delete(String(project.id))
-                                                return next
-                                              })
-                                              const fav =
-                                                await findFavoriteByItemId(
-                                                  String(project.id)
-                                                )
-                                              if (fav) {
-                                                const ok = await removeFavorite(
-                                                  fav.id
-                                                )
-                                                if (!ok)
-                                                  setFavoritedItems((prev) => {
-                                                    const next = new Set(prev)
-                                                    next.add(String(project.id))
-                                                    return next
-                                                  })
-                                              }
-                                            }
-                                          }
-                                        : undefined
-                                    }
-                                  >
-                                    {({ pressed }) => (
-                                      <TooltipProvider delayDuration={75}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="inline-block">
-                                              <Favorite />
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            {pressed ? (
-                                              <span className="inline-flex items-center gap-x-1">
-                                                <Check className="size-[15px] shrink-0 text-green-500" />
-                                                Saved
-                                              </span>
-                                            ) : (
-                                              "Save to favorites"
-                                            )}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )}
-                                  </FavoriteRoot>
-                                }
-                              />
-                            </SwiperSlide>
+                        {getCarouselItemsForTab(
+                          listingsProjects.length > 0
+                            ? listingsProjects
+                            : displayedProjects,
+                          "Featured"
+                        )
+                          .filter(
+                            (project: any) =>
+                              project?.mediaUrls?.[0] &&
+                              project?.title &&
+                              (project.budget ??
+                                project.scopeTotal?.budget ??
+                                project.price)
                           )
-                        })}
+                          .slice(0, 8)
+                          .map((project: any, idx: number) => {
+                            const key = project?.id ?? idx
+                            return (
+                              <SwiperSlide
+                                className="h-auto w-[355px]"
+                                key={key}
+                              >
+                                <ListingCard
+                                  kind="project"
+                                  id={project.id ?? `project-${idx}`}
+                                  title={project.title}
+                                  description={project?.shortDescription}
+                                  mediaUrl={project?.mediaUrls?.[0]}
+                                  duration={
+                                    project.duration
+                                      ? `Starting from ${project.duration}`
+                                      : ""
+                                  }
+                                  budget={String(
+                                    project.budget ??
+                                      project.scopeTotal?.budget ??
+                                      project.price ??
+                                      ""
+                                  )}
+                                  rating={Number(project.rating) || undefined}
+                                  reviewCount={project.reviewCount}
+                                  href={
+                                    project.slug && project.id
+                                      ? projectDetailsUrl(project.slug, project.id)
+                                      : listingHref("projects")
+                                  }
+                                  // Original: avatarsSlot={hardcoded /woman.jpg tooltip avatar group}
+                                  collaborators={getListingCollaborators(project)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={project?.id}
+                                      type="project"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
+                              </SwiperSlide>
+                            )
+                          })}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("projects")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Projects in {currentName}
                               </h1>
