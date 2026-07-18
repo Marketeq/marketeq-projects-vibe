@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
@@ -11,6 +11,9 @@ import {
 } from "@blend-metrics/icons"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
+import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
+import { useAuth } from "@/contexts/auth"
+import { getContractsForClient, getContractsForTalent } from "@/service/http/contracts"
 import {
   EarningsTab,
   type EarningsFilters,
@@ -36,9 +39,23 @@ import {
 export default function TransactionsPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  // US-75: Log Time is reachable in-place from the Earnings area, rather than
+  // only via navigating away to /time-tracking.
+  const [showLogTime, setShowLogTime] = useState(false)
+  const [activeContracts, setActiveContracts] = useState<Array<{ id: string; title: string }>>([])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const role = ((user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || "")
+    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
+    fetcher(user.id)
+      .then((contracts) => setActiveContracts(contracts.filter((c) => c.status === "active").map((c) => ({ id: c.id, title: c.title }))))
+      .catch(() => {})
+  }, [user?.id])
   // Bumped after a successful schedule save to remount OverviewTab — it fetches
   // schedule/balance/methods once on mount, and PayoutScheduleDialog is a sibling
   // (not a child), so there's otherwise no way to tell it to refetch after a save.
@@ -133,7 +150,7 @@ export default function TransactionsPage() {
                         visual="primary"
                         size="sm"
                         leftIcon={<Calendar className="size-4" />}
-                        onClick={() => router.push("/time-tracking")}
+                        onClick={() => setShowLogTime(true)}
                       >
                         Log Time
                       </Button>
@@ -166,7 +183,7 @@ export default function TransactionsPage() {
                         visual="primary"
                         size="sm"
                         leftIcon={<Calendar className="size-4" />}
-                        onClick={() => router.push("/time-tracking")}
+                        onClick={() => setShowLogTime(true)}
                       >
                         Log Time
                       </Button>
@@ -280,6 +297,12 @@ export default function TransactionsPage() {
           onSaved={() => setOverviewRefreshKey((k) => k + 1)}
         />
         <HelpSupportDialog open={showHelp} onOpenChange={setShowHelp} />
+        <AddManualTimeDialog
+          open={showLogTime}
+          onOpenChange={setShowLogTime}
+          contracts={activeContracts}
+          onSaved={() => setOverviewRefreshKey((k) => k + 1)}
+        />
       </div>
     </AuthenticatedRoute>
   )
