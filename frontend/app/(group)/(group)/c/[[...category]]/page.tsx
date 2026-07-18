@@ -51,7 +51,13 @@ import {
   SwiperPrevTrigger,
   SwiperRoot,
 } from "@/components/swiper"
-import { Tabs, TabsContent } from "@/components/ui"
+import {
+  Tabs,
+  TabsContent,
+  contentTransition,
+  contentVariants,
+} from "@/components/ui"
+import { motion } from "framer-motion"
 import {
   Accordion,
   AccordionItem,
