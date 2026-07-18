@@ -132,6 +132,9 @@ export interface BalanceResponse {
   totalEarnedUsd: string
   totalPaidOutUsd: string
   displayLabel: string
+  // US-08: explicit stale-FX signal — never hidden, always flagged with an
+  // asterisk on the balance amount when true.
+  stale: boolean
   lastUpdatedAt: string
   // US-01 Last Updated Label: when the balance figure was cached, distinct
   // from lastUpdatedAt (which reflects the underlying ledger snapshot, not
@@ -160,6 +163,7 @@ export async function getBalance(): Promise<BalanceResponse> {
         totalEarnedUsd: "0.00",
         totalPaidOutUsd: "0.00",
         displayLabel: "After reserve & threshold deductions",
+        stale: false,
         lastUpdatedAt: new Date().toISOString(),
         cachedAt: new Date().toISOString(),
       }

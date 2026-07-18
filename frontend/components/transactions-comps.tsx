@@ -2020,6 +2020,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-3xl font-bold text-dark-blue-400">
                   <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
+                  {/* US-08: never conditionally hidden, even though the balance
+                      might look "off" from what the contractor expects. */}
+                  {balance?.stale && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="ml-0.5 text-lg text-amber-500 cursor-help align-super">*</span>
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>Exchange rate may be delayed.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </p>
               </div>
               {/* US-07: secondary local-currency amount, shown only when it actually

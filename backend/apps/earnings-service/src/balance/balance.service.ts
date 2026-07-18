@@ -81,6 +81,10 @@ export class BalanceService {
     dto.totalEarnedUsd          = entry.totalEarnedUsd;
     dto.totalPaidOutUsd         = entry.totalPaidOutUsd;
     dto.displayLabel            = display.stale ? this.DISPLAY_LABEL_STALE : this.DISPLAY_LABEL;
+    // US-08: an explicit boolean the frontend can key off directly, rather than
+    // string-matching displayLabel — currency.service.ts already computes this
+    // per-conversion, it just wasn't surfaced on the DTO before.
+    dto.stale                   = display.stale;
     dto.lastUpdatedAt           = entry.updatedAt;
     dto.cachedAt                = (entry as BalanceCacheEntry).cachedAt ?? new Date().toISOString();
     return dto;
