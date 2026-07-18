@@ -251,8 +251,6 @@ const marketplaceTalentTabs = [
   "Top-Rated",
 ]
 
-const projectCardMocks = projectSeeds
-
 const serviceCardMocks = serviceSeeds
 
 function scopeSeedItems<T extends { categorySlugs?: string[] }>(
@@ -265,24 +263,6 @@ function scopeSeedItems<T extends { categorySlugs?: string[] }>(
   }
 
   return items
-}
-
-const narrowProjectSearch = {
-  industries: [
-    "Agriculture",
-    "Oil & Gas",
-    "Manufacturing",
-    "Construction",
-    "Utilities",
-    "Retail & Wholesale",
-    "Transportation",
-    "Finance & Banking",
-    "Real Estate",
-    "Healthcare",
-  ],
-  budgets: ["$500 - $1,000", "$1,000 - $5,000", "$5,000 - $10,000", "$10,000+"],
-  lengths: ["1-2 weeks", "2-4 weeks", "1-3 months", "3+ months"],
-  teamSizes: ["1 person", "2-5 people", "6-10 people", "10+ people"],
 }
 
 const browseSkillMocks = [
@@ -3056,10 +3036,6 @@ export default function Projects() {
     .join("/")
   const currentCategorySlugs = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug].filter(
     (slug): slug is string => Boolean(slug)
-  )
-  const recommendedProjectSeeds = scopeSeedItems(
-    projectCardMocks,
-    currentCategorySlugs
   )
   const recommendedServiceSeeds = scopeSeedItems(
     serviceCardMocks,
