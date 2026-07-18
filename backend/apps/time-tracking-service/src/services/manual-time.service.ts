@@ -37,19 +37,26 @@ export class ManualTimeService {
       throw new BadRequestException(`Entries cannot start more than ${MAX_PAST_DAYS} days in the past`);
     }
 
-    // US-78: reject entries that overlap an existing (non-rejected) manual
-    // entry for the same contractor and contract.
-    const overlapping = await this.repo.findOne({
-      where: {
-        userId,
-        contractId: dto.contractId ?? IsNull(),
-        status: Not('rejected'),
-        startTime: LessThan(end),
-        endTime: MoreThan(start),
-      },
-    });
-    if (overlapping) {
-      throw new BadRequestException('This time range overlaps an existing manual time entry');
+    // US-78: overlap is a soft, dismissible warning, not a hard block — the
+    // first submit (confirmOverlap unset/false) throws ERR_MANUAL_TIME_OVERLAP
+    // so the frontend can show "You have an overlapping entry. Continue?"; a
+    // resubmit with confirmOverlap: true skips this check and proceeds.
+    if (!dto.confirmOverlap) {
+      const overlapping = await this.repo.findOne({
+        where: {
+          userId,
+          contractId: dto.contractId ?? IsNull(),
+          status: Not('rejected'),
+          startTime: LessThan(end),
+          endTime: MoreThan(start),
+        },
+      });
+      if (overlapping) {
+        throw new BadRequestException({
+          message: 'You have an overlapping entry. Continue?',
+          errorCode: 'ERR_MANUAL_TIME_OVERLAP',
+        });
+      }
     }
 
     const entry = this.repo.create({

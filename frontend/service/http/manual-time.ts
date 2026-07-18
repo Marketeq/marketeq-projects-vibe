@@ -15,10 +15,15 @@ export interface ManualTimeDTO {
 export const createManualTime = async (data: {
   startTime: string
   endTime: string
-  projectId: string
+  contractId: string
   taskId?: string
   notes?: string
+  confirmOverlap?: boolean
 }): Promise<ManualTimeDTO> => {
+  // CreateManualTimeDto (time-tracking-service) only recognizes contractId —
+  // main.ts's ValidationPipe runs with forbidNonWhitelisted: true, so a
+  // mismatched field name (e.g. the old "projectId") doesn't get silently
+  // dropped, it 400s the entire request.
   const res = await AxiosRequest.post("/manual-time", data)
   return res.data
 }
