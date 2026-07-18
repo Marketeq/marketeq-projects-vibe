@@ -903,6 +903,18 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
   }, [])
 
+  // US-02/US-94: no Ably (or any real-time transport) exists anywhere in this
+  // codebase for earnings, so a genuine push-based "balance.updated" story
+  // isn't buildable here — this is the honest fallback the spec itself
+  // describes for when real-time is unavailable: a 60s poll. Deliberately NOT
+  // pairing this with a "Live" badge (US-03) — that would claim an active
+  // real-time connection that doesn't exist, which is exactly what Doc07
+  // "never fabricate" rules out.
+  React.useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) loadBalance() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadBalance])
+
   const loadSummary = React.useCallback(() => {
     setSummaryError(false)
     getEarningsSummary().then(setSummary).catch((e) => { console.error("Earnings summary fetch failed:", e); setSummaryError(true) })
