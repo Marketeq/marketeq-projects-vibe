@@ -3726,6 +3726,7 @@ interface PayoutHistoryItem {
 
 // US-28: read-only detail dialog — no retry/cancel actions at MVP (AC-28.06).
 const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | null; onOpenChange: (open: boolean) => void }) => {
+  const router = useRouter()
   const [detail, setDetail] = useState<any | null>(null)
   const [loading, setLoading] = useState(false)
   // EC-52: a failed/404 fetch must render a distinct "not found" state, not an
@@ -3794,10 +3795,23 @@ const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | nul
                 <span className="font-medium text-dark-blue-400 text-right max-w-[60%] truncate">{value}</span>
               </div>
             ))}
+            {/* US-50: a specific failed state with next steps, not just a status
+                badge — payout.service.ts's own cancel() error explicitly tells
+                contractors to "start a new request" for a failed payout (there's
+                no resume-same-payout endpoint), so Retry starts a fresh
+                withdrawal rather than attempting to resurrect this one. */}
             {detail.status === "failed" && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {detail.failureReason ?? "This payout could not be processed. Please contact support if the issue persists."}
                 <div className="text-xs text-red-500 mt-1">Retry attempts: {detail.retryCount ?? 0}</div>
+                <div className="flex gap-2 mt-3">
+                  <Button variant="filled" visual="primary" size="sm" onClick={() => router.push("/transfer-funds")}>
+                    Retry Withdrawal
+                  </Button>
+                  <Button variant="outlined" visual="gray" size="sm" onClick={() => window.open("mailto:support@marketeqdigital.com", "_blank")}>
+                    Contact Support
+                  </Button>
+                </div>
               </div>
             )}
           </div>
