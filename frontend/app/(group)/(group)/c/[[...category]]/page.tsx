@@ -3762,184 +3762,282 @@ export default function Projects() {
                     variant="link"
                     visual="gray"
                     size="lg"
-                    className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                    className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                   >
-                    <NextLink href={listingHref("projects")}>
+                    <NextLink href={exploreMoreHref("projects")}>
                       Explore More Projects
                     </NextLink>
                   </Button>
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                  {fromLength(8).map((idx) => {
-                    const project =
-                      listingsProjects.length > 0
-                        ? listingsProjects[idx % listingsProjects.length]
-                        : null
-                    const mock = projectCardMocks[idx % projectCardMocks.length]
-
-                    return (
-                      <ListingCard
-                        key={project?.id ?? `l3-top-project-${idx}`}
-                        kind="project"
-                        id={project?.id ?? `l3-top-project-${idx}`}
-                        title={project?.title || mock.title}
-                        description={
-                          project?.description?.slice(0, 120) ||
-                          mock.description
-                        }
-                        mediaUrl={
-                          project?.mediaUrls?.[0] ||
-                          project?.coverImage ||
-                          mock.mediaUrl
-                        }
-                        budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
-                        duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
-                        rating={4.9}
-                        reviewCount={5}
-                        href={
-                          project
-                            ? buildProjectUrl(
-                                currentCategoryPath,
-                                project.slug,
-                                project.id
-                              )
-                            : buildProjectUrl(
-                                currentCategoryPath,
-                                mock.slug,
-                                mock.id
-                              )
-                        }
-                        collaborators={(talentUsers.length > 0
-                          ? talentUsers.slice(0, 6)
-                          : Array(6).fill("/woman.jpg")
-                        ).map(
-                          (u: any) =>
-                            (typeof u === "string" ? u : u?.avatarUrl) ||
-                            "/woman.jpg"
-                        )}
-                        favoriteSlot={
-                          <FavoriteRoot>
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        }
-                      />
+                  {getCarouselItemsForTab(
+                    listingsProjects.length > 0
+                      ? listingsProjects
+                      : displayedProjects,
+                    activeTopProjectsTab
+                  )
+                    .filter(
+                      (project: any) =>
+                        project?.mediaUrls?.[0] &&
+                        project?.title &&
+                        (project.budget ??
+                          project.scopeTotal?.budget ??
+                          project.price)
                     )
-                  })}
+                    .slice(0, 8)
+                    .map((project: any, idx: number) => {
+                      return (
+                        <motion.div
+                          key={`${activeTopProjectsTab}-${project.id ?? idx}`}
+                          initial="enter"
+                          animate="ideal"
+                          variants={contentVariants}
+                          transition={contentTransition}
+                        >
+                          <ListingCard
+                            kind="project"
+                            id={project.id ?? `l3-top-project-${idx}`}
+                            title={project.title}
+                            description={project?.shortDescription}
+                            mediaUrl={project?.mediaUrls?.[0]}
+                            duration={
+                              project.duration
+                                ? `Starting from ${project.duration}`
+                                : ""
+                            }
+                            rating={Number(project.rating) || undefined}
+                            reviewCount={project.reviewCount}
+                            href={
+                              project.slug && project.id
+                                ? projectDetailsUrl(project.slug, project.id)
+                                : listingHref("projects")
+                            }
+                            budget={String(
+                              project.budget ??
+                                project.scopeTotal?.budget ??
+                                project.price ??
+                                ""
+                            )}
+                            collaborators={getListingCollaborators(project)}
+                            favoriteSlot={
+                              <FavoriteButton
+                                itemId={project?.id}
+                                type="project"
+                                favoritedItems={favoritedItems}
+                                onToggle={handleFavoriteToggle}
+                              />
+                            }
+                          />
+                        </motion.div>
+                      )
+                    })}
                 </div>
               </div>
-
-              <div className="mt-[50px]">
-                <Tabs defaultValue="Industry">
-                  <div className="flex items-center justify-between">
-                    <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      Narrow Your Project Search
-                    </h1>
-                    <Button
-                      variant="link"
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Industry">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Narrow Your {sectionLabel} Search
+                </h1>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Industry">Industry</TabsTrigger>
+                  </Badge> 
+                    <Badge
+                      variant="circular"
                       visual="gray"
                       size="lg"
-                      className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                      asChild
                     >
-                      Advanced Filters
-                    </Button>
-                  </div>
-                  <TabsList className="mt-6 flex flex-wrap items-center gap-3">
-                    {["Industry", "Budget", "Project Length", "Team Size"].map(
-                      (tab) => (
-                        <Badge
-                          key={tab}
-                          variant="circular"
-                          visual="gray"
-                          size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                          asChild
-                        >
-                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                        </Badge>
-                      )
-                    )}
+                      <TabsTrigger value="Budget">Budget</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Project Length">
+                        Project Length
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Team Size">Team Size</TabsTrigger>
+                    </Badge>
                   </TabsList>
-                  <div className="mt-6">
-                    <TabsContent
-                      value="Industry"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.industries.map((item) => (
-                        <NextLink
-                          key={item}
-                          href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(item)}`}
-                        >
-                          <article className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300 hover:border-gray-300 hover:ring-1 hover:ring-gray-300">
-                            {item}
-                          </article>
-                        </NextLink>
-                      ))}
-                    </TabsContent>
-                    <TabsContent
-                      value="Budget"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.budgets.map((item) => (
-                        <article
-                          key={item}
-                          className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                        >
-                          {item}
+
+                  <Button
+                    asChild
+                    size="lg"
+                    variant="link"
+                    visual="gray"
+                    className="hover:text-dark-blue-400"
+                  >
+                    <NextLink href={`/search?category=${l1Meta.slug}`}>
+                      Advanced Filters
+                      <ArrowRight className="size-[15px]" />
+                    </NextLink>
+                  </Button>
+                </div>
+
+                <div className="mt-6">
+                  {/*
+                  Each tab corresponds to an Algolia facet on the projects index.
+                  Spec: /docs/md/Search Service/ ✅ Finalized Filter Fields table for project search.md
+                        /docs/md/Search Service/📄 search-config.ts — Filters Only (projects).md
+                  - Project Type    → project_type (string facet)
+                  - Industry        → industry (string facet)
+                  - Budget          → budget_range (numberRange → budget_min/budget_max)
+                  - Project Length  → project_duration_range (enum — exact values)
+                  - Team Size       → team_size_range (enum — exact values)
+                  Each tile links to /search with the filter pre-applied and scoped to the current category.
+                */}
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Project Type"
+                  >
+                    {[
+                      "Web App",
+                      "Mobile App",
+                      "Desktop App",
+                      "SaaS Platform",
+                      "API / Backend",
+                      "E-commerce Store",
+                      "Landing Page",
+                      "Chrome Extension",
+                      "CLI Tool",
+                      "Game",
+                    ].map((projectType) => (
+                      <NextLink
+                        key={projectType}
+                        href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {projectType}
                         </article>
-                      ))}
-                    </TabsContent>
-                    <TabsContent
-                      value="Project Length"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.lengths.map((item) => (
-                          <article
-                            key={item}
-                            className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                          >
-                            {item}
-                          </article>
-                        )
-                      )}
-                    </TabsContent>
-                    <TabsContent
-                      value="Team Size"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.teamSizes.map((item) => (
-                          <article
-                            key={item}
-                            className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                          >
-                            {item}
-                          </article>
-                        )
-                      )}
-                    </TabsContent>
-                  </div>
-                </Tabs>
-              </div>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Industry"
+                  >
+                    {[
+                      "Agriculture",
+                      "Oil & Gas",
+                      "Manufacturing",
+                      "Construction",
+                      "Utilities",
+                      "Retail & Wholesale",
+                      "Transportation",
+                      "Finance & Banking",
+                      "Real Estate",
+                      "Healthcare",
+                    ].map((industry) => (
+                      <NextLink
+                        key={industry}
+                        href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {industry}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Budget"
+                  >
+                    {[
+                      { label: "Under $5k", min: 0, max: 5000 },
+                      { label: "$5k – $15k", min: 5000, max: 15000 },
+                      { label: "$15k – $50k", min: 15000, max: 50000 },
+                      { label: "$50k – $100k", min: 50000, max: 100000 },
+                      { label: "$100k – $250k", min: 100000, max: 250000 },
+                      { label: "$250k – $500k", min: 250000, max: 500000 },
+                      { label: "$500k – $1M", min: 500000, max: 1000000 },
+                      { label: "$1M+", min: 1000000, max: null as number | null },
+
+
+                    ].map((b) => (
+                      <NextLink
+                        key={b.label}
+                        href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {b.label}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Project Length"
+                  >
+                    {[
+                      "1 - 3 months",
+                      "3 - 6 months",
+                      "6 - 12 months",
+                      "12 - 18 months",
+                      "18 - 24 months",
+                      "24+ months",
+                    ].map((duration) => (
+                      <NextLink
+                        key={duration}
+                        href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {duration}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Team Size"
+                  >
+                    {[
+                      "1 - 2 members",
+                      "2 - 5 members",
+                      "5 - 10 members",
+                      "10 - 15 members",
+                      "15 - 20 members",
+                      "20+ members",
+                    ].map((size) => (
+                      <NextLink
+                        key={size}
+                        href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {size}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                </div>
+              </Tabs>
+            </div>
+          
 
               <div className="relative mt-[50px] h-[298px] overflow-hidden rounded-lg p-[50px]">
                 <NextImage
@@ -3955,36 +4053,166 @@ export default function Projects() {
                       Fueling the Future of Research
                     </h1>
                     <p className="mt-2 text-xl font-light leading-none text-white">
-                      Discover research experts and projects tailored to your goals.
+                      Discover research experts and projects tailored to your
+                      goals.
                     </p>
                     <Button
                       asChild
                       className="mt-[50px] rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-dark-blue-400 hover:text-dark-blue-400"
                       size="lg"
                     >
-                      <NextLink href={listingHref("projects")}>
+                      <NextLink href={exploreMoreHref("projects")}>
                         Explore Research <ArrowRight className="size-[15px]" />
                       </NextLink>
                     </Button>
                   </div>
                 </div>
               </div>
-            {isL3AllPage && (
+              {l3 && pageKind === "show-all" && (
+                <div className="mt-[50px]">
+                  <Tabs defaultValue="Featured">
+                    <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      Top {currentName} Services
+                    </h1>
+                    <SwiperRoot>
+                      <div className="mt-6 flex items-center justify-between">
+                        <TabsList className="flex items-center gap-x-3">
+                          {marketplaceTabs.map((tab) => (
+                            <Badge
+                              key={tab}
+                              variant="circular"
+                              visual="gray"
+                              size="lg"
+                              className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                              asChild
+                            >
+                              <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                            </Badge>
+                          ))}
+                        </TabsList>
+                        <div className="flex items-center gap-x-8">
+                          <Button
+                            asChild
+                            variant="link"
+                            visual="gray"
+                            size="lg"
+                            className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
+                          >
+                            <NextLink href={exploreMoreHref("services")}>
+                              Explore More Services
+                            </NextLink>
+                          </Button>
+                          <div className="flex items-center gap-x-3">
+                            <SwiperPrevTrigger asChild>
+                              <IconButton
+                                className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                                visual="gray"
+                                variant="outlined"
+                              >
+                                <ChevronLeft className="size-[18px]" />
+                              </IconButton>
+                            </SwiperPrevTrigger>
+                            <SwiperNextTrigger asChild>
+                              <IconButton
+                                className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                                visual="gray"
+                                variant="outlined"
+                              >
+                                <ChevronRight className="size-[18px]" />
+                              </IconButton>
+                            </SwiperNextTrigger>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-6">
+                        {marketplaceTabs.map((tabValue) => (
+                          <TabsContent key={tabValue} value={tabValue}>
+                            <SwiperContent
+                              slidesPerView="auto"
+                              spaceBetween={20}
+                            >
+                              {getCarouselItemsForTab(serviceItems, tabValue)
+                                .filter(
+                                  (service: any) =>
+                                    service?.mediaUrls?.[0] &&
+                                    service?.title &&
+                                    (service.priceMin ??
+                                      service.budget ??
+                                      service.price)
+                                )
+                                .slice(0, 8)
+                                .map((service: any, idx: number) => {
+                                  return (
+                                    <SwiperSlide
+                                      className="h-auto w-[355px]"
+                                      key={service.id ?? `l3-service-${idx}`}
+                                    >
+                                      <ListingCard
+                                        kind="service"
+                                        id={service.id ?? `l3-service-${idx}`}
+                                        title={service.title}
+                                        description={service?.shortDescription}
+                                        mediaUrl={service?.mediaUrls?.[0]}
+                                        duration={
+                                          service.duration
+                                            ? `Starting from ${service.duration}`
+                                            : ""
+                                        }
+                                        budget={String(
+                                          service.priceMin ??
+                                            service.budget ??
+                                            service.price ??
+                                            ""
+                                        )}
+                                        rating={Number(service.rating) || undefined}
+                                        reviewCount={service.reviewCount}
+                                        href={
+                                          service.slug && service.id
+                                            ? serviceDetailsUrl(service.slug, service.id)
+                                            : listingHref("services")
+                                        }
+                                        collaborators={getListingCollaborators(service)}
+                                        favoriteSlot={
+                                          <FavoriteButton
+                                            itemId={service.id}
+                                            type="service"
+                                            favoritedItems={favoritedItems}
+                                            onToggle={handleFavoriteToggle}
+                                          />
+                                        }
+                                      />
+                                    </SwiperSlide>
+                                  )
+                                })}
+                            </SwiperContent>
+                          </TabsContent>
+                        ))}
+                      </div>
+                    </SwiperRoot>
+                  </Tabs>
+                </div>
+              )}
+
+              {/* Teams feature temporarily hidden from category pages. */}
+              {/* Original: <div className="mt-[50px]"> */}
+              {false && (
               <div className="mt-[50px]">
                 <Tabs defaultValue="Featured">
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                    Top {currentName} Services
+                    {l3Meta
+                      ? `${l2Meta?.name ?? currentName} Teams`
+                      : `${currentName} Teams`}
                   </h1>
                   <SwiperRoot>
                     <div className="mt-6 flex items-center justify-between">
                       <TabsList className="flex items-center gap-x-3">
-                        {marketplaceTabs.map((tab) => (
+                        {marketplaceTalentTabs.map((tab) => (
                           <Badge
                             key={tab}
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
