@@ -2565,6 +2565,7 @@ const SCHEDULE_ERROR_MESSAGES: Record<string, string> = {
   ERR_SPLIT_METHOD_NOT_VERIFIED: "The selected secondary method must be verified.",
   ERR_SPLIT_NOT_ENABLED: "Enable split payout before setting a percentage.",
   ERR_SCHEDULE_NOT_FOUND: "Save your schedule before configuring split payout.",
+  ERR_SCHEDULE_END_DATE_BEFORE_START: "End date must be after start date.",
 }
 
 // F-13 Help & Support Tab (US-95–99). Facts below are pulled from the actual
@@ -2662,6 +2663,11 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
   const [dayOfWeek, setDayOfWeek] = useState(1)
   const [dayOfMonth, setDayOfMonth] = useState(1)
   const [customIntervalDays, setCustomIntervalDays] = useState(7)
+  // US-72: optional window for a custom schedule, e.g. pause payouts during
+  // a planned absence without disabling the schedule outright. yyyy-mm-dd
+  // strings for <input type="date">; empty string = unset.
+  const [scheduleStartDate, setScheduleStartDate] = useState("")
+  const [scheduleEndDate, setScheduleEndDate] = useState("")
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
   const [scheduleUpdatedAt, setScheduleUpdatedAt] = useState<string | null>(null)
 
@@ -2707,6 +2713,8 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
         setDayOfWeek(s.dayOfWeek ?? 1)
         setDayOfMonth(s.dayOfMonth ?? 1)
         setCustomIntervalDays(s.customIntervalDays ?? 7)
+        setScheduleStartDate(s.startDate ? s.startDate.slice(0, 10) : "")
+        setScheduleEndDate(s.endDate ? s.endDate.slice(0, 10) : "")
         setThresholdUsd(s.thresholdUsd ? String(Math.round(parseFloat(s.thresholdUsd))) : "50")
         setReserveUsd(s.reserveUsd ? String(Math.round(parseFloat(s.reserveUsd))) : "0")
         // AC-25.03: next run date is always the server-computed value, never derived client-side.
@@ -2734,7 +2742,12 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
       }
       if (frequency === "weekly" || frequency === "bi_weekly") schedulePayload.dayOfWeek = dayOfWeek
       if (frequency === "monthly") schedulePayload.dayOfMonth = dayOfMonth
-      if (frequency === "custom") schedulePayload.customIntervalDays = customIntervalDays
+      if (frequency === "custom") {
+        schedulePayload.customIntervalDays = customIntervalDays
+        // Explicit null (not omitted) clears a previously-set date server-side.
+        schedulePayload.startDate = scheduleStartDate ? new Date(scheduleStartDate).toISOString() : null
+        schedulePayload.endDate = scheduleEndDate ? new Date(scheduleEndDate).toISOString() : null
+      }
 
       const scheduleRes = await payoutFetch(`/payouts/schedule`, { method: "PUT", headers, body: JSON.stringify(schedulePayload) })
       const scheduleData = await scheduleRes.json()
@@ -2905,10 +2918,27 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   </Select>
 
                   {frequency === "custom" && (
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Every N days (1–365)</label>
-                      <Input type="number" min={1} max={365} value={customIntervalDays} onChange={(e) => setCustomIntervalDays(Math.min(365, Math.max(1, parseInt(e.target.value) || 1)))} />
-                    </div>
+                    <>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Every N days (1–365)</label>
+                        <Input type="number" min={1} max={365} value={customIntervalDays} onChange={(e) => setCustomIntervalDays(Math.min(365, Math.max(1, parseInt(e.target.value) || 1)))} />
+                      </div>
+                      {/* US-72: optional window — e.g. pause payouts during a
+                          planned absence without disabling the schedule outright. */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Start date (optional)</label>
+                          <Input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
+                          <Input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
+                        </div>
+                      </div>
+                      {scheduleStartDate && scheduleEndDate && scheduleEndDate <= scheduleStartDate && (
+                        <p className="text-xs text-red-500">End date must be after start date.</p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -3040,7 +3070,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
             <Button variant="outlined" visual="gray">Cancel</Button>
           </DialogClose>
           <Button
-            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100))}
+            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100)) || (frequency === "custom" && !!scheduleStartDate && !!scheduleEndDate && scheduleEndDate <= scheduleStartDate)}
             onClick={handleSave}
           >
             {saving ? "Saving…" : "Save"}
