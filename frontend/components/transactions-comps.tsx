@@ -448,6 +448,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const { toast } = useToast()
   const [showBanner, setShowBanner] = useState(true)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
+  // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
+  // This Month/All Time) in one response, not four independent requests as the
+  // spec assumes — so a single shared error + retry is the honest equivalent
+  // of the spec's "per-card retry", not four separately-failing cards.
+  const [summaryError, setSummaryError] = React.useState(false)
   const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
   // US-05/US-06: a genuine load failure (500/503) must render a distinct error
   // state with retry — never conflated with a real $0 balance, and never left
@@ -878,8 +883,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
   }, [])
 
+  const loadSummary = React.useCallback(() => {
+    setSummaryError(false)
+    getEarningsSummary().then(setSummary).catch((e) => { console.error("Earnings summary fetch failed:", e); setSummaryError(true) })
+  }, [])
+
   useEffect(() => {
-    getEarningsSummary().then(setSummary).catch(e => console.error("Earnings summary fetch failed:", e))
+    loadSummary()
     loadBalance()
     fetchMethods()
     ;(async () => {
@@ -928,7 +938,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       } catch (e) { console.error('Failed to fetch recent activity', e) }
       finally { setRecentActivityLoading(false) }
     })()
-  }, [fetchMethods, loadBalance])
+  }, [fetchMethods, loadBalance, loadSummary])
 
   return (
     <div className="flex gap-6">
@@ -967,6 +977,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               </Tooltip>
             </TooltipProvider>
           </div>
+
+          {summaryError && (
+            <p className="text-xs text-red-600 -mt-3 mb-3">
+              We couldn't load your earnings summary.{" "}
+              <button className="underline font-medium" onClick={loadSummary}>Refresh</button>
+            </p>
+          )}
 
           <div className="rounded-lg border border-gray-200 bg-gray-25 p-8 grid grid-cols-1 md:grid-cols-2 md:divide-x md:divide-gray-200 gap-10">
             {/* Today */}
