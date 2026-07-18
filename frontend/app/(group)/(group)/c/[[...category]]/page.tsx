@@ -5179,9 +5179,7 @@ export default function Projects() {
             </div>
           )}
 
-
-
-          {pageKind === "projects" && (
+          {/* {pageKind === "projects" && (
             <div className="mt-[50px]">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                 Top {currentName} Projects
