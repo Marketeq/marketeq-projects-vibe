@@ -2739,6 +2739,63 @@ function getCategoryMeta(slug: string): CategoryMeta {
     subcategories: [],
   }
 }
+type FavoriteEntityType = "project" | "service" | "team" | "talent"
+
+const favoriteKey = (type: FavoriteEntityType, itemId: string) =>
+  `${type}:${itemId}`
+
+/**
+ * Shared favorite-toggle control used by every card's `favoriteSlot`.
+ * Centralizes the FavoriteRoot/Tooltip/Favorite markup.
+ */
+function FavoriteButton({
+  itemId,
+  type,
+  favoritedItems,
+  onToggle,
+}: {
+  itemId?: string | null
+  type: FavoriteEntityType
+  favoritedItems: Set<string>
+  onToggle: (
+    itemId: string,
+    type: FavoriteEntityType,
+    pressed: boolean
+  ) => void
+}) {
+  const id = itemId ? String(itemId) : undefined
+  const key = id ? favoriteKey(type, id) : undefined
+  return (
+    <FavoriteRoot
+      value={key ? favoritedItems.has(key) : false}
+      onValueChange={
+        id ? (pressed: boolean) => onToggle(id, type, pressed) : undefined
+      }
+    >
+      {({ pressed }) => (
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-block">
+                <Favorite />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {pressed ? (
+                <span className="inline-flex items-center gap-x-1">
+                  <Check className="size-[15px] shrink-0 text-green-500" />
+                  Saved
+                </span>
+              ) : (
+                "Save to favorites"
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </FavoriteRoot>
+  )
+}
 
 // Interface for project items
 interface ProjectItem extends BlockItem {
@@ -3019,13 +3076,18 @@ export default function Projects() {
    *  browse sentinel is not a real category path, so it keeps the top-level
    *  entity URL.
    */
+  /** Build a link to the kind-specific listing page at the current depth. */
   const listingHref = (
     kind: "projects" | "services" | "teams" | "talent" | "all"
   ) => {
-    if (rootBrowseMode) return kind === "all" ? "/c" : `/${kind}`
     if (kind === "all") return `/c/${currentCategoryPath}`
-    return `/c/${currentCategoryPath}/${kind}`
+    // Original: return `/c/${currentCategoryPath}/${kind}`
+    return `/${kind}/${currentCategoryPath}`
   }
+
+  /** "Explore more" CTA target: search page filtered by kind + current topic. */
+  const exploreMoreHref = (kind: "projects" | "services" | "teams" | "talent") =>
+    `/search?category=${kind}&q=${encodeURIComponent(l1Meta.name)}`
 
   // Call hooks unconditionally to satisfy React rules
   const l1Query = useCategoryPageL1(
@@ -3057,6 +3119,241 @@ export default function Projects() {
   const { data: pageData, isLoading } = activeQuery as {
     data: any
     isLoading: boolean
+  }
+  const browseSkills = useMemo(() => {
+    const relatedSkills = pageData?.suggestions?.relatedSkills
+    if (!Array.isArray(relatedSkills)) return []
+    return relatedSkills
+      .map((skill: any) => {
+        const name = typeof skill === "string" ? skill : skill?.name
+        if (!name) return null
+        const slug =
+          typeof skill === "object" && skill?.slug
+            ? skill.slug
+            : name
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/(^-|-$)/g, "")
+        return { name, slug }
+      })
+      .filter((skill: any): skill is { name: string; slug: string } =>
+        Boolean(skill)
+      )
+  }, [pageData])
+
+  const serviceItems =
+    listingsServices.length > 0 ? listingsServices : []
+
+  const talentItems =
+    talentUsers.length > 0 ? talentUsers : []
+
+  const projectItems =
+    listingsProjects.length > 0 ? listingsProjects : displayedProjects
+
+  const teamItems = useMemo(
+    () => projectItems.filter((p) => p.team).map((p) => p.team),
+    [projectItems]
+  )
+
+  const getListingTypeName = (item: any): string | null => {
+    const raw =
+      item?.projectType ??
+      item?.project_type ??
+      item?.serviceType ??
+      item?.service_type ??
+      item?.typeName ??
+      item?.type_name ??
+      item?.type
+
+    if (typeof raw !== "string") return null
+
+    const value = raw.trim()
+    if (!value || ["project", "service", "team", "talent"].includes(value.toLowerCase())) {
+      return null
+    }
+
+    return value
+  }
+
+  const getBrowseTypeOptions = (items: any[]) => {
+    const counts = new Map<string, number>()
+
+    for (const item of items) {
+      const name = getListingTypeName(item)
+      if (!name) continue
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .slice(0, 24)
+  }
+
+  const browseTypeGroups = useMemo(
+    () =>
+      [
+        {
+          label: "Projects",
+          value: "Projects",
+          options: getBrowseTypeOptions(projectItems),
+        },
+        {
+          label: "Services",
+          value: "Services",
+          options: getBrowseTypeOptions(serviceItems),
+        },
+      ].filter((group) => group.options.length > 0),
+    [projectItems, serviceItems]
+  )
+
+  const getListingCollaborators = (item: any): string[] => {
+    const candidates =
+      item?.teamAvatars ??
+      item?.teamMembers ??
+      item?.collaborators ??
+      item?.assignedUsers ??
+      item?.providers ??
+      []
+
+    if (!Array.isArray(candidates)) return []
+
+    return candidates
+      .map((member: any) =>
+        typeof member === "string"
+          ? member
+          : member?.avatarUrl ??
+            member?.avatar_url ??
+            member?.avatar ??
+            member?.photo ??
+            member?.image ??
+            member?.profileImageUrl
+      )
+      .filter((avatarUrl: any): avatarUrl is string => Boolean(avatarUrl))
+      .slice(0, 4)
+  }
+
+  // Popular/Top-Rated/Featured/Newest/Trending/Bestsellers/In-Demand below are
+  // simple client-side sorts on whatever fields the API happens to return —
+  // not the real weighted/time-windowed ranking spec (backend engagement
+  // scores, review-count thresholds, admin-curated Featured flag, profile
+  // completeness for Newest talent, etc.). Revisit once that's implemented.
+  const getComparableDate = (item: any) =>
+    new Date(
+      item?.createdAt ??
+        item?.publishedAt ??
+        item?.updatedAt ??
+        item?.created_at ??
+        item?.published_at ??
+        item?.updated_at ??
+        0
+    ).getTime() || 0
+
+  const getComparableRating = (item: any) =>
+    Number(item?.rating ?? item?.averageRating ?? item?.avgRating ?? 0)
+
+  const getComparablePopularity = (item: any) =>
+    Number(
+      item?.reviewCount ??
+        item?.reviews ??
+        item?.projectCount ??
+        item?.projects ??
+        item?.favoriteCount ??
+        item?.favoritesCount ??
+        0
+    )
+
+  const getComparableSales = (item: any) =>
+    Number(
+      item?.salesCount ??
+        item?.ordersCount ??
+        item?.completedOrders ??
+        item?.completedProjects ??
+        item?.purchases ??
+        0
+    )
+
+  const getCarouselItemsForTab = <T,>(items: T[], tab: string): T[] => {
+    const sorted = [...items]
+
+    switch (tab) {
+      case "Featured": {
+        const featured = sorted.filter((item: any) => item?.featured)
+        return featured.length > 0 ? featured : sorted
+      }
+      case "Newest":
+        return sorted.sort(
+          (a: any, b: any) => getComparableDate(b) - getComparableDate(a)
+        )
+      case "Most Popular":
+      case "Trending":
+        return sorted.sort(
+          (a: any, b: any) =>
+            getComparablePopularity(b) - getComparablePopularity(a)
+        )
+      case "Top-Rated":
+        return sorted.sort(
+          (a: any, b: any) => getComparableRating(b) - getComparableRating(a)
+        )
+      case "Best-Sellers":
+      case "Bestsellers":
+        return sorted.sort(
+          (a: any, b: any) => getComparableSales(b) - getComparableSales(a)
+        )
+      default:
+        return sorted
+    }
+  }
+
+  const getItemCategoryValues = (item: any): string[] => {
+    const rawValues = [
+      item?.category,
+      item?.categoryName,
+      item?.categorySlug,
+      item?.subcategory,
+      item?.subcategoryName,
+      item?.subcategorySlug,
+      item?.l2Slug,
+      item?.l3Slug,
+      ...(Array.isArray(item?.categories) ? item.categories : []),
+      ...(Array.isArray(item?.categorySlugs) ? item.categorySlugs : []),
+      ...(Array.isArray(item?.tags) ? item.tags : []),
+      ...(Array.isArray(item?.skills) ? item.skills : []),
+    ]
+
+    return rawValues
+      .map((value: any) =>
+        typeof value === "string"
+          ? value
+          : value?.slug ?? value?.name ?? value?.title ?? ""
+      )
+      .filter(Boolean)
+      .map((value: string) => value.toLowerCase())
+  }
+
+  const getCarouselItemsForCategoryTab = <T,>(
+    items: T[],
+    sub: { name?: string; slug?: string },
+    rankingTab = "Top-Rated"
+  ): T[] => {
+    if (!sub?.name || sub.name === "All") {
+      return getCarouselItemsForTab(items, rankingTab)
+    }
+
+    const needles = [sub.slug, sub.name]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase())
+
+    const filtered = items.filter((item: any) => {
+      const values = getItemCategoryValues(item)
+      return needles.some((needle) =>
+        values.some((value) => value === needle || value.includes(needle))
+      )
+    })
+
+    return getCarouselItemsForTab(
+      filtered.length > 0 ? filtered : [],
+      rankingTab
+    )
   }
 
   // Subcategories: static taxonomy is the curated source of truth.
@@ -3120,8 +3417,17 @@ export default function Projects() {
   useEffect(() => {
     async function loadFavorites() {
       const favorites = await getAllFavorites()
-      const itemIds = new Set(favorites.map((fav) => fav.itemId))
-      setFavoritedItems(itemIds)
+      // Transition shim: seed both the legacy plain-itemId key and the new
+      // composite favoriteKey, so widgets not yet converted to the shared
+      // FavoriteButton (still checking favoritedItems.has(itemId) inline)
+      // keep showing correct state alongside converted ones. Remove the
+      // itemId writes here once every entity type is converted.
+      const keys = new Set<string>()
+      for (const fav of favorites) {
+        keys.add(fav.itemId)
+        keys.add(favoriteKey(fav.type as FavoriteEntityType, fav.itemId))
+      }
+      setFavoritedItems(keys)
     }
 
     loadFavorites()
@@ -3134,21 +3440,41 @@ export default function Projects() {
     newPressed: boolean
   ) => {
     // Optimistic update — toggle immediately, persist in background
+    const key = favoriteKey(type, itemId)
+
     if (newPressed) {
       setFavoritedItems((prev) => {
         const next = new Set(prev)
-        next.add(itemId)
+        next.add(itemId) // transition shim — see loadFavorites
+        next.add(key)
         return next
       })
-      await addFavorite({ type, itemId })
+      const favorite = await addFavorite({ type, itemId })
+      if (!favorite) {
+        setFavoritedItems((prev) => {
+          const next = new Set(prev)
+          next.delete(itemId)
+          next.delete(key)
+          return next
+        })
+      }
     } else {
       setFavoritedItems((prev) => {
         const next = new Set(prev)
         next.delete(itemId)
+        next.delete(key)
         return next
       })
-      const fav = await findFavoriteByItemId(itemId)
-      if (fav) await removeFavorite(fav.id)
+      const fav = await findFavoriteByTypeAndItemId(type as FavoriteType, itemId)
+      const removed = fav ? await removeFavorite(fav.id) : true
+      if (!removed) {
+        setFavoritedItems((prev) => {
+          const next = new Set(prev)
+          next.add(itemId)
+          next.add(key)
+          return next
+        })
+      }
     }
   }
 
