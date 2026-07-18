@@ -5231,116 +5231,67 @@ export default function Projects() {
 
               <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {(() => {
-                  const baseItems =
+                  const shiftedProjectItems = getCarouselItemsForTab(
                     listingsProjects.length > 0
-                      ? listingsProjects.slice(0, 8)
-                      : fromLength(8)
-                  const tabShiftMap: Record<string, number> = {
-                    Featured: 0,
-                    Newest: 1,
-                    "Most Popular": 2,
-                    Trending: 3,
-                    "Top-Rated": 4,
-                    Bestsellers: 5,
-                  }
-                  const shift = tabShiftMap[activeTopProjectsTab] ?? 0
-                  const projectItems =
-                    baseItems.length > 0
-                      ? baseItems.slice(shift).concat(baseItems.slice(0, shift))
-                      : baseItems
-
-                  return projectItems.map((item: any, idx: number) => {
-                    const project = listingsProjects.length > 0 ? item : null
-                    const mock = projectCardMocks[idx % projectCardMocks.length]
-
-                    return (
-                      <ListingCard
-                        key={project?.id ?? `top-project-${idx}`}
-                        kind="project"
-                        id={project?.id ?? `top-project-${idx}`}
-                      title={project?.title || mock.title}
-                      description={
-                        project?.description?.slice(0, 120) ||
-                        mock.description
-                      }
-                        mediaUrl={
-                          project?.mediaUrls?.[0] ||
-                          project?.coverImage ||
-                          mock.mediaUrl
-                        }
-                      budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
-                      duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
-                        rating={4.9}
-                        reviewCount={5}
-                        href={
-                          project
-                            ? buildProjectUrl(
-                                currentCategoryPath,
-                                project.slug,
-                                project.id
-                              )
-                            : buildProjectUrl(
-                                currentCategoryPath,
-                                mock.slug,
-                                mock.id
-                              )
-                        }
-                        collaborators={(talentUsers.length > 0
-                          ? talentUsers.slice(0, 6)
-                          : Array(6).fill("/woman.jpg")
-                        ).map(
-                          (u: any) =>
-                            (typeof u === "string" ? u : u?.avatarUrl) ||
-                            "/woman.jpg"
-                        )}
-                        favoriteSlot={
-                          <FavoriteRoot
-                            value={
-                              project
-                                ? favoritedItems.has(String(project.id))
-                                : undefined
-                            }
-                            onValueChange={
-                              project
-                                ? (pressed) =>
-                                    handleFavoriteToggle(
-                                      String(project.id),
-                                      "project",
-                                      pressed
-                                    )
-                                : undefined
-                            }
-                          >
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        }
-                      />
+                      ? listingsProjects
+                      : displayedProjects,
+                    activeTopProjectsTab
+                  )
+                    .filter(
+                      (project: any) =>
+                        project?.mediaUrls?.[0] &&
+                        project?.title &&
+                        (project.budget ??
+                          project.scopeTotal?.budget ??
+                          project.price)
                     )
-                  })
+                    .slice(0, 8)
+
+                  return shiftedProjectItems.map(
+                    (project: any, idx: number) => {
+                      return (
+                        <ListingCard
+                          key={project.id ?? `top-project-${idx}`}
+                          kind="project"
+                          id={project.id ?? `top-project-${idx}`}
+                          title={project.title}
+                          description={project?.shortDescription}
+                          mediaUrl={project?.mediaUrls?.[0]}
+                          duration={
+                            project.duration
+                              ? `Starting from ${project.duration}`
+                              : ""
+                          }
+                          rating={Number(project.rating) || undefined}
+                          reviewCount={project.reviewCount}
+                          href={
+                            project.slug && project.id
+                              ? projectDetailsUrl(project.slug, project.id)
+                              : listingHref("projects")
+                          }
+                          budget={String(
+                            project.budget ??
+                              project.scopeTotal?.budget ??
+                              project.price ??
+                              ""
+                          )}
+                          collaborators={getListingCollaborators(project)}
+                          favoriteSlot={
+                            <FavoriteButton
+                              itemId={project.id}
+                              type="project"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
+                          }
+                        />
+                      )
+                    }
+                  )
                 })()}
               </div>
             </div>
-          )}
+          )} */}
 
           {pageKind === "services" && (
             <div className="mt-[50px]">
