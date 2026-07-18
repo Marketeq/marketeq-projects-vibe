@@ -591,10 +591,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // backend registry (GET /deposit-methods/crypto/providers), not a hardcoded list.
   const [cryptoProviders, setCryptoProviders] = React.useState<any[]>([])
   const [cryptoProvidersLoading, setCryptoProvidersLoading] = React.useState(false)
-  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details'>('provider')
+  // US-64: dedicated connecting/success/failure screens, not just a button
+  // label + toast + silent close.
+  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details' | 'success' | 'error'>('provider')
   const [cryptoForm, setCryptoForm] = React.useState({ provider: '', network: '', currency: '', address: '' })
   const [cryptoSubmitting, setCryptoSubmitting] = React.useState(false)
   const [cryptoError, setCryptoError] = React.useState('')
+  const [cryptoResult, setCryptoResult] = React.useState<{ walletAddressLast6?: string; network?: string; token?: string; conversionDisplay?: string } | null>(null)
   const selectedCryptoProvider = cryptoProviders.find(p => p.provider === cryptoForm.provider)
   const selectedCryptoNetwork = selectedCryptoProvider?.networks?.find((n: any) => n.network === cryptoForm.network)
 
@@ -623,14 +626,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setCryptoError(data.message ?? 'Unable to add this wallet — please check the address and try again.'); return }
-      toast({ title: 'Wallet connected', description: `${cryptoForm.provider} wallet added successfully.` })
-      setShowAddMethod(false)
-      setCryptoStep('provider')
-      setCryptoForm({ provider: '', network: '', currency: '', address: '' })
+      if (!res.ok) {
+        setCryptoError(data.message ?? 'Unable to add this wallet — please check the address and try again.')
+        setCryptoStep('error')
+        return
+      }
+      setCryptoResult({ walletAddressLast6: data.walletAddressLast6, network: data.network, token: data.token, conversionDisplay: data.conversionDisplay })
+      setCryptoStep('success')
       fetchMethods()
     } catch {
       setCryptoError('Unable to add this wallet — please try again.')
+      setCryptoStep('error')
     } finally {
       setCryptoSubmitting(false)
     }
@@ -1739,7 +1745,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', paypalEmailConfirm: '', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', paypalEmailConfirm: '', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
@@ -2191,6 +2197,56 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         onClick={handleAddCryptoWallet}
                         disabled={cryptoSubmitting || cryptoForm.address.trim().length < 10 || !cryptoForm.network || !cryptoForm.currency}
                       >{cryptoSubmitting ? 'Connecting…' : 'Add Wallet'}</Button>
+                    </div>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'success' ? (
+                  /* US-64: dedicated success screen with wallet address + current value. */
+                  <div className="p-6 text-center">
+                    <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-6 text-primary-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet connected</h3>
+                    <div className="mt-4 rounded-lg border border-gray-200 divide-y divide-gray-200 text-left">
+                      <div className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-xs font-medium text-gray-500">Provider</span>
+                        <span className="text-sm font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? cryptoForm.provider}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-xs font-medium text-gray-500">Address</span>
+                        <span className="text-sm font-mono text-dark-blue-400">••••{cryptoResult?.walletAddressLast6 ?? cryptoForm.address.slice(-6)}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-xs font-medium text-gray-500">Network</span>
+                        <span className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.network ?? cryptoForm.network}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2.5">
+                        <span className="text-xs font-medium text-gray-500">Current value</span>
+                        <span className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.conversionDisplay ?? '—'}</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="filled" visual="primary" size="sm" className="w-full mt-5"
+                      onClick={() => { setShowAddMethod(false); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoResult(null) }}
+                    >
+                      Done
+                    </Button>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'error' ? (
+                  /* US-64: dedicated failure screen — retry same details, or pick a
+                      different provider entirely, rather than a dead-end toast. */
+                  <div className="p-6 text-center">
+                    <div className="mx-auto size-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <X className="size-6 text-red-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Couldn't connect wallet</h3>
+                    <p className="mt-2 text-sm text-gray-500">{cryptoError}</p>
+                    <div className="flex gap-2 mt-5">
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => { setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError('') }}>
+                        Choose Different Provider
+                      </Button>
+                      <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={() => setCryptoStep('details')}>
+                        Retry
+                      </Button>
                     </div>
                   </div>
                 ) : null}
