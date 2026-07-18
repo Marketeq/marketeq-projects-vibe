@@ -449,6 +449,10 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const [showBanner, setShowBanner] = useState(true)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
   const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
+  // US-05/US-06: a genuine load failure (500/503) must render a distinct error
+  // state with retry — never conflated with a real $0 balance, and never left
+  // stuck on the loading placeholder forever with only a console.error.
+  const [balanceError, setBalanceError] = React.useState(false)
   // Doc07 Domain 7: next_payout_date is derived server-side (schedule + day + current
   // date) — never computed client-side. No projected amount exists server-side either
   // (the schedule doesn't precompute a future payout total), so only the date is shown.
@@ -869,9 +873,14 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
 
   const defaultMethod = methods.find(m => m.isDefault)
 
+  const loadBalance = React.useCallback(() => {
+    setBalanceError(false)
+    getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
+  }, [])
+
   useEffect(() => {
     getEarningsSummary().then(setSummary).catch(e => console.error("Earnings summary fetch failed:", e))
-    getBalance().then(setBalance).catch(e => console.error("Balance fetch failed:", e))
+    loadBalance()
     fetchMethods()
     ;(async () => {
       try {
@@ -919,7 +928,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       } catch (e) { console.error('Failed to fetch recent activity', e) }
       finally { setRecentActivityLoading(false) }
     })()
-  }, [fetchMethods])
+  }, [fetchMethods, loadBalance])
 
   return (
     <div className="flex gap-6">
@@ -1934,40 +1943,53 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               </Tooltip>
             </TooltipProvider>
           </div>
-          <div className="flex items-center gap-2 mb-4">
-            <p className="text-3xl font-bold text-dark-blue-400">
-              <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
-            </p>
-            {defaultMethod && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <BankIcon className="size-3.5" />
-                {getMethodLabel(defaultMethod).name}
+          {/* US-05/US-06: a genuine load failure is never conflated with a real $0
+              balance — distinct copy, no amount shown, retry inline in the card
+              (no toast, matching the per-component-error pattern used elsewhere
+              in this epic). */}
+          {balanceError ? (
+            <div className="py-2">
+              <p className="text-sm text-red-600">Balance unavailable.</p>
+              <button className="text-sm text-primary-600 underline mt-1" onClick={loadBalance}>Retry</button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mb-4">
+                <p className="text-3xl font-bold text-dark-blue-400">
+                  <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
+                </p>
+                {defaultMethod && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <BankIcon className="size-3.5" />
+                    {getMethodLabel(defaultMethod).name}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {/* US-03: pre-empt a withdrawal that would just fail server-side (payout.service.ts
-              payoutMinimum, $50 default) — the /transfer-funds page still enforces this itself,
-              this is only a client-side UX guard against an obviously-doomed flow. */}
-          {(() => {
-            const withdrawableUsd = balance ? parseFloat(balance.availableBalanceDisplay) : null
-            const belowMinimum = withdrawableUsd !== null && withdrawableUsd < 50
-            const isLoading = withdrawableUsd === null
-            return (
-              <div className="flex gap-2">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button variant="outlined" visual="gray" size="sm" disabled={belowMinimum || isLoading} onClick={() => router.push("/transfer-funds")}>Withdraw Funds</Button>
-                      </span>
-                    </TooltipTrigger>
-                    {belowMinimum && <TooltipContent><p>You don&apos;t have any earnings to withdraw yet.</p></TooltipContent>}
-                  </Tooltip>
-                </TooltipProvider>
-                <Button variant="outlined" visual="gray" size="sm" onClick={() => router.push("/billing")}>Manage</Button>
-              </div>
-            )
-          })()}
+              {/* US-11: pre-empt a withdrawal that would just fail server-side (payout.service.ts
+                  payoutMinimum, $50 default) — the /transfer-funds page still enforces this itself,
+                  this is only a client-side UX guard against an obviously-doomed flow. */}
+              {(() => {
+                const withdrawableUsd = balance ? parseFloat(balance.availableBalanceDisplay) : null
+                const belowMinimum = withdrawableUsd !== null && withdrawableUsd < 50
+                const isLoading = withdrawableUsd === null
+                return (
+                  <div className="flex gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button variant="outlined" visual="gray" size="sm" disabled={belowMinimum || isLoading} onClick={() => router.push("/transfer-funds")}>Withdraw Funds</Button>
+                          </span>
+                        </TooltipTrigger>
+                        {belowMinimum && <TooltipContent><p>You don&apos;t have any earnings to withdraw yet.</p></TooltipContent>}
+                      </Tooltip>
+                    </TooltipProvider>
+                    <Button variant="outlined" visual="gray" size="sm" onClick={() => router.push("/billing")}>Manage</Button>
+                  </div>
+                )
+              })()}
+            </>
+          )}
         </div>
 
         {/* Recent Activity — derived from real payout history (no dedicated
