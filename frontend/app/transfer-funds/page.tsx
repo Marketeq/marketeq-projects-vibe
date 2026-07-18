@@ -280,15 +280,24 @@ const AmountStep = ({
 
 // ── Step 2: Method (US-14) ───────────────────────────────────────────────────
 const MethodStep = ({
-  methods, methodsLoading, methodsError, methodId, setMethodId,
+  methods, methodsLoading, methodsError, methodId, setMethodId, onAddMethod,
 }: {
   methods: DepositMethodSummary[]; methodsLoading: boolean; methodsError: string
   methodId: string | null; setMethodId: (id: string) => void
+  onAddMethod: () => void
 }) => {
-  const router = useRouter()
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
-      <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">Where should we send it?</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">Where should we send it?</h2>
+        {/* US-46: stays in the withdrawal flow — previously this exited to the
+            Payouts tab entirely, losing the amount/speed already chosen. */}
+        {methods.length > 0 && (
+          <button className="text-sm text-primary-600 font-medium hover:text-primary-700" onClick={onAddMethod}>
+            + Add a method
+          </button>
+        )}
+      </div>
       <p className="mt-2 text-sm font-light text-gray-500 leading-none">Only verified payout methods can receive a withdrawal.</p>
 
       <div className="mt-6 space-y-3">
@@ -300,7 +309,7 @@ const MethodStep = ({
           // AC-14.08/F-32: empty-selector state — no verified methods available
           <div className="text-center py-6">
             <p className="text-sm text-gray-500 mb-3">You don't have a verified payout method yet.</p>
-            <Button variant="outlined" visual="gray" onClick={() => router.push("/earnings?tab=payouts")}>Add a payout method</Button>
+            <Button variant="outlined" visual="gray" onClick={onAddMethod}>Add a payout method</Button>
           </div>
         ) : (
           methods.map((m) => {
@@ -325,6 +334,167 @@ const MethodStep = ({
               </button>
             )
           })
+        )}
+      </div>
+    </div>
+  )
+}
+
+// US-46: bank-manual only — Stripe FC/PayPal/Wise/Payoneer all redirect to an
+// external hosted flow regardless of where the "Add" trigger lives, so an
+// in-page modal genuinely keeps the contractor in-flow only for the manual
+// bank-details path. A manually-added account also isn't instantly verified
+// (micro-deposits take up to 2 business days), so it can't be selected in
+// this same session — the modal is explicit about that rather than implying
+// otherwise.
+const ADD_METHOD_COUNTRY_CURRENCY: Record<string, string> = { US: "USD", GB: "GBP", IN: "INR", AU: "AUD", CA: "CAD" }
+const AddBankMethodModal = ({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: () => void }) => {
+  const [form, setForm] = React.useState({ bankAccountName: "", bankAccountNumber: "", bankAccountNumberConfirm: "", bankRoutingNumber: "", bankSortCode: "", bankIfscCode: "", bankBsbNumber: "", bankInstitutionNumber: "", bankTransitNumber: "", bankCountry: "US" })
+  const [submitting, setSubmitting] = React.useState(false)
+  const [error, setError] = React.useState("")
+  const [done, setDone] = React.useState(false)
+
+  const isValidAbaRouting = (routing: string) => {
+    if (!/^\d{9}$/.test(routing)) return false
+    const d = routing.split("").map(Number)
+    return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + 1 * (d[2] + d[5] + d[8])) % 10 === 0
+  }
+  const isValidSortCode = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ""))
+  const isValidIfsc = (v: string) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.toUpperCase())
+  const isValidBsb = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ""))
+  const isValidCaInstitution = (v: string) => /^\d{3}$/.test(v)
+  const isValidCaTransit = (v: string) => /^\d{5}$/.test(v)
+
+  if (!open) return null
+
+  const disabled =
+    !form.bankAccountName.trim() || !form.bankAccountNumber.trim() ||
+    form.bankAccountNumberConfirm !== form.bankAccountNumber ||
+    (form.bankCountry === "US" && !isValidAbaRouting(form.bankRoutingNumber)) ||
+    (form.bankCountry === "GB" && !isValidSortCode(form.bankSortCode)) ||
+    (form.bankCountry === "IN" && !isValidIfsc(form.bankIfscCode)) ||
+    (form.bankCountry === "AU" && !isValidBsb(form.bankBsbNumber)) ||
+    (form.bankCountry === "CA" && (!isValidCaInstitution(form.bankInstitutionNumber) || !isValidCaTransit(form.bankTransitNumber)))
+
+  const submit = async () => {
+    setSubmitting(true)
+    setError("")
+    try {
+      const payload: any = {
+        methodType: "BANK_MANUAL",
+        bankAccountName: form.bankAccountName,
+        bankAccountNumber: form.bankAccountNumber,
+        bankCountry: form.bankCountry,
+        bankCurrency: ADD_METHOD_COUNTRY_CURRENCY[form.bankCountry] ?? "USD",
+        nickname: form.bankAccountName,
+      }
+      switch (form.bankCountry) {
+        case "US": payload.bankRoutingNumber = form.bankRoutingNumber; break
+        case "GB": payload.bankSortCode = form.bankSortCode; break
+        case "IN": payload.bankIfscCode = form.bankIfscCode; break
+        case "AU": payload.bankBsbNumber = form.bankBsbNumber; break
+        case "CA": payload.bankInstitutionNumber = form.bankInstitutionNumber; payload.bankTransitNumber = form.bankTransitNumber; break
+      }
+      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/deposit-methods`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.message ?? "Please check your details and try again."); return }
+      setDone(true)
+      onAdded()
+    } catch {
+      setError("Failed to add account. Please try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        {done ? (
+          <div className="text-center py-4">
+            <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+              <Check className="size-6 text-primary-600" />
+            </div>
+            <h3 className="text-base font-semibold text-dark-blue-400">Account added</h3>
+            <p className="mt-2 text-sm text-gray-500">Two small deposits will arrive within 2 business days to verify this account. It'll be available to withdraw to once verified.</p>
+            <Button className="mt-4 w-full" onClick={onClose}>Done</Button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Add Bank Account</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Country</label>
+                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.bankCountry} onChange={(e) => setForm((f) => ({ ...f, bankCountry: e.target.value }))}>
+                  <option value="US">United States</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="IN">India</option>
+                  <option value="AU">Australia</option>
+                  <option value="CA">Canada</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={form.bankAccountName} onChange={(e) => setForm((f) => ({ ...f, bankAccountName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={form.bankAccountNumber} onChange={(e) => setForm((f) => ({ ...f, bankAccountNumber: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={form.bankAccountNumberConfirm} onChange={(e) => setForm((f) => ({ ...f, bankAccountNumberConfirm: e.target.value }))} />
+                {form.bankAccountNumberConfirm.length > 0 && form.bankAccountNumberConfirm !== form.bankAccountNumber && (
+                  <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
+                )}
+              </div>
+              {form.bankCountry === "US" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Routing Number</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={form.bankRoutingNumber} onChange={(e) => setForm((f) => ({ ...f, bankRoutingNumber: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "GB" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits" value={form.bankSortCode} onChange={(e) => setForm((f) => ({ ...f, bankSortCode: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "IN" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={form.bankIfscCode} onChange={(e) => setForm((f) => ({ ...f, bankIfscCode: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "AU" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits" value={form.bankBsbNumber} onChange={(e) => setForm((f) => ({ ...f, bankBsbNumber: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "CA" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={form.bankInstitutionNumber} onChange={(e) => setForm((f) => ({ ...f, bankInstitutionNumber: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Transit Number</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="5 digits" value={form.bankTransitNumber} onChange={(e) => setForm((f) => ({ ...f, bankTransitNumber: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+              {error && <p className="text-sm text-red-600">{error}</p>}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={onClose}>Cancel</Button>
+              <Button variant="filled" visual="primary" size="sm" className="flex-1" disabled={disabled || submitting} onClick={submit}>
+                {submitting ? "Adding…" : "Add Account"}
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -389,6 +559,7 @@ function TransferFundsInner() {
   const [methodsLoading, setMethodsLoading] = React.useState(true)
   const [methodsError, setMethodsError] = React.useState("")
   const [methodId, setMethodId] = React.useState<string | null>(null)
+  const [showAddMethod, setShowAddMethod] = React.useState(false)
 
   const [idempotencyKey, setIdempotencyKey] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
@@ -724,7 +895,7 @@ function TransferFundsInner() {
               />
             )}
             {step === 2 && (
-              <MethodStep methods={methods} methodsLoading={methodsLoading} methodsError={methodsError} methodId={methodId} setMethodId={setMethodId} />
+              <MethodStep methods={methods} methodsLoading={methodsLoading} methodsError={methodsError} methodId={methodId} setMethodId={setMethodId} onAddMethod={() => setShowAddMethod(true)} />
             )}
             {step === 3 && <ConfirmStep validation={validation} speed={speed} method={method} />}
           </div>
@@ -769,6 +940,7 @@ function TransferFundsInner() {
           </div>
         </div>
       </div>
+      <AddBankMethodModal open={showAddMethod} onClose={() => setShowAddMethod(false)} onAdded={loadMethods} />
     </div>
   )
 }
