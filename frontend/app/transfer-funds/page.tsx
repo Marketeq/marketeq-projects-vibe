@@ -910,7 +910,18 @@ function TransferFundsInner() {
           )}
 
           {submitError && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div>
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p>{submitError}</p>
+              {/* US-50.03: this is the "Withdrawal Request Failed" terminal state
+                  (submitting stays true deliberately for the generic/unmapped
+                  failure branch — see submit() — so this box persists until the
+                  contractor explicitly acts, matching US-50.04's "no auto-dismiss"). */}
+              {submitting && (
+                <a href="mailto:support@marketeqdigital.com" className="inline-block mt-1.5 text-red-700 underline font-medium">
+                  Contact Support
+                </a>
+              )}
+            </div>
           )}
 
           <div className="mt-6 flex items-center justify-end gap-x-3">
