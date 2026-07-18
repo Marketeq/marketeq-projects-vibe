@@ -6,7 +6,7 @@ import { SVGProps, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
-import { getEarningsSummary, getEarnings, getBalance, type EarningsSummary, type EarningsListResponse, type BalanceResponse } from "@/service/http/earnings"
+import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { formatDistanceToNowStrict } from "date-fns"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
@@ -483,6 +483,49 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const [recentActivity, setRecentActivity] = React.useState<{ id: string; title: string; description: string; time: string; kind: 'scheduled' | 'sent' | 'processing' | 'failed' | 'cancelled' }[]>([])
   const [recentActivityLoading, setRecentActivityLoading] = React.useState(true)
 
+  // US-15/US-16 (F-03): fixed 5-row, non-paginated preview of the most recent
+  // EARNINGS entries — distinct from the "Recent Activity" panel above, which
+  // is a real, already-valid PAYOUT audit trail (deposits sent/received/
+  // scheduled). Named "Recent Earnings" here rather than reusing "Recent
+  // Activity" (the spec's literal title) to avoid two differently-sourced
+  // panels on the same page claiming the same name.
+  const [recentEarnings, setRecentEarnings] = React.useState<EarningsRow[]>([])
+  const [recentEarningsLoading, setRecentEarningsLoading] = React.useState(true)
+  const [recentEarningsError, setRecentEarningsError] = React.useState(false)
+
+  // F-05 Entry Detail Drawer state, opened from Recent Earnings rows here (and
+  // from the Earnings tab's history rows). 404 shows an in-drawer message
+  // rather than auto-closing (spec: "do NOT auto-close").
+  const [detailEntryId, setDetailEntryId] = React.useState<string | null>(null)
+  const [detailData, setDetailData] = React.useState<EarningDetail | null>(null)
+  const [detailLoading, setDetailLoading] = React.useState(false)
+  const [detailError, setDetailError] = React.useState<"not-found" | "error" | null>(null)
+
+  const openEntryDetail = React.useCallback((id: string) => {
+    setDetailEntryId(id)
+    setDetailData(null)
+    setDetailError(null)
+    setDetailLoading(true)
+    getEarningDetail(id)
+      .then(setDetailData)
+      .catch((e) => setDetailError(e?.response?.status === 404 ? "not-found" : "error"))
+      .finally(() => setDetailLoading(false))
+  }, [])
+
+  const closeEntryDetail = React.useCallback(() => {
+    setDetailEntryId(null)
+    setDetailData(null)
+    setDetailError(null)
+  }, [])
+
+  const loadRecentEarnings = React.useCallback(() => {
+    setRecentEarningsError(false)
+    getEarnings({ view: "daily", limit: 5, sortBy: "workStartAt", sortOrder: "desc" })
+      .then((res) => setRecentEarnings(res.data))
+      .catch((e) => { console.error("Recent earnings fetch failed:", e); setRecentEarningsError(true) })
+      .finally(() => setRecentEarningsLoading(false))
+  }, [])
+
   // ── Deposit Methods state ──────────────────────────────────────
   const [methods, setMethods] = React.useState<any[]>([])
   const [methodsLoading, setMethodsLoading] = React.useState(true)
@@ -923,6 +966,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   useEffect(() => {
     loadSummary()
     loadBalance()
+    loadRecentEarnings()
     fetchMethods()
     ;(async () => {
       try {
@@ -970,7 +1014,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       } catch (e) { console.error('Failed to fetch recent activity', e) }
       finally { setRecentActivityLoading(false) }
     })()
-  }, [fetchMethods, loadBalance, loadSummary])
+  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings])
 
   return (
     <div className="flex gap-6">
@@ -1124,6 +1168,165 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
           </div>
         </div>
+
+        {/* Recent Earnings (US-15/US-16, F-03) — fixed 5-row, non-paginated
+            preview. Row click opens the Entry Detail drawer (F-05) as an
+            overlay, no navigation away from this view. */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+          <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Recent Earnings</h3>
+          {recentEarningsLoading ? (
+            <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}</div>
+          ) : recentEarningsError ? (
+            <div className="text-center py-6">
+              <p className="text-sm text-red-600">Couldn't load recent earnings.</p>
+              <button className="text-sm text-primary-600 underline mt-1" onClick={loadRecentEarnings}>Retry</button>
+            </div>
+          ) : recentEarnings.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No earnings entries yet.</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {recentEarnings.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex items-center justify-between py-3 cursor-pointer hover:bg-gray-25 -mx-2 px-2 rounded"
+                  onClick={() => openEntryDetail(row.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar className="size-8 shrink-0">
+                      <AvatarFallback>{row.project?.clientHandle?.[1]?.toUpperCase() ?? "C"}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-dark-blue-400 truncate">{row.project?.name ?? "Untitled project"}</p>
+                      <p className="text-xs text-gray-400">{row.date ?? "—"} · {row.durationLabel}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-dark-blue-400 shrink-0 ml-3">${row.netAmountDisplay ?? row.netAmount}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* F-05 Entry Detail Drawer — slide-in from the right, overlaying the list
+            rather than navigating away. Built on the shared Dialog primitive
+            (variant="unanimated" + a full custom className) so it inherits Radix's
+            portal/focus-trap/ESC handling instead of a hand-rolled fixed div.
+            Per spec: "Dismissible by close button. Does not close on outside
+            click" — Radix's default backdrop-click-closes behavior is suppressed. */}
+        <Dialog open={!!detailEntryId} onOpenChange={(open) => { if (!open) closeEntryDetail() }}>
+          <DialogContent
+            variant="unanimated"
+            onInteractOutside={(e) => e.preventDefault()}
+            className="fixed right-0 top-0 h-full w-full sm:max-w-md bg-white shadow-xl overflow-y-auto p-0 gap-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-300"
+          >
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 sticky top-0 bg-white z-10">
+              <DialogTitle className="text-base font-semibold text-dark-blue-400">Entry Details</DialogTitle>
+              <DialogClose asChild>
+                <IconButton size="sm" variant="ghost" visual="gray"><X className="size-4" /></IconButton>
+              </DialogClose>
+            </div>
+
+            {detailLoading ? (
+              <div className="p-6 space-y-4">
+                {[...Array(5)].map((_, i) => <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />)}
+              </div>
+            ) : detailError === "not-found" ? (
+              <div className="p-6 text-center space-y-4">
+                <p className="text-sm text-gray-500">This entry could not be found.</p>
+                <DialogClose asChild>
+                  <Button variant="outlined" visual="gray" size="sm">Close</Button>
+                </DialogClose>
+              </div>
+            ) : detailError === "error" ? (
+              <div className="p-6 text-center space-y-4">
+                <p className="text-sm text-red-600">We couldn't load this entry. Please try again.</p>
+                <Button variant="outlined" visual="gray" size="sm" onClick={() => detailEntryId && openEntryDetail(detailEntryId)}>Retry</Button>
+              </div>
+            ) : detailData ? (
+              <div className="p-6 space-y-6">
+                {/* Header block: date, entry type badge, status badge (US-31/US-32) */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-dark-blue-400">
+                    {new Date(detailData.workStartAt).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Badge visual={detailData.entryType === "automated" ? "primary" : "warning"} size="sm">
+                      {detailData.entryType === "automated" ? "Automated" : "Manual"}
+                    </Badge>
+                    <Badge visual={detailData.status === "paid" ? "success" : detailData.status === "failed" ? "error" : "primary"} size="sm">
+                      {detailData.status === "paid" ? "Paid" : detailData.status === "failed" ? "Reversed" : "Confirmed"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Contract / Project block */}
+                <div>
+                  <p className="text-sm font-semibold text-dark-blue-400">{detailData.project?.name ?? "Untitled project"}</p>
+                  {detailData.project?.clientName && <p className="text-xs text-gray-400">{detailData.project.clientName}</p>}
+                  {detailData.contract?.title && <p className="text-xs text-gray-400 mt-0.5">{detailData.contract.title}</p>}
+                </div>
+
+                {/* Time block (US-32) */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time Block</p>
+                  <p className="text-sm text-dark-blue-400">
+                    {new Date(detailData.workStartAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    {" – "}
+                    {new Date(detailData.workEndAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                  </p>
+                  <p className="text-xs text-gray-500">{detailData.durationLabel}</p>
+                </div>
+
+                {/* Activity signals (US-33) — only meaningful for automated
+                    (screenshot-tracked) entries. DOM node not rendered at all
+                    for manual entries — never shown as zeros/dashes. */}
+                {detailData.entryType === "automated" && (detailData.avgKeyboardPct != null || detailData.avgMousePct != null) && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Activity</p>
+                    <div className="flex gap-4 text-sm text-dark-blue-400">
+                      {detailData.avgKeyboardPct != null && <span>⌨ {detailData.avgKeyboardPct}% keyboard</span>}
+                      {detailData.avgMousePct != null && <span>🖱 {detailData.avgMousePct}% mouse</span>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fee breakdown: Gross / Fee / You Receive (US-31) */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fee Breakdown</p>
+                  <div className="rounded-lg border border-gray-200 divide-y divide-gray-200">
+                    {detailData.feeSection.lineItems.map((item, i) => (
+                      <div key={i} className={cn("flex items-center justify-between px-4 py-2.5", item.isTotal && "bg-gray-25")}>
+                        <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.label}</span>
+                        <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.amount} {item.currency}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Locked FX rate — stale flag when display currency differs from
+                    what was actually billed (US-34/US-35). */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Exchange Rate</p>
+                  <p className="text-sm text-gray-500">
+                    {detailData.feeSection.fxRateLabel}
+                    {detailData.feeSection.billingCurrency !== detailData.feeSection.displayCurrency && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="ml-1 text-amber-500 cursor-help align-super">*</span>
+                          </TooltipTrigger>
+                          <TooltipContent visual="white" size="md">
+                            <p>This entry was billed in {detailData.feeSection.billingCurrency}. Amounts shown in {detailData.feeSection.displayCurrency} use a live rate that may differ slightly from the rate locked at the time this entry was logged.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
 
         {/* Direct Deposit */}
         <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden">
