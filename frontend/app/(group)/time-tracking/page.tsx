@@ -3211,6 +3211,17 @@ export default function TimeTrackingPage() {
                   <span className="font-bold text-primary-500">{manualTimeLabel}</span>
                 </span>
               )}
+              {/* US-89: only shown when a single contract is selected — with
+                  "all" selected, contracts can have different rates, and
+                  picking one to display (or averaging) would be a guess. */}
+              {contractFilter !== "all" && realContracts.find((c) => c.id === contractFilter) && (
+                <span className="text-sm text-gray-400">
+                  Rate{" "}
+                  <span className="font-bold text-primary-500">
+                    ${realContracts.find((c) => c.id === contractFilter)!.rate}/hr
+                  </span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {!isClient && (
