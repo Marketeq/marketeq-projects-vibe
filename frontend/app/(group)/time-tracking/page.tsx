@@ -99,7 +99,7 @@ import {
 import { VscCode } from "react-icons/vsc"
 import { FiFigma } from "react-icons/fi"
 import { FaChrome, FaSlack, FaGithub, FaGoogle, FaTerminal, FaApple, FaSafari } from "react-icons/fa"
-import { createManualTime } from "@/service/http/manual-time"
+import { createManualTime, getManualTime } from "@/service/http/manual-time"
 import { createContractTask, getTasksForContract } from "@/service/http/tasks"
 import React from "react"
 
@@ -873,6 +873,9 @@ function AddManualTimeDialog({
   const [contract, setContract] = useState("")
   const [task, setTask] = useState("")
   const [notes, setNotes] = useState("")
+  // US-81: submission failure must surface inline in the modal, not just as
+  // an external toast that can be missed while the modal stays open.
+  const [submitError, setSubmitError] = useState("")
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -923,16 +926,24 @@ function AddManualTimeDialog({
             <label className="text-sm font-medium text-dark-blue-400">
               Contract
             </label>
-            <Select value={contract} onValueChange={setContract}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Contract" />
-              </SelectTrigger>
-              <SelectContent>
-                {(contracts || []).map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* US-77: explain why the picker is empty rather than showing a
+                Select with no options and no explanation. */}
+            {(contracts || []).length === 0 ? (
+              <p className="text-sm text-gray-400">
+                You don&apos;t have any active contracts to log time against.
+              </p>
+            ) : (
+              <Select value={contract} onValueChange={setContract}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Contract" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(contracts || []).map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -970,6 +981,10 @@ function AddManualTimeDialog({
           </p>
         </div>
 
+        {submitError && (
+          <p className="text-sm text-red-600 px-1">{submitError}</p>
+        )}
+
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outlined" visual="gray">
@@ -979,11 +994,12 @@ function AddManualTimeDialog({
           <Button
             disabled={!date || !startTime || !endTime || !contract}
             onClick={async () => {
+              setSubmitError("")
               try {
                 const startISO = new Date(`${date}T${startTime}:00`).toISOString()
                 const endISO = new Date(`${date}T${endTime}:00`).toISOString()
                 if (new Date(endISO) <= new Date(startISO)) {
-                  toast({ title: "Invalid time", description: "End time must be after start time.", variant: "destructive" })
+                  setSubmitError("End time must be after start time.")
                   return
                 }
                 await createManualTime({
@@ -994,10 +1010,12 @@ function AddManualTimeDialog({
                   notes: notes || undefined,
                 })
                 onOpenChange(false)
-                toast({ title: "Manual time added", description: `${startTime} – ${endTime}` })
+                // US-80: manual time is submitted for confirmation, not
+                // immediately reflected in earnings — say so explicitly.
+                toast({ title: "Manual time added", description: `${startTime} – ${endTime}. Your earnings will appear once this session is confirmed.` })
                 onSaved?.()
               } catch {
-                toast({ title: "Failed to add manual time", variant: "destructive" })
+                setSubmitError("Failed to add manual time. Please try again.")
               }
             }}
           >
@@ -3052,6 +3070,32 @@ export default function TimeTrackingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [totalTime, setTotalTime] = useState("03:24")
   const [screenshotCount, setScreenshotCount] = useState(0)
+  // US-86: "+ Manual time" was hardcoded to a fixed "0:23hr" regardless of
+  // what the contractor actually logged — fabricated, never wired to
+  // GET /manual-time. Sums real entries within the currently applied
+  // date range (falls back to all entries when no range is set).
+  const [manualTimeLabel, setManualTimeLabel] = useState<string | null>(null)
+  const fetchManualTime = useCallback(async () => {
+    try {
+      const entries = await getManualTime()
+      const inRange = entries.filter((e) => {
+        if (dateFrom && e.startTime < dateFrom) return false
+        if (dateTo && e.startTime > dateTo) return false
+        return true
+      })
+      const totalMin = inRange.reduce((sum, e) => {
+        const mins = (new Date(e.endTime).getTime() - new Date(e.startTime).getTime()) / 60_000
+        return sum + Math.max(0, mins)
+      }, 0)
+      const hrs = Math.floor(totalMin / 60)
+      const mins = Math.round(totalMin % 60)
+      setManualTimeLabel(`${hrs}:${mins.toString().padStart(2, "0")}hr`)
+    } catch {
+      setManualTimeLabel(null)
+    }
+  }, [dateFrom, dateTo])
+
+  useEffect(() => { fetchManualTime() }, [fetchManualTime])
 
   // Fetch user time/display preferences from backend
   useEffect(() => {
@@ -3332,10 +3376,12 @@ export default function TimeTrackingPage() {
               <h1 className="text-xl font-bold text-dark-blue-400">
                 Total time <span className="text-2xl">{totalTime}</span>
               </h1>
-              <span className="text-sm text-gray-400">
-                + Manual time{" "}
-                <span className="font-bold text-primary-500">0:23hr</span>
-              </span>
+              {manualTimeLabel && (
+                <span className="text-sm text-gray-400">
+                  + Manual time{" "}
+                  <span className="font-bold text-primary-500">{manualTimeLabel}</span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {!isClient && (
@@ -3685,8 +3731,9 @@ export default function TimeTrackingPage() {
       <AddManualTimeDialog
         open={showManualTimeDialog}
         onOpenChange={setShowManualTimeDialog}
-        onSaved={fetchScreenshots}
-        contracts={realContracts.map(c => ({ id: c.id, title: c.title }))}
+        onSaved={() => { fetchScreenshots(); fetchManualTime() }}
+        // US-76: only active contracts can have time logged against them.
+        contracts={realContracts.filter(c => c.status === "active").map(c => ({ id: c.id, title: c.title }))}
       />
 
       <TransferTimeDialog

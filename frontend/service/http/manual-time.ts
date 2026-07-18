@@ -22,3 +22,8 @@ export const createManualTime = async (data: {
   const res = await AxiosRequest.post("/manual-time", data)
   return res.data
 }
+
+export const getManualTime = async (): Promise<ManualTimeDTO[]> => {
+  const res = await AxiosRequest.get("/manual-time")
+  return res.data
+}
