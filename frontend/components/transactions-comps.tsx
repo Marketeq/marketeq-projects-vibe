@@ -408,7 +408,7 @@ interface StatCardProps {
   sublabel?: string
   amount: string
   change?: { value: string; direction: "up" | "down"; label: string }
-  extra?: string
+  extra?: React.ReactNode
   status?: string
 }
 
@@ -3631,6 +3631,15 @@ export const PayoutsTab = () => {
   const [defaultMethodLabel, setDefaultMethodLabel] = useState<string | null>(null)
   const [balance, setBalance] = useState<BalanceResponse | null>(null)
   const [completedCount, setCompletedCount] = useState<number | null>(null)
+  // US-101: a failed balance fetch must be retryable in place — previously
+  // this just logged to console and left the stat cards stuck on "-"
+  // forever, indistinguishable from a legitimate $0 state (Doc07 Error ≠
+  // Empty).
+  const [balanceError, setBalanceError] = useState(false)
+  const loadPayoutsBalance = React.useCallback(() => {
+    setBalanceError(false)
+    getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
+  }, [])
 
   useEffect(() => {
     ;(async () => {
@@ -3644,14 +3653,14 @@ export const PayoutsTab = () => {
       } catch (e) { console.error('Failed to fetch schedule', e) }
       finally { setScheduleLoading(false) }
     })()
-    getBalance().then(setBalance).catch(e => console.error("Balance fetch failed:", e))
+    loadPayoutsBalance()
     ;(async () => {
       try {
         const res = await payoutFetch(`/payouts?status=completed&page=1&pageSize=1`)
         if (res.ok) { const d = await res.json(); setCompletedCount(d.totalCount ?? 0) }
       } catch (e) { console.error('Failed to fetch completed payout count', e) }
     })()
-  }, [])
+  }, [loadPayoutsBalance])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const hasActiveFilters = !!statusFilter
@@ -3695,7 +3704,9 @@ export const PayoutsTab = () => {
           label="Next Payout"
           sublabel={scheduleLoading ? "Loading..." : nextRunAt ? new Date(nextRunAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }) : "No schedule set"}
           amount={scheduleLoading ? "-" : nextRunAt && balance ? parseFloat(balance.availableBalance).toFixed(2) : "-"}
-          extra={defaultMethodLabel ? `Bank: ${defaultMethodLabel}` : undefined}
+          extra={balanceError ? (
+            <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
+          ) : defaultMethodLabel ? `Bank: ${defaultMethodLabel}` : undefined}
         />
         {/* No date-range payout aggregate exists on payout-service - showing "Unavailable"
             rather than a client-computed guess that could silently be wrong. */}
@@ -3707,7 +3718,9 @@ export const PayoutsTab = () => {
         <StatCard
           label="Lifetime Payouts"
           amount={balance ? parseFloat(balance.totalPaidOutUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
-          extra={completedCount != null ? `${completedCount} completed payout${completedCount === 1 ? "" : "s"}` : undefined}
+          extra={balanceError ? (
+            <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
+          ) : completedCount != null ? `${completedCount} completed payout${completedCount === 1 ? "" : "s"}` : undefined}
         />
       </div>
 
