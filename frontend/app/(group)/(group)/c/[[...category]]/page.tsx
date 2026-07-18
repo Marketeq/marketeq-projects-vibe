@@ -257,6 +257,10 @@ const marketplaceTalentTabs = [
   "Top-Rated",
 ]
 
+// Still referenced by the "Browse by Type" section (talent/subcat scope,
+// not this branch) — restored until that section converts.
+const projectCardMocks = projectSeeds
+
 const serviceCardMocks = serviceSeeds
 
 function scopeSeedItems<T extends { categorySlugs?: string[] }>(
@@ -8117,7 +8121,7 @@ export default function Projects() {
               </Tabs>
             </div>
           )}
-
+{/*
           {isL1OrL2AllPage && (
             <div className="mt-[50px]">
               <div className="flex items-center justify-between">
@@ -8376,8 +8380,6 @@ export default function Projects() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
       <div className="py-20 px-[50px] bg-white">
         <h1 className="text-[28px] font-bold text-center text-dark-blue-400">
           {currentName} FAQ
@@ -8498,7 +8500,7 @@ export default function Projects() {
             Chat with Us
           </NextLink>
         </div>
-      </div>
+      </div> */}
 
       <div className="p-[50px] bg-white border-t border-gray-200">
         <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -8604,6 +8606,8 @@ export default function Projects() {
           </div>
         </div>
       </div>
+    </div>
+    </div>
     </div>
   )
 }
