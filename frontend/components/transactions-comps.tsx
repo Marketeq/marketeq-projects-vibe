@@ -2826,6 +2826,30 @@ const EARNINGS_DATA = [
   { date: "Mar 31, 2025", project: "Website Redesign", client: "@christheclient234", clientImg: "/images/avatar-2.png", task: "UX Research", startTime: "4:20 PM", endTime: "7:20 PM", duration: "2h 0m", earnings: "$1,800", status: "Paid" },
 ]
 
+// US-28: numbered pagination with ellipsis — always shows first/last page,
+// a window of 1 around the current page, and collapses long gaps to "…".
+function getPaginationItems(current: number, total: number): (number | "ellipsis")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const items: (number | "ellipsis")[] = [1]
+  if (current > 3) items.push("ellipsis")
+  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) items.push(p)
+  if (current < total - 2) items.push("ellipsis")
+  items.push(total)
+  return items
+}
+
+// US-23: chip labels must match the dateRange <SelectItem> copy verbatim.
+const EARNINGS_DATE_RANGE_LABELS: Record<string, string> = {
+  all_time: "All Time",
+  today: "Today",
+  yesterday: "Yesterday",
+  this_week: "This Week",
+  last_week: "Last Week",
+  this_month: "This Month",
+  last_month: "Last Month",
+  this_year: "This Year",
+}
+
 export interface EarningsFilters {
   dateRange: string
   entryType: string
@@ -2834,7 +2858,6 @@ export interface EarningsFilters {
 }
 
 export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: EarningsFilters) => void } = {}) => {
-  const { toast } = useToast()
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -2849,6 +2872,44 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const [dateRange, setDateRange] = React.useState("all_time")
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
+
+  // US-27 Fee Breakdown Expander: per-row chevron toggle. feeBreakdown is only
+  // meaningful for single-entry (daily view) rows — weekly/monthly rows are
+  // aggregated totals across multiple entries with no single fee attribution.
+  const [expandedRows, setExpandedRows] = React.useState<Set<string>>(new Set())
+  const toggleRowExpanded = React.useCallback((id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  // US-30 (F-05 Entry Detail Drawer), opened from history rows here too — a
+  // second, self-contained instance mirroring OverviewTab's, since the two
+  // tabs are separate components with no shared state/context to lift into.
+  const [detailEntryId, setDetailEntryId] = React.useState<string | null>(null)
+  const [detailData, setDetailData] = React.useState<EarningDetail | null>(null)
+  const [detailLoading, setDetailLoading] = React.useState(false)
+  const [detailError, setDetailError] = React.useState<"not-found" | "error" | null>(null)
+
+  const openEntryDetail = React.useCallback((id: string) => {
+    setDetailEntryId(id)
+    setDetailData(null)
+    setDetailError(null)
+    setDetailLoading(true)
+    getEarningDetail(id)
+      .then(setDetailData)
+      .catch((e) => setDetailError(e?.response?.status === 404 ? "not-found" : "error"))
+      .finally(() => setDetailLoading(false))
+  }, [])
+
+  const closeEntryDetail = React.useCallback(() => {
+    setDetailEntryId(null)
+    setDetailData(null)
+    setDetailError(null)
+  }, [])
 
   const loadSummary = React.useCallback(() => {
     setEarningsSummaryError(false)
@@ -2868,6 +2929,21 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery])
 
   useEffect(() => { loadEarnings() }, [loadEarnings])
+
+  // US-23/US-24: chips + Clear All. dateRange excluded — "all_time" is the
+  // default and isn't a contractor-applied filter to display as a chip.
+  const activeFilterChips: { key: string; label: string; onRemove: () => void }[] = [
+    ...(dateRange !== "all_time" ? [{ key: "dateRange", label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange, onRemove: () => { setDateRange("all_time"); setCurrentPage(1) } }] : []),
+    ...(entryType ? [{ key: "entryType", label: entryType === "manual" ? "Manual" : "Automated", onRemove: () => { setEntryType(""); setCurrentPage(1) } }] : []),
+    ...(statusFilter ? [{ key: "statusFilter", label: statusFilter === "paid" ? "Paid" : "Reversed", onRemove: () => { setStatusFilter(""); setCurrentPage(1) } }] : []),
+  ]
+  const hasActiveFilters = activeFilterChips.length > 0
+  const clearAllFilters = React.useCallback(() => {
+    setDateRange("all_time")
+    setEntryType("")
+    setStatusFilter("")
+    setCurrentPage(1)
+  }, [])
 
   // Export (parent-level Export button) reuses whatever filters are currently
   // applied to this table rather than always exporting the unfiltered dataset.
@@ -2910,7 +2986,8 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
         <ToggleGroupRoot
           value={[viewMode]}
           onValueChange={(details) => {
-            if (details.value.length > 0) setViewMode(details.value[0])
+            // US-29: pagination resets whenever the result set underneath it changes.
+            if (details.value.length > 0) { setViewMode(details.value[0]); setCurrentPage(1) }
           }}
         >
           <ToggleGroupItem value="daily">Daily</ToggleGroupItem>
@@ -2970,11 +3047,30 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
             <SearchFieldInput
               placeholder="Find transactions"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             />
           </SearchField>
         </div>
       </div>
+
+      {/* US-23/US-24: active filter chips + Clear All */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {activeFilterChips.map((chip) => (
+            <button
+              key={chip.key}
+              onClick={chip.onRemove}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-25 px-3 py-1 text-xs font-medium text-dark-blue-400 hover:bg-gray-50"
+            >
+              {chip.label}
+              <X className="size-3 text-gray-400" />
+            </button>
+          ))}
+          <button onClick={clearAllFilters} className="text-xs font-medium text-primary-600 hover:underline">
+            Clear All
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-lg border border-gray-200 bg-white">
@@ -2994,6 +3090,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
               {viewMode === "monthly" && <TableHead>Total Hours</TableHead>}
               <TableHead>{viewMode === "weekly" ? "Weekly Earnings" : viewMode === "monthly" ? "Total Earnings" : "Earnings"}</TableHead>
               {viewMode === "weekly" && <TableHead>Budget</TableHead>}
+              {viewMode === "daily" && <TableHead className="w-8"></TableHead>}
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -3013,10 +3110,23 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
               </TableRow>
             ) : earningsResult?.data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-sm text-gray-400 py-10">No earnings found for this period.</TableCell>
+                {/* US-25: filtered-empty vs no-data-at-all are visually distinct —
+                    the filtered case keeps a Clear All CTA, the no-data case doesn't
+                    imply anything is filterable. hasActiveFilters is defined below. */}
+                <TableCell colSpan={8} className="text-center text-sm text-gray-400 py-10">
+                  {hasActiveFilters ? (
+                    <>
+                      No earnings match your current filters.
+                      <button className="text-primary-600 underline ml-1" onClick={clearAllFilters}>Clear All</button>
+                    </>
+                  ) : (
+                    "No earnings found for this period."
+                  )}
+                </TableCell>
               </TableRow>
             ) : earningsResult?.data.map((row) => (
-              <TableRow key={row.id}>
+              <React.Fragment key={row.id}>
+              <TableRow className="cursor-pointer hover:bg-gray-25" onClick={() => openEntryDetail(row.id)}>
                 <TableCell className="text-sm text-gray-500 whitespace-nowrap">{row.date ?? row.weekRange ?? row.month ?? "—"}</TableCell>
                 <TableCell>
                   {row.project ? (
@@ -3046,7 +3156,16 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                   </div>
                 </TableCell>
                 {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.budget ?? "—"}</TableCell>}
-                <TableCell>
+                {viewMode === "daily" && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {row.feeBreakdown && (
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => toggleRowExpanded(row.id)}>
+                        <ChevronDown className={cn("size-4 transition-transform", expandedRows.has(row.id) && "rotate-180")} />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                )}
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}
                     <DropdownMenu>
@@ -3056,12 +3175,36 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                         </IconButton>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => toast({ title: "Transaction Details", description: `${row.project?.name ?? ""} — ${row.durationLabel}` })}>View Details</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEntryDetail(row.id)}>View Details</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 </TableCell>
               </TableRow>
+              {/* US-27: a sibling row directly below the entry, not a height
+                  change on the entry row itself, so multiple rows can be
+                  expanded independently without shifting each other's layout. */}
+              {viewMode === "daily" && row.feeBreakdown && expandedRows.has(row.id) && (
+                <TableRow className="bg-gray-25">
+                  <TableCell colSpan={7} className="py-3">
+                    <div className="flex items-center gap-8 pl-4">
+                      <div>
+                        <p className="text-xs text-gray-400">Gross</p>
+                        <p className="text-sm font-medium text-dark-blue-400">${row.feeBreakdown.grossAmountDisplay}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">{row.feeBreakdown.feeLabel}</p>
+                        <p className="text-sm font-medium text-dark-blue-400">-${row.feeBreakdown.feeAmountDisplay}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">You Receive</p>
+                        <p className="text-sm font-semibold text-dark-blue-400">${row.netAmountDisplay ?? row.netAmount}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              </React.Fragment>
             ))}
           </TableBody>
         </Table>
@@ -3082,7 +3225,8 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
             </TooltipProvider>
           </p>
 
-          {/* Pagination */}
+          {/* US-28: numbered pagination with ellipsis, replacing the prior
+              prev/next-only control. */}
           <div className="flex items-center gap-1">
             <button
               className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
@@ -3091,9 +3235,22 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
             >
               <ChevronLeft className="size-4" />
             </button>
-            <span className="text-sm text-gray-500 px-2">
-              Page {currentPage} of {earningsResult?.totalPages ?? 1}
-            </span>
+            {getPaginationItems(currentPage, earningsResult?.totalPages ?? 1).map((item, i) =>
+              item === "ellipsis" ? (
+                <span key={`e-${i}`} className="size-8 flex items-center justify-center text-sm text-gray-400">…</span>
+              ) : (
+                <button
+                  key={item}
+                  className={cn(
+                    "size-8 rounded-md text-sm font-medium flex items-center justify-center",
+                    item === currentPage ? "bg-primary-50 text-primary-600" : "text-gray-500 hover:bg-gray-100"
+                  )}
+                  onClick={() => setCurrentPage(item)}
+                >
+                  {item}
+                </button>
+              )
+            )}
             <button
               className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
               disabled={currentPage >= (earningsResult?.totalPages ?? 1)}
@@ -3104,6 +3261,115 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
           </div>
         </div>
       </div>
+
+      {/* F-05 Entry Detail Drawer — second, self-contained instance mirroring
+          OverviewTab's (US-30), since the two tabs are separate components
+          with no shared state/context to lift into. */}
+      <Dialog open={!!detailEntryId} onOpenChange={(open) => { if (!open) closeEntryDetail() }}>
+        <DialogContent
+          variant="unanimated"
+          onInteractOutside={(e) => e.preventDefault()}
+          className="fixed right-0 top-0 h-full w-full sm:max-w-md bg-white shadow-xl overflow-y-auto p-0 gap-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-300"
+        >
+          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 sticky top-0 bg-white z-10">
+            <DialogTitle className="text-base font-semibold text-dark-blue-400">Entry Details</DialogTitle>
+            <DialogClose asChild>
+              <IconButton size="sm" variant="ghost" visual="gray"><X className="size-4" /></IconButton>
+            </DialogClose>
+          </div>
+
+          {detailLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />)}
+            </div>
+          ) : detailError === "not-found" ? (
+            <div className="p-6 text-center space-y-4">
+              <p className="text-sm text-gray-500">This entry could not be found.</p>
+              <DialogClose asChild>
+                <Button variant="outlined" visual="gray" size="sm">Close</Button>
+              </DialogClose>
+            </div>
+          ) : detailError === "error" ? (
+            <div className="p-6 text-center space-y-4">
+              <p className="text-sm text-red-600">We couldn't load this entry. Please try again.</p>
+              <Button variant="outlined" visual="gray" size="sm" onClick={() => detailEntryId && openEntryDetail(detailEntryId)}>Retry</Button>
+            </div>
+          ) : detailData ? (
+            <div className="p-6 space-y-6">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-dark-blue-400">
+                  {new Date(detailData.workStartAt).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Badge visual={detailData.entryType === "automated" ? "primary" : "warning"} size="sm">
+                    {detailData.entryType === "automated" ? "Automated" : "Manual"}
+                  </Badge>
+                  <Badge visual={detailData.status === "paid" ? "success" : detailData.status === "failed" ? "error" : "primary"} size="sm">
+                    {detailData.status === "paid" ? "Paid" : detailData.status === "failed" ? "Reversed" : "Confirmed"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-dark-blue-400">{detailData.project?.name ?? "Untitled project"}</p>
+                {detailData.project?.clientName && <p className="text-xs text-gray-400">{detailData.project.clientName}</p>}
+                {detailData.contract?.title && <p className="text-xs text-gray-400 mt-0.5">{detailData.contract.title}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time Block</p>
+                <p className="text-sm text-dark-blue-400">
+                  {new Date(detailData.workStartAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                  {" – "}
+                  {new Date(detailData.workEndAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                </p>
+                <p className="text-xs text-gray-500">{detailData.durationLabel}</p>
+              </div>
+
+              {detailData.entryType === "automated" && (detailData.avgKeyboardPct != null || detailData.avgMousePct != null) && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Activity</p>
+                  <div className="flex gap-4 text-sm text-dark-blue-400">
+                    {detailData.avgKeyboardPct != null && <span>⌨ {detailData.avgKeyboardPct}% keyboard</span>}
+                    {detailData.avgMousePct != null && <span>🖱 {detailData.avgMousePct}% mouse</span>}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fee Breakdown</p>
+                <div className="rounded-lg border border-gray-200 divide-y divide-gray-200">
+                  {detailData.feeSection.lineItems.map((item, i) => (
+                    <div key={i} className={cn("flex items-center justify-between px-4 py-2.5", item.isTotal && "bg-gray-25")}>
+                      <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.label}</span>
+                      <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.amount} {item.currency}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Exchange Rate</p>
+                <p className="text-sm text-gray-500">
+                  {detailData.feeSection.fxRateLabel}
+                  {detailData.feeSection.billingCurrency !== detailData.feeSection.displayCurrency && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="ml-1 text-amber-500 cursor-help align-super">*</span>
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>This entry was billed in {detailData.feeSection.billingCurrency}. Amounts shown in {detailData.feeSection.displayCurrency} use a live rate that may differ slightly from the rate locked at the time this entry was logged.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
