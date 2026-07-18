@@ -4905,150 +4905,80 @@ export default function Projects() {
                                 Discover high-quality {sub.name.toLowerCase()}{" "}
                                 projects ready to launch.
                               </p>
-                              <Button
-                                className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8"
-                                size="lg"
-                              >
-                                Explore More{" "}
-                                <ArrowRight className="size-[15px]" />
-                              </Button>
+                              <div className="mt-8 flex flex-col gap-y-3">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 px-6 h-12 text-base font-semibold"
+                                  style={{ color: "#DC6803" }}
+                                  size="lg"
+                                >
+                                  <NextLink href={exploreMoreHref("projects")}>
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
                             </article>
                           </SwiperSlide>
-                          {fromLength(8).map((idx) => {
-                            // Cycle through real listings so every card links to a real project detail page.
-                            const project =
-                              listingsProjects.length > 0
-                                ? listingsProjects[
-                                    idx % listingsProjects.length
-                                  ]
-                                : null
-                            const mock = projectCardMocks[idx % projectCardMocks.length]
-                            const href = project
-                              ? buildProjectUrl(
-                                  currentCategoryPath,
-                                  project.slug,
-                                  project.id
-                                )
-                              : buildProjectUrl(
-                                  currentCategoryPath,
-                                  mock.slug,
-                                  mock.id
-                                )
-                            return (
-                              <SwiperSlide
-                                key={project?.id ?? idx}
-                                className="w-[355px]"
-                              >
-                                <NextLink
-                                  href={href}
-                                  className="block focus-visible:outline-none"
-                                >
-                                  <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                    <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage
-                                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                        src={
-                                          project?.mediaUrls?.[0] ||
-                                          mock.mediaUrl
-                                        }
-                                        alt={project?.title || mock.title}
-                                        fill
-                                        sizes="33vw"
-                                      />
-                                    </div>
-                                    <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                        {project?.title ||
-                                          mock.title}
-                                      </span>
-                                      <div className="inline-flex items-center gap-x-1">
-                                        <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                          4.9{" "}
-                                          <span className="font-extralight">
-                                            (5)
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                      {project?.description?.slice(0, 140) ||
-                                        mock.description}
-                                    </p>
-                                    <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          Starting from{" "}
-                                          {project?.duration || mock.duration.replace("Starting from ", "")}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Money className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          {project?.budget
-                                            ? `$${Number(
-                                                project.budget
-                                              ).toLocaleString()} budget`
-                                            : mock.budget}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="mt-5 flex items-end justify-between">
-                                      <AvatarGroup
-                                        max={5}
-                                        size="sm"
-                                        excess
-                                        excessClassName="border-gray-300 text-gray-500"
-                                      >
-                                        {(talentUsers.length > 0
-                                          ? talentUsers.slice(0, 6)
-                                          : fromLength(6)
-                                        ).map((u: any, k: number) => (
-                                          <Avatar
-                                            key={u?.id ?? k}
-                                            size="sm"
-                                            className="border-2 border-white hover:ring-0 active:ring-0"
-                                          >
-                                            <AvatarImage
-                                              src={u?.avatarUrl || "/woman.jpg"}
-                                              alt={u?.firstName || "Team"}
-                                            />
-                                            <AvatarFallback>
-                                              {u?.firstName?.[0] || "T"}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                        ))}
-                                      </AvatarGroup>
-                                      <FavoriteRoot>
-                                        {({ pressed }) => (
-                                          <TooltipProvider delayDuration={75}>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="inline-block">
-                                                  <Favorite />
-                                                </span>
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                {pressed ? (
-                                                  <span className="inline-flex items-center gap-x-1">
-                                                    <Check className="size-[15px] shrink-0 text-green-500" />
-                                                    Saved
-                                                  </span>
-                                                ) : (
-                                                  "Save to favorites"
-                                                )}
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        )}
-                                      </FavoriteRoot>
-                                    </div>
-                                  </article>
-                                </NextLink>
-                              </SwiperSlide>
+                          {getCarouselItemsForCategoryTab(
+                            listingsProjects.length > 0
+                              ? listingsProjects
+                              : displayedProjects,
+                            sub,
+                            "Top-Rated"
+                          )
+                            .filter(
+                              (project: any) =>
+                                project?.mediaUrls?.[0] &&
+                                project?.title &&
+                                (project.budget ??
+                                  project.scopeTotal?.budget ??
+                                  project.price)
                             )
-                          })}
+                            .slice(0, 8)
+                            .map((project: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  key={project.id ?? idx}
+                                  className="h-auto w-[355px]"
+                                >
+                                  <ListingCard
+                                    kind="project"
+                                    id={project.id ?? `project-${idx}`}
+                                    title={project.title}
+                                    description={project?.shortDescription}
+                                    mediaUrl={project?.mediaUrls?.[0]}
+                                    duration={
+                                      project.duration
+                                        ? `Starting from ${project.duration}`
+                                        : ""
+                                    }
+                                    rating={Number(project.rating) || undefined}
+                                    reviewCount={project.reviewCount}
+                                    href={
+                                      project.slug && project.id
+                                        ? projectDetailsUrl(project.slug, project.id)
+                                        : listingHref("projects")
+                                    }
+                                    budget={String(
+                                      project.budget ??
+                                        project.scopeTotal?.budget ??
+                                        project.price ??
+                                        ""
+                                    )}
+                                    collaborators={getListingCollaborators(project)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={project.id}
+                                        type="project"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
                         </SwiperContent>
                       </TabsContent>
                     ))}
