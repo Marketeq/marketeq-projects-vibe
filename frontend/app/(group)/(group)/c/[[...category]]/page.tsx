@@ -3071,11 +3071,6 @@ export default function Projects() {
     currentCategorySlugs
   )
 
-  /** Build a link to the kind-specific listing page at the current depth.
-   *  Category-scoped URLs stay canonical as /c/{path}/{kind}. The root
-   *  browse sentinel is not a real category path, so it keeps the top-level
-   *  entity URL.
-   */
   /** Build a link to the kind-specific listing page at the current depth. */
   const listingHref = (
     kind: "projects" | "services" | "teams" | "talent" | "all"
