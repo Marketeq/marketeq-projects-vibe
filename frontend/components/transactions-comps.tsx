@@ -281,6 +281,33 @@ const isValidBsb = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ''))
 const isValidCaInstitution = (v: string) => /^\d{3}$/.test(v)
 const isValidCaTransit = (v: string) => /^\d{5}$/.test(v)
 
+// US-63: bank-validation.service.ts throws these exact ERR_BANK_* codes as
+// errorCode — mapped here to a friendly, field-specific checklist instead of
+// showing the raw code or a generic "invalid details" message.
+const BANK_FIELD_ERROR_MESSAGES: Record<string, string> = {
+  ERR_BANK_ACCOUNT_NAME_INVALID: 'Account holder name is required (max 100 characters).',
+  ERR_BANK_REGION_FIELD_MISMATCH: 'Select a country before continuing.',
+  ERR_BANK_ROUTING_INVALID: 'Routing number must be a valid 9-digit ABA number.',
+  ERR_BANK_ACCOUNT_NUMBER_INVALID: 'Account number format is invalid for the selected country.',
+  ERR_BANK_CURRENCY_MISMATCH: 'Currency does not match what’s expected for this country.',
+  ERR_BANK_IBAN_INVALID: 'IBAN is invalid — double-check for typos.',
+  ERR_BANK_SWIFT_INVALID: 'SWIFT/BIC code is invalid.',
+  ERR_BANK_SORT_CODE_INVALID: 'Sort code must be 6 digits.',
+  ERR_BANK_IFSC_INVALID: 'IFSC code is invalid — format is 4 letters, 0, then 6 characters.',
+  ERR_BANK_BSB_INVALID: 'BSB number must be 6 digits.',
+  ERR_BANK_CODE_INVALID: 'Bank code must be 4 digits.',
+  ERR_BANK_BRANCH_CODE_INVALID: 'Branch code must be 3 digits.',
+  ERR_BANK_INSTITUTION_INVALID: 'Institution number must be 3 digits.',
+  ERR_BANK_TRANSIT_INVALID: 'Transit number must be 5 digits.',
+  ERR_BANK_CLABE_INVALID: 'CLABE must be 18 digits.',
+  ERR_DEPOSIT_COUNTRY_RESTRICTED: 'Payouts to this country are not currently supported.',
+  ERR_DEPOSIT_METHOD_DUPLICATE: 'This account is already linked.',
+  ERR_DEPOSIT_METHOD_VERIFIED_LOCKED: 'A verified account can’t be edited — remove it and add a new one instead.',
+  ERR_DEPOSIT_METHOD_NOT_EDITABLE: 'Bank details can only be edited for manually-added bank accounts.',
+}
+const bankErrorMessage = (data: any): string =>
+  BANK_FIELD_ERROR_MESSAGES[data?.errorCode] ?? data?.message ?? 'Please check your details and try again.'
+
 // ─── Shared payout-service helpers (US-22–26) ────────────────────────────────
 // Routed through api-gateway, not payout-service directly: access_token is an
 // HttpOnly cookie (invisible to JS), so a manually-read "Bearer <token>" header
@@ -540,6 +567,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // reuses the same fail-closed gate-check endpoint the withdrawal flow uses.
   const [methodGateBlocked, setMethodGateBlocked] = React.useState(false)
   const [editingMethod, setEditingMethod] = React.useState<any | null>(null)
+  // US-59: raw bank details are never returned by the backend (security —
+  // see methods.service.ts toDetailItem), so editing means full re-entry,
+  // not a diff against hidden values. Starts blank whenever Edit opens on
+  // an eligible (BANK_MANUAL, not-yet-verified) method.
+  const [editBankForm, setEditBankForm] = React.useState({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US' })
+  const [editBankError, setEditBankError] = React.useState('')
   // AC-11.01: destructive removal requires an explicit confirmation step — holds
   // the method pending confirmation, not yet deleted.
   const [confirmRemove, setConfirmRemove] = React.useState<any | null>(null)
@@ -655,7 +688,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           setShowAddMethod(false)
         }
       } else {
-        toast({ title: 'Error adding account', description: data.message ?? 'Please check your details and try again.', variant: 'destructive' })
+        toast({ title: 'Error adding account', description: bankErrorMessage(data), variant: 'destructive' })
       }
     } catch (e) { toast({ title: 'Error', description: 'Failed to add account', variant: 'destructive' }) }
   }
@@ -836,16 +869,50 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     handleSetDefault(method.id)
   }
 
+  // US-59/62/63: full bank-detail replacement, only offered for BANK_MANUAL
+  // methods that haven't completed verification yet — see updateMethod() in
+  // methods.service.ts for why VERIFIED methods stay nickname-only.
+  const editingBankDetails = editingMethod?.methodType === 'BANK_MANUAL' && editingMethod?.verificationStatus !== 'verified'
+
   const handleUpdateMethod = async () => {
     if (!editingMethod) return
+    setEditBankError('')
     try {
+      const payload: any = { nickname: editingMethod.nickname ?? '' }
+      if (editingBankDetails && editBankForm.bankAccountNumber.trim()) {
+        payload.bankAccountName = editBankForm.bankAccountName
+        payload.bankAccountNumber = editBankForm.bankAccountNumber
+        payload.bankCountry = editBankForm.bankCountry
+        payload.bankCurrency = BANK_COUNTRY_CURRENCY[editBankForm.bankCountry] ?? 'USD'
+        switch (editBankForm.bankCountry) {
+          case 'US': payload.bankRoutingNumber = editBankForm.bankRoutingNumber; break
+          case 'GB': payload.bankSortCode = editBankForm.bankSortCode; break
+          case 'IN': payload.bankIfscCode = editBankForm.bankIfscCode; break
+          case 'AU': payload.bankBsbNumber = editBankForm.bankBsbNumber; break
+          case 'CA': payload.bankInstitutionNumber = editBankForm.bankInstitutionNumber; payload.bankTransitNumber = editBankForm.bankTransitNumber; break
+        }
+      }
       const res = await payoutFetch(`/deposit-methods/${editingMethod.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: editingMethod.nickname ?? '' })
+        body: JSON.stringify(payload)
       })
-      if (res.ok) { toast({ title: 'Account updated' }); setEditingMethod(null); fetchMethods() }
-      else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
-    } catch (e) { toast({ title: 'Error', description: 'Failed to update account', variant: 'destructive' }) }
+      const data = await res.json()
+      if (res.ok) {
+        if (data.verification?.type === 'micro_deposit') {
+          // US-62: bank details changed, so verification restarted from
+          // scratch — same "up to 2 business days" copy as adding a new
+          // account, since that's exactly what happened underneath.
+          setMicroAmounts({ amount1: '', amount2: '' })
+          setVerifyState({ methodId: editingMethod.id, displayLabel: data.displayLabel ?? editingMethod.displayLabel, bankName: editBankForm.bankAccountName || '', step: 'instructions' })
+        } else {
+          toast({ title: 'Account updated' })
+        }
+        setEditingMethod(null)
+        fetchMethods()
+      } else {
+        setEditBankError(bankErrorMessage(data))
+      }
+    } catch (e) { setEditBankError('Failed to update account. Please try again.') }
   }
 
   // AC-05.04/05.05/05.06/05.08: wrong amounts decrement an attempt counter and, on the
@@ -1438,7 +1505,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Button variant="link" visual="gray" size="sm" onClick={() => defaultMethod && setEditingMethod({...defaultMethod})}>Edit</Button>
+                <Button variant="link" visual="gray" size="sm" onClick={() => { if (defaultMethod) { setEditingMethod({...defaultMethod}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: defaultMethod.bankCountry || 'US' }); setEditBankError('') } }}>Edit</Button>
               </div>
               {methodsLoading ? (
                 <div className="h-10 bg-gray-100 rounded animate-pulse" />
@@ -1529,7 +1596,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       Make Default
                     </Button>
                   ) : null}
-                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setEditingMethod({...m})}>
+                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setEditingMethod({...m}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: m.bankCountry || 'US' }); setEditBankError('') }}>
                     <Edit03 className="size-4" />
                   </IconButton>
                   <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setConfirmRemove(m)}>
@@ -2198,7 +2265,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           {/* Edit Method Dialog */}
           {editingMethod && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingMethod(null)}>
-              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Edit Account</h3>
                 <div className="space-y-3">
                   <div>
@@ -2209,10 +2276,121 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     <label className="text-xs text-gray-500 mb-1 block">Nickname (optional)</label>
                     <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. My Chase Savings" value={editingMethod.nickname ?? ''} onChange={e => setEditingMethod((m: any) => ({...m, nickname: e.target.value}))} />
                   </div>
+
+                  {/* US-59: bank details are re-entered fresh, never pre-filled — the
+                      backend never returns raw account numbers back out (security). */}
+                  {editingBankDetails ? (
+                    <div className="space-y-3 pt-2 border-t border-gray-200">
+                      <p className="text-xs text-gray-500">
+                        To correct your bank account details, re-enter them below. This restarts verification — two small deposits will arrive within 2 business days. Leave blank to keep your current (unverified) details.
+                      </p>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Country</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={editBankForm.bankCountry} onChange={e => setEditBankForm(f => ({...f, bankCountry: e.target.value}))}>
+                          <option value="US">United States</option>
+                          <option value="GB">United Kingdom</option>
+                          <option value="IN">India</option>
+                          <option value="AU">Australia</option>
+                          <option value="CA">Canada</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={editBankForm.bankAccountName} onChange={e => setEditBankForm(f => ({...f, bankAccountName: e.target.value}))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={editBankForm.bankAccountNumber} onChange={e => setEditBankForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={editBankForm.bankAccountNumberConfirm} onChange={e => setEditBankForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
+                        {editBankForm.bankAccountNumberConfirm.length > 0 && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber && (
+                          <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
+                        )}
+                      </div>
+                      {editBankForm.bankCountry === 'US' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Routing Number</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={editBankForm.bankRoutingNumber} onChange={e => setEditBankForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
+                          {editBankForm.bankRoutingNumber.length > 0 && !isValidAbaRouting(editBankForm.bankRoutingNumber) && (
+                            <p className="text-xs text-red-500 mt-1">Invalid routing number.</p>
+                          )}
+                        </div>
+                      )}
+                      {editBankForm.bankCountry === 'GB' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 12-34-56" value={editBankForm.bankSortCode} onChange={e => setEditBankForm(f => ({...f, bankSortCode: e.target.value}))} />
+                          {editBankForm.bankSortCode.length > 0 && !isValidSortCode(editBankForm.bankSortCode) && (
+                            <p className="text-xs text-red-500 mt-1">Sort code must be 6 digits.</p>
+                          )}
+                        </div>
+                      )}
+                      {editBankForm.bankCountry === 'IN' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={editBankForm.bankIfscCode} onChange={e => setEditBankForm(f => ({...f, bankIfscCode: e.target.value}))} />
+                          {editBankForm.bankIfscCode.length > 0 && !isValidIfsc(editBankForm.bankIfscCode) && (
+                            <p className="text-xs text-red-500 mt-1">Invalid IFSC code.</p>
+                          )}
+                        </div>
+                      )}
+                      {editBankForm.bankCountry === 'AU' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 123-456" value={editBankForm.bankBsbNumber} onChange={e => setEditBankForm(f => ({...f, bankBsbNumber: e.target.value}))} />
+                          {editBankForm.bankBsbNumber.length > 0 && !isValidBsb(editBankForm.bankBsbNumber) && (
+                            <p className="text-xs text-red-500 mt-1">BSB must be 6 digits.</p>
+                          )}
+                        </div>
+                      )}
+                      {editBankForm.bankCountry === 'CA' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={editBankForm.bankInstitutionNumber} onChange={e => setEditBankForm(f => ({...f, bankInstitutionNumber: e.target.value}))} />
+                            {editBankForm.bankInstitutionNumber.length > 0 && !isValidCaInstitution(editBankForm.bankInstitutionNumber) && (
+                              <p className="text-xs text-red-500 mt-1">Must be 3 digits.</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Transit Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="5 digits" value={editBankForm.bankTransitNumber} onChange={e => setEditBankForm(f => ({...f, bankTransitNumber: e.target.value}))} />
+                            {editBankForm.bankTransitNumber.length > 0 && !isValidCaTransit(editBankForm.bankTransitNumber) && (
+                              <p className="text-xs text-red-500 mt-1">Must be 5 digits.</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : editingMethod.methodType === 'BANK_MANUAL' && editingMethod.verificationStatus === 'verified' ? (
+                    <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
+                      This account is verified and its bank details can't be changed here — remove it and add a new one instead.
+                    </p>
+                  ) : null}
+
+                  {editBankError && <p className="text-sm text-red-600">{editBankError}</p>}
                 </div>
                 <div className="flex gap-2 mt-5">
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setEditingMethod(null)}>Cancel</Button>
-                  <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={handleUpdateMethod}>Save Changes</Button>
+                  <Button
+                    variant="filled" visual="primary" size="sm" className="flex-1"
+                    disabled={
+                      editingBankDetails && editBankForm.bankAccountNumber.trim().length > 0 && (
+                        editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber ||
+                        !editBankForm.bankAccountName.trim() ||
+                        (editBankForm.bankCountry === 'US' && !isValidAbaRouting(editBankForm.bankRoutingNumber)) ||
+                        (editBankForm.bankCountry === 'GB' && !isValidSortCode(editBankForm.bankSortCode)) ||
+                        (editBankForm.bankCountry === 'IN' && !isValidIfsc(editBankForm.bankIfscCode)) ||
+                        (editBankForm.bankCountry === 'AU' && !isValidBsb(editBankForm.bankBsbNumber)) ||
+                        (editBankForm.bankCountry === 'CA' && (!isValidCaInstitution(editBankForm.bankInstitutionNumber) || !isValidCaTransit(editBankForm.bankTransitNumber)))
+                      )
+                    }
+                    onClick={handleUpdateMethod}
+                  >
+                    Save Changes
+                  </Button>
                 </div>
               </div>
             </div>
