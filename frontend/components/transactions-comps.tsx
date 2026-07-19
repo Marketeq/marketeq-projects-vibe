@@ -548,8 +548,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
   const loadRecentEarnings = React.useCallback(() => {
     setRecentEarningsError(false)
-    getEarnings({ view: "daily", limit: 5, sortBy: "workStartAt", sortOrder: "desc" })
-      .then((res) => setRecentEarnings(res.data))
+    // EarningsQueryDto only accepts limit values of 10/25/50/100 — 5 (the
+    // number this preview card actually shows) 400s. Request the minimum
+    // valid page size and slice to the first 5 for display.
+    getEarnings({ view: "daily", limit: 10, sortBy: "workStartAt", sortOrder: "desc" })
+      .then((res) => setRecentEarnings(res.data.slice(0, 5)))
       .catch((e) => { console.error("Recent earnings fetch failed:", e); setRecentEarningsError(true) })
       .finally(() => setRecentEarningsLoading(false))
   }, [])
