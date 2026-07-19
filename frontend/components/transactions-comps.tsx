@@ -1566,7 +1566,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   </p>
                 </div>
                 <p className="text-2xl font-bold text-dark-blue-400">
-                  <span className="text-sm align-top">$</span>{previousPayout.amountUsd}
+                  <span className="text-sm align-top">$</span>{parseFloat(previousPayout.amountUsd).toFixed(2)}
                 </p>
               </>
             ) : (
@@ -3188,19 +3188,20 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
 function toActivityItem(p: { id: string; status: string; amountUsd: string; methodLabel: string | null; createdAt: string; settledAt: string | null }) {
   const time = formatDistanceToNowStrict(new Date(p.settledAt ?? p.createdAt), { addSuffix: true })
   const method = p.methodLabel ?? "your payout method"
+  const amount = parseFloat(p.amountUsd).toFixed(2)
   switch (p.status) {
     case "completed":
-      return { id: p.id, title: "Payout Completed", description: `$${p.amountUsd} to ${method}`, time, kind: "sent" as const }
+      return { id: p.id, title: "Payout Completed", description: `$${amount} to ${method}`, time, kind: "sent" as const }
     case "processing":
-      return { id: p.id, title: "Payout Processing", description: `$${p.amountUsd} to ${method}`, time, kind: "processing" as const }
+      return { id: p.id, title: "Payout Processing", description: `$${amount} to ${method}`, time, kind: "processing" as const }
     case "queued":
-      return { id: p.id, title: "Payout Queued", description: `$${p.amountUsd} to ${method}`, time, kind: "processing" as const }
+      return { id: p.id, title: "Payout Queued", description: `$${amount} to ${method}`, time, kind: "processing" as const }
     case "failed":
-      return { id: p.id, title: "Payout Failed", description: `$${p.amountUsd} to ${method}`, time, kind: "failed" as const }
+      return { id: p.id, title: "Payout Failed", description: `$${amount} to ${method}`, time, kind: "failed" as const }
     case "cancelled":
-      return { id: p.id, title: "Payout Cancelled", description: `$${p.amountUsd} to ${method}`, time, kind: "cancelled" as const }
+      return { id: p.id, title: "Payout Cancelled", description: `$${amount} to ${method}`, time, kind: "cancelled" as const }
     default:
-      return { id: p.id, title: "Payout Scheduled", description: `$${p.amountUsd} to ${method}`, time, kind: "scheduled" as const }
+      return { id: p.id, title: "Payout Scheduled", description: `$${amount} to ${method}`, time, kind: "scheduled" as const }
   }
 }
 
@@ -3857,9 +3858,9 @@ const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | nul
         ) : (
           <div className="space-y-3 py-2">
             {[
-              ["Amount", `$${detail.amountUsd} ${detail.currency}`],
-              ["Fee", `$${detail.feeUsd}`],
-              ["Net Transfer", `$${detail.netAmountUsd}`],
+              ["Amount", `$${parseFloat(detail.amountUsd).toFixed(2)} ${detail.currency}`],
+              ["Fee", `$${parseFloat(detail.feeUsd).toFixed(2)}`],
+              ["Net Transfer", `$${parseFloat(detail.netAmountUsd).toFixed(2)}`],
               ["Method", detail.methodLabel ?? detail.methodType ?? "—"],
               ["Status", getPayoutStatusBadge(detail.status).label],
               ["Source", detail.trigger === "scheduled" ? "Scheduled" : "Manual"],
@@ -4099,7 +4100,7 @@ export const PayoutsTab = () => {
               const badge = getPayoutStatusBadge(row.status)
               return (
                 <TableRow key={row.id} className="cursor-pointer" onClick={() => setDetailId(row.id)}>
-                  <TableCell className="text-sm font-medium text-dark-blue-400">${row.amountUsd} {row.currency}</TableCell>
+                  <TableCell className="text-sm font-medium text-dark-blue-400">${parseFloat(row.amountUsd).toFixed(2)} {row.currency}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <BankIcon className="size-4 text-gray-400" />

@@ -245,7 +245,7 @@ const AmountStep = ({
           >
             <div className="text-sm font-semibold text-dark-blue-400">Instant</div>
             <div className="text-xs text-gray-500 mt-1">
-              {validation ? `$${validation.instantPreview.feeUsd} fee · faster settlement` : "Flat fee · faster settlement"}
+              {validation ? `$${parseFloat(validation.instantPreview.feeUsd).toFixed(2)} fee · faster settlement` : "Flat fee · faster settlement"}
             </div>
           </button>
         </div>
@@ -260,15 +260,15 @@ const AmountStep = ({
             <>
               <div className="flex items-center justify-between px-4 py-2.5">
                 <span className="text-xs font-medium text-gray-500">Gross amount</span>
-                <span className="text-sm font-semibold text-dark-blue-400">${validation.amountUsd}</span>
+                <span className="text-sm font-semibold text-dark-blue-400">${parseFloat(validation.amountUsd).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-2.5">
                 <span className="text-xs font-medium text-gray-500">Fee</span>
-                <span className="text-sm font-semibold text-dark-blue-400">${validation.feeUsd}</span>
+                <span className="text-sm font-semibold text-dark-blue-400">${parseFloat(validation.feeUsd).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 rounded-b-lg">
                 <span className="text-xs font-medium text-gray-500">Net transfer</span>
-                <span className="text-sm font-bold text-dark-blue-400">${validation.netAmountUsd}</span>
+                <span className="text-sm font-bold text-dark-blue-400">${parseFloat(validation.netAmountUsd).toFixed(2)}</span>
               </div>
             </>
           ) : null}
@@ -512,15 +512,15 @@ const ConfirmStep = ({ validation, speed, method }: { validation: ValidateAmount
     <dl className="mt-6 divide-y divide-gray-200 border border-gray-200 rounded-lg">
       <div className="flex items-center justify-between px-5 py-4">
         <dt className="text-sm font-medium text-gray-500">Withdrawal amount</dt>
-        <dd className="text-sm font-semibold text-dark-blue-400">${validation?.amountUsd ?? "0.00"}</dd>
+        <dd className="text-sm font-semibold text-dark-blue-400">${validation ? parseFloat(validation.amountUsd).toFixed(2) : "0.00"}</dd>
       </div>
       <div className="flex items-center justify-between px-5 py-4">
         <dt className="text-sm font-medium text-gray-500">{speed === "instant" ? "Instant fee" : "Fee"}</dt>
-        <dd className="text-sm font-semibold text-dark-blue-400">−${validation?.feeUsd ?? "0.00"}</dd>
+        <dd className="text-sm font-semibold text-dark-blue-400">−${validation ? parseFloat(validation.feeUsd).toFixed(2) : "0.00"}</dd>
       </div>
       <div className="flex items-center justify-between px-5 py-4 bg-gray-50 rounded-b-lg">
         <dt className="text-base font-bold text-dark-blue-400">You'll receive</dt>
-        <dd className="text-base font-bold text-dark-blue-400">${validation?.netAmountUsd ?? "0.00"}</dd>
+        <dd className="text-base font-bold text-dark-blue-400">${validation ? parseFloat(validation.netAmountUsd).toFixed(2) : "0.00"}</dd>
       </div>
     </dl>
 
@@ -842,7 +842,7 @@ function TransferFundsInner() {
             </div>
             <h1 className="mt-5 text-2xl font-bold text-dark-blue-400 leading-none">Check your email</h1>
             <p className="mt-3 text-sm font-light text-gray-500">
-              We sent a confirmation link to <strong>{result.magicLinkSentTo}</strong>. Click it to confirm this ${result.amountUsd} withdrawal — the link expires in 15 minutes. Nothing is sent until you confirm.
+              We sent a confirmation link to <strong>{result.magicLinkSentTo}</strong>. Click it to confirm this ${parseFloat(result.amountUsd).toFixed(2)} withdrawal — the link expires in 15 minutes. Nothing is sent until you confirm.
             </p>
 
             {/* AC-19.01: resend generates a new token and invalidates the previous one.
@@ -945,7 +945,7 @@ function TransferFundsInner() {
               </>
             ) : step === 3 && (
               <Button onClick={submit} disabled={submitting || !validation || !!validationError}>
-                {submitting ? "Submitting…" : `Withdraw $${validation?.amountUsd ?? amount}`}
+                {submitting ? "Submitting…" : `Withdraw $${validation ? parseFloat(validation.amountUsd).toFixed(2) : amount}`}
               </Button>
             )}
           </div>
