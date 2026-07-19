@@ -123,12 +123,15 @@ const LinkedInLogin = ({
             }
           })
           .catch((error) => {
-            if (error?.response?.data?.errors?.message) {
-              toast({
-                title: error?.response?.data?.errors?.message,
-                variant: "destructive",
-              })
-            }
+            const msg =
+              error?.response?.data?.message ??
+              error?.response?.data?.errors?.message ??
+              error?.message ??
+              "Login failed"
+            toast({
+              title: msg,
+              variant: "destructive",
+            })
           })
           .finally(() => {
             setIsLoading(false)
