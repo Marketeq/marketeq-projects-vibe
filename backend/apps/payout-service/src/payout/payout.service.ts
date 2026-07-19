@@ -499,9 +499,14 @@ export class PayoutService {
   private toHistoryItem(r: PayoutRequest) {
     return {
       id: r.id,
-      amountUsd: r.amountUsd,
-      feeUsd: r.feeUsd,
-      netAmountUsd: r.netAmountUsd,
+      // amount_usd/fee_usd/net_amount_usd are numeric(18,8) columns — pg
+      // returns them as full-precision strings (e.g. "650.00000000"). Every
+      // other money value shown to the contractor is rounded to 2dp
+      // (validateAmount/initiate already do this); this read path was the
+      // one place that didn't.
+      amountUsd: parseFloat(r.amountUsd).toFixed(2),
+      feeUsd: parseFloat(r.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(r.netAmountUsd).toFixed(2),
       currency: r.currency,
       status: r.status,
       trigger: r.trigger,
@@ -518,9 +523,9 @@ export class PayoutService {
     return {
       payoutRequestId: request.id,
       status: request.status,
-      amountUsd: request.amountUsd,
-      feeUsd: request.feeUsd,
-      netAmountUsd: request.netAmountUsd,
+      amountUsd: parseFloat(request.amountUsd).toFixed(2),
+      feeUsd: parseFloat(request.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
       magicLinkSentTo: '',
       magicLinkExpiresAt: '',
       message: 'A verification link has been sent to your email.',
@@ -531,9 +536,9 @@ export class PayoutService {
     return {
       payoutRequestId: request.id,
       status: request.status,
-      amountUsd: request.amountUsd,
-      feeUsd: request.feeUsd,
-      netAmountUsd: request.netAmountUsd,
+      amountUsd: parseFloat(request.amountUsd).toFixed(2),
+      feeUsd: parseFloat(request.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
       magicLinkSentTo: this.maskEmail(request.contractorId),
       magicLinkExpiresAt: expiresAt.toISOString(),
       message: 'A verification link has been sent to your email. Please click the link to confirm your withdrawal.',

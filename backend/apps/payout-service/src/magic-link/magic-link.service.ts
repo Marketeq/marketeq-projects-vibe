@@ -200,8 +200,9 @@ export class MagicLinkService {
     // AC-20.01: the success screen needs amount/method regardless of branch below,
     // so build this once and reuse it for both the idempotent-replay and fresh-verify returns.
     const detail = {
-      amountUsd: payout.amountUsd,
-      netAmountUsd: payout.netAmountUsd,
+      // amount_usd/net_amount_usd are numeric(18,8) — round to 2dp for display.
+      amountUsd: parseFloat(payout.amountUsd).toFixed(2),
+      netAmountUsd: parseFloat(payout.netAmountUsd).toFixed(2),
       currency: payout.currency,
       methodType: payout.depositMethod?.methodType,
       methodLabel: payout.depositMethod?.displayLabel ?? payout.depositMethod?.nickname ?? null,
