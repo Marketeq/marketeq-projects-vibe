@@ -83,7 +83,12 @@ const GoogleLoginButtonInner = ({
         })
         .finally(() => setIsLoading(false))
     },
-    onError: () => {},
+    onError: () => {
+      toast({
+        title: "Google sign-in was cancelled or failed. Please try again.",
+        variant: "destructive",
+      })
+    },
   })
 
   return (

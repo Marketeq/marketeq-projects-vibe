@@ -18,6 +18,8 @@ const LinkedInLogin = ({
   onSuccess,
 }: { onSuccess?: (user: User) => void } = {}) => {
   const hasLoggedInRef = useRef(false)
+  const popupRef = useRef<Window | null>(null)
+  const popupPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const router = useRouter()
   const redirectUrl = process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT || ""
@@ -30,6 +32,13 @@ const LinkedInLogin = ({
   const getCodeFromWindowURL = useCallback((url: string) => {
     const popupWindowURL = new URL(url)
     return popupWindowURL.searchParams.get("code")
+  }, [])
+
+  const stopPopupPoll = useCallback(() => {
+    if (popupPollRef.current) {
+      clearInterval(popupPollRef.current)
+      popupPollRef.current = null
+    }
   }, [])
 
   const handleLoginWithLinkedIn = () => {
@@ -47,17 +56,32 @@ const LinkedInLogin = ({
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
 
-    window.open(
+    hasLoggedInRef.current = false
+    popupRef.current = window.open(
       authUrl,
       "Linkedin",
       "menubar=no,location=no,resizable=no,scrollbars=no,status=no,width=550,height=730"
     )
+
+    stopPopupPoll()
+    popupPollRef.current = setInterval(() => {
+      if (popupRef.current?.closed) {
+        stopPopupPoll()
+        if (!hasLoggedInRef.current) {
+          toast({
+            title: "LinkedIn sign-in was cancelled or failed. Please try again.",
+            variant: "destructive",
+          })
+        }
+      }
+    }, 500)
   }
 
   const handleLoginWithLinkedInApi = useCallback(
     (code: string) => {
       if (!hasLoggedInRef.current) {
         hasLoggedInRef.current = true
+        stopPopupPoll()
 
         setIsLoading(true)
 
@@ -111,7 +135,7 @@ const LinkedInLogin = ({
           })
       }
     },
-    [redirectUrl, router, setUser, toast]
+    [redirectUrl, router, setUser, toast, stopPopupPoll]
   )
 
   const handlePostMessage = useCallback(
@@ -135,8 +159,9 @@ const LinkedInLogin = ({
 
     return () => {
       window.removeEventListener("message", handlePostMessage)
+      stopPopupPoll()
     }
-  }, [getCodeFromWindowURL, handlePostMessage])
+  }, [getCodeFromWindowURL, handlePostMessage, stopPopupPoll])
 
   return (
     <>
