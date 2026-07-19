@@ -141,8 +141,8 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
-          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -324,8 +324,8 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
-          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">

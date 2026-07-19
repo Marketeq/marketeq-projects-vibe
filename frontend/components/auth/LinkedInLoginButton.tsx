@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   mergeDashboardUserFields,
   resolveDashboardRoute,
@@ -12,12 +12,15 @@ import { UserAPI } from "@/service/http/user"
 import { LinkedInDefault } from "@blend-metrics/icons/social"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
 
-const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
+const LinkedInLogin = ({
+  onSuccess,
+}: { onSuccess?: (user: User) => void } = {}) => {
   const hasLoggedInRef = useRef(false)
 
   const router = useRouter()
-  const pathName = usePathname()
+  const redirectUrl = process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT || ""
 
   const { setUser } = useAuth()
   const { toast } = useToast()
@@ -33,7 +36,6 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
     if (typeof window === "undefined") return
 
     const clientId = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID || ""
-    const redirectUrl = `${window.location.origin}${pathName}`
 
     const params = new URLSearchParams({
       response_type: "code",
@@ -56,8 +58,6 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
     (code: string) => {
       if (!hasLoggedInRef.current) {
         hasLoggedInRef.current = true
-
-        const redirectUrl = `${window?.location?.origin}${pathName}`
 
         setIsLoading(true)
 
@@ -92,7 +92,7 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
                 })
               }
               if (onSuccess) {
-                onSuccess()
+                onSuccess(nextUser as User)
               } else {
                 router.push(resolveDashboardRoute(nextUser as any))
               }
@@ -111,7 +111,7 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
           })
       }
     },
-    [pathName, router, setUser, toast]
+    [redirectUrl, router, setUser, toast]
   )
 
   const handlePostMessage = useCallback(

@@ -13,8 +13,13 @@ import { GoogleDefault } from "@blend-metrics/icons/social"
 import { useGoogleLogin } from "@react-oauth/google"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
 
-const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
+const GoogleLoginButtonInner = ({
+  onSuccess,
+}: {
+  onSuccess?: (user: User) => void
+}) => {
   const router = useRouter()
 
   const { setUser } = useAuth()
@@ -59,7 +64,7 @@ const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
               })
             }
             if (onSuccess) {
-              onSuccess()
+              onSuccess(nextUser as User)
             } else {
               router.push(resolveDashboardRoute(nextUser as any))
             }
@@ -106,7 +111,9 @@ const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
   )
 }
 
-const GoogleLoginButton = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
+const GoogleLoginButton = ({
+  onSuccess,
+}: { onSuccess?: (user: User) => void } = {}) => {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
     return (
       <Button
