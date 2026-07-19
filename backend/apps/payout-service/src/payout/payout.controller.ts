@@ -37,7 +37,7 @@ export class PayoutController {
   @Post('initiate')
   @HttpCode(200)
   async initiate(@Request() req: any, @Body() dto: InitiatePayoutDto) {
-    return this.payoutService.initiate(req.user.userId, dto);
+    return this.payoutService.initiate(req.user.userId, dto, req.user.email);
   }
 
   // PS-02 (legacy): Magic link verification via token only

@@ -165,7 +165,7 @@ export class PayoutService {
   }
 
   // ─── Step 4: Initiate ─────────────────────────────────────────
-  async initiate(contractorId: string, dto: InitiatePayoutDto): Promise<InitiatePayoutResponseDto> {
+  async initiate(contractorId: string, dto: InitiatePayoutDto, contractorEmail?: string): Promise<InitiatePayoutResponseDto> {
     // PS-19 §3.1: Idempotency check
     const existing = await this.payoutRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) return { ...this.toInitiateResponse(existing), replayed: true };
@@ -274,7 +274,7 @@ export class PayoutService {
       this.logger.error('Magic link send failed', err.message),
     );
 
-    return this.toInitiateResponseFull(request, expiresAt);
+    return this.toInitiateResponseFull(request, expiresAt, contractorEmail);
   }
 
   // ─── PS-19 §3.3: Execution-time balance re-check ─────────────
@@ -532,21 +532,26 @@ export class PayoutService {
     };
   }
 
-  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date): InitiatePayoutResponseDto {
+  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date, contractorEmail?: string): InitiatePayoutResponseDto {
     return {
       payoutRequestId: request.id,
       status: request.status,
       amountUsd: parseFloat(request.amountUsd).toFixed(2),
       feeUsd: parseFloat(request.feeUsd).toFixed(2),
       netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
-      magicLinkSentTo: this.maskEmail(request.contractorId),
+      // Was masking contractorId (a UUID, never contains "@") instead of the
+      // contractor's actual email — always rendered as the maskEmail()
+      // fallback "***" on the "Check your email" screen. The real address is
+      // already on the JWT (decoded in JwtAuthGuard as req.user.email), no
+      // extra service call needed — just wasn't threaded through here.
+      magicLinkSentTo: this.maskEmail(contractorEmail ?? ''),
       magicLinkExpiresAt: expiresAt.toISOString(),
       message: 'A verification link has been sent to your email. Please click the link to confirm your withdrawal.',
     };
   }
 
   private maskEmail(email: string): string {
-    if (!email || !email.includes('@')) return '***';
+    if (!email || !email.includes('@')) return 'your email';
     const [local, domain] = email.split('@');
     return `${local[0]}***@${domain}`;
   }
