@@ -14,6 +14,7 @@ import { useGoogleLogin } from "@react-oauth/google"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
 import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
 const GoogleLoginButtonInner = ({
   onSuccess,
@@ -71,13 +72,8 @@ const GoogleLoginButtonInner = ({
           }
         })
         .catch((error) => {
-          const msg =
-            error?.response?.data?.message ??
-            error?.response?.data?.errors?.message ??
-            error?.message ??
-            "Login failed"
           toast({
-            title: msg,
+            title: getOAuthErrorMessage(error),
             variant: "destructive",
           })
         })
