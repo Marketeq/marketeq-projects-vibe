@@ -42,6 +42,7 @@ export interface CategoryPageResponse {
   relatedCategories: any[]
   tags: any[]
   blocks: ContentBlock[]
+  suggestions?: { relatedSkills?: any[] }
 }
 
 export async function getCategoryPage(
