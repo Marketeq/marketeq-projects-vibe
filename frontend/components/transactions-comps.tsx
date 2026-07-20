@@ -952,24 +952,25 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 <TooltipTrigger>
                   <HelpCircle className="size-4 text-gray-400" />
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>Total time logged earnings after any reserve is held.</p>
+                <TooltipContent visual="white" size="md">
+                  <p>Total time logged earnings after any reserve is held. You can update reserve settings under your <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Preferences</button>.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-gray-25 p-6 grid grid-cols-1 md:grid-cols-2 md:divide-x md:divide-gray-200 gap-8">
+          <div className="rounded-lg border border-gray-200 bg-gray-25 p-8 grid grid-cols-1 md:grid-cols-2 md:divide-x md:divide-gray-200 gap-10">
             {/* Today */}
             <div>
-              <div className="flex items-center gap-1.5 mb-2">
+              <div className="flex items-center gap-1.5 mb-3">
                 <span className="text-sm text-gray-500">Today</span>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger>
                       <HelpCircle className="size-3.5 text-gray-400" />
                     </TooltipTrigger>
-                    <TooltipContent>
+                    <TooltipContent visual="white" size="md">
+                      {summary?.today.dateRangeLabel && <p className="font-semibold text-dark-blue-400">{summary.today.dateRangeLabel}</p>}
                       <p>Earnings logged since 12:00 AM local time today.</p>
                     </TooltipContent>
                   </Tooltip>
@@ -978,7 +979,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               <p className="text-3xl font-bold text-dark-blue-400">
                 <span className="text-base align-top">$</span>{summary ? summary.today.amount : "—"}
               </p>
-              <div className="flex items-center gap-1.5 mt-3">
+              <div className="flex items-center gap-1.5 mt-4">
                 {summary?.today.changeLabel && (
                   <>
                     <span className={cn("inline-flex items-center gap-0.5 text-xs font-medium", summary.today.changeDirection === "up" ? "text-success-500" : summary.today.changeDirection === "down" ? "text-error-500" : "text-gray-400")}>
@@ -989,20 +990,26 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                   </>
                 )}
               </div>
-              <p className="text-sm text-gray-500 mt-3"><span className="font-semibold">{summary?.today.hoursLabel ?? "—"}</span> Logged</p>
+              <p className="text-sm text-gray-500 mt-4"><span className="font-semibold">{summary?.today.hoursLabel ?? "—"}</span> Logged</p>
+              <div className="mt-4">
+                <Button variant="outlined" visual="gray" size="sm" onClick={() => onNavigateTab?.("earnings")}>
+                  View All Earnings
+                </Button>
+              </div>
             </div>
 
             {/* This Week + This Month */}
-            <div className="divide-y divide-gray-200 [&>*+*]:pt-6 md:pl-8">
+            <div className="divide-y divide-gray-200 [&>*+*]:pt-8 [&>*:not(:last-child)]:pb-8 md:pl-10">
               <div>
-                <div className="flex items-center gap-1.5 mb-2">
+                <div className="flex items-center gap-1.5 mb-3">
                   <span className="text-sm text-gray-500">This Week</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
                         <HelpCircle className="size-3.5 text-gray-400" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent visual="white" size="md">
+                        {summary?.thisWeek.dateRangeLabel && <p className="font-semibold text-dark-blue-400">{summary.thisWeek.dateRangeLabel}</p>}
                         <p>Earnings logged for the current week.</p>
                       </TooltipContent>
                     </Tooltip>
@@ -1026,14 +1033,15 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               </div>
 
               <div>
-                <div className="flex items-center gap-1.5 mb-2">
+                <div className="flex items-center gap-1.5 mb-3">
                   <span className="text-sm text-gray-500">This Month</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
                         <HelpCircle className="size-3.5 text-gray-400" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent visual="white" size="md">
+                        {summary?.thisMonth.dateRangeLabel && <p className="font-semibold text-dark-blue-400">{summary.thisMonth.dateRangeLabel}</p>}
                         <p>Earnings logged for the current month.</p>
                       </TooltipContent>
                     </Tooltip>
@@ -1057,29 +1065,23 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               </div>
             </div>
           </div>
-
-          <div className="mt-6">
-            <Button variant="outlined" visual="gray" size="sm" onClick={() => onNavigateTab?.("earnings")}>
-              View All Earnings
-            </Button>
-          </div>
         </div>
 
         {/* Direct Deposit */}
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-          <div className="flex items-center justify-between mb-4">
+        <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden">
+          <div className="flex items-center justify-between p-8 pb-6">
             <h3 className="text-base font-semibold text-dark-blue-400">Direct Deposit</h3>
             <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
               View All Payouts
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="mx-8 rounded-lg border border-gray-200 bg-gray-25 p-8 grid grid-cols-1 md:grid-cols-2 md:divide-x md:divide-gray-200 gap-10">
             {/* Upcoming Payout — nextRunAt is server-derived (schedule + day + current
                 date); payout-service has no precomputed future-payout amount, so the
                 dollar figure shown is the current available balance, explicitly
                 labelled as an estimate rather than a guaranteed total (Doc07). */}
-            <div className="rounded-lg border border-gray-200 p-4">
+            <div>
               <p className="text-sm font-medium text-gray-500 mb-1">Upcoming Payout</p>
               {scheduleLoading ? (
                 <div className="h-9 w-28 bg-gray-100 rounded animate-pulse" />
@@ -1105,8 +1107,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       <TooltipTrigger>
                         <HelpCircle className="size-3.5 text-gray-400" />
                       </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Estimated amount based on your current available balance — not a guaranteed total.</p>
+                      <TooltipContent visual="white" size="md">
+                        <p>Estimated arrival in 2-3 business days.</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1118,7 +1120,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
 
             {/* Deposit Method */}
-            <div className="rounded-lg border border-gray-200 p-4">
+            <div className="md:pl-10">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm font-medium text-gray-500">Deposit Method</span>
@@ -1127,7 +1129,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       <TooltipTrigger>
                         <HelpCircle className="size-3.5 text-gray-400" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent visual="white" size="md">
                         <p>The account where your payouts are sent by default.</p>
                       </TooltipContent>
                     </Tooltip>
@@ -1150,9 +1152,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
           </div>
 
+          <div className="h-8" />
+
           {/* Previous Payout — sourced from the real payout history (most recent
               completed record), a historical snapshot per Doc07 Domain 8. */}
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-between bg-gray-25 border-t border-gray-200 px-8 py-6">
             {previousPayoutLoading ? (
               <div className="h-9 w-full bg-gray-100 rounded animate-pulse" />
             ) : previousPayout ? (
@@ -1183,7 +1187,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                   <TooltipTrigger>
                     <HelpCircle className="size-4 text-gray-400" />
                   </TooltipTrigger>
-                  <TooltipContent>
+                  <TooltipContent visual="white" size="md">
                     <p>Linked bank and wallet accounts available for receiving deposits.</p>
                   </TooltipContent>
                 </Tooltip>
@@ -1924,8 +1928,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 <TooltipTrigger>
                   <HelpCircle className="size-4 text-gray-400" />
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>Earnings currently eligible for manual withdrawal. This amount excludes your $150 reserve balance and any pending transactions.</p>
+                <TooltipContent visual="white" size="md">
+                  <p>Earnings currently eligible for manual withdrawal. This amount excludes your $150 reserve balance and any pending transactions. You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
