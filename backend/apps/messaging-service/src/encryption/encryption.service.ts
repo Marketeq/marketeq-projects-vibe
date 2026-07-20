@@ -197,11 +197,17 @@ export class EncryptionService {
 
     const missingThreadIds = threadIds.filter((id) => !rawKeyByThread.has(id));
     if (missingThreadIds.length) {
-      throw new BadRequestException(
-        "Cannot rotate public key because some conversation keys are missing their raw key material.",
+      // Threads without stored raw AES material (e.g. group threads whose key
+      // was distributed client-side) can't be rewrapped server-side. Rotating
+      // the public key must still succeed for the rest — otherwise a single
+      // such thread would permanently block key recovery for every other
+      // thread — so skip them here instead of aborting the whole rotation.
+      console.warn(
+        `[EncryptionService] Skipping rewrap for ${missingThreadIds.length} thread(s) missing raw key material during key rotation for user ${userId}`,
       );
     }
 
+    const rewrapped: ConversationKey[] = [];
     for (const conversationKey of conversationKeys) {
       const rawKey = rawKeyByThread.get(conversationKey.threadId);
       if (!rawKey) continue;
@@ -210,9 +216,12 @@ export class EncryptionService {
         nextPublicKey,
         aesKeyBuffer,
       );
+      rewrapped.push(conversationKey);
     }
 
-    await convKeyRepo.save(conversationKeys);
+    if (rewrapped.length) {
+      await convKeyRepo.save(rewrapped);
+    }
   }
 
   async deleteConversationKeyForUser(threadId: string, userId: string): Promise<void> {
