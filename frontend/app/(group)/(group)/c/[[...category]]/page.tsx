@@ -257,6 +257,15 @@ const marketplaceTalentTabs = [
   "Top-Rated",
 ]
 
+// --- Temporary imports To allow For code to complie after the force push to main ---.
+import { projectSeeds } from "@/data/projects.seed"
+import { serviceSeeds } from "@/data/services.seed"
+import { talentSeeds } from "@/data/talent.seed"
+import { teamSeeds } from "@/data/teams.seed"
+import { buildServiceUrl } from "@/src/lib/urlHelpers"
+import { MarkerPin02 } from "@blend-metrics/icons"
+// --- end temporary imports ---
+
 // Still referenced by the "Browse by Type" section (talent/subcat scope,
 // not this branch) — restored until that section converts.
 const projectCardMocks = projectSeeds
