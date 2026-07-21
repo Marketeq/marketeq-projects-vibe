@@ -703,6 +703,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // (the schedule doesn't precompute a future payout total), so only the date is shown.
   const [scheduleNextRunAt, setScheduleNextRunAt] = React.useState<string | null>(null)
   const [scheduleLoading, setScheduleLoading] = React.useState(true)
+  // Figma "Available for Withdrawal" tooltip claims this amount excludes the
+  // reserve balance — it didn't (was showing raw availableBalanceDisplay) and
+  // the copy hardcoded a literal "$150" regardless of the contractor's actual
+  // configured reserve. Both fixed below using the real reserveUsd.
+  const [reserveUsd, setReserveUsd] = React.useState(0)
   // Sourced from the real payout history (GET /v1/payouts?status=completed) — the most
   // recently settled payout, not a static mock value.
   const [previousPayout, setPreviousPayout] = React.useState<{ amountUsd: string; methodLabel: string | null; settledAt: string } | null>(null)
@@ -1384,7 +1389,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     ;(async () => {
       try {
         const res = await payoutFetch(`/payouts/schedule`)
-        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null) }
+        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null); setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0) }
       } catch (e) { console.error('Failed to fetch payout schedule', e) }
       finally { setScheduleLoading(false) }
     })()
@@ -2927,7 +2932,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   <HelpCircle className="size-4 text-gray-400" />
                 </TooltipTrigger>
                 <TooltipContent visual="white" size="md">
-                  <p>Earnings currently eligible for manual withdrawal. This amount excludes your $150 reserve balance and any pending transactions. You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
+                  <p>Earnings currently eligible for manual withdrawal. {reserveUsd > 0 ? `This amount excludes your $${reserveUsd.toFixed(2)} reserve balance and any pending transactions.` : "This amount excludes any pending transactions."} You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -2957,11 +2962,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 How does billing work?
               </button>
             </div>
-          ) : (
+          ) : (() => {
+            // reserveUsd is in USD (payout-service's schedule) while
+            // availableBalanceDisplay may be FX-converted — apply the same
+            // implicit rate the backend already computed rather than mixing
+            // currencies.
+            const grossUsd = balance ? parseFloat(balance.availableBalance) : 0
+            const grossDisplay = balance ? parseFloat(balance.availableBalanceDisplay) : 0
+            const rate = grossUsd > 0 ? grossDisplay / grossUsd : 1
+            const netDisplay = balance ? Math.max(0, grossDisplay - reserveUsd * rate) : 0
+            return (
             <>
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-3xl font-bold text-dark-blue-400">
-                  <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
+                  <span className="text-base align-top">$</span>{balance ? Math.floor(netDisplay).toLocaleString() : "..."}<span className="text-lg">.{balance ? netDisplay.toFixed(2).split(".")[1] : "00"}</span>
                   {/* US-08: never conditionally hidden, even though the balance
                       might look "off" from what the contractor expects. */}
                   {balance?.stale && (
@@ -3001,7 +3015,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   payoutMinimum, $50 default) — the /transfer-funds page still enforces this itself,
                   this is only a client-side UX guard against an obviously-doomed flow. */}
               {(() => {
-                const withdrawableUsd = balance ? parseFloat(balance.availableBalanceDisplay) : null
+                const withdrawableUsd = balance ? netDisplay : null
                 const belowMinimum = withdrawableUsd !== null && withdrawableUsd < 50
                 const isLoading = withdrawableUsd === null
                 return (
@@ -3021,7 +3035,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 )
               })()}
             </>
-          )}
+            )
+          })()}
         </div>
 
         {/* Recent Activity — derived from real payout history (no dedicated
