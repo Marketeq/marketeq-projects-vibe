@@ -134,7 +134,7 @@ export class MagicLinkService {
     payoutRequestId: string,
   ): Promise<{
     payoutRequestId: string; status: string; message: string;
-    amountUsd?: string; netAmountUsd?: string; currency?: string;
+    amountUsd?: string; netAmountUsd?: string; feeUsd?: string; currency?: string;
     methodType?: string; methodLabel?: string | null;
   }> {
     // 1. Hash incoming token — never compare raw values
@@ -200,8 +200,13 @@ export class MagicLinkService {
     // AC-20.01: the success screen needs amount/method regardless of branch below,
     // so build this once and reuse it for both the idempotent-replay and fresh-verify returns.
     const detail = {
-      amountUsd: payout.amountUsd,
-      netAmountUsd: payout.netAmountUsd,
+      // amount_usd/net_amount_usd are numeric(18,8) — round to 2dp for display.
+      amountUsd: parseFloat(payout.amountUsd).toFixed(2),
+      netAmountUsd: parseFloat(payout.netAmountUsd).toFixed(2),
+      // speed itself isn't persisted (only used transiently to compute feeUsd
+      // at initiate() time) — feeUsd > 0 implies instant, matching that same
+      // derivation, so this is accurate rather than a guess.
+      feeUsd: parseFloat(payout.feeUsd).toFixed(2),
       currency: payout.currency,
       methodType: payout.depositMethod?.methodType,
       methodLabel: payout.depositMethod?.displayLabel ?? payout.depositMethod?.nickname ?? null,

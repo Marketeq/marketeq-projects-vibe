@@ -1885,7 +1885,14 @@ export function Chats({
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
                   <span className="text-sm text-dark-blue-400">
-                    {receiverUser.recentJobTitle || receiverUser.jobTitles?.[0]}
+                    {receiverUser.recentJobTitle ||
+                      (typeof receiverUser.jobTitles?.[0] === "string"
+                        ? receiverUser.jobTitles?.[0]
+                        : (
+                            receiverUser.jobTitles?.[0] as unknown as {
+                              jobTitle?: string
+                            }
+                          )?.jobTitle)}
                   </span>
                 </>
               ) : null}

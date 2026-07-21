@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
 import { MagicLinkToken }     from '../entities/magic-link-token.entity';
+import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
 import { AuditService }       from '../audit/audit.service';
@@ -36,6 +37,8 @@ export class PayoutService {
     private readonly methodRepo: Repository<DepositMethod>,
     @InjectRepository(MagicLinkToken)
     private readonly mlTokenRepo: Repository<MagicLinkToken>,
+    @InjectRepository(PayoutSchedule)
+    private readonly scheduleRepo: Repository<PayoutSchedule>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
@@ -120,6 +123,8 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE', { availableBalanceUsd: available.toFixed(2) });
     }
 
+    await this.checkReserveBalance(contractorId, amount, available, dto.ignoreReserve);
+
     const instantFee = parseFloat(INSTANT_FEE);
     const standardNet = amount;
     const instantNet = amount - instantFee;
@@ -165,7 +170,7 @@ export class PayoutService {
   }
 
   // ─── Step 4: Initiate ─────────────────────────────────────────
-  async initiate(contractorId: string, dto: InitiatePayoutDto): Promise<InitiatePayoutResponseDto> {
+  async initiate(contractorId: string, dto: InitiatePayoutDto, contractorEmail?: string): Promise<InitiatePayoutResponseDto> {
     // PS-19 §3.1: Idempotency check
     const existing = await this.payoutRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) return { ...this.toInitiateResponse(existing), replayed: true };
@@ -188,6 +193,8 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE',
         { availableBalanceUsd: balance ? parseFloat(balance.availableBalance).toFixed(2) : undefined });
     }
+
+    await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
     // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
     // contractor who passes the pre-flight gate can't still be blocked here (or
@@ -274,7 +281,7 @@ export class PayoutService {
       this.logger.error('Magic link send failed', err.message),
     );
 
-    return this.toInitiateResponseFull(request, expiresAt);
+    return this.toInitiateResponseFull(request, expiresAt, contractorEmail);
   }
 
   // ─── PS-19 §3.3: Execution-time balance re-check ─────────────
@@ -440,24 +447,33 @@ export class PayoutService {
   }
 
   // ─── US-27: GET /v1/payouts — paginated history list ──────────
-  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string) {
+  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string, search?: string) {
     const clampedSize = Math.min(Math.max(pageSize, 1), 50);
     const clampedPage = Math.max(page, 1);
 
+    const qb = this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId });
+
     // SCR-16: status filter — only accept real enum values, silently ignore
     // anything else rather than erroring on an unrecognised query param.
-    const where: any = { contractorId };
     if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
-      where.status = status as PayoutStatus;
+      qb.andWhere('p.status = :status', { status });
     }
 
-    const [rows, totalCount] = await this.payoutRepo.findAndCount({
-      where,
-      relations: ['depositMethod'],
-      order: { createdAt: 'DESC' },
-      skip: (clampedPage - 1) * clampedSize,
-      take: clampedSize,
-    });
+    // Figma "Find transactions" search on the Payouts tab — matches against
+    // the external account label (e.g. "Chase Bank"), same field toHistoryItem
+    // exposes as methodLabel.
+    if (search && search.trim().length >= 2) {
+      qb.andWhere('(LOWER(dm.displayLabel) LIKE :term OR LOWER(dm.nickname) LIKE :term)',
+        { term: `%${search.trim().toLowerCase()}%` });
+    }
+
+    const [rows, totalCount] = await qb
+      .orderBy('p.createdAt', 'DESC')
+      .skip((clampedPage - 1) * clampedSize)
+      .take(clampedSize)
+      .getManyAndCount();
 
     return {
       payouts: rows.map(r => this.toHistoryItem(r)),
@@ -499,9 +515,14 @@ export class PayoutService {
   private toHistoryItem(r: PayoutRequest) {
     return {
       id: r.id,
-      amountUsd: r.amountUsd,
-      feeUsd: r.feeUsd,
-      netAmountUsd: r.netAmountUsd,
+      // amount_usd/fee_usd/net_amount_usd are numeric(18,8) columns — pg
+      // returns them as full-precision strings (e.g. "650.00000000"). Every
+      // other money value shown to the contractor is rounded to 2dp
+      // (validateAmount/initiate already do this); this read path was the
+      // one place that didn't.
+      amountUsd: parseFloat(r.amountUsd).toFixed(2),
+      feeUsd: parseFloat(r.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(r.netAmountUsd).toFixed(2),
       currency: r.currency,
       status: r.status,
       trigger: r.trigger,
@@ -518,31 +539,62 @@ export class PayoutService {
     return {
       payoutRequestId: request.id,
       status: request.status,
-      amountUsd: request.amountUsd,
-      feeUsd: request.feeUsd,
-      netAmountUsd: request.netAmountUsd,
+      amountUsd: parseFloat(request.amountUsd).toFixed(2),
+      feeUsd: parseFloat(request.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
       magicLinkSentTo: '',
       magicLinkExpiresAt: '',
       message: 'A verification link has been sent to your email.',
     };
   }
 
-  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date): InitiatePayoutResponseDto {
+  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date, contractorEmail?: string): InitiatePayoutResponseDto {
     return {
       payoutRequestId: request.id,
       status: request.status,
-      amountUsd: request.amountUsd,
-      feeUsd: request.feeUsd,
-      netAmountUsd: request.netAmountUsd,
-      magicLinkSentTo: this.maskEmail(request.contractorId),
+      amountUsd: parseFloat(request.amountUsd).toFixed(2),
+      feeUsd: parseFloat(request.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
+      // Was masking contractorId (a UUID, never contains "@") instead of the
+      // contractor's actual email — always rendered as the maskEmail()
+      // fallback "***" on the "Check your email" screen. The real address is
+      // already on the JWT (decoded in JwtAuthGuard as req.user.email), no
+      // extra service call needed — just wasn't threaded through here.
+      magicLinkSentTo: this.maskEmail(contractorEmail ?? ''),
       magicLinkExpiresAt: expiresAt.toISOString(),
       message: 'A verification link has been sent to your email. Please click the link to confirm your withdrawal.',
     };
   }
 
   private maskEmail(email: string): string {
-    if (!email || !email.includes('@')) return '***';
+    if (!email || !email.includes('@')) return 'your email';
     const [local, domain] = email.split('@');
     return `${local[0]}***@${domain}`;
+  }
+
+  // Figma "Your withdrawal was declined — reserve balance is too low": an
+  // ad-hoc withdrawal previously had no reserve awareness at all (reserveUsd
+  // on payout_schedules only applied to the scheduled-payout engine's own
+  // calculatePayoutAmount() in schedule.service.ts). A contractor could
+  // withdraw their entire available balance manually, silently defeating the
+  // reserve they configured. This enforces the same floor for ad-hoc
+  // withdrawals, with an explicit, one-time bypass (ignoreReserve) rather
+  // than a hard, unrecoverable block — matches the Figma copy ("You can
+  // either ignore the reserve balance for this transfer, or edit the
+  // reserve amount in your payout settings").
+  private async checkReserveBalance(
+    contractorId: string, amount: number, availableBalance: number, ignoreReserve?: boolean,
+  ): Promise<void> {
+    if (ignoreReserve) return;
+    const schedule = await this.scheduleRepo.findOne({ where: { contractorId } });
+    const reserve = schedule ? parseFloat(schedule.reserveUsd) : 0;
+    if (reserve <= 0) return;
+    if (availableBalance - reserve < amount) {
+      throw new PayoutError(
+        'Your reserve balance is too low for this withdrawal.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_RESERVE_BALANCE_TOO_LOW',
+        { reserveUsd: reserve.toFixed(2), availableBalanceUsd: availableBalance.toFixed(2) },
+      );
+    }
   }
 }

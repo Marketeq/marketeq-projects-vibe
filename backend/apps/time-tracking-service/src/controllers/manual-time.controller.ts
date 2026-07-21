@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { ManualTimeService } from '../services/manual-time.service';
 import { EventsService } from '../services/events.service';
+import { EarningsSyncService } from '../services/earnings-sync.service';
 import { CreateManualTimeDto, ReviewManualTimeDto } from '../dtos/create-manual-time.dto';
 
 @Controller('manual-time')
@@ -22,6 +23,7 @@ export class ManualTimeController {
   constructor(
     private readonly manualTimeService: ManualTimeService,
     private readonly eventsService: EventsService,
+    private readonly earningsSyncService: EarningsSyncService,
   ) {}
 
   @Post()
@@ -67,6 +69,18 @@ export class ManualTimeController {
 
     if (dto.status === 'approved') {
       this.eventsService.hoursApproved(entry.userId, entry.id, Math.round(hours * 100) / 100);
+      // Sync into earnings — this is the manual-entry equivalent of a
+      // confirmed screenshot batch (US-XX: "Manual" entry-type filter on
+      // the Earnings tab was previously always empty since nothing ever
+      // published a manual-entry-confirmed event).
+      this.earningsSyncService.syncManualTime({
+        id: entry.id,
+        userId: entry.userId,
+        contractId: entry.contractId,
+        taskId: entry.taskId,
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+      });
     } else if (dto.status === 'rejected') {
       this.eventsService.manualTimeRejected(entry.id, entry.userId, req.user.sub, dto.comment ?? null);
     }

@@ -62,13 +62,29 @@ export class ScheduleExecutionCron {
 
     const startTime = Date.now();
     try {
-      const due = await this.scheduleRepo.find({
+      const dueRaw = await this.scheduleRepo.find({
         where: {
           isActive: true,
           pausedAt: IsNull(),
           nextExecutionAt: LessThanOrEqual(new Date()),
         },
       });
+
+      // US-72: a custom schedule's optional start/end date window — skip
+      // (not deactivate) schedules whose window hasn't opened yet, and
+      // deactivate ones whose window has closed so they stop coming up as
+      // due every tick.
+      const now = new Date();
+      const due: PayoutSchedule[] = [];
+      for (const schedule of dueRaw) {
+        if (schedule.startDate && schedule.startDate > now) continue;
+        if (schedule.endDate && schedule.endDate < now) {
+          schedule.isActive = false;
+          await this.scheduleRepo.save(schedule);
+          continue;
+        }
+        due.push(schedule);
+      }
 
       this.logger.log(`Schedule tick: ${due.length} schedules due`);
 

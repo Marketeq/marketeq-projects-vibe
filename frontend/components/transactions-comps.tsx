@@ -6,12 +6,15 @@ import { SVGProps, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
-import { getEarningsSummary, getEarnings, getBalance, type EarningsSummary, type EarningsListResponse, type BalanceResponse } from "@/service/http/earnings"
+import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { formatDistanceToNowStrict } from "date-fns"
+import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
+import { QRCodeSVG } from "qrcode.react"
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   BarChartSquare02,
@@ -32,6 +35,7 @@ import {
   Mail01,
   MoreHorizontal,
   Plus,
+  RefreshCcw01,
   Search,
   Settings02,
   Trash01,
@@ -87,6 +91,7 @@ import {
 } from "@/components/ui"
 import { ToggleGroupRoot, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Label } from "@/components/ui/label/label"
+import { Accordion, AccordionItem, AccordionTrigger, DisclosureContent } from "@/components/ui/accordion"
 
 // ─── SVG Icons (inline, from designs) ───────────────────────────────────
 
@@ -122,8 +127,8 @@ const PaypalIcon = ({ className }: { className?: string }) => (
 )
 
 const WiseIcon = ({ className }: { className?: string }) => (
-  <div className={cn("size-10 rounded-full bg-[#9FE870] flex items-center justify-center overflow-hidden", className)}>
-    <img src="https://cdn.simpleicons.org/wise/163300" className="w-3 h-3 object-contain" alt="Wise" />
+  <div className={cn("size-10 rounded-full bg-[#9FE870] flex items-center justify-center overflow-hidden shrink-0", className)}>
+    <img src="https://cdn.simpleicons.org/wise/163300" className="w-1/2 h-1/2 object-contain" alt="Wise" />
   </div>
 )
 
@@ -132,6 +137,40 @@ const PayoneerIcon = ({ className }: { className?: string }) => (
     <img src="/bank-logos/payoneer.png" className="w-9 h-9 object-contain" alt="Payoneer" />
   </div>
 )
+
+// ─── Crypto wallet provider display metadata (US-09/PS-11). Fee/token text
+// is cosmetic marketing copy (mirrors the existing hardcoded "Transfer in
+// 1-3 business days" pattern above), matching Figma exactly — not derived
+// from the backend registry, which only carries the technical network/token
+// support matrix. Icons use real brand logos where Simple Icons hosts them
+// (Binance, Coinbase, Trezor — confirmed reachable); the rest don't have a
+// hosted brand icon available, so they fall back to a colored monogram
+// badge in the provider's brand color rather than one shared placeholder
+// icon reused across every row.
+const CRYPTO_PROVIDER_META: Record<string, { tokensText: string; feeText: string; bg: string; letter: string; cdnSlug?: string }> = {
+  RAMP:       { tokensText: 'BTC, ETH, USDC',        feeText: '0.49–2.9% + network fee', bg: '#0FA968', letter: 'R' },
+  TRANSAK:    { tokensText: '100+ tokens supported', feeText: '0.5–1.5% + network fee',   bg: '#2F6FED', letter: 'T' },
+  CRYPTO_COM: { tokensText: '100+ tokens supported', feeText: '0.5–1.5% + network fee',   bg: '#12284D', letter: 'C' },
+  COINBASE:   { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#0052FF', letter: 'C', cdnSlug: 'coinbase' },
+  METAMASK:   { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#F6851B', letter: 'M' },
+  LEDGER:     { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#000000', letter: 'L' },
+  TREZOR:     { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#0A0A0A', letter: 'T', cdnSlug: 'trezor' },
+  KRAKEN:     { tokensText: 'BTC, ETH',              feeText: '0.9% + network fee',       bg: '#5741D9', letter: 'K' },
+  BINANCE:    { tokensText: 'BTC, ETH, USDT',        feeText: '0–0.1% + P2P margin',      bg: '#F0B90B', letter: 'B', cdnSlug: 'binance' },
+}
+const CryptoProviderIcon = ({ provider, className }: { provider: string; className?: string }) => {
+  const meta = CRYPTO_PROVIDER_META[provider]
+  if (!meta) return <div className={cn("size-10 rounded-lg bg-gray-100 shrink-0", className)} />
+  return (
+    <div className={cn("size-10 rounded-lg flex items-center justify-center overflow-hidden shrink-0", className)} style={{ backgroundColor: meta.bg }}>
+      {meta.cdnSlug ? (
+        <img src={`https://cdn.simpleicons.org/${meta.cdnSlug}/ffffff`} className="w-1/2 h-1/2 object-contain" alt={meta.letter} />
+      ) : (
+        <span className="text-white text-sm font-bold">{meta.letter}</span>
+      )}
+    </div>
+  )
+}
 
 const BANK_LOGOS: Record<string, string> = {
   'chase':           '/bank-logos/chase.png',
@@ -144,6 +183,17 @@ const BANK_LOGOS: Record<string, string> = {
   'td bank':         '/bank-logos/tdbank.png',
   'regions':         '/bank-logos/regions.png',
   'capital one':     '/bank-logos/capitalone.png',
+}
+
+// US-01 Last Updated Label: "Updated X min ago" from a cachedAt timestamp.
+function formatRelativeMinutes(iso: string, nowMs: number): string {
+  const diffMs = nowMs - new Date(iso).getTime()
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return "Updated just now"
+  if (mins === 1) return "Updated 1 min ago"
+  if (mins < 60) return `Updated ${mins} min ago`
+  const hrs = Math.floor(mins / 60)
+  return `Updated ${hrs} hr${hrs === 1 ? "" : "s"} ago`
 }
 
 function BankLogo({ bankName, size = 48 }: { bankName: string; size?: number }) {
@@ -255,9 +305,147 @@ const getStripeJs = () => {
 
 // ─── Global bank (US-04) — country drives required fields & currency ────────
 // Mirrors backend/apps/payout-service/src/methods/bank-validation.service.ts's
-// per-region field requirements (AC-04.02/04.03) and format checks (AC-04.04/04.05)
-// for the subset of countries this form exposes.
-const BANK_COUNTRY_CURRENCY: Record<string, string> = { US: 'USD', GB: 'GBP', IN: 'INR', AU: 'AUD', CA: 'CAD' }
+// per-region field requirements (AC-04.02/04.03) and format checks (AC-04.04/04.05).
+// Every country below maps to a real backend-validated region — nothing here
+// is selectable without matching server-side support.
+const SEPA_COUNTRIES = new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','CH','MC','SM','AD','VA'])
+const UK_COUNTRIES = new Set(['GB','GG','JE','IM'])
+const GCC_COUNTRIES = new Set(['AE','SA','QA','BH','KW','OM'])
+const BACS_COUNTRIES = new Set(['BR','MX','ZA','NG','KE','PK','BD','PH','ID','VN','TH','MY'])
+const OFAC_BLOCKED_COUNTRIES = new Set(['CU','IR','KP','SD','SY'])
+const SEPA_CURRENCY_MAP: Record<string, string> = { BG:'BGN', CZ:'CZK', DK:'DKK', HU:'HUF', PL:'PLN', RO:'RON', SE:'SEK', IS:'ISK', NO:'NOK', CH:'CHF', LI:'CHF' }
+const GCC_CURRENCY_MAP: Record<string, string> = { AE:'AED', SA:'SAR', QA:'QAR', BH:'BHD', KW:'KWD', OM:'OMR' }
+
+type BankRegion = 'US' | 'GB' | 'IN' | 'AU' | 'JP' | 'CA' | 'CN' | 'RU' | 'MX' | 'SEPA' | 'GCC' | 'BACS' | 'SWIFT'
+function detectBankRegion(country: string): BankRegion {
+  const c = (country || '').toUpperCase()
+  if (c === 'US') return 'US'
+  if (c === 'IN') return 'IN'
+  if (c === 'AU') return 'AU'
+  if (c === 'JP') return 'JP'
+  if (c === 'CA') return 'CA'
+  if (c === 'CN') return 'CN'
+  if (c === 'RU') return 'RU'
+  if (c === 'MX') return 'MX'
+  if (UK_COUNTRIES.has(c)) return 'GB'
+  if (SEPA_COUNTRIES.has(c)) return 'SEPA'
+  if (GCC_COUNTRIES.has(c)) return 'GCC'
+  if (BACS_COUNTRIES.has(c)) return 'BACS'
+  return 'SWIFT'
+}
+function bankCountryCurrency(country: string): string {
+  const region = detectBankRegion(country)
+  const c = (country || '').toUpperCase()
+  switch (region) {
+    case 'US': return 'USD'
+    case 'GB': return 'GBP'
+    case 'IN': return 'INR'
+    case 'AU': return 'AUD'
+    case 'JP': return 'JPY'
+    case 'CA': return 'CAD'
+    case 'CN': return 'CNY'
+    case 'RU': return 'RUB'
+    case 'MX': return 'MXN'
+    case 'SEPA': return SEPA_CURRENCY_MAP[c] ?? 'EUR'
+    case 'GCC': return GCC_CURRENCY_MAP[c] ?? 'USD'
+    default: return 'USD'
+  }
+}
+// Full ISO 3166-1 country list, alphabetized to match Figma. OFAC-sanctioned
+// countries are still listed (so the picker isn't mysteriously missing them)
+// but selecting one surfaces ERR_DEPOSIT_COUNTRY_RESTRICTED from the backend,
+// same as bank-validation.service.ts's own OFAC check.
+const ALL_COUNTRIES: { code: string; name: string; flag: string }[] = [
+  { code: 'AF', name: 'Afghanistan', flag: '🇦🇫' }, { code: 'AL', name: 'Albania', flag: '🇦🇱' },
+  { code: 'DZ', name: 'Algeria', flag: '🇩🇿' }, { code: 'AD', name: 'Andorra', flag: '🇦🇩' },
+  { code: 'AO', name: 'Angola', flag: '🇦🇴' }, { code: 'AG', name: 'Antigua and Barbuda', flag: '🇦🇬' },
+  { code: 'AR', name: 'Argentina', flag: '🇦🇷' }, { code: 'AM', name: 'Armenia', flag: '🇦🇲' },
+  { code: 'AU', name: 'Australia', flag: '🇦🇺' }, { code: 'AT', name: 'Austria', flag: '🇦🇹' },
+  { code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿' }, { code: 'BS', name: 'Bahamas', flag: '🇧🇸' },
+  { code: 'BH', name: 'Bahrain', flag: '🇧🇭' }, { code: 'BD', name: 'Bangladesh', flag: '🇧🇩' },
+  { code: 'BB', name: 'Barbados', flag: '🇧🇧' }, { code: 'BY', name: 'Belarus', flag: '🇧🇾' },
+  { code: 'BE', name: 'Belgium', flag: '🇧🇪' }, { code: 'BZ', name: 'Belize', flag: '🇧🇿' },
+  { code: 'BJ', name: 'Benin', flag: '🇧🇯' }, { code: 'BT', name: 'Bhutan', flag: '🇧🇹' },
+  { code: 'BO', name: 'Bolivia', flag: '🇧🇴' }, { code: 'BA', name: 'Bosnia and Herzegovina', flag: '🇧🇦' },
+  { code: 'BW', name: 'Botswana', flag: '🇧🇼' }, { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+  { code: 'BN', name: 'Brunei', flag: '🇧🇳' }, { code: 'BG', name: 'Bulgaria', flag: '🇧🇬' },
+  { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫' }, { code: 'BI', name: 'Burundi', flag: '🇧🇮' },
+  { code: 'KH', name: 'Cambodia', flag: '🇰🇭' }, { code: 'CM', name: 'Cameroon', flag: '🇨🇲' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' }, { code: 'CV', name: 'Cape Verde', flag: '🇨🇻' },
+  { code: 'CF', name: 'Central African Republic', flag: '🇨🇫' }, { code: 'TD', name: 'Chad', flag: '🇹🇩' },
+  { code: 'CL', name: 'Chile', flag: '🇨🇱' }, { code: 'CN', name: 'China', flag: '🇨🇳' },
+  { code: 'CO', name: 'Colombia', flag: '🇨🇴' }, { code: 'KM', name: 'Comoros', flag: '🇰🇲' },
+  { code: 'CG', name: 'Congo', flag: '🇨🇬' }, { code: 'CR', name: 'Costa Rica', flag: '🇨🇷' },
+  { code: 'HR', name: 'Croatia', flag: '🇭🇷' }, { code: 'CU', name: 'Cuba', flag: '🇨🇺' },
+  { code: 'CY', name: 'Cyprus', flag: '🇨🇾' }, { code: 'CZ', name: 'Czech Republic', flag: '🇨🇿' },
+  { code: 'DK', name: 'Denmark', flag: '🇩🇰' }, { code: 'DJ', name: 'Djibouti', flag: '🇩🇯' },
+  { code: 'DM', name: 'Dominica', flag: '🇩🇲' }, { code: 'DO', name: 'Dominican Republic', flag: '🇩🇴' },
+  { code: 'EC', name: 'Ecuador', flag: '🇪🇨' }, { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+  { code: 'SV', name: 'El Salvador', flag: '🇸🇻' }, { code: 'EE', name: 'Estonia', flag: '🇪🇪' },
+  { code: 'SZ', name: 'Eswatini', flag: '🇸🇿' }, { code: 'ET', name: 'Ethiopia', flag: '🇪🇹' },
+  { code: 'FJ', name: 'Fiji', flag: '🇫🇯' }, { code: 'FI', name: 'Finland', flag: '🇫🇮' },
+  { code: 'FR', name: 'France', flag: '🇫🇷' }, { code: 'GA', name: 'Gabon', flag: '🇬🇦' },
+  { code: 'GM', name: 'Gambia', flag: '🇬🇲' }, { code: 'GE', name: 'Georgia', flag: '🇬🇪' },
+  { code: 'DE', name: 'Germany', flag: '🇩🇪' }, { code: 'GH', name: 'Ghana', flag: '🇬🇭' },
+  { code: 'GR', name: 'Greece', flag: '🇬🇷' }, { code: 'GD', name: 'Grenada', flag: '🇬🇩' },
+  { code: 'GT', name: 'Guatemala', flag: '🇬🇹' }, { code: 'GN', name: 'Guinea', flag: '🇬🇳' },
+  { code: 'GY', name: 'Guyana', flag: '🇬🇾' }, { code: 'HT', name: 'Haiti', flag: '🇭🇹' },
+  { code: 'HN', name: 'Honduras', flag: '🇭🇳' }, { code: 'HU', name: 'Hungary', flag: '🇭🇺' },
+  { code: 'IS', name: 'Iceland', flag: '🇮🇸' }, { code: 'IN', name: 'India', flag: '🇮🇳' },
+  { code: 'ID', name: 'Indonesia', flag: '🇮🇩' }, { code: 'IR', name: 'Iran', flag: '🇮🇷' },
+  { code: 'IQ', name: 'Iraq', flag: '🇮🇶' }, { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
+  { code: 'IL', name: 'Israel', flag: '🇮🇱' }, { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+  { code: 'JM', name: 'Jamaica', flag: '🇯🇲' }, { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+  { code: 'JO', name: 'Jordan', flag: '🇯🇴' }, { code: 'KZ', name: 'Kazakhstan', flag: '🇰🇿' },
+  { code: 'KE', name: 'Kenya', flag: '🇰🇪' }, { code: 'KW', name: 'Kuwait', flag: '🇰🇼' },
+  { code: 'KG', name: 'Kyrgyzstan', flag: '🇰🇬' }, { code: 'LA', name: 'Laos', flag: '🇱🇦' },
+  { code: 'LV', name: 'Latvia', flag: '🇱🇻' }, { code: 'LB', name: 'Lebanon', flag: '🇱🇧' },
+  { code: 'LS', name: 'Lesotho', flag: '🇱🇸' }, { code: 'LR', name: 'Liberia', flag: '🇱🇷' },
+  { code: 'LY', name: 'Libya', flag: '🇱🇾' }, { code: 'LI', name: 'Liechtenstein', flag: '🇱🇮' },
+  { code: 'LT', name: 'Lithuania', flag: '🇱🇹' }, { code: 'LU', name: 'Luxembourg', flag: '🇱🇺' },
+  { code: 'MG', name: 'Madagascar', flag: '🇲🇬' }, { code: 'MW', name: 'Malawi', flag: '🇲🇼' },
+  { code: 'MY', name: 'Malaysia', flag: '🇲🇾' }, { code: 'MV', name: 'Maldives', flag: '🇲🇻' },
+  { code: 'ML', name: 'Mali', flag: '🇲🇱' }, { code: 'MT', name: 'Malta', flag: '🇲🇹' },
+  { code: 'MR', name: 'Mauritania', flag: '🇲🇷' }, { code: 'MU', name: 'Mauritius', flag: '🇲🇺' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' }, { code: 'MD', name: 'Moldova', flag: '🇲🇩' },
+  { code: 'MC', name: 'Monaco', flag: '🇲🇨' }, { code: 'MN', name: 'Mongolia', flag: '🇲🇳' },
+  { code: 'ME', name: 'Montenegro', flag: '🇲🇪' }, { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
+  { code: 'MZ', name: 'Mozambique', flag: '🇲🇿' }, { code: 'MM', name: 'Myanmar', flag: '🇲🇲' },
+  { code: 'NA', name: 'Namibia', flag: '🇳🇦' }, { code: 'NP', name: 'Nepal', flag: '🇳🇵' },
+  { code: 'NL', name: 'Netherlands', flag: '🇳🇱' }, { code: 'NZ', name: 'New Zealand', flag: '🇳🇿' },
+  { code: 'NI', name: 'Nicaragua', flag: '🇳🇮' }, { code: 'NE', name: 'Niger', flag: '🇳🇪' },
+  { code: 'NG', name: 'Nigeria', flag: '🇳🇬' }, { code: 'MK', name: 'North Macedonia', flag: '🇲🇰' },
+  { code: 'NO', name: 'Norway', flag: '🇳🇴' }, { code: 'OM', name: 'Oman', flag: '🇴🇲' },
+  { code: 'PK', name: 'Pakistan', flag: '🇵🇰' }, { code: 'PA', name: 'Panama', flag: '🇵🇦' },
+  { code: 'PG', name: 'Papua New Guinea', flag: '🇵🇬' }, { code: 'PY', name: 'Paraguay', flag: '🇵🇾' },
+  { code: 'PE', name: 'Peru', flag: '🇵🇪' }, { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+  { code: 'PL', name: 'Poland', flag: '🇵🇱' }, { code: 'PT', name: 'Portugal', flag: '🇵🇹' },
+  { code: 'QA', name: 'Qatar', flag: '🇶🇦' }, { code: 'RO', name: 'Romania', flag: '🇷🇴' },
+  { code: 'RU', name: 'Russia', flag: '🇷🇺' }, { code: 'RW', name: 'Rwanda', flag: '🇷🇼' },
+  { code: 'WS', name: 'Samoa', flag: '🇼🇸' }, { code: 'SM', name: 'San Marino', flag: '🇸🇲' },
+  { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦' }, { code: 'SN', name: 'Senegal', flag: '🇸🇳' },
+  { code: 'RS', name: 'Serbia', flag: '🇷🇸' }, { code: 'SC', name: 'Seychelles', flag: '🇸🇨' },
+  { code: 'SL', name: 'Sierra Leone', flag: '🇸🇱' }, { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+  { code: 'SK', name: 'Slovakia', flag: '🇸🇰' }, { code: 'SI', name: 'Slovenia', flag: '🇸🇮' },
+  { code: 'SO', name: 'Somalia', flag: '🇸🇴' }, { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+  { code: 'KR', name: 'South Korea', flag: '🇰🇷' }, { code: 'SS', name: 'South Sudan', flag: '🇸🇸' },
+  { code: 'ES', name: 'Spain', flag: '🇪🇸' }, { code: 'LK', name: 'Sri Lanka', flag: '🇱🇰' },
+  { code: 'SD', name: 'Sudan', flag: '🇸🇩' }, { code: 'SR', name: 'Suriname', flag: '🇸🇷' },
+  { code: 'SE', name: 'Sweden', flag: '🇸🇪' }, { code: 'CH', name: 'Switzerland', flag: '🇨🇭' },
+  { code: 'SY', name: 'Syria', flag: '🇸🇾' }, { code: 'TW', name: 'Taiwan', flag: '🇹🇼' },
+  { code: 'TJ', name: 'Tajikistan', flag: '🇹🇯' }, { code: 'TZ', name: 'Tanzania', flag: '🇹🇿' },
+  { code: 'TH', name: 'Thailand', flag: '🇹🇭' }, { code: 'TG', name: 'Togo', flag: '🇹🇬' },
+  { code: 'TO', name: 'Tonga', flag: '🇹🇴' }, { code: 'TT', name: 'Trinidad and Tobago', flag: '🇹🇹' },
+  { code: 'TN', name: 'Tunisia', flag: '🇹🇳' }, { code: 'TR', name: 'Turkey', flag: '🇹🇷' },
+  { code: 'TM', name: 'Turkmenistan', flag: '🇹🇲' }, { code: 'UG', name: 'Uganda', flag: '🇺🇬' },
+  { code: 'UA', name: 'Ukraine', flag: '🇺🇦' }, { code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' }, { code: 'US', name: 'United States', flag: '🇺🇸' },
+  { code: 'UY', name: 'Uruguay', flag: '🇺🇾' }, { code: 'UZ', name: 'Uzbekistan', flag: '🇺🇿' },
+  { code: 'VU', name: 'Vanuatu', flag: '🇻🇺' }, { code: 'VA', name: 'Vatican City', flag: '🇻🇦' },
+  { code: 'VE', name: 'Venezuela', flag: '🇻🇪' }, { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
+  { code: 'YE', name: 'Yemen', flag: '🇾🇪' }, { code: 'ZM', name: 'Zambia', flag: '🇿🇲' },
+  { code: 'ZW', name: 'Zimbabwe', flag: '🇿🇼' },
+]
 const isValidAbaRouting = (routing: string) => {
   if (!/^\d{9}$/.test(routing)) return false
   const d = routing.split('').map(Number)
@@ -268,6 +456,58 @@ const isValidIfsc = (v: string) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.toUpperCase()
 const isValidBsb = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ''))
 const isValidCaInstitution = (v: string) => /^\d{3}$/.test(v)
 const isValidCaTransit = (v: string) => /^\d{5}$/.test(v)
+const isValidJpBankCode = (v: string) => /^\d{4}$/.test(v)
+const isValidJpBranchCode = (v: string) => /^\d{3}$/.test(v)
+const isValidSwiftBic = (v: string) => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v.toUpperCase())
+const isValidIban = (iban: string) => {
+  const clean = iban.replace(/\s/g, '').toUpperCase()
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return false
+  const rearranged = clean.slice(4) + clean.slice(0, 4)
+  const numeric = rearranged.split('').map(c => (isNaN(Number(c)) ? (c.charCodeAt(0) - 55).toString() : c)).join('')
+  let remainder = BigInt(0)
+  for (const chunk of numeric.match(/.{1,9}/g) ?? []) remainder = BigInt(remainder.toString() + chunk) % BigInt(97)
+  return remainder === BigInt(1)
+}
+const isValidClabe = (clabe: string) => {
+  if (!/^\d{18}$/.test(clabe)) return false
+  const d = clabe.split('').map(Number)
+  const weights = [3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7]
+  const sum = weights.reduce((acc, w, i) => acc + (w * d[i]) % 10, 0)
+  return (10 - (sum % 10)) % 10 === d[17]
+}
+const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
+const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
+const isValidBik = (v: string) => /^\d{9}$/.test(v)
+const isValidRuAccountNumber = (v: string) => /^\d{20}$/.test(v)
+
+// US-63: bank-validation.service.ts throws these exact ERR_BANK_* codes as
+// errorCode — mapped here to a friendly, field-specific checklist instead of
+// showing the raw code or a generic "invalid details" message.
+const BANK_FIELD_ERROR_MESSAGES: Record<string, string> = {
+  ERR_BANK_ACCOUNT_NAME_INVALID: 'Account holder name is required (max 100 characters).',
+  ERR_BANK_REGION_FIELD_MISMATCH: 'Select a country before continuing.',
+  ERR_BANK_ROUTING_INVALID: 'Routing number must be a valid 9-digit ABA number.',
+  ERR_BANK_ACCOUNT_NUMBER_INVALID: 'Account number format is invalid for the selected country.',
+  ERR_BANK_CURRENCY_MISMATCH: 'Currency does not match what’s expected for this country.',
+  ERR_BANK_IBAN_INVALID: 'IBAN is invalid — double-check for typos.',
+  ERR_BANK_SWIFT_INVALID: 'SWIFT/BIC code is invalid.',
+  ERR_BANK_SORT_CODE_INVALID: 'Sort code must be 6 digits.',
+  ERR_BANK_IFSC_INVALID: 'IFSC code is invalid — format is 4 letters, 0, then 6 characters.',
+  ERR_BANK_BSB_INVALID: 'BSB number must be 6 digits.',
+  ERR_BANK_CODE_INVALID: 'Bank code must be 4 digits.',
+  ERR_BANK_BRANCH_CODE_INVALID: 'Branch code must be 3 digits.',
+  ERR_BANK_INSTITUTION_INVALID: 'Institution number must be 3 digits.',
+  ERR_BANK_TRANSIT_INVALID: 'Transit number must be 5 digits.',
+  ERR_BANK_CLABE_INVALID: 'CLABE must be 18 digits.',
+  ERR_BANK_CNAPS_INVALID: 'CNAPS code must be 12 digits.',
+  ERR_BANK_BIK_INVALID: 'BIK must be 9 digits.',
+  ERR_DEPOSIT_COUNTRY_RESTRICTED: 'Payouts to this country are not currently supported.',
+  ERR_DEPOSIT_METHOD_DUPLICATE: 'This account is already linked.',
+  ERR_DEPOSIT_METHOD_VERIFIED_LOCKED: 'A verified account can’t be edited — remove it and add a new one instead.',
+  ERR_DEPOSIT_METHOD_NOT_EDITABLE: 'Bank details can only be edited for manually-added bank accounts.',
+}
+const bankErrorMessage = (data: any): string =>
+  BANK_FIELD_ERROR_MESSAGES[data?.errorCode] ?? data?.message ?? 'Please check your details and try again.'
 
 // ─── Shared payout-service helpers (US-22–26) ────────────────────────────────
 // Routed through api-gateway, not payout-service directly: access_token is an
@@ -396,7 +636,7 @@ interface StatCardProps {
   sublabel?: string
   amount: string
   change?: { value: string; direction: "up" | "down"; label: string }
-  extra?: string
+  extra?: React.ReactNode
   status?: string
 }
 
@@ -443,17 +683,31 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
 
 // ─── Overview Tab ───────────────────────────────────────────────────────
 
-export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void }) => {
+export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void; onOpenHelp?: () => void }) => {
   const router = useRouter()
   const { toast } = useToast()
   const [showBanner, setShowBanner] = useState(true)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
+  // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
+  // This Month/All Time) in one response, not four independent requests as the
+  // spec assumes — so a single shared error + retry is the honest equivalent
+  // of the spec's "per-card retry", not four separately-failing cards.
+  const [summaryError, setSummaryError] = React.useState(false)
   const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
+  // US-05/US-06: a genuine load failure (500/503) must render a distinct error
+  // state with retry — never conflated with a real $0 balance, and never left
+  // stuck on the loading placeholder forever with only a console.error.
+  const [balanceError, setBalanceError] = React.useState(false)
   // Doc07 Domain 7: next_payout_date is derived server-side (schedule + day + current
   // date) — never computed client-side. No projected amount exists server-side either
   // (the schedule doesn't precompute a future payout total), so only the date is shown.
   const [scheduleNextRunAt, setScheduleNextRunAt] = React.useState<string | null>(null)
   const [scheduleLoading, setScheduleLoading] = React.useState(true)
+  // Figma "Available for Withdrawal" tooltip claims this amount excludes the
+  // reserve balance — it didn't (was showing raw availableBalanceDisplay) and
+  // the copy hardcoded a literal "$150" regardless of the contractor's actual
+  // configured reserve. Both fixed below using the real reserveUsd.
+  const [reserveUsd, setReserveUsd] = React.useState(0)
   // Sourced from the real payout history (GET /v1/payouts?status=completed) — the most
   // recently settled payout, not a static mock value.
   const [previousPayout, setPreviousPayout] = React.useState<{ amountUsd: string; methodLabel: string | null; settledAt: string } | null>(null)
@@ -462,6 +716,33 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   // derives real entries from the same payout history list rather than showing mock data.
   const [recentActivity, setRecentActivity] = React.useState<{ id: string; title: string; description: string; time: string; kind: 'scheduled' | 'sent' | 'processing' | 'failed' | 'cancelled' }[]>([])
   const [recentActivityLoading, setRecentActivityLoading] = React.useState(true)
+
+  // Recent Earnings has no visible UI in the Overview tab anymore — this data
+  // is still fetched/polled purely as the source for the US-92 reversal-toast
+  // detection effect below (diffs entry.status across polls).
+  const [recentEarnings, setRecentEarnings] = React.useState<EarningsRow[]>([])
+
+  const loadRecentEarnings = React.useCallback(() => {
+    // EarningsQueryDto only accepts limit values of 10/25/50/100 — 5 400s.
+    // Request the minimum valid page size and slice to the first 5.
+    getEarnings({ view: "daily", limit: 10, sortBy: "workStartAt", sortOrder: "desc" })
+      .then((res) => setRecentEarnings(res.data.slice(0, 5)))
+      .catch((e) => console.error("Recent earnings fetch failed:", e))
+  }, [])
+
+  // Sourced from real payout history — no dedicated activity-feed endpoint
+  // exists in payout-service; see toActivityItem(). Also the source of the
+  // US-93 persistent failure banner (failedPayout, derived further below).
+  const loadRecentActivity = React.useCallback(async () => {
+    try {
+      const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
+      if (res.ok) {
+        const d = await res.json()
+        setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
+      }
+    } catch (e) { console.error('Failed to fetch recent activity', e) }
+    finally { setRecentActivityLoading(false) }
+  }, [])
 
   // ── Deposit Methods state ──────────────────────────────────────
   const [methods, setMethods] = React.useState<any[]>([])
@@ -476,6 +757,16 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   // reuses the same fail-closed gate-check endpoint the withdrawal flow uses.
   const [methodGateBlocked, setMethodGateBlocked] = React.useState(false)
   const [editingMethod, setEditingMethod] = React.useState<any | null>(null)
+  // US-59: raw bank details are never returned by the backend (security —
+  // see methods.service.ts toDetailItem), so editing means full re-entry,
+  // not a diff against hidden values. Starts blank whenever Edit opens on
+  // an eligible (BANK_MANUAL, not-yet-verified) method.
+  const [editBankForm, setEditBankForm] = React.useState({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: 'US' })
+  const [editBankError, setEditBankError] = React.useState('')
+  // Dedicated "Bank Details Updated" / "Unable To Update Bank Info" screens
+  // (Figma) for edits that actually touch bank fields — nickname-only edits
+  // keep the plain toast, since nothing about the bank account changed.
+  const [editBankSaveState, setEditBankSaveState] = React.useState<'success' | 'error' | null>(null)
   // AC-11.01: destructive removal requires an explicit confirmation step — holds
   // the method pending confirmation, not yet deleted.
   const [confirmRemove, setConfirmRemove] = React.useState<any | null>(null)
@@ -486,18 +777,29 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const [removeImpact, setRemoveImpact] = React.useState<{ isPrimary: boolean; isActiveSecondary: boolean } | null>(null)
   const [removeAck, setRemoveAck] = React.useState(false)
   const [removeError, setRemoveError] = React.useState('')
-  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', paypalEmailConfirm: '', nickname: '', bankConsent: false })
-  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', attemptsLeft?: number, lockedUntil?: string} | null>(null)
+  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false })
+  // source distinguishes the Stripe-connect flow from the manual/micro-deposit
+  // flow — Figma specs different copy for each ("securely linked"/"Connection
+  // Failed" for Stripe vs "has been verified"/"Verification Failed" for manual).
+  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', source: 'stripe' | 'manual', attemptsLeft?: number, lockedUntil?: string} | null>(null)
   const [microAmounts, setMicroAmounts] = React.useState({amount1:'', amount2:''})
 
   // ─── Crypto wallet (US-09) — provider/network/currency driven by the real
   // backend registry (GET /deposit-methods/crypto/providers), not a hardcoded list.
   const [cryptoProviders, setCryptoProviders] = React.useState<any[]>([])
   const [cryptoProvidersLoading, setCryptoProvidersLoading] = React.useState(false)
-  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details'>('provider')
+  // US-64: dedicated connecting/success/failure screens, not just a button
+  // label + toast + silent close. 'qr' and 'paste' are the two WalletConnect
+  // presentations of the same session (PS-10) offered alongside manual
+  // address entry — 'connecting' covers both the manual-submit spinner and
+  // the brief moment after a WalletConnect session reports 'connected'.
+  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details' | 'qr' | 'paste' | 'connecting' | 'success' | 'error'>('provider')
   const [cryptoForm, setCryptoForm] = React.useState({ provider: '', network: '', currency: '', address: '' })
   const [cryptoSubmitting, setCryptoSubmitting] = React.useState(false)
   const [cryptoError, setCryptoError] = React.useState('')
+  const [cryptoResult, setCryptoResult] = React.useState<{ walletAddressLast6?: string; network?: string; token?: string; conversionDisplay?: string } | null>(null)
+  const [cryptoWcSession, setCryptoWcSession] = React.useState<{ sessionId: string; wcUri: string; expiresAt: string } | null>(null)
+  const [cryptoWcConsent, setCryptoWcConsent] = React.useState(false)
   const selectedCryptoProvider = cryptoProviders.find(p => p.provider === cryptoForm.provider)
   const selectedCryptoNetwork = selectedCryptoProvider?.networks?.find((n: any) => n.network === cryptoForm.network)
 
@@ -511,9 +813,65 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     finally { setCryptoProvidersLoading(false) }
   }, [cryptoProviders.length])
 
+  // ─── WalletConnect session (PS-10/PS-11) — shared by the QR-scan and
+  // paste-link screens, since they're two presentations of the same
+  // underlying session, not two separate connection mechanisms.
+  const startWalletConnectSession = React.useCallback(async () => {
+    setCryptoError('')
+    try {
+      const res = await payoutFetch(`/deposit-methods/crypto/walletconnect-session`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cryptoProvider: cryptoForm.provider, network: cryptoForm.network }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setCryptoWcSession({ sessionId: data.sessionId, wcUri: data.wcUri, expiresAt: data.expiresAt })
+      } else {
+        setCryptoError(data.message ?? 'Unable to start wallet connection.')
+        setCryptoStep('error')
+      }
+    } catch {
+      setCryptoError('Unable to start wallet connection.')
+      setCryptoStep('error')
+    }
+  }, [cryptoForm.provider, cryptoForm.network])
+
+  React.useEffect(() => {
+    if ((cryptoStep === 'qr' || cryptoStep === 'paste') && !cryptoWcSession) {
+      startWalletConnectSession()
+    }
+  }, [cryptoStep, cryptoWcSession, startWalletConnectSession])
+
+  React.useEffect(() => {
+    if ((cryptoStep !== 'qr' && cryptoStep !== 'paste') || !cryptoWcSession) return
+    const poll = async () => {
+      try {
+        const res = await payoutFetch(`/deposit-methods/crypto/walletconnect-session/${cryptoWcSession.sessionId}`)
+        const data = await res.json()
+        if (data.status === 'connected') {
+          setCryptoResult({ walletAddressLast6: data.walletAddressLast6, network: cryptoForm.network, token: cryptoForm.currency, conversionDisplay: data.conversionDisplay })
+          setCryptoWcSession(null)
+          fetchMethods()
+          setCryptoStep('success')
+        } else if (data.status === 'rejected') {
+          setCryptoError('The connection request was declined in your wallet app.')
+          setCryptoWcSession(null)
+          setCryptoStep('error')
+        } else if (data.status === 'expired') {
+          setCryptoError('This connection link expired before a wallet approved it. Please try again.')
+          setCryptoWcSession(null)
+          setCryptoStep('error')
+        }
+      } catch { /* transient network error — next poll retries */ }
+    }
+    const interval = setInterval(poll, 3000)
+    return () => clearInterval(interval)
+  }, [cryptoStep, cryptoWcSession, cryptoForm.network, cryptoForm.currency])
+
   const handleAddCryptoWallet = async () => {
     setCryptoSubmitting(true)
     setCryptoError('')
+    setCryptoStep('connecting')
     try {
       const res = await payoutFetch(`/deposit-methods`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -526,14 +884,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setCryptoError(data.message ?? 'Unable to add this wallet — please check the address and try again.'); return }
-      toast({ title: 'Wallet connected', description: `${cryptoForm.provider} wallet added successfully.` })
-      setShowAddMethod(false)
-      setCryptoStep('provider')
-      setCryptoForm({ provider: '', network: '', currency: '', address: '' })
+      if (!res.ok) {
+        setCryptoError(data.message ?? 'Unable to add this wallet — please check the address and try again.')
+        setCryptoStep('error')
+        return
+      }
+      setCryptoResult({ walletAddressLast6: data.walletAddressLast6, network: data.network, token: data.token, conversionDisplay: data.conversionDisplay })
+      setCryptoStep('success')
       fetchMethods()
     } catch {
       setCryptoError('Unable to add this wallet — please try again.')
+      setCryptoStep('error')
     } finally {
       setCryptoSubmitting(false)
     }
@@ -561,20 +922,26 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         payload.bankAccountName = addForm.nickname
         payload.bankAccountNumber = addForm.bankAccountNumber
         payload.bankCountry = addForm.bankCountry
-        payload.bankCurrency = BANK_COUNTRY_CURRENCY[addForm.bankCountry] ?? 'USD'
+        payload.bankCurrency = bankCountryCurrency(addForm.bankCountry)
         // AC-04.02/04.03: routing field adapts by region — only the field(s) relevant
-        // to the selected country are sent.
-        switch (addForm.bankCountry) {
+        // to the selected country's region are sent, mirroring bank-validation.service.ts.
+        switch (detectBankRegion(addForm.bankCountry)) {
           case 'US': payload.bankRoutingNumber = addForm.bankRoutingNumber; break
           case 'GB': payload.bankSortCode = addForm.bankSortCode; break
           case 'IN': payload.bankIfscCode = addForm.bankIfscCode; break
           case 'AU': payload.bankBsbNumber = addForm.bankBsbNumber; break
           case 'CA': payload.bankInstitutionNumber = addForm.bankInstitutionNumber; payload.bankTransitNumber = addForm.bankTransitNumber; break
+          case 'JP': payload.bankCode = addForm.bankCode; payload.bankBranchCode = addForm.bankBranchCode; break
+          case 'MX': payload.bankClabe = addForm.bankClabe; delete payload.bankAccountNumber; break
+          case 'CN': payload.bankCnapsCode = addForm.bankCnapsCode; break
+          case 'RU': payload.bankBik = addForm.bankBik; break
+          case 'SEPA': payload.bankIban = addForm.bankIban; delete payload.bankAccountNumber; if (addForm.bankSwiftBic) payload.bankSwiftBic = addForm.bankSwiftBic; break
+          case 'GCC': payload.bankIban = addForm.bankIban; payload.bankSwiftBic = addForm.bankSwiftBic; delete payload.bankAccountNumber; break
+          case 'BACS': payload.bankSwiftBic = addForm.bankSwiftBic; break
+          case 'SWIFT': payload.bankSwiftBic = addForm.bankSwiftBic; break
         }
         // "Bank Name" (e.g. "Chase") is cosmetic only — not a backend-validated field.
         if (addForm.bankAccountName) payload.nickname = addForm.bankAccountName
-      } else if (addForm.methodType === 'PAYPAL') {
-        payload.paypalEmail = addForm.paypalEmail
       } else if (addForm.nickname) {
         payload.nickname = addForm.nickname
       }
@@ -587,11 +954,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
         if (data.duplicate) {
           toast({ title: 'Account already linked', description: 'This account is already connected.' })
         } else {
-          const last4 = addForm.bankAccountNumber.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions' })
+          const identifier = addForm.bankAccountNumber || addForm.bankClabe || addForm.bankIban
+          const last4 = identifier.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions', source: 'manual' })
           setShowAddMethod(false)
         }
       } else {
-        toast({ title: 'Error adding account', description: data.message ?? 'Please check your details and try again.', variant: 'destructive' })
+        toast({ title: 'Error adding account', description: bankErrorMessage(data), variant: 'destructive' })
       }
     } catch (e) { toast({ title: 'Error', description: 'Failed to add account', variant: 'destructive' }) }
   }
@@ -632,13 +1000,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
       setShowAddMethod(false)
       const displayLabel = method.displayLabel ?? `${bankName} ••••${method.bankAccountLast4 ?? '4242'}`
-      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'verifying' })
+      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'verifying', source: 'stripe' })
       await new Promise(r => setTimeout(r, 2500))
-      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'success' })
+      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'success', source: 'stripe' })
       fetchMethods()
     } catch (e) {
       setAddForm(f => ({...f, _stripeConnecting: false} as any))
-      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed' })
+      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed', source: 'stripe' })
       setShowAddMethod(false)
     }
   }
@@ -650,7 +1018,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   // the contractor back on this page with ?oauth=success|error (handled by the
   // effect below, mirroring how OverviewTab already reacts to other async state).
   const [oauthConnecting, setOauthConnecting] = React.useState(false)
-  const handleConnectOAuth = async (methodType: 'WISE' | 'PAYONEER') => {
+  const handleConnectOAuth = async (methodType: 'PAYPAL' | 'WISE' | 'PAYONEER') => {
     setOauthConnecting(true)
     try {
       const res = await payoutFetch(`/deposit-methods`, {
@@ -661,6 +1029,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       if (!res.ok) throw new Error(data.message ?? 'Failed to start connection')
       const oauthUrl = data.verification?.oauthUrl
       if (!oauthUrl) throw new Error('No authorization URL returned')
+      // The provider callback (oauth.controller.ts) redirects back with only
+      // ?oauth=success&methodId=... or ?oauth=error&code=... — no provider
+      // name on the error path (nothing was created yet to read it off of).
+      // Stash it client-side across the full-page redirect so the returning
+      // "PayPal/Wise/Payoneer Connected" / "Couldn't Connect" screen knows
+      // which provider it's reporting on.
+      sessionStorage.setItem('oauth_pending_provider', methodType)
       window.location.href = oauthUrl
     } catch (e: any) {
       setOauthConnecting(false)
@@ -676,21 +1051,41 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     ERR_DEPOSIT_METHOD_NOT_FOUND: 'We could not find the connection request. Please try again.',
     ERR_OAUTH_UNSUPPORTED: 'This provider is not currently supported.',
   }
+  // Figma: a dedicated "X Connected" / "Couldn't Connect to X" screen, not
+  // just a toast — the toast alone gave no confirmation of *which* account
+  // got linked or a way to set it default/retry in place.
+  const [oauthResult, setOauthResult] = React.useState<{
+    provider: 'PAYPAL' | 'WISE' | 'PAYONEER'
+    status: 'success' | 'error'
+    method?: any
+    errorMessage?: string
+  } | null>(null)
+
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const oauthResult = params.get('oauth')
-    if (!oauthResult) return
-    if (oauthResult === 'success') {
-      toast({ title: 'Account connected', description: 'Your deposit method has been verified.' })
+    const result = params.get('oauth')
+    if (!result) return
+    const provider = (sessionStorage.getItem('oauth_pending_provider') as 'PAYPAL' | 'WISE' | 'PAYONEER' | null) ?? 'PAYPAL'
+    sessionStorage.removeItem('oauth_pending_provider')
+    if (result === 'success') {
+      const methodId = params.get('methodId')
       fetchMethods()
+      if (methodId) {
+        payoutFetch(`/deposit-methods/${methodId}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((method) => setOauthResult({ provider, status: 'success', method }))
+          .catch(() => setOauthResult({ provider, status: 'success' }))
+      } else {
+        setOauthResult({ provider, status: 'success' })
+      }
     } else {
       const code = params.get('code') ?? undefined
-      toast({ title: 'Connection failed', description: (code && OAUTH_ERROR_MESSAGES[code]) ?? 'We were unable to connect your account. Please try again.', variant: 'destructive' })
+      setOauthResult({ provider, status: 'error', errorMessage: code ? OAUTH_ERROR_MESSAGES[code] : undefined })
     }
     params.delete('oauth'); params.delete('methodId'); params.delete('code')
     const qs = params.toString()
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
-  }, [fetchMethods, toast])
+  }, [fetchMethods])
 
   // AC-09.01: fetch the 9 supported providers from server config when the crypto
   // step is entered — never hardcode the provider list client-side.
@@ -749,39 +1144,100 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
   const handleSetDefault = async (id: string) => {
     try {
       const res = await payoutFetch(`/deposit-methods/${id}/set-default`, { method: 'POST' })
-      if (res.ok) { toast({ title: 'Default updated' }); fetchMethods() }
+      if (res.ok) {
+        // Figma: names the method and, when split payout is active, states the
+        // actual live percentages rather than a generic "Default updated".
+        const target = methods.find((m: any) => m.id === id)
+        const label = target ? getMethodLabel(target).name : 'This method'
+        try {
+          const scheduleRes = await payoutFetch(`/payouts/schedule`)
+          if (scheduleRes.ok) {
+            const s = await scheduleRes.json()
+            if (s.splitEnabled && s.secondaryMethod) {
+              const secondaryLabel = s.secondaryMethod.displayLabel ?? s.secondaryMethod.methodType
+              const primaryPct = Math.round((s.primarySplitPercent ?? 100) * 100) / 100
+              const secondaryPct = Math.round((100 - primaryPct) * 100) / 100
+              toast({
+                title: `${label} is now your default deposit method.`,
+                description: `This will be used for all scheduled deposits. Split logic is on: ${primaryPct}% to ${label}, ${secondaryPct}% to ${secondaryLabel}.`,
+              })
+              fetchMethods()
+              return
+            }
+          }
+        } catch { /* fall through to the plain toast below */ }
+        toast({ title: `${label} is now your default deposit method.` })
+        fetchMethods()
+      }
       else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
     } catch (e) { toast({ title: 'Error', description: 'Failed to update default', variant: 'destructive' }) }
   }
 
-  // SCR-07: warn before changing the primary method when split payout is active —
-  // methods.service.ts's setDefault() silently repoints the schedule's
-  // primaryMethodId, which can leave a stale split configuration.
+  // SCR-07: confirm before replacing the existing default deposit method
+  // (Figma "Make this your default deposit method?").
   const [confirmSetDefault, setConfirmSetDefault] = React.useState<any | null>(null)
-  const requestSetDefault = async (method: any) => {
-    try {
-      const res = await payoutFetch(`/payouts/schedule`)
-      if (res.ok) {
-        const s = await res.json()
-        if (s.splitEnabled && s.primaryMethod?.id !== method.id) {
-          setConfirmSetDefault(method)
-          return
-        }
-      }
-    } catch { /* if the check fails, fall through to the normal set-default flow */ }
-    handleSetDefault(method.id)
-  }
+  const requestSetDefault = (method: any) => setConfirmSetDefault(method)
+
+  // US-59/62/63: full bank-detail replacement, only offered for BANK_MANUAL
+  // methods that haven't completed verification yet — see updateMethod() in
+  // methods.service.ts for why VERIFIED methods stay nickname-only.
+  const editingBankDetails = editingMethod?.methodType === 'BANK_MANUAL' && editingMethod?.verificationStatus !== 'verified'
 
   const handleUpdateMethod = async () => {
     if (!editingMethod) return
+    setEditBankError('')
     try {
+      const editRegion = detectBankRegion(editBankForm.bankCountry)
+      const submittingBankDetails = editingBankDetails && (
+        editBankForm.bankAccountNumber.trim() || editBankForm.bankIban.trim()
+      )
+      const payload: any = { nickname: editingMethod.nickname ?? '' }
+      if (submittingBankDetails) {
+        payload.bankAccountName = editBankForm.bankAccountName
+        payload.bankCountry = editBankForm.bankCountry
+        payload.bankCurrency = bankCountryCurrency(editBankForm.bankCountry)
+        if (editRegion !== 'SEPA') payload.bankAccountNumber = editBankForm.bankAccountNumber
+        switch (editRegion) {
+          case 'US': payload.bankRoutingNumber = editBankForm.bankRoutingNumber; break
+          case 'GB': payload.bankSortCode = editBankForm.bankSortCode; break
+          case 'IN': payload.bankIfscCode = editBankForm.bankIfscCode; break
+          case 'AU': payload.bankBsbNumber = editBankForm.bankBsbNumber; break
+          case 'CA': payload.bankInstitutionNumber = editBankForm.bankInstitutionNumber; payload.bankTransitNumber = editBankForm.bankTransitNumber; break
+          case 'JP': payload.bankCode = editBankForm.bankCode; payload.bankBranchCode = editBankForm.bankBranchCode; break
+          case 'SEPA': payload.bankIban = editBankForm.bankIban; if (editBankForm.bankSwiftBic) payload.bankSwiftBic = editBankForm.bankSwiftBic; break
+          case 'SWIFT': payload.bankSwiftBic = editBankForm.bankSwiftBic; break
+        }
+      }
       const res = await payoutFetch(`/deposit-methods/${editingMethod.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: editingMethod.nickname ?? '' })
+        body: JSON.stringify(payload)
       })
-      if (res.ok) { toast({ title: 'Account updated' }); setEditingMethod(null); fetchMethods() }
-      else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
-    } catch (e) { toast({ title: 'Error', description: 'Failed to update account', variant: 'destructive' }) }
+      const data = await res.json()
+      if (res.ok) {
+        if (data.verification?.type === 'micro_deposit') {
+          // US-62: bank details changed, so verification restarted from
+          // scratch — same "up to 2 business days" copy as adding a new
+          // account, since that's exactly what happened underneath.
+          setMicroAmounts({ amount1: '', amount2: '' })
+          setVerifyState({ methodId: editingMethod.id, displayLabel: data.displayLabel ?? editingMethod.displayLabel, bankName: editBankForm.bankAccountName || '', step: 'instructions', source: 'manual' })
+          setEditingMethod(null)
+        } else if (submittingBankDetails) {
+          setEditBankSaveState('success')
+        } else {
+          toast({ title: 'Account updated' })
+          setEditingMethod(null)
+        }
+        fetchMethods()
+      } else if (submittingBankDetails) {
+        setEditBankError(bankErrorMessage(data))
+        setEditBankSaveState('error')
+      } else {
+        setEditBankError(bankErrorMessage(data))
+      }
+    } catch (e) {
+      setEditBankError('Failed to update account. Please try again.')
+      if (editingBankDetails) setEditBankSaveState('error')
+    }
   }
 
   // AC-05.04/05.05/05.06/05.08: wrong amounts decrement an attempt counter and, on the
@@ -869,9 +1325,72 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
 
   const defaultMethod = methods.find(m => m.isDefault)
 
+  // US-01 Last Updated Label: "Updated X min ago" computed client-side from
+  // cachedAt, ticking forward without re-fetching — a 30s interval is frequent
+  // enough for a minute-granularity label without hammering re-renders.
+  const [nowTick, setNowTick] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const loadBalance = React.useCallback(() => {
+    setBalanceError(false)
+    getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
+  }, [])
+
+  // US-02/US-94: no Ably (or any real-time transport) exists anywhere in this
+  // codebase for earnings, so a genuine push-based "balance.updated" story
+  // isn't buildable here — this is the honest fallback the spec itself
+  // describes for when real-time is unavailable: a 60s poll. Deliberately NOT
+  // pairing this with a "Live" badge (US-03) — that would claim an active
+  // real-time connection that doesn't exist, which is exactly what Doc07
+  // "never fabricate" rules out.
+  React.useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) loadBalance() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadBalance])
+
+  React.useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) loadRecentEarnings() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadRecentEarnings])
+
+  const loadSummary = React.useCallback(() => {
+    setSummaryError(false)
+    getEarningsSummary().then(setSummary).catch((e) => { console.error("Earnings summary fetch failed:", e); setSummaryError(true) })
+  }, [])
+
+  // US-92: same "no real-time transport" constraint as above — reversal
+  // detection is polling-based too. Each poll re-fetches Recent Earnings and
+  // diffs entry.status against what was last seen; an entry that flips to
+  // "failed" (this codebase's reversed-entry status, see EarningsRow.status)
+  // since the previous poll gets a toast. Never toasts on first load (nothing
+  // to diff against yet) or for entries already known to be failed.
+  const knownEntryStatusRef = React.useRef<Map<string, string>>(new Map())
+  React.useEffect(() => {
+    const seen = knownEntryStatusRef.current
+    let reversed = false
+    for (const row of recentEarnings) {
+      const prevStatus = seen.get(row.id)
+      if (prevStatus && prevStatus !== "failed" && row.status === "failed") reversed = true
+      seen.set(row.id, row.status)
+    }
+    if (reversed) {
+      // US-92.01: balance, history, and summary cards all re-fetch together —
+      // not just the recentEarnings poll that happened to notice the reversal.
+      // US-92.02/92.03: exact copy, treated as a correction (default/neutral
+      // toast styling), not an error.
+      toast({ title: "Transaction reversed", description: "A transaction has been reversed. Your balance has been updated." })
+      loadBalance()
+      loadSummary()
+    }
+  }, [recentEarnings, toast, loadBalance, loadSummary])
+
   useEffect(() => {
-    getEarningsSummary().then(setSummary).catch(e => console.error("Earnings summary fetch failed:", e))
-    getBalance().then(setBalance).catch(e => console.error("Balance fetch failed:", e))
+    loadSummary()
+    loadBalance()
+    loadRecentEarnings()
     fetchMethods()
     ;(async () => {
       try {
@@ -894,7 +1413,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
     ;(async () => {
       try {
         const res = await payoutFetch(`/payouts/schedule`)
-        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null) }
+        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null); setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0) }
       } catch (e) { console.error('Failed to fetch payout schedule', e) }
       finally { setScheduleLoading(false) }
     })()
@@ -909,24 +1428,42 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
       } catch (e) { console.error('Failed to fetch previous payout', e) }
       finally { setPreviousPayoutLoading(false) }
     })()
-    ;(async () => {
-      try {
-        const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
-        if (res.ok) {
-          const d = await res.json()
-          setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
-        }
-      } catch (e) { console.error('Failed to fetch recent activity', e) }
-      finally { setRecentActivityLoading(false) }
-    })()
-  }, [fetchMethods])
+    loadRecentActivity()
+  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity])
+
+  // US-93.01: the persistent failure banner must be able to appear live, not
+  // only on page load — recentActivity (its data source) previously fetched
+  // once on mount only, same "no Ably" polling-fallback pattern as balance
+  // and recentEarnings above.
+  React.useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) loadRecentActivity() }, 60_000)
+    return () => clearInterval(id)
+  }, [loadRecentActivity])
+
+  // US-93: persistent failure banner — recentActivity is already sourced from
+  // real payout history (GET /v1/payouts, most-recent-first), so the first
+  // 'failed' item there is a genuine failed withdrawal, not a fabricated one.
+  const failedPayout = React.useMemo(() => recentActivity.find((a) => a.kind === "failed") ?? null, [recentActivity])
 
   return (
     <div className="flex gap-6">
       {/* Main Content */}
       <div className="flex-1 space-y-5 min-w-0">
-        {/* Congratulations Banner */}
-        {showBanner && (
+        {/* US-93: persistent until the contractor navigates to it — no dismiss button. */}
+        {failedPayout && (
+          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">
+              <span className="mr-2">⚠️</span>
+              A withdrawal could not be completed — {failedPayout.title}.
+            </p>
+            <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
+              View Details
+            </Button>
+          </div>
+        )}
+
+        {/* Congratulations Banner — hidden until there's actually something to celebrate */}
+        {showBanner && balance && parseFloat(balance.totalEarnedUsd) > 0 && (
           <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
@@ -958,6 +1495,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
               </Tooltip>
             </TooltipProvider>
           </div>
+
+          {summaryError && (
+            <p className="text-xs text-red-600 -mt-3 mb-3">
+              We couldn't load your earnings summary.{" "}
+              <button className="underline font-medium" onClick={loadSummary}>Refresh</button>
+            </p>
+          )}
 
           <div className="rounded-lg border border-gray-200 bg-gray-25 p-8 grid grid-cols-1 md:grid-cols-2 md:divide-x md:divide-gray-200 gap-10">
             {/* Today */}
@@ -1135,7 +1679,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Button variant="link" visual="gray" size="sm" onClick={() => defaultMethod && setEditingMethod({...defaultMethod})}>Edit</Button>
+                <Button variant="link" visual="gray" size="sm" onClick={() => { if (defaultMethod) { setEditingMethod({...defaultMethod}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: defaultMethod.bankCountry || 'US' }); setEditBankError(''); setEditBankSaveState(null) } }}>Edit</Button>
               </div>
               {methodsLoading ? (
                 <div className="h-10 bg-gray-100 rounded animate-pulse" />
@@ -1168,7 +1712,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                   </p>
                 </div>
                 <p className="text-2xl font-bold text-dark-blue-400">
-                  <span className="text-sm align-top">$</span>{previousPayout.amountUsd}
+                  <span className="text-sm align-top">$</span>{parseFloat(previousPayout.amountUsd).toFixed(2)}
                 </p>
               </>
             ) : (
@@ -1226,7 +1770,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       Make Default
                     </Button>
                   ) : null}
-                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setEditingMethod({...m})}>
+                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setEditingMethod({...m}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: m.bankCountry || 'US' }); setEditBankError(''); setEditBankSaveState(null) }}>
                     <Edit03 className="size-4" />
                   </IconButton>
                   <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setConfirmRemove(m)}>
@@ -1244,7 +1788,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 {verifyState.step === 'instructions' && (
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <button onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'BANK_MANUAL'})) }} className="text-gray-400 hover:text-gray-600"><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'BANK_MANUAL'})) }}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(false); fetchMethods() }}><X className="size-4" /></IconButton>
                     </div>
@@ -1265,7 +1809,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                 {verifyState.step === 'amounts' && (
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <button onClick={() => setVerifyState(s => s ? {...s, step: 'instructions'} : null)} className="text-gray-400 hover:text-gray-600"><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(s => s ? {...s, step: 'instructions'} : null)}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(null)}><X className="size-4" /></IconButton>
                     </div>
@@ -1317,7 +1861,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                         <BankLogo bankName={verifyState.bankName} size={80} />
                         <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName || 'Your Bank'}</span>
                       </div>
-                      <h4 className="text-base font-semibold text-dark-blue-400">Your bank account has been securely linked.</h4>
+                      <h4 className="text-base font-semibold text-dark-blue-400">
+                        {verifyState.source === 'stripe' ? 'Your bank account has been securely linked.' : 'Your bank account has been verified.'}
+                      </h4>
                       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3">
                         <BankIcon className="size-5 text-gray-500" />
                         <div className="flex flex-col items-start">
@@ -1327,18 +1873,28 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                         <Badge visual="success" size="sm" className="ml-auto">Verified</Badge>
                       </div>
                     </div>
-                    <Button variant="filled" visual="primary" size="sm" className="w-full" onClick={async () => { await handleSetDefault(verifyState.methodId); setVerifyState(null) }}>Set As Default Deposit Method</Button>
-                    <Button variant="outlined" visual="gray" size="sm" className="w-full" onClick={() => { setVerifyState(null); fetchMethods() }}>← Back to Deposit Methods</Button>
+                    <Button variant="light" visual="primary" size="sm" className="w-full" onClick={async () => { await handleSetDefault(verifyState.methodId); setVerifyState(null) }}>Set As Default Deposit Method</Button>
+                    <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</Button>
                   </div>
                 )}
                 {verifyState.step === 'failed' && (
                   <div className="p-6 text-center space-y-4">
-                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><span className="text-warning-600 text-2xl">⚠</span></div>
-                    <h4 className="text-base font-semibold text-dark-blue-400">Connection Failed</h4>
-                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. This may be due to a temporary network issue. Your account is unaffected — you can try again.</p>
-                    <div className="flex gap-2">
-                      <button className="flex-1 text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>↺ Retry</Button>
+                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><AlertTriangle className="size-6 text-warning-600" /></div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">{verifyState.source === 'stripe' ? 'Connection Failed' : 'Verification Failed'}</h4>
+                    <p className="text-sm text-gray-500">
+                      {verifyState.source === 'stripe'
+                        ? "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
+                        : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
+                    </p>
+                    <div className="flex gap-2 items-center justify-between">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
+                      <Button
+                        variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />}
+                        onClick={() => {
+                          if (verifyState.source === 'stripe') { const bankName = verifyState.bankName; setVerifyState(null); handleConnectStripe(bankName) }
+                          else setVerifyState(s => s ? {...s, step: 'amounts'} : null)
+                        }}
+                      >Retry</Button>
                     </div>
                   </div>
                 )}
@@ -1367,9 +1923,62 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
           )}
 
+          {/* PayPal/Wise/Payoneer OAuth return — dedicated "X Connected" /
+              "Couldn't Connect to X" screens (Figma), replacing what used to be
+              a toast-only confirmation with no way to set default or retry in place. */}
+          {oauthResult && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setOauthResult(null)}>
+              <div className="bg-white rounded-xl w-full max-w-md shadow-xl p-6 relative" onClick={e => e.stopPropagation()}>
+                <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setOauthResult(null)}><X className="size-4" /></IconButton>
+                {oauthResult.status === 'success' ? (
+                  <div className="text-center py-2 space-y-4">
+                    <div className="flex flex-col items-center gap-1">
+                      {oauthResult.provider === 'PAYPAL' ? <PayPalDefault className="size-10" />
+                        : oauthResult.provider === 'WISE' ? <WiseIcon className="size-12" />
+                        : <PayoneerDefault className="size-10" />}
+                    </div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">
+                      {oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'} Connected
+                    </h4>
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3 text-left">
+                      {oauthResult.provider === 'PAYPAL' ? <PayPalDefault className="size-5" />
+                        : oauthResult.provider === 'WISE' ? <WiseIcon className="size-5 rounded-full" />
+                        : <PayoneerDefault className="size-5" />}
+                      <div className="flex flex-col items-start min-w-0">
+                        <span className="text-sm font-medium text-dark-blue-400">
+                          {oauthResult.provider === 'PAYPAL' ? 'Paypal Email' : oauthResult.provider === 'WISE' ? 'Wise Account' : 'Payoneer Account'}
+                        </span>
+                        <span className="text-xs text-gray-400 truncate">
+                          {oauthResult.method?.paypalEmail ?? oauthResult.method?.displayLabel ?? oauthResult.method?.nickname ?? '—'}
+                        </span>
+                      </div>
+                      <Badge visual="success" size="sm" className="ml-auto shrink-0">Verified</Badge>
+                    </div>
+                    <Button variant="light" visual="primary" size="sm" className="w-full" onClick={async () => { if (oauthResult.method?.id) await handleSetDefault(oauthResult.method.id); setOauthResult(null) }}>Set As Default Deposit Method</Button>
+                    <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setOauthResult(null)}>Back to Deposit Methods</Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-2 space-y-4">
+                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><AlertTriangle className="size-6 text-warning-600" /></div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">
+                      Couldn't Connect to {oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'}
+                    </h4>
+                    <p className="text-sm text-gray-500">
+                      {oauthResult.errorMessage ?? `We were unable to link your ${oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'} account. You may have canceled the login or encountered a connection issue.`}
+                    </p>
+                    <div className="flex gap-2 items-center justify-between">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => setOauthResult(null)}>Back to Deposit Methods</button>
+                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { const provider = oauthResult.provider; setOauthResult(null); handleConnectOAuth(provider) }}>Retry</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', paypalEmailConfirm: '', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); setCryptoWcSession(null); setCryptoWcConsent(false); }}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
@@ -1417,7 +2026,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                   <div className="p-6">
                     {!(addForm as any)._selectedBank && <>
                       <div className="flex items-center gap-2 mb-2">
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></button>
+                        <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></IconButton>
                         <h3 className="text-base font-semibold text-dark-blue-400">Connect your bank account</h3>
                         <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''})); }}><X className="size-4" /></IconButton>
                       </div>
@@ -1491,8 +2100,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           <p className="text-sm text-gray-500 px-4">
                             You'll be securely connected to <strong>{(addForm as any)._selectedBank}</strong> through Stripe. Your banking credentials are never shared with Marketeq.
                           </p>
+                          {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/
+                              gray with a leftIcon brand mark, matching the other provider
+                              connect buttons (PayPal/Wise/Payoneer) and GoogleLoginButton.tsx. */}
                           <Button
-                            variant="filled" visual="primary" size="sm" className="w-full py-3 text-base"
+                            variant="outlined" visual="gray" size="sm" className="w-full py-3 text-base gap-x-3 active:ring-4 active:ring-gray-100"
+                            leftIcon={<StripeDefault />}
                             disabled={!!(addForm as any)._stripeConnecting}
                             onClick={() => handleConnectStripe((addForm as any)._selectedBank)}
                           >
@@ -1535,38 +2148,87 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                     )}
                   </div>
                 ) : addForm.methodType === 'BANK_MANUAL' ? (
-                  /* Step 2a: Bank manual form — fields adapt by country (AC-04.02/04.03) */
+                  /* Step 2a: Bank manual form — fields adapt by country/region
+                     (AC-04.02/04.03), mirroring bank-validation.service.ts's full
+                     region set (US/GB/IN/AU/JP/CA/CN/RU/MX/SEPA/GCC/BACS/SWIFT),
+                     not just the 5-country subset this form used to expose. */
+                  (() => {
+                    const region = detectBankRegion(addForm.bankCountry)
+                    const selectedCountry = ALL_COUNTRIES.find(c => c.code === addForm.bankCountry)
+                    const filteredCountries = addForm.bankCountrySearch
+                      ? ALL_COUNTRIES.filter(c => c.name.toLowerCase().includes(addForm.bankCountrySearch.toLowerCase()))
+                      : ALL_COUNTRIES
+                    const selectCountry = (code: string) => setAddForm(f => ({
+                      ...f, bankCountry: code, bankCountrySearch: '', bankCountryOpen: false,
+                      bankCurrency: bankCountryCurrency(code),
+                      // Region change: clear every region-specific field so a stale
+                      // sort code / IFSC / BSB / IBAN can't be silently submitted.
+                      bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '',
+                      bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '',
+                      bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '',
+                    }))
+                    const saveDisabled =
+                      !addForm.nickname.trim() || !addForm.bankConsent ||
+                      OFAC_BLOCKED_COUNTRIES.has(addForm.bankCountry.toUpperCase()) ||
+                      (region !== 'MX' && region !== 'SEPA' && region !== 'GCC' && (
+                        !addForm.bankAccountNumber.trim() ||
+                        addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber
+                      )) ||
+                      (region === 'US' && !isValidAbaRouting(addForm.bankRoutingNumber)) ||
+                      (region === 'GB' && !isValidSortCode(addForm.bankSortCode)) ||
+                      (region === 'IN' && !isValidIfsc(addForm.bankIfscCode)) ||
+                      (region === 'AU' && !isValidBsb(addForm.bankBsbNumber)) ||
+                      (region === 'CA' && (!isValidCaInstitution(addForm.bankInstitutionNumber) || !isValidCaTransit(addForm.bankTransitNumber))) ||
+                      (region === 'JP' && (!isValidJpBankCode(addForm.bankCode) || !isValidJpBranchCode(addForm.bankBranchCode) || !/^\d{7}$/.test(addForm.bankAccountNumber))) ||
+                      (region === 'MX' && !isValidClabe(addForm.bankClabe)) ||
+                      (region === 'CN' && (!isValidCnaps(addForm.bankCnapsCode) || !isValidCnAccountNumber(addForm.bankAccountNumber))) ||
+                      (region === 'RU' && (!isValidBik(addForm.bankBik) || !isValidRuAccountNumber(addForm.bankAccountNumber))) ||
+                      (region === 'SEPA' && !isValidIban(addForm.bankIban)) ||
+                      (region === 'GCC' && (!isValidIban(addForm.bankIban) || !isValidSwiftBic(addForm.bankSwiftBic))) ||
+                      (region === 'BACS' && (!isValidSwiftBic(addForm.bankSwiftBic) || !addForm.bankAccountNumber.trim())) ||
+                      (region === 'SWIFT' && (!isValidSwiftBic(addForm.bankSwiftBic) || !addForm.bankAccountNumber.trim()))
+
+                    return (
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
                     <div className="space-y-3">
-                      <div>
+                      <div className="relative">
                         <label className="text-xs text-gray-500 mb-1 block">Country</label>
-                        <select
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          value={addForm.bankCountry}
-                          onChange={e => {
-                            const bankCountry = e.target.value
-                            // Region change: clear the previous region's fields so a stale
-                            // sort code / IFSC / BSB can't be silently submitted for the new country.
-                            setAddForm(f => ({
-                              ...f, bankCountry,
-                              bankCurrency: BANK_COUNTRY_CURRENCY[bankCountry] ?? 'USD',
-                              bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '',
-                              bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '',
-                            }))
-                          }}
-                        >
-                          <option value="US">🇺🇸 United States</option>
-                          <option value="GB">🇬🇧 United Kingdom</option>
-                          <option value="IN">🇮🇳 India</option>
-                          <option value="CA">🇨🇦 Canada</option>
-                          <option value="AU">🇦🇺 Australia</option>
-                        </select>
+                        <div className="relative">
+                          <input
+                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm"
+                            placeholder="Select country"
+                            value={addForm.bankCountryOpen ? addForm.bankCountrySearch : (selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '')}
+                            onFocus={() => setAddForm(f => ({...f, bankCountryOpen: true, bankCountrySearch: ''}))}
+                            onBlur={() => setTimeout(() => setAddForm(f => ({...f, bankCountryOpen: false})), 150)}
+                            onChange={e => setAddForm(f => ({...f, bankCountrySearch: e.target.value}))}
+                          />
+                          <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
+                        </div>
+                        {addForm.bankCountryOpen && (
+                          <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                            {filteredCountries.length === 0 ? (
+                              <p className="text-xs text-gray-400 text-center py-4">No countries found</p>
+                            ) : filteredCountries.map(c => (
+                              <button
+                                key={c.code}
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
+                                onClick={() => selectCountry(c.code)}
+                              >
+                                <span>{c.flag}</span> <span className="text-dark-blue-400">{c.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      {OFAC_BLOCKED_COUNTRIES.has(addForm.bankCountry.toUpperCase()) && (
+                        <p className="text-xs text-red-500">Payouts to this country are not currently supported.</p>
+                      )}
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
                         <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank of America" value={addForm.bankAccountName} onChange={e => setAddForm(f => ({...f, bankAccountName: e.target.value}))} />
@@ -1575,7 +2237,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                         <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
                         <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={addForm.nickname} onChange={e => setAddForm(f => ({...f, nickname: e.target.value}))} />
                       </div>
-                      {addForm.bankCountry === 'US' && (
+                      {region === 'US' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Account Type</label>
                           <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={addForm.accountType} onChange={e => setAddForm(f => ({...f, accountType: e.target.value}))}>
@@ -1585,21 +2247,28 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           </select>
                         </div>
                       )}
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={addForm.bankAccountNumber} onChange={e => setAddForm(f => ({...f, bankAccountNumber: e.target.value}))} />
-                      </div>
-                      <div>
-                        {/* SCR-02: anti-typo protection — a mistyped account number sends
-                            funds nowhere recoverable, so it must be entered twice. */}
-                        <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={addForm.bankAccountNumberConfirm} onChange={e => setAddForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
-                        {addForm.bankAccountNumberConfirm.length > 0 && addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber && (
-                          <p className="text-xs text-red-500 mt-1">Account numbers do not match</p>
-                        )}
-                      </div>
 
-                      {addForm.bankCountry === 'US' && (
+                      {/* Account number — every region except MX (CLABE only)/SEPA/GCC
+                          (IBAN only) uses a plain account number field. */}
+                      {region !== 'MX' && region !== 'SEPA' && region !== 'GCC' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={addForm.bankAccountNumber} onChange={e => setAddForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                          </div>
+                          <div>
+                            {/* SCR-02: anti-typo protection — a mistyped account number sends
+                                funds nowhere recoverable, so it must be entered twice. */}
+                            <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={addForm.bankAccountNumberConfirm} onChange={e => setAddForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
+                            {addForm.bankAccountNumberConfirm.length > 0 && addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber && (
+                              <p className="text-xs text-red-500 mt-1">Account numbers do not match</p>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {region === 'US' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Bank Routing Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={addForm.bankRoutingNumber} onChange={e => setAddForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
@@ -1608,7 +2277,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'GB' && (
+                      {region === 'GB' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 12-34-56" value={addForm.bankSortCode} onChange={e => setAddForm(f => ({...f, bankSortCode: e.target.value}))} />
@@ -1617,7 +2286,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'IN' && (
+                      {region === 'IN' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={addForm.bankIfscCode} onChange={e => setAddForm(f => ({...f, bankIfscCode: e.target.value}))} />
@@ -1626,7 +2295,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'AU' && (
+                      {region === 'AU' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 123-456" value={addForm.bankBsbNumber} onChange={e => setAddForm(f => ({...f, bankBsbNumber: e.target.value}))} />
@@ -1635,7 +2304,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'CA' && (
+                      {region === 'CA' && (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
@@ -1653,6 +2322,62 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                           </div>
                         </div>
                       )}
+                      {region === 'JP' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Bank Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="4 digits" value={addForm.bankCode} onChange={e => setAddForm(f => ({...f, bankCode: e.target.value}))} />
+                            {addForm.bankCode.length > 0 && !isValidJpBankCode(addForm.bankCode) && <p className="text-xs text-red-500 mt-1">4 digits required</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Branch Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={addForm.bankBranchCode} onChange={e => setAddForm(f => ({...f, bankBranchCode: e.target.value}))} />
+                            {addForm.bankBranchCode.length > 0 && !isValidJpBranchCode(addForm.bankBranchCode) && <p className="text-xs text-red-500 mt-1">3 digits required</p>}
+                          </div>
+                        </div>
+                      )}
+                      {region === 'MX' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">CLABE</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="18-digit CLABE" value={addForm.bankClabe} onChange={e => setAddForm(f => ({...f, bankClabe: e.target.value}))} />
+                          {addForm.bankClabe.length > 0 && !isValidClabe(addForm.bankClabe) && <p className="text-xs text-red-500 mt-1">Enter a valid 18-digit CLABE</p>}
+                        </div>
+                      )}
+                      {region === 'CN' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">CNAPS Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="12 digits" value={addForm.bankCnapsCode} onChange={e => setAddForm(f => ({...f, bankCnapsCode: e.target.value}))} />
+                          {addForm.bankCnapsCode.length > 0 && !isValidCnaps(addForm.bankCnapsCode) && <p className="text-xs text-red-500 mt-1">12 digits required</p>}
+                        </div>
+                      )}
+                      {region === 'RU' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">BIK</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9 digits" value={addForm.bankBik} onChange={e => setAddForm(f => ({...f, bankBik: e.target.value}))} />
+                          {addForm.bankBik.length > 0 && !isValidBik(addForm.bankBik) && <p className="text-xs text-red-500 mt-1">9 digits required</p>}
+                        </div>
+                      )}
+                      {(region === 'SEPA' || region === 'GCC') && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">IBAN</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. DE89370400440532013000" value={addForm.bankIban} onChange={e => setAddForm(f => ({...f, bankIban: e.target.value}))} />
+                          {addForm.bankIban.length > 0 && !isValidIban(addForm.bankIban) && <p className="text-xs text-red-500 mt-1">Enter a valid IBAN</p>}
+                        </div>
+                      )}
+                      {(region === 'GCC' || region === 'BACS' || region === 'SWIFT') && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. DEUTDEFF" value={addForm.bankSwiftBic} onChange={e => setAddForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {addForm.bankSwiftBic.length > 0 && !isValidSwiftBic(addForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Enter a valid SWIFT/BIC code</p>}
+                        </div>
+                      )}
+                      {region === 'SEPA' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Code (optional)</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. DEUTDEFF" value={addForm.bankSwiftBic} onChange={e => setAddForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {addForm.bankSwiftBic.length > 0 && !isValidSwiftBic(addForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Enter a valid SWIFT/BIC code</p>}
+                        </div>
+                      )}
 
                       <label className="flex items-start gap-2 cursor-pointer">
                         <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
@@ -1664,121 +2389,101 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                       <Button
                         variant="filled" visual="primary" size="sm" className="flex-1"
                         onClick={handleAddMethod}
-                        disabled={
-                          !addForm.nickname.trim() || !addForm.bankAccountNumber.trim() || !addForm.bankConsent ||
-                          addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber ||
-                          (addForm.bankCountry === 'US' && !isValidAbaRouting(addForm.bankRoutingNumber)) ||
-                          (addForm.bankCountry === 'GB' && !isValidSortCode(addForm.bankSortCode)) ||
-                          (addForm.bankCountry === 'IN' && !isValidIfsc(addForm.bankIfscCode)) ||
-                          (addForm.bankCountry === 'AU' && !isValidBsb(addForm.bankBsbNumber)) ||
-                          (addForm.bankCountry === 'CA' && (!isValidCaInstitution(addForm.bankInstitutionNumber) || !isValidCaTransit(addForm.bankTransitNumber)))
-                        }
+                        disabled={saveDisabled}
                       >Save</Button>
                     </div>
                   </div>
-                ) : addForm.methodType === 'PAYPAL' ? (
-                  /* Step 2b: PayPal */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect PayPal</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    )
+                  })()
+                ) : addForm.methodType === 'PAYPAL' || addForm.methodType === 'WISE' || addForm.methodType === 'PAYONEER' ? (
+                  /* Step 2b/2c: PayPal / Wise / Payoneer — real OAuth redirect
+                     (AC-06.01/06.04, AC-07.01/07.04, AC-08.01/08.04). One shared
+                     screen: same backend call (handleConnectOAuth -> POST
+                     /deposit-methods -> verification.oauthUrl -> redirect) and
+                     the same Figma layout for all three providers — centered
+                     icon, no title bar, single X close in the corner. Figma places
+                     the provider icon to the left of the heading, side by side —
+                     not centered above it. */
+                  <div className="p-8 relative flex flex-col">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="flex items-center pt-6 pb-3 gap-4">
+                      {addForm.methodType === 'PAYPAL' ? <PayPalDefault className="size-14 shrink-0" />
+                        : addForm.methodType === 'WISE' ? <WiseIcon className="size-14 shrink-0" />
+                        : <PayoneerDefault className="size-14 shrink-0" />}
+                      <h3 className="text-base font-semibold text-dark-blue-400">
+                        You'll be redirected to {addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} to securely connect your account.
+                      </h3>
                     </div>
-                    <div className="flex flex-col items-center py-4 gap-3">
-                      <PaypalIcon className="size-12" />
-                      <p className="text-sm text-gray-500 text-center">You'll be redirected to PayPal to securely connect your account.</p>
-                      <p className="text-xs text-gray-400 text-center">By connecting your account, you authorize Marketeq to send deposits to your linked PayPal account.</p>
-                    </div>
-                    <div className="space-y-3 mb-4">
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">PayPal Email (dev mode)</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="your@paypal.com" value={addForm.paypalEmail} onChange={e => setAddForm(f => ({...f, paypalEmail: e.target.value}))} />
-                      </div>
-                      <div>
-                        {/* SCR-04: anti-typo protection for the payout destination email */}
-                        <label className="text-xs text-gray-500 mb-1 block">Confirm PayPal Email</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter email address" value={addForm.paypalEmailConfirm} onChange={e => setAddForm(f => ({...f, paypalEmailConfirm: e.target.value}))} />
-                        {addForm.paypalEmailConfirm.length > 0 && addForm.paypalEmailConfirm.toLowerCase() !== addForm.paypalEmail.toLowerCase() && (
-                          <p className="text-xs text-red-500 mt-1">Email addresses do not match</p>
-                        )}
-                      </div>
-                    </div>
+                    <p className="text-xs text-gray-400 pb-2">Securely handle your information through a trusted third party.</p>
+                    {/* Storybook Buttons/Button pattern, adapted: Figma shows this
+                        specific CTA as a solid dark/black button rather than the
+                        outlined "GoogleOutlined" style used elsewhere — no
+                        filled+gray compound variant exists in button.tsx, so the
+                        dark styling is layered on via className on top of the
+                        shared Button component (still gets its focus/disabled/
+                        sizing behavior from the component, not a raw <button>). */}
                     <Button
-                      variant="filled" visual="primary" size="sm" className="w-full"
-                      disabled={!addForm.paypalEmail.trim() || addForm.paypalEmailConfirm.toLowerCase() !== addForm.paypalEmail.toLowerCase()}
-                      onClick={handleAddMethod}
-                    >Continue To PayPal</Button>
-                    <button className="w-full text-center text-xs text-gray-400 mt-2 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</button>
-                  </div>
-                ) : addForm.methodType === 'WISE' || addForm.methodType === 'PAYONEER' ? (
-                  /* Step 2c: Wise / Payoneer — real OAuth redirect (AC-07.01/07.04, AC-08.01/08.04) */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
-                    </div>
-                    <div className="flex flex-col items-center py-4 gap-3">
-                      {addForm.methodType === 'WISE' ? <WiseIcon className="size-12" /> : <PayoneerIcon className="size-12" />}
-                      <p className="text-sm text-gray-500 text-center">You'll be redirected to {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} to securely connect your account.</p>
-                      <p className="text-xs text-gray-400 text-center">Securely handle your information through a trusted third party.</p>
-                    </div>
-                    <label className="flex items-start gap-2 cursor-pointer mb-4">
-                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
-                      <span className="text-xs text-gray-400">By connecting your account, you authorize Marketeq to send deposits to your linked {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} account. You agree to abide by their terms and conditions for receiving business payments.</span>
-                    </label>
-                    <Button
-                      variant="filled" visual="primary" size="sm" className="w-full"
+                      variant="filled" visual="gray" size="sm"
+                      className="w-full mt-6 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                       disabled={!addForm.bankConsent || oauthConnecting}
-                      onClick={() => handleConnectOAuth(addForm.methodType as 'WISE' | 'PAYONEER')}
-                    >{oauthConnecting ? 'Connecting…' : `Continue To ${addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
-                    <button className="w-full text-center text-xs text-gray-400 mt-2 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</button>
+                      onClick={() => handleConnectOAuth(addForm.methodType as 'PAYPAL' | 'WISE' | 'PAYONEER')}
+                    >{oauthConnecting ? 'Connecting…' : `Continue To ${addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
+                    <Button variant="link" visual="gray" size="sm" className="w-full mt-2" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Back to Deposit Methods</Button>
+                    <label className="flex items-start gap-2 cursor-pointer mt-6">
+                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
+                      <span className="text-xs text-gray-400">By connecting your account, you authorize Marketeq to send deposits to your linked {addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} account. You agree to abide by {addForm.methodType === 'PAYPAL' ? "PayPal's" : addForm.methodType === 'WISE' ? "Wise's" : "Payoneer's"} terms and conditions for receiving business payments.</span>
+                    </label>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'provider' ? (
-                  /* Step 2d.1: Crypto — provider selection (AC-09.01) */
+                  /* Step 2d.1: Crypto — "Connect Your Wallet" provider list (AC-09.01) */
                   <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect Crypto Wallet</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-base font-semibold text-dark-blue-400">Connect Your Wallet</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
-                    <p className="text-xs text-gray-400 mb-4">Select the exchange or wallet provider you want to receive crypto payouts through.</p>
+                    <p className="text-xs text-gray-400 mb-4">Select your preferred wallet to securely receive crypto payouts.</p>
                     {cryptoProvidersLoading ? (
-                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}</div>
+                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />)}</div>
                     ) : cryptoProviders.length === 0 ? (
                       <div className="text-sm text-gray-400 text-center py-6">Provider list unavailable — please try again.</div>
                     ) : (
-                      <div className="space-y-2 max-h-80 overflow-y-auto">
-                        {cryptoProviders.map((p: any) => (
-                          <div
-                            key={p.provider}
-                            className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 hover:border-primary-300 cursor-pointer"
-                            onClick={() => {
-                              const firstNetwork = p.networks?.[0]
-                              setCryptoForm({ provider: p.provider, network: firstNetwork?.network ?? '', currency: firstNetwork?.tokens?.[0] ?? '', address: '' })
-                              setCryptoStep('details')
-                            }}
-                          >
-                            <div className="size-8 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">{p.displayName?.slice(0, 2).toUpperCase()}</div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-dark-blue-400">{p.displayName}</p>
-                              <p className="text-xs text-gray-400">{p.networks?.map((n: any) => n.network).join(', ')}</p>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {cryptoProviders.map((p: any) => {
+                          const meta = CRYPTO_PROVIDER_META[p.provider]
+                          return (
+                            <div key={p.provider} className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200">
+                              <CryptoProviderIcon provider={p.provider} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-dark-blue-400">{p.displayName}</p>
+                                <p className="text-xs text-gray-400">{meta?.tokensText ?? p.networks?.map((n: any) => n.network).join(', ')}</p>
+                                {meta?.feeText && <p className="text-xs text-gray-400">{meta.feeText}</p>}
+                              </div>
+                              <Button
+                                variant="outlined" visual="gray" size="sm"
+                                onClick={() => {
+                                  setCryptoForm({ provider: p.provider, network: p.defaultNetwork ?? p.networks?.[0]?.network ?? '', currency: p.defaultToken ?? p.networks?.[0]?.tokens?.[0] ?? '', address: '' })
+                                  setCryptoWcSession(null); setCryptoWcConsent(false); setCryptoError('')
+                                  setCryptoStep('details')
+                                }}
+                              >Connect</Button>
                             </div>
-                            <Button variant="outlined" visual="gray" size="sm">Select</Button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'details' ? (
-                  /* Step 2d.2: Crypto — network/currency/address (AC-09.02/09.03/09.04) */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></button>
-                      <h3 className="text-base font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setCryptoStep('provider') }}><X className="size-4" /></IconButton>
+                  /* Step 2d.2: Crypto — "Enter your wallet address" (AC-09.02/09.03/09.04).
+                     WalletConnect-capable providers also offer the QR-scan and
+                     paste-link presentations of the same session as alternatives. */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></IconButton>
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="flex flex-col items-center gap-2 -mt-6">
+                      <CryptoProviderIcon provider={cryptoForm.provider} className="size-12" />
+                      <h3 className="text-sm font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-3 mt-5">
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Network</label>
                         <select
@@ -1788,6 +2493,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                             const network = e.target.value
                             const net = selectedCryptoProvider?.networks?.find((n: any) => n.network === network)
                             setCryptoForm(f => ({...f, network, currency: net?.tokens?.[0] ?? ''}))
+                            setCryptoWcSession(null)
                           }}
                         >
                           {/* AC-09.02: only networks this provider actually supports */}
@@ -1806,21 +2512,136 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Wallet Address</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder={`Your ${cryptoForm.network || 'wallet'} address`} value={cryptoForm.address} onChange={e => { setCryptoForm(f => ({...f, address: e.target.value})); setCryptoError('') }} />
+                        <label className="text-xs text-gray-500 mb-1 block">Enter your wallet address</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="0xF23C...9u5M" value={cryptoForm.address} onChange={e => { setCryptoForm(f => ({...f, address: e.target.value})); setCryptoError('') }} />
+                        <p className="text-xs text-gray-400 mt-1">Your connection is private and secure. Wallet credentials are not stored or shared.</p>
                         {cryptoForm.address.length > 0 && cryptoForm.address.trim().length < 10 && (
                           <p className="text-xs text-red-500 mt-1">Enter a valid wallet address</p>
                         )}
                       </div>
                       {cryptoError && <p className="text-xs text-red-500">{cryptoError}</p>}
                     </div>
-                    <div className="flex gap-2 mt-5">
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setCryptoStep('provider')}>Back</Button>
+                    <div className="flex gap-2 mt-4">
                       <Button
-                        variant="filled" visual="primary" size="sm" className="flex-1"
+                        variant="filled" visual="gray" size="sm" className="flex-1 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                         onClick={handleAddCryptoWallet}
                         disabled={cryptoSubmitting || cryptoForm.address.trim().length < 10 || !cryptoForm.network || !cryptoForm.currency}
-                      >{cryptoSubmitting ? 'Connecting…' : 'Add Wallet'}</Button>
+                      >Connect Wallet</Button>
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setCryptoStep('provider')}>Cancel</Button>
+                    </div>
+                    {selectedCryptoProvider?.supportsWalletConnect && (
+                      <div className="mt-5">
+                        <p className="text-xs font-semibold text-dark-blue-400 mb-2">Other ways to connect</p>
+                        <div className="space-y-2">
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('qr')}>
+                            <Search className="size-3.5" /> Scan QR code from your wallet App
+                          </button>
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('paste')}>
+                            <ExternalLink className="size-3.5" /> Paste connection link instead
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && (cryptoStep === 'qr' || cryptoStep === 'paste') ? (
+                  /* Step 2d.3: WalletConnect — QR-scan and paste-link are two
+                     presentations of the same session (PS-10). */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setCryptoStep('details')}><ChevronLeft className="size-4" /></IconButton>
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="-mt-6">
+                      <h3 className="text-sm font-semibold text-dark-blue-400 flex items-center gap-1.5">
+                        {cryptoStep === 'qr' ? 'Scan this code in your wallet app' : 'Paste Wallet connection link'}
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">{cryptoStep === 'qr' ? 'Accept the connection request in your wallet' : `Paste the connection link generated for ${selectedCryptoProvider?.displayName ?? 'your wallet'}`}</p>
+                    </div>
+                    {!cryptoWcSession ? (
+                      <div className="h-48 flex items-center justify-center">
+                        <div className="size-8 rounded-full border-2 border-gray-200 border-t-primary-500 animate-spin" />
+                      </div>
+                    ) : cryptoStep === 'qr' ? (
+                      <div className="flex justify-center py-6">
+                        <QRCodeSVG value={cryptoWcSession.wcUri} size={180} />
+                      </div>
+                    ) : (
+                      <div className="py-6">
+                        <label className="text-xs text-gray-500 mb-1 block">Connection link</label>
+                        <input readOnly className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono truncate" value={cryptoWcSession.wcUri} onClick={e => (e.target as HTMLInputElement).select()} />
+                      </div>
+                    )}
+                    {cryptoWcSession && (
+                      <div className="flex flex-col items-center gap-3">
+                        <button
+                          className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700"
+                          onClick={() => { navigator.clipboard?.writeText(cryptoWcSession.wcUri); toast({ title: 'Copied', description: 'Wallet connection link copied to clipboard.' }) }}
+                        >
+                          <ExternalLink className="size-3.5" /> Copy wallet connection link
+                        </button>
+                        <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => setCryptoWcSession(null)}>Try Again</Button>
+                      </div>
+                    )}
+                    <div className="mt-5">
+                      <p className="text-xs font-semibold text-dark-blue-400 mb-2">Other ways to connect</p>
+                      <div className="space-y-2">
+                        <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('details')}>
+                          <Search className="size-3.5" /> Enter your wallet address
+                        </button>
+                        <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep(cryptoStep === 'qr' ? 'paste' : 'qr')}>
+                          <ExternalLink className="size-3.5" /> {cryptoStep === 'qr' ? 'Paste connection link instead' : 'Scan QR code from your wallet App'}
+                        </button>
+                      </div>
+                    </div>
+                    <label className="flex items-start gap-2 cursor-pointer mt-4">
+                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={cryptoWcConsent} onChange={e => setCryptoWcConsent(e.target.checked)} />
+                      <span className="text-xs text-gray-400">By connecting your wallet, you authorize Marketeq to initiate payouts to your linked crypto wallet via WalletConnect. You acknowledge this authorization remains valid unless revoked.</span>
+                    </label>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'connecting' ? (
+                  /* US-64: "Connecting to Wallet..." transitional screen. */
+                  <div className="p-10 text-center">
+                    <CryptoProviderIcon provider={cryptoForm.provider} className="size-12 mx-auto" />
+                    <p className="text-sm font-semibold text-dark-blue-400 mt-2">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</p>
+                    <div className="mx-auto mt-6 size-10 rounded-full border-2 border-gray-200 border-t-primary-500 animate-spin" />
+                    <h3 className="text-base font-semibold text-dark-blue-400 mt-4">Connecting to Wallet...</h3>
+                    <p className="text-xs text-gray-400 mt-1">We're verifying and connecting to your wallet. This may take up to 30 seconds.</p>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'success' ? (
+                  /* US-64: dedicated success screen with wallet address + current value. */
+                  <div className="p-8 text-center relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setShowAddMethod(false); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoResult(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-5 text-primary-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet Connected Successfully</h3>
+                    <div className="mt-5 rounded-lg border border-gray-200 flex divide-x divide-gray-200 text-left">
+                      <div className="flex-1 px-4 py-3">
+                        <p className="text-xs text-gray-400">Wallet Address</p>
+                        <p className="text-sm font-semibold text-dark-blue-400 font-mono">••••{cryptoResult?.walletAddressLast6 ?? cryptoForm.address.slice(-6)}</p>
+                      </div>
+                      <div className="flex-1 px-4 py-3">
+                        <p className="text-xs text-gray-400">Current Conversion Value</p>
+                        <p className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.conversionDisplay ?? '—'}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'error' ? (
+                  /* US-64: dedicated failure screen — retry same details, or pick a
+                      different provider entirely, rather than a dead-end toast. */
+                  <div className="p-8 text-center relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <AlertTriangle className="size-5 text-red-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet Connected Failed</h3>
+                    <p className="mt-2 text-sm text-gray-500">{cryptoError || "We couldn't connect to your selected wallet. Please check your connection and try again."}</p>
+                    <p className="mt-2 text-xs text-gray-400 italic">If the issue persists, consider selecting a different wallet provider.</p>
+                    <div className="flex items-center justify-center gap-4 mt-6">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoWcSession(null); setCryptoError('') }}>
+                        Pick Another Wallet
+                      </button>
+                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setCryptoWcSession(null); setCryptoError(''); setCryptoStep('details') }}>
+                        Retry
+                      </Button>
                     </div>
                   </div>
                 ) : null}
@@ -1828,18 +2649,22 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
             </div>
           )}
 
-          {/* Set Primary Confirmation Dialog — split-impact warning (SCR-07) */}
+          {/* Set Default Confirmation Dialog (SCR-07). setDefault() in
+              methods.service.ts only flips isDefault flags on deposit
+              methods — it never touches payout_schedules.primaryMethodId
+              (that's only ever set explicitly via PATCH /payouts/schedule),
+              so changing the default does not disable split payout. */}
           {confirmSetDefault && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConfirmSetDefault(null)}>
               <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Change Primary Method?</h3>
-                <p className="text-sm text-gray-500 mb-5">Changing your primary method will disable split payout. You can reconfigure split payout afterward.</p>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Make this your default deposit method?</h3>
+                <p className="text-sm text-gray-500 mb-5">This method will become your primary destination for all payouts, unless you have split payout enabled. Your existing default method will be replaced.</p>
                 <div className="flex gap-2">
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setConfirmSetDefault(null)}>Cancel</Button>
                   <Button
                     variant="filled" visual="primary" size="sm" className="flex-1"
                     onClick={async () => { const id = confirmSetDefault.id; setConfirmSetDefault(null); await handleSetDefault(id) }}
-                  >Change Primary</Button>
+                  >Yes, make default</Button>
                 </div>
               </div>
             </div>
@@ -1849,8 +2674,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
           {confirmRemove && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !removing && setConfirmRemove(null)}>
               <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Remove Payout Method</h3>
-                <p className="text-sm text-gray-500 mb-4">This action is permanent.</p>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Remove Deposit Method?</h3>
+                <p className="text-sm text-gray-500 mb-4">Are you sure you want to remove this payout method? Once removed, funds will no longer be routed to this account.</p>
                 <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 mb-4">
                   {getMethodIcon(confirmRemove)}
                   <span className="text-sm font-medium text-dark-blue-400">{getMethodLabel(confirmRemove).name}</span>
@@ -1894,8 +2719,46 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
 
           {/* Edit Method Dialog */}
           {editingMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingMethod(null)}>
-              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto relative" onClick={e => e.stopPropagation()}>
+                {editBankSaveState === 'success' ? (
+                  /* Figma "Bank Details Updated" */
+                  <div className="text-center py-4">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-5 text-primary-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Bank Details Updated</h3>
+                    <p className="mt-2 text-sm text-gray-500">You updated your bank account information successfully.</p>
+                    <p className="mt-1 text-xs text-gray-400">Changes may take up to 3 days to reflect.</p>
+                  </div>
+                ) : editBankSaveState === 'error' ? (
+                  /* Figma "Unable To Update Bank Info" */
+                  <div className="text-center py-4">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <AlertTriangle className="size-5 text-red-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Unable To Update Bank Info</h3>
+                    <p className="mt-1 text-sm text-gray-500">Please check your details and try again.</p>
+                    <div className="mt-4 text-left rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <p className="text-xs font-semibold text-dark-blue-400 mb-1.5">Please check that:</p>
+                      <ul className="text-xs text-gray-500 space-y-1 list-disc list-inside">
+                        <li>All fields are filled correctly</li>
+                        <li>Account and routing numbers follow the correct format</li>
+                        <li>Bank codes like SWIFT, IBAN, or IFSC are valid</li>
+                        <li>The country selected matches the format used</li>
+                        <li>No special characters are used in bank name</li>
+                      </ul>
+                    </div>
+                    {editBankError && <p className="mt-3 text-sm text-red-600">{editBankError}</p>}
+                    <div className="flex gap-2 mt-5">
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}>Cancel</Button>
+                      <Button variant="filled" visual="primary" size="sm" className="flex-1" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setEditBankSaveState(null); setEditBankError('') }}>Retry</Button>
+                    </div>
+                  </div>
+                ) : (
+                <>
                 <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Edit Account</h3>
                 <div className="space-y-3">
                   <div>
@@ -1906,11 +2769,175 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                     <label className="text-xs text-gray-500 mb-1 block">Nickname (optional)</label>
                     <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. My Chase Savings" value={editingMethod.nickname ?? ''} onChange={e => setEditingMethod((m: any) => ({...m, nickname: e.target.value}))} />
                   </div>
+
+                  {/* US-59: bank details are re-entered fresh, never pre-filled — the
+                      backend never returns raw account numbers back out (security). */}
+                  {editingBankDetails ? (() => {
+                    const editRegion = detectBankRegion(editBankForm.bankCountry)
+                    return (
+                    <div className="space-y-3 pt-2 border-t border-gray-200">
+                      <p className="text-xs text-gray-500">
+                        To correct your bank account details, re-enter them below. This restarts verification — two small deposits will arrive within 2 business days. Leave blank to keep your current (unverified) details.
+                      </p>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Country</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={editBankForm.bankCountry} onChange={e => setEditBankForm(f => ({...f, bankCountry: e.target.value, bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: ''}))}>
+                          <option value="US">🇺🇸 United States</option>
+                          <option value="DE">🇪🇺 Europe</option>
+                          <option value="IN">🇮🇳 India</option>
+                          <option value="AU">🇦🇺 Australia</option>
+                          <option value="GB">🇬🇧 United Kingdom</option>
+                          <option value="JP">🇯🇵 Japan</option>
+                          <option value="SG">🌏 Asia</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank of America" value={editBankForm.bankAccountName} onChange={e => setEditBankForm(f => ({...f, bankAccountName: e.target.value}))} />
+                      </div>
+                      {editRegion !== 'SEPA' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={editBankForm.bankAccountNumber} onChange={e => setEditBankForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={editBankForm.bankAccountNumberConfirm} onChange={e => setEditBankForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
+                            {editBankForm.bankAccountNumberConfirm.length > 0 && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber && (
+                              <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
+                            )}
+                          </div>
+                        </>
+                      )}
+                      {editRegion === 'US' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Routing Number</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={editBankForm.bankRoutingNumber} onChange={e => setEditBankForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
+                          {editBankForm.bankRoutingNumber.length > 0 && !isValidAbaRouting(editBankForm.bankRoutingNumber) && (
+                            <p className="text-xs text-red-500 mt-1">Invalid routing number.</p>
+                          )}
+                        </div>
+                      )}
+                      {editRegion === 'GB' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 12-34-56" value={editBankForm.bankSortCode} onChange={e => setEditBankForm(f => ({...f, bankSortCode: e.target.value}))} />
+                          {editBankForm.bankSortCode.length > 0 && !isValidSortCode(editBankForm.bankSortCode) && (
+                            <p className="text-xs text-red-500 mt-1">Sort code must be 6 digits.</p>
+                          )}
+                        </div>
+                      )}
+                      {editRegion === 'IN' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={editBankForm.bankIfscCode} onChange={e => setEditBankForm(f => ({...f, bankIfscCode: e.target.value}))} />
+                          {editBankForm.bankIfscCode.length > 0 && !isValidIfsc(editBankForm.bankIfscCode) && (
+                            <p className="text-xs text-red-500 mt-1">Invalid IFSC code.</p>
+                          )}
+                        </div>
+                      )}
+                      {editRegion === 'AU' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 123-456" value={editBankForm.bankBsbNumber} onChange={e => setEditBankForm(f => ({...f, bankBsbNumber: e.target.value}))} />
+                          {editBankForm.bankBsbNumber.length > 0 && !isValidBsb(editBankForm.bankBsbNumber) && (
+                            <p className="text-xs text-red-500 mt-1">BSB must be 6 digits.</p>
+                          )}
+                        </div>
+                      )}
+                      {editRegion === 'CA' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={editBankForm.bankInstitutionNumber} onChange={e => setEditBankForm(f => ({...f, bankInstitutionNumber: e.target.value}))} />
+                            {editBankForm.bankInstitutionNumber.length > 0 && !isValidCaInstitution(editBankForm.bankInstitutionNumber) && (
+                              <p className="text-xs text-red-500 mt-1">Must be 3 digits.</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Transit Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="5 digits" value={editBankForm.bankTransitNumber} onChange={e => setEditBankForm(f => ({...f, bankTransitNumber: e.target.value}))} />
+                            {editBankForm.bankTransitNumber.length > 0 && !isValidCaTransit(editBankForm.bankTransitNumber) && (
+                              <p className="text-xs text-red-500 mt-1">Must be 5 digits.</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {editRegion === 'JP' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Bank Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="4 digits" value={editBankForm.bankCode} onChange={e => setEditBankForm(f => ({...f, bankCode: e.target.value}))} />
+                            {editBankForm.bankCode.length > 0 && !isValidJpBankCode(editBankForm.bankCode) && <p className="text-xs text-red-500 mt-1">4 digits required.</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Branch Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={editBankForm.bankBranchCode} onChange={e => setEditBankForm(f => ({...f, bankBranchCode: e.target.value}))} />
+                            {editBankForm.bankBranchCode.length > 0 && !isValidJpBranchCode(editBankForm.bankBranchCode) && <p className="text-xs text-red-500 mt-1">3 digits required.</p>}
+                          </div>
+                        </div>
+                      )}
+                      {editRegion === 'SEPA' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">IBAN</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter your full IBAN (starts with country code, e.g., DE...)" value={editBankForm.bankIban} onChange={e => setEditBankForm(f => ({...f, bankIban: e.target.value}))} />
+                            {editBankForm.bankIban.length > 0 && !isValidIban(editBankForm.bankIban) && <p className="text-xs text-red-500 mt-1">Invalid IBAN.</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Number (optional)</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter 8 or 11 character SWIFT/BIC Code" value={editBankForm.bankSwiftBic} onChange={e => setEditBankForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                            {editBankForm.bankSwiftBic.length > 0 && !isValidSwiftBic(editBankForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Invalid SWIFT/BIC code.</p>}
+                          </div>
+                        </>
+                      )}
+                      {editRegion === 'SWIFT' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter 8 or 11 character SWIFT/BIC Code" value={editBankForm.bankSwiftBic} onChange={e => setEditBankForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {editBankForm.bankSwiftBic.length > 0 && !isValidSwiftBic(editBankForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Invalid SWIFT/BIC code.</p>}
+                        </div>
+                      )}
+                    </div>
+                    )
+                  })() : editingMethod.methodType === 'BANK_MANUAL' && editingMethod.verificationStatus === 'verified' ? (
+                    <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
+                      This account is verified and its bank details can't be changed here — remove it and add a new one instead.
+                    </p>
+                  ) : null}
+
+                  {editBankError && <p className="text-sm text-red-600">{editBankError}</p>}
                 </div>
                 <div className="flex gap-2 mt-5">
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setEditingMethod(null)}>Cancel</Button>
-                  <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={handleUpdateMethod}>Save Changes</Button>
+                  <Button
+                    variant="filled" visual="primary" size="sm" className="flex-1"
+                    disabled={(() => {
+                      if (!editingBankDetails) return false
+                      const editRegion = detectBankRegion(editBankForm.bankCountry)
+                      const touchedBankDetails = editBankForm.bankAccountNumber.trim().length > 0 || editBankForm.bankIban.trim().length > 0
+                      if (!touchedBankDetails) return false
+                      return (
+                        !editBankForm.bankAccountName.trim() ||
+                        (editRegion !== 'SEPA' && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber) ||
+                        (editRegion === 'US' && !isValidAbaRouting(editBankForm.bankRoutingNumber)) ||
+                        (editRegion === 'GB' && !isValidSortCode(editBankForm.bankSortCode)) ||
+                        (editRegion === 'IN' && !isValidIfsc(editBankForm.bankIfscCode)) ||
+                        (editRegion === 'AU' && !isValidBsb(editBankForm.bankBsbNumber)) ||
+                        (editRegion === 'CA' && (!isValidCaInstitution(editBankForm.bankInstitutionNumber) || !isValidCaTransit(editBankForm.bankTransitNumber))) ||
+                        (editRegion === 'JP' && (!isValidJpBankCode(editBankForm.bankCode) || !isValidJpBranchCode(editBankForm.bankBranchCode))) ||
+                        (editRegion === 'SEPA' && !isValidIban(editBankForm.bankIban)) ||
+                        (editRegion === 'SWIFT' && !isValidSwiftBic(editBankForm.bankSwiftBic))
+                      )
+                    })()}
+                    onClick={handleUpdateMethod}
+                  >
+                    Save Changes
+                  </Button>
                 </div>
+                </>
+                )}
               </div>
             </div>
           )}
@@ -1929,43 +2956,109 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule }: { onNavigat
                   <HelpCircle className="size-4 text-gray-400" />
                 </TooltipTrigger>
                 <TooltipContent visual="white" size="md">
-                  <p>Earnings currently eligible for manual withdrawal. This amount excludes your $150 reserve balance and any pending transactions. You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
+                  <p>Earnings currently eligible for manual withdrawal. {reserveUsd > 0 ? `This amount excludes your $${reserveUsd.toFixed(2)} reserve balance and any pending transactions.` : "This amount excludes any pending transactions."} You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
-          <div className="flex items-center gap-2 mb-4">
-            <p className="text-3xl font-bold text-dark-blue-400">
-              <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
-            </p>
-            {defaultMethod && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <BankIcon className="size-3.5" />
-                {getMethodLabel(defaultMethod).name}
-              </div>
-            )}
-          </div>
-          {/* US-03: pre-empt a withdrawal that would just fail server-side (payout.service.ts
-              payoutMinimum, $50 default) — the /transfer-funds page still enforces this itself,
-              this is only a client-side UX guard against an obviously-doomed flow. */}
-          {(() => {
-            const withdrawableUsd = balance ? parseFloat(balance.availableBalanceDisplay) : null
-            const belowMinimum = withdrawableUsd !== null && withdrawableUsd < 50
-            const isLoading = withdrawableUsd === null
+          {/* US-05/US-06: a genuine load failure is never conflated with a real $0
+              balance — distinct copy, no amount shown, retry inline in the card
+              (no toast, matching the per-component-error pattern used elsewhere
+              in this epic). */}
+          {balanceError ? (
+            <div className="py-2">
+              <p className="text-sm text-red-600">Balance unavailable.</p>
+              <button className="text-sm text-primary-600 underline mt-1" onClick={loadBalance}>Retry</button>
+            </div>
+          ) : balance && parseFloat(balance.totalEarnedUsd) === 0 ? (
+            // US-04: "genuinely zero" means never earned anything at all — distinct
+            // from a contractor who has earned before but has $0 available right now
+            // (e.g. already withdrawn everything). totalEarnedUsd is the reliable
+            // signal for that distinction; availableBalance alone can't tell them apart.
+            <div className="py-2 space-y-2">
+              <p className="text-sm text-gray-500">You haven't earned anything yet. Once you log billable time, your available balance will show up here.</p>
+              {/* US-99: takes the contractor straight to Help & Support (billing
+                  section expanded by default) rather than a toast that dead-ends. */}
+              <button
+                className="text-sm text-primary-600 underline"
+                onClick={() => onOpenHelp?.()}
+              >
+                How does billing work?
+              </button>
+            </div>
+          ) : (() => {
+            // reserveUsd is in USD (payout-service's schedule) while
+            // availableBalanceDisplay may be FX-converted — apply the same
+            // implicit rate the backend already computed rather than mixing
+            // currencies.
+            const grossUsd = balance ? parseFloat(balance.availableBalance) : 0
+            const grossDisplay = balance ? parseFloat(balance.availableBalanceDisplay) : 0
+            const rate = grossUsd > 0 ? grossDisplay / grossUsd : 1
+            const netDisplay = balance ? Math.max(0, grossDisplay - reserveUsd * rate) : 0
             return (
-              <div className="flex gap-2">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button variant="outlined" visual="gray" size="sm" disabled={belowMinimum || isLoading} onClick={() => router.push("/transfer-funds")}>Withdraw Funds</Button>
-                      </span>
-                    </TooltipTrigger>
-                    {belowMinimum && <TooltipContent><p>You don&apos;t have any earnings to withdraw yet.</p></TooltipContent>}
-                  </Tooltip>
-                </TooltipProvider>
-                <Button variant="outlined" visual="gray" size="sm" onClick={() => router.push("/billing")}>Manage</Button>
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-3xl font-bold text-dark-blue-400">
+                  <span className="text-base align-top">$</span>{balance ? Math.floor(netDisplay).toLocaleString() : "..."}<span className="text-lg">.{balance ? netDisplay.toFixed(2).split(".")[1] : "00"}</span>
+                  {/* US-08: never conditionally hidden, even though the balance
+                      might look "off" from what the contractor expects. */}
+                  {balance?.stale && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="ml-0.5 text-lg text-amber-500 cursor-help align-super">*</span>
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>Exchange rate may be delayed.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </p>
               </div>
+              {/* US-07: secondary local-currency amount, shown only when it actually
+                  differs from the display currency — the two are currently always
+                  forced to USD server-side (balance.controller.ts hardcodes both
+                  args), so this won't visibly trigger until that's resolved, but the
+                  frontend is now correctly wired to the real fields either way. */}
+              {balance && balance.localCurrency !== balance.displayCurrency && (
+                <p className="text-xs text-gray-400 mb-2">{balance.availableBalanceLocal} {balance.localCurrency}</p>
+              )}
+              {balance?.cachedAt && (
+                <p className="text-xs text-gray-400 mb-2">{formatRelativeMinutes(balance.cachedAt, nowTick)}</p>
+              )}
+              <div className="flex items-center gap-2 mb-4">
+                {defaultMethod && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <BankIcon className="size-3.5" />
+                    {getMethodLabel(defaultMethod).name}
+                  </div>
+                )}
+              </div>
+              {/* US-11: pre-empt a withdrawal that would just fail server-side (payout.service.ts
+                  payoutMinimum, $50 default) — the /transfer-funds page still enforces this itself,
+                  this is only a client-side UX guard against an obviously-doomed flow. */}
+              {(() => {
+                const withdrawableUsd = balance ? netDisplay : null
+                const belowMinimum = withdrawableUsd !== null && withdrawableUsd < 50
+                const isLoading = withdrawableUsd === null
+                return (
+                  <div className="flex gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button variant="outlined" visual="gray" size="sm" disabled={belowMinimum || isLoading} onClick={() => router.push("/transfer-funds")}>Withdraw Funds</Button>
+                          </span>
+                        </TooltipTrigger>
+                        {belowMinimum && <TooltipContent><p>You don&apos;t have any earnings to withdraw yet.</p></TooltipContent>}
+                      </Tooltip>
+                    </TooltipProvider>
+                    <Button variant="outlined" visual="gray" size="sm" onClick={() => router.push("/billing")}>Manage</Button>
+                  </div>
+                )
+              })()}
+            </>
             )
           })()}
         </div>
@@ -2028,6 +3121,86 @@ const SCHEDULE_ERROR_MESSAGES: Record<string, string> = {
   ERR_SPLIT_METHOD_NOT_VERIFIED: "The selected secondary method must be verified.",
   ERR_SPLIT_NOT_ENABLED: "Enable split payout before setting a percentage.",
   ERR_SCHEDULE_NOT_FOUND: "Save your schedule before configuring split payout.",
+  ERR_SCHEDULE_END_DATE_BEFORE_START: "End date must be after start date.",
+}
+
+// F-13 Help & Support Tab (US-95–99). Facts below are pulled from the actual
+// backend constants rather than invented: 20% default platform fee (see
+// earnings.service.ts getRecentFeePercent fallback), 5-business-day
+// first-payout KYC hold (kyc-gate.service.ts), $600 USD annual tax
+// threshold (transaction-created.consumer.ts / earnings.service.ts).
+export const HelpSupportDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-lg p-0 gap-0">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
+        <DialogTitle className="text-base font-semibold text-dark-blue-400">Help & Support</DialogTitle>
+        <DialogClose asChild>
+          <IconButton size="sm" variant="ghost" visual="gray"><X className="size-4" /></IconButton>
+        </DialogClose>
+      </div>
+      <div className="p-6 max-h-[70vh] overflow-y-auto">
+        <Accordion type="multiple" className="space-y-3" defaultValue={["billing"]}>
+          {/* US-95 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="billing">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">How does billing work?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              Marketeq deducts a service fee — 20% by default — from each confirmed work session before it's added to your available balance. Your gross earnings (time logged × your rate) minus this fee equals your net balance. The exact fee percent for each entry is shown in that entry's Fee Breakdown.
+            </DisclosureContent>
+          </AccordionItem>
+
+          {/* US-96 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="kyc">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">Why is my first payout on hold?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              For your security, your first withdrawal from Marketeq is held for 5 business days before being released. This is a one-time step — after your first successful payout, future withdrawals are not subject to this hold.
+            </DisclosureContent>
+          </AccordionItem>
+
+          {/* US-97 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="fx">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">How are exchange rates applied?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              Your contract rate is locked in the currency it was created in — that locked amount is what you're actually paid. Your display currency is for reference only, converted at a live rate each time you view it, so amounts shown may differ slightly from what was billed.
+            </DisclosureContent>
+          </AccordionItem>
+
+          {/* US-98 */}
+          <AccordionItem className="rounded-lg border border-gray-200" value="tax">
+            <AccordionTrigger className="w-full px-4 py-3 flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+              <span className="flex-auto text-left">What are my tax reporting obligations?</span>
+              <ChevronDown className="size-4 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+            </AccordionTrigger>
+            <DisclosureContent className="px-4 pb-4 text-sm text-gray-500 leading-relaxed">
+              Once your earnings on Marketeq reach $600 USD in a calendar year, we're required to collect a completed W-9 (U.S. contractors) or W-8BEN (non-U.S. contractors) from you for tax reporting purposes. We'll notify you when you approach this threshold so you can prepare.
+            </DisclosureContent>
+          </AccordionItem>
+        </Accordion>
+        <p className="text-xs text-gray-400 mt-4">
+          Still have questions? Contact us at <a href="mailto:support@marketeqdigital.com" className="text-primary-600 underline">support@marketeqdigital.com</a>.
+        </p>
+      </div>
+    </DialogContent>
+  </Dialog>
+)
+
+// Split-payout row icon (Figma). A smaller, local counterpart to
+// OverviewTab's getMethodIcon — that one isn't reachable from here since
+// it's a closure inside a different component.
+const renderScheduleMethodIcon = (m: any) => {
+  if (m.methodType === "PAYPAL") return <PaypalIcon className="size-5" />
+  if (m.methodType === "WISE") return <WiseIcon className="size-5" />
+  if (m.methodType === "PAYONEER") return <PayoneerIcon className="size-5" />
+  if (m.methodType === "CRYPTO") return <CryptoProviderIcon provider={m.cryptoProvider} className="size-5" />
+  return <BankLogo bankName={m.nickname || ""} size={20} />
 }
 
 export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; onSaved?: () => void }) => {
@@ -2056,13 +3229,39 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
   const [frequency, setFrequency] = useState("weekly")
   const [dayOfWeek, setDayOfWeek] = useState(1)
   const [dayOfMonth, setDayOfMonth] = useState(1)
-  const [customIntervalDays, setCustomIntervalDays] = useState(7)
+  // Figma "Repeat Every [N] [Days/Weeks/Months]" — customIntervalDays is the
+  // only column the backend stores, so weeks/months are converted to days
+  // before saving (weeks*7, months*30) and back when hydrating from a saved
+  // schedule. customIntervalCount is the number shown in the unit the user
+  // picked, not the raw day count.
+  const [customIntervalUnit, setCustomIntervalUnit] = useState<'days' | 'weeks' | 'months'>('days')
+  const [customIntervalCount, setCustomIntervalCount] = useState(7)
+  // US-72: optional window for a custom schedule, e.g. pause payouts during
+  // a planned absence without disabling the schedule outright. yyyy-mm-dd
+  // strings for <input type="date">; empty string = unset. Figma gates the
+  // end date behind a "Stop Deposits On" toggle rather than showing it bare.
+  const [scheduleStartDate, setScheduleStartDate] = useState("")
+  const [scheduleEndDate, setScheduleEndDate] = useState("")
+  const [stopDepositsEnabled, setStopDepositsEnabled] = useState(false)
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
   const [scheduleUpdatedAt, setScheduleUpdatedAt] = useState<string | null>(null)
 
-  // Minimum payout + reserve
+  // Minimum payout + reserve. Figma shows preset buttons ($25/$50/$100/$150/
+  // $250) plus a Custom amount input, not a plain on/off toggle — backend
+  // (schedule.service.ts) enforces 0 <= reserveUsd <= 250 regardless of
+  // which UI sets it, so presets are fully within that range already.
   const [thresholdUsd, setThresholdUsd] = useState("50")
   const [reserveUsd, setReserveUsd] = useState("0")
+  const RESERVE_PRESETS = [25, 50, 100, 150, 250]
+  const [reserveCustomOpen, setReserveCustomOpen] = useState(false)
+  const [reserveCustomValue, setReserveCustomValue] = useState("")
+
+  // Split payout — Figma's "Auto Split" toggle switches between a fixed
+  // 50/50 default and manual per-side percent entry; there's no backend
+  // auto-balance algorithm (primarySplitPercent is the only stored value,
+  // secondarySplitPercent is just its complement), so "auto" just means
+  // "keep it at 50/50 and don't let the user type a number".
+  const [autoSplit, setAutoSplit] = useState(true)
 
   // Authorization
   const [authorized, setAuthorized] = useState(false)
@@ -2074,7 +3273,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
     if (frequency === "bi_weekly") return `Bi-Weekly (every other ${selectedDayFull})`
     if (frequency === "monthly") return `Monthly (on the ${dayOfMonth}${dayOfMonth === 1 ? "st" : dayOfMonth === 2 ? "nd" : dayOfMonth === 3 ? "rd" : "th"})`
     if (frequency === "daily") return "Daily (every day)"
-    if (frequency === "custom") return `Every ${customIntervalDays} day${customIntervalDays === 1 ? "" : "s"}`
+    if (frequency === "custom") return `Every ${customIntervalCount} ${customIntervalUnit}${customIntervalCount === 1 ? customIntervalUnit.slice(0, -1) : customIntervalUnit}`
     return "Select schedule"
   }
 
@@ -2096,14 +3295,31 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
         setSplitEnabled(!!s.splitEnabled)
         setSecondaryMethodId(s.secondaryMethod?.id ?? "")
         setPrimarySplitPercent(s.primarySplitPercent ?? 50)
+        setAutoSplit((s.primarySplitPercent ?? 50) === 50)
         setInitial({ splitEnabled: !!s.splitEnabled, secondaryMethodId: s.secondaryMethod?.id ?? "", primarySplitPercent: s.primarySplitPercent ?? 50 })
         setIsActive(s.isActive ?? true)
         setFrequency(s.frequency ?? "weekly")
         setDayOfWeek(s.dayOfWeek ?? 1)
         setDayOfMonth(s.dayOfMonth ?? 1)
-        setCustomIntervalDays(s.customIntervalDays ?? 7)
+        const loadedIntervalDays = s.customIntervalDays ?? 7
+        if (loadedIntervalDays >= 30 && loadedIntervalDays % 30 === 0) {
+          setCustomIntervalUnit("months"); setCustomIntervalCount(loadedIntervalDays / 30)
+        } else if (loadedIntervalDays % 7 === 0) {
+          setCustomIntervalUnit("weeks"); setCustomIntervalCount(loadedIntervalDays / 7)
+        } else {
+          setCustomIntervalUnit("days"); setCustomIntervalCount(loadedIntervalDays)
+        }
+        setScheduleStartDate(s.startDate ? s.startDate.slice(0, 10) : "")
+        setScheduleEndDate(s.endDate ? s.endDate.slice(0, 10) : "")
+        setStopDepositsEnabled(!!s.endDate)
         setThresholdUsd(s.thresholdUsd ? String(Math.round(parseFloat(s.thresholdUsd))) : "50")
-        setReserveUsd(s.reserveUsd ? String(Math.round(parseFloat(s.reserveUsd))) : "0")
+        const loadedReserve = s.reserveUsd ? Math.round(parseFloat(s.reserveUsd)) : 0
+        setReserveUsd(String(loadedReserve))
+        if (loadedReserve > 0 && !RESERVE_PRESETS.includes(loadedReserve)) {
+          setReserveCustomOpen(true); setReserveCustomValue(String(loadedReserve))
+        } else {
+          setReserveCustomOpen(false); setReserveCustomValue("")
+        }
         // AC-25.03: next run date is always the server-computed value, never derived client-side.
         setNextRunAt(s.nextRunAt ?? null)
         setScheduleUpdatedAt(s.updatedAt ?? null)
@@ -2129,7 +3345,16 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
       }
       if (frequency === "weekly" || frequency === "bi_weekly") schedulePayload.dayOfWeek = dayOfWeek
       if (frequency === "monthly") schedulePayload.dayOfMonth = dayOfMonth
-      if (frequency === "custom") schedulePayload.customIntervalDays = customIntervalDays
+      if (frequency === "custom") {
+        // customIntervalDays is the only interval column the backend stores —
+        // weeks/months are converted to days before saving (weeks*7, months*30).
+        const unitMultiplier = customIntervalUnit === "months" ? 30 : customIntervalUnit === "weeks" ? 7 : 1
+        schedulePayload.customIntervalDays = customIntervalCount * unitMultiplier
+        schedulePayload.dayOfWeek = dayOfWeek
+        // Explicit null (not omitted) clears a previously-set date server-side.
+        schedulePayload.startDate = scheduleStartDate ? new Date(scheduleStartDate).toISOString() : null
+        schedulePayload.endDate = stopDepositsEnabled && scheduleEndDate ? new Date(scheduleEndDate).toISOString() : null
+      }
 
       const scheduleRes = await payoutFetch(`/payouts/schedule`, { method: "PUT", headers, body: JSON.stringify(schedulePayload) })
       const scheduleData = await scheduleRes.json()
@@ -2156,7 +3381,19 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
 
       onOpenChange(false)
       onSaved?.()
-      toast({ title: "Payout schedule updated", description: getScheduleLabel() })
+      // Figma: split on/off gets its own specific toast naming the actual
+      // methods/percentages involved, not the generic schedule-updated one.
+      if (splitEnabled && !initial.splitEnabled) {
+        const primaryLabel = methods.find((m) => m.id === primaryMethodId)?.displayLabel ?? methods.find((m) => m.id === primaryMethodId)?.nickname ?? "your primary method"
+        const secondaryLabel = methods.find((m) => m.id === secondaryMethodId)?.displayLabel ?? methods.find((m) => m.id === secondaryMethodId)?.nickname ?? "your secondary method"
+        const secondaryPct = Math.round((100 - primarySplitPercent) * 100) / 100
+        toast({ title: "Split Deposits activated.", description: `Funds will be distributed: ${primarySplitPercent}% to ${primaryLabel}, ${secondaryPct}% to ${secondaryLabel}.` })
+      } else if (!splitEnabled && initial.splitEnabled) {
+        const defaultLabel = methods.find((m) => m.id === primaryMethodId)?.displayLabel ?? methods.find((m) => m.id === primaryMethodId)?.nickname ?? "your default method"
+        toast({ title: "Split Deposits turned off.", description: `You turned off split Deposits. All deposits will go to your default method: ${defaultLabel}.` })
+      } else {
+        toast({ title: "Payout schedule updated", description: getScheduleLabel() })
+      }
     } catch {
       setFormError("Unable to save — please try again.")
     } finally {
@@ -2257,23 +3494,41 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-xs text-gray-500 mb-1 block">Primary %</label>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-500">Auto Split</span>
+                        <Switch
+                          checked={autoSplit}
+                          onCheckedChange={(c) => { setAutoSplit(c as boolean); if (c) setPrimarySplitPercent(50) }}
+                          size="sm"
+                        />
+                      </div>
+
+                      {/* Per-method rows (Figma): icon + name + percent + remove.
+                          Removing either side has the same effect — there's no
+                          backend concept of a 2-method split with one side gone —
+                          so both route through the existing disable-split confirm. */}
+                      {[
+                        { m: methods.find((mm) => mm.id === primaryMethodId), pct: primarySplitPercent, isPrimary: true },
+                        { m: methods.find((mm) => mm.id === secondaryMethodId), pct: Math.round((100 - primarySplitPercent) * 100) / 100, isPrimary: false },
+                      ].map(({ m, pct, isPrimary }, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                          <span className="shrink-0">{m ? renderScheduleMethodIcon(m) : <BankIcon className="size-5 text-gray-400" />}</span>
+                          <span className="flex-1 min-w-0 text-sm font-medium text-dark-blue-400 truncate">{m ? (m.nickname || m.displayLabel || m.methodType) : (isPrimary ? "Select a payout method" : "Select a secondary method")}</span>
                           <Input
                             type="number" min={0} max={100}
-                            value={primarySplitPercent}
+                            className="w-16 text-right"
+                            disabled={autoSplit || !isPrimary}
+                            value={pct}
                             // AC-23.03/23.04: accept the raw value (including 0/100) so the
                             // inline error below can actually be seen — clamping silently
                             // would make those values impossible to type in the first place.
                             onChange={(e) => setPrimarySplitPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
                           />
+                          <span className="text-sm text-gray-400">%</span>
+                          <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if (initial.splitEnabled) { setConfirmDisableSplit(true) } else { setSplitEnabled(false) } }}><Trash01 className="size-4" /></IconButton>
                         </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-gray-500 mb-1 block">Secondary % (auto)</label>
-                          <Input type="number" value={Math.round((100 - primarySplitPercent) * 100) / 100} disabled />
-                        </div>
-                      </div>
+                      ))}
                       {(primarySplitPercent <= 0 || primarySplitPercent >= 100) && (
                         <p className="text-xs text-red-500">Each method must receive between 1% and 99% — 0% or 100% is not a valid split.</p>
                       )}
@@ -2300,15 +3555,53 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   </Select>
 
                   {frequency === "custom" && (
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Every N days (1–365)</label>
-                      <Input type="number" min={1} max={365} value={customIntervalDays} onChange={(e) => setCustomIntervalDays(Math.min(365, Math.max(1, parseInt(e.target.value) || 1)))} />
-                    </div>
+                    <>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Start Deposits On</label>
+                        <Input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Repeat Every</label>
+                          <Input
+                            type="number" min={1} max={customIntervalUnit === "days" ? 365 : customIntervalUnit === "weeks" ? 52 : 12}
+                            value={customIntervalCount}
+                            onChange={(e) => setCustomIntervalCount(Math.max(1, parseInt(e.target.value) || 1))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">&nbsp;</label>
+                          <Select value={customIntervalUnit} onValueChange={(v) => setCustomIntervalUnit(v as 'days' | 'weeks' | 'months')}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="days">Days</SelectItem>
+                              <SelectItem value="weeks">Weeks</SelectItem>
+                              <SelectItem value="months">Months</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      {/* US-72: optional window — e.g. pause payouts during a
+                          planned absence without disabling the schedule outright. */}
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <label className="text-sm font-semibold text-dark-blue-400">Stop Deposits On <span className="font-normal text-gray-400">(optional)</span></label>
+                          <p className="text-xs text-gray-500 mt-0.5">Select a date when you want deposits to stop.</p>
+                        </div>
+                        <Switch checked={stopDepositsEnabled} onCheckedChange={(c) => setStopDepositsEnabled(c as boolean)} size="sm" />
+                      </div>
+                      {stopDepositsEnabled && (
+                        <Input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
+                      )}
+                      {stopDepositsEnabled && scheduleStartDate && scheduleEndDate && scheduleEndDate <= scheduleStartDate && (
+                        <p className="text-xs text-red-500">Stop date must be after the start date.</p>
+                      )}
+                    </>
                   )}
                 </div>
 
                 {/* ── Select Deposit Day ── */}
-                {(frequency === "weekly" || frequency === "bi_weekly") && (
+                {(frequency === "weekly" || frequency === "bi_weekly" || frequency === "custom") && (
                   <div className="space-y-2">
                     <Label size="sm" className="font-semibold text-dark-blue-400">Select Deposit Day</Label>
                     <ToggleGroupRoot
@@ -2389,19 +3682,70 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   </Select>
                 </div>
 
-                {/* ── Reserve Balance ── Figma: a single on/off toggle, not a preset
-                    amount picker. PS-03 confirms reserveUsd is $0 (disabled) or up to
-                    $250 (enabled) — "on" reserves the platform max, "off" is $0. */}
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-dark-blue-400">Reserve Balance <span className="font-normal text-gray-400">(optional)</span></label>
-                    <p className="text-xs text-gray-500 mt-0.5">Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.</p>
+                {/* ── Reserve Balance ── Figma: preset amount buttons + Custom,
+                    gated behind an on/off toggle. schedule.service.ts enforces
+                    0 <= reserveUsd <= 250 regardless of which button set it. */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <label className="text-sm font-semibold text-dark-blue-400">Reserve Balance <span className="font-normal text-gray-400">(optional)</span></label>
+                      <p className="text-xs text-gray-500 mt-0.5">Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.</p>
+                    </div>
+                    <Switch
+                      checked={Number(reserveUsd) > 0}
+                      onCheckedChange={(c) => {
+                        if (c) { setReserveUsd(String(RESERVE_PRESETS[0])) }
+                        else { setReserveUsd("0"); setReserveCustomOpen(false); setReserveCustomValue("") }
+                      }}
+                      size="sm"
+                    />
                   </div>
-                  <Switch
-                    checked={Number(reserveUsd) > 0}
-                    onCheckedChange={(c) => setReserveUsd(c ? "250" : "0")}
-                    size="sm"
-                  />
+                  {Number(reserveUsd) > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        {RESERVE_PRESETS.map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            className={cn(
+                              "rounded-lg border px-3 py-2 text-sm font-medium text-center",
+                              !reserveCustomOpen && Number(reserveUsd) === amt
+                                ? "border-primary-500 text-primary-600 bg-primary-25"
+                                : "border-gray-200 text-dark-blue-400 hover:border-primary-300"
+                            )}
+                            onClick={() => { setReserveUsd(String(amt)); setReserveCustomOpen(false); setReserveCustomValue("") }}
+                          >Reserve ${amt}</button>
+                        ))}
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-sm font-medium text-center",
+                            reserveCustomOpen ? "border-primary-500 text-primary-600 bg-primary-25" : "border-gray-200 text-dark-blue-400 hover:border-primary-300"
+                          )}
+                          onClick={() => { setReserveCustomOpen(true); setReserveCustomValue(RESERVE_PRESETS.includes(Number(reserveUsd)) ? "" : reserveUsd) }}
+                        >Custom</button>
+                      </div>
+                      {reserveCustomOpen && (
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                            <Input
+                              type="number" min={1} max={249} placeholder="Enter custom amount" className="pl-6"
+                              value={reserveCustomValue}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setReserveCustomValue(v)
+                                const n = parseInt(v)
+                                if (!isNaN(n)) setReserveUsd(String(Math.max(0, Math.min(249, n))))
+                              }}
+                            />
+                          </div>
+                          <button type="button" className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setReserveCustomOpen(false); setReserveCustomValue(""); setReserveUsd(String(RESERVE_PRESETS[0])) }}>Cancel</button>
+                        </div>
+                      )}
+                      {reserveCustomOpen && <p className="text-xs text-gray-400">Custom amount needs to be under $250.</p>}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Authorization ── */}
@@ -2435,7 +3779,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
             <Button variant="outlined" visual="gray">Cancel</Button>
           </DialogClose>
           <Button
-            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100))}
+            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100)) || (frequency === "custom" && stopDepositsEnabled && !!scheduleStartDate && !!scheduleEndDate && scheduleEndDate <= scheduleStartDate)}
             onClick={handleSave}
           >
             {saving ? "Saving…" : "Save"}
@@ -2475,19 +3819,20 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
 function toActivityItem(p: { id: string; status: string; amountUsd: string; methodLabel: string | null; createdAt: string; settledAt: string | null }) {
   const time = formatDistanceToNowStrict(new Date(p.settledAt ?? p.createdAt), { addSuffix: true })
   const method = p.methodLabel ?? "your payout method"
+  const amount = parseFloat(p.amountUsd).toFixed(2)
   switch (p.status) {
     case "completed":
-      return { id: p.id, title: "Payout Completed", description: `$${p.amountUsd} to ${method}`, time, kind: "sent" as const }
+      return { id: p.id, title: "Payout Completed", description: `$${amount} to ${method}`, time, kind: "sent" as const }
     case "processing":
-      return { id: p.id, title: "Payout Processing", description: `$${p.amountUsd} to ${method}`, time, kind: "processing" as const }
+      return { id: p.id, title: "Payout Processing", description: `$${amount} to ${method}`, time, kind: "processing" as const }
     case "queued":
-      return { id: p.id, title: "Payout Queued", description: `$${p.amountUsd} to ${method}`, time, kind: "processing" as const }
+      return { id: p.id, title: "Payout Queued", description: `$${amount} to ${method}`, time, kind: "processing" as const }
     case "failed":
-      return { id: p.id, title: "Payout Failed", description: `$${p.amountUsd} to ${method}`, time, kind: "failed" as const }
+      return { id: p.id, title: "Payout Failed", description: `$${amount} to ${method}`, time, kind: "failed" as const }
     case "cancelled":
-      return { id: p.id, title: "Payout Cancelled", description: `$${p.amountUsd} to ${method}`, time, kind: "cancelled" as const }
+      return { id: p.id, title: "Payout Cancelled", description: `$${amount} to ${method}`, time, kind: "cancelled" as const }
     default:
-      return { id: p.id, title: "Payout Scheduled", description: `$${p.amountUsd} to ${method}`, time, kind: "scheduled" as const }
+      return { id: p.id, title: "Payout Scheduled", description: `$${amount} to ${method}`, time, kind: "scheduled" as const }
   }
 }
 
@@ -2511,6 +3856,30 @@ const EARNINGS_DATA = [
   { date: "Mar 31, 2025", project: "Website Redesign", client: "@christheclient234", clientImg: "/images/avatar-2.png", task: "UX Research", startTime: "4:20 PM", endTime: "7:20 PM", duration: "2h 0m", earnings: "$1,800", status: "Paid" },
 ]
 
+// US-28: numbered pagination with ellipsis — always shows first/last page,
+// a window of 1 around the current page, and collapses long gaps to "…".
+function getPaginationItems(current: number, total: number): (number | "ellipsis")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const items: (number | "ellipsis")[] = [1]
+  if (current > 3) items.push("ellipsis")
+  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) items.push(p)
+  if (current < total - 2) items.push("ellipsis")
+  items.push(total)
+  return items
+}
+
+// US-23: chip labels must match the dateRange <SelectItem> copy verbatim.
+const EARNINGS_DATE_RANGE_LABELS: Record<string, string> = {
+  all_time: "All Time",
+  today: "Today",
+  yesterday: "Yesterday",
+  this_week: "This Week",
+  last_week: "Last Week",
+  this_month: "This Month",
+  last_month: "Last Month",
+  this_year: "This Year",
+}
+
 export interface EarningsFilters {
   dateRange: string
   entryType: string
@@ -2519,7 +3888,6 @@ export interface EarningsFilters {
 }
 
 export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: EarningsFilters) => void } = {}) => {
-  const { toast } = useToast()
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -2531,9 +3899,48 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const [earningsResult, setEarningsResult] = React.useState<EarningsListResponse | null>(null)
   const [earningsLoading, setEarningsLoading] = React.useState(true)
   const [earningsError, setEarningsError] = React.useState(false)
-  const [dateRange, setDateRange] = React.useState("all_time")
+  // US-24.02 QA spec: default/reset date range is "this_month", not "all_time".
+  const [dateRange, setDateRange] = React.useState("this_month")
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
+
+  // US-27 Fee Breakdown Expander: per-row chevron toggle. feeBreakdown is only
+  // meaningful for single-entry (daily view) rows — weekly/monthly rows are
+  // aggregated totals across multiple entries with no single fee attribution.
+  const [expandedRows, setExpandedRows] = React.useState<Set<string>>(new Set())
+  const toggleRowExpanded = React.useCallback((id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  // US-30 (F-05 Entry Detail Drawer), opened from history rows here too — a
+  // second, self-contained instance mirroring OverviewTab's, since the two
+  // tabs are separate components with no shared state/context to lift into.
+  const [detailEntryId, setDetailEntryId] = React.useState<string | null>(null)
+  const [detailData, setDetailData] = React.useState<EarningDetail | null>(null)
+  const [detailLoading, setDetailLoading] = React.useState(false)
+  const [detailError, setDetailError] = React.useState<"not-found" | "error" | null>(null)
+
+  const openEntryDetail = React.useCallback((id: string) => {
+    setDetailEntryId(id)
+    setDetailData(null)
+    setDetailError(null)
+    setDetailLoading(true)
+    getEarningDetail(id)
+      .then(setDetailData)
+      .catch((e) => setDetailError(e?.response?.status === 404 ? "not-found" : "error"))
+      .finally(() => setDetailLoading(false))
+  }, [])
+
+  const closeEntryDetail = React.useCallback(() => {
+    setDetailEntryId(null)
+    setDetailData(null)
+    setDetailError(null)
+  }, [])
 
   const loadSummary = React.useCallback(() => {
     setEarningsSummaryError(false)
@@ -2553,6 +3960,21 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery])
 
   useEffect(() => { loadEarnings() }, [loadEarnings])
+
+  // US-23/US-24: chips + Clear All. dateRange excluded — "this_month" is the
+  // default and isn't a contractor-applied filter to display as a chip.
+  const activeFilterChips: { key: string; label: string; onRemove: () => void }[] = [
+    ...(dateRange !== "this_month" ? [{ key: "dateRange", label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange, onRemove: () => { setDateRange("this_month"); setCurrentPage(1) } }] : []),
+    ...(entryType ? [{ key: "entryType", label: entryType === "manual" ? "Manual" : "Automated", onRemove: () => { setEntryType(""); setCurrentPage(1) } }] : []),
+    ...(statusFilter ? [{ key: "statusFilter", label: statusFilter === "paid" ? "Paid" : "Reversed", onRemove: () => { setStatusFilter(""); setCurrentPage(1) } }] : []),
+  ]
+  const hasActiveFilters = activeFilterChips.length > 0
+  const clearAllFilters = React.useCallback(() => {
+    setDateRange("this_month")
+    setEntryType("")
+    setStatusFilter("")
+    setCurrentPage(1)
+  }, [])
 
   // Export (parent-level Export button) reuses whatever filters are currently
   // applied to this table rather than always exporting the unfiltered dataset.
@@ -2595,7 +4017,8 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
         <ToggleGroupRoot
           value={[viewMode]}
           onValueChange={(details) => {
-            if (details.value.length > 0) setViewMode(details.value[0])
+            // US-29: pagination resets whenever the result set underneath it changes.
+            if (details.value.length > 0) { setViewMode(details.value[0]); setCurrentPage(1) }
           }}
         >
           <ToggleGroupItem value="daily">Daily</ToggleGroupItem>
@@ -2655,11 +4078,30 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
             <SearchFieldInput
               placeholder="Find transactions"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             />
           </SearchField>
         </div>
       </div>
+
+      {/* US-23/US-24: active filter chips + Clear All */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {activeFilterChips.map((chip) => (
+            <button
+              key={chip.key}
+              onClick={chip.onRemove}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-25 px-3 py-1 text-xs font-medium text-dark-blue-400 hover:bg-gray-50"
+            >
+              {chip.label}
+              <X className="size-3 text-gray-400" />
+            </button>
+          ))}
+          <button onClick={clearAllFilters} className="text-xs font-medium text-primary-600 hover:underline">
+            Clear All
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-lg border border-gray-200 bg-white">
@@ -2679,6 +4121,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
               {viewMode === "monthly" && <TableHead>Total Hours</TableHead>}
               <TableHead>{viewMode === "weekly" ? "Weekly Earnings" : viewMode === "monthly" ? "Total Earnings" : "Earnings"}</TableHead>
               {viewMode === "weekly" && <TableHead>Budget</TableHead>}
+              {viewMode === "daily" && <TableHead className="w-8"></TableHead>}
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -2696,12 +4139,37 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                   <button className="text-sm text-primary-600 underline mt-1" onClick={loadEarnings}>Retry</button>
                 </TableCell>
               </TableRow>
+            ) : earningsResult?.data.length === 0 && searchQuery.length >= 2 ? (
+              /* Figma: a dedicated, prominent empty state for a zero-result
+                 search — distinct from the plain filtered-empty row, and
+                 its "Clear Search" only clears the search term, not the
+                 other active filters. */
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-16">
+                  <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{searchQuery}&quot;</p>
+                  <p className="text-sm text-gray-400 mt-1">We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.</p>
+                  <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => { setSearchQuery(""); setCurrentPage(1) }}>Clear Search</Button>
+                </TableCell>
+              </TableRow>
             ) : earningsResult?.data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-sm text-gray-400 py-10">No earnings found for this period.</TableCell>
+                {/* US-25: filtered-empty vs no-data-at-all are visually distinct —
+                    the filtered case keeps a Clear All CTA, the no-data case doesn't
+                    imply anything is filterable. hasActiveFilters is defined below. */}
+                <TableCell colSpan={8} className="text-center text-sm text-gray-400 py-10">
+                  {hasActiveFilters ? (
+                    <>
+                      No earnings match your current filters.
+                      <button className="text-primary-600 underline ml-1" onClick={clearAllFilters}>Clear All</button>
+                    </>
+                  ) : (
+                    "No earnings found for this period."
+                  )}
+                </TableCell>
               </TableRow>
             ) : earningsResult?.data.map((row) => (
-              <TableRow key={row.id}>
+              <React.Fragment key={row.id}>
+              <TableRow className="cursor-pointer hover:bg-gray-25" onClick={() => openEntryDetail(row.id)}>
                 <TableCell className="text-sm text-gray-500 whitespace-nowrap">{row.date ?? row.weekRange ?? row.month ?? "—"}</TableCell>
                 <TableCell>
                   {row.project ? (
@@ -2731,7 +4199,16 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                   </div>
                 </TableCell>
                 {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.budget ?? "—"}</TableCell>}
-                <TableCell>
+                {viewMode === "daily" && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {row.feeBreakdown && (
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => toggleRowExpanded(row.id)}>
+                        <ChevronDown className={cn("size-4 transition-transform", expandedRows.has(row.id) && "rotate-180")} />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                )}
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}
                     <DropdownMenu>
@@ -2741,12 +4218,36 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                         </IconButton>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => toast({ title: "Transaction Details", description: `${row.project?.name ?? ""} — ${row.durationLabel}` })}>View Details</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEntryDetail(row.id)}>View Details</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 </TableCell>
               </TableRow>
+              {/* US-27: a sibling row directly below the entry, not a height
+                  change on the entry row itself, so multiple rows can be
+                  expanded independently without shifting each other's layout. */}
+              {viewMode === "daily" && row.feeBreakdown && expandedRows.has(row.id) && (
+                <TableRow className="bg-gray-25">
+                  <TableCell colSpan={7} className="py-3">
+                    <div className="flex items-center gap-8 pl-4">
+                      <div>
+                        <p className="text-xs text-gray-400">Gross</p>
+                        <p className="text-sm font-medium text-dark-blue-400">${row.feeBreakdown.grossAmountDisplay}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">{row.feeBreakdown.feeLabel}</p>
+                        <p className="text-sm font-medium text-dark-blue-400">-${row.feeBreakdown.feeAmountDisplay}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">You Receive</p>
+                        <p className="text-sm font-semibold text-dark-blue-400">${row.netAmountDisplay ?? row.netAmount}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              </React.Fragment>
             ))}
           </TableBody>
         </Table>
@@ -2767,7 +4268,8 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
             </TooltipProvider>
           </p>
 
-          {/* Pagination */}
+          {/* US-28: numbered pagination with ellipsis, replacing the prior
+              prev/next-only control. */}
           <div className="flex items-center gap-1">
             <button
               className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
@@ -2776,9 +4278,22 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
             >
               <ChevronLeft className="size-4" />
             </button>
-            <span className="text-sm text-gray-500 px-2">
-              Page {currentPage} of {earningsResult?.totalPages ?? 1}
-            </span>
+            {getPaginationItems(currentPage, earningsResult?.totalPages ?? 1).map((item, i) =>
+              item === "ellipsis" ? (
+                <span key={`e-${i}`} className="size-8 flex items-center justify-center text-sm text-gray-400">…</span>
+              ) : (
+                <button
+                  key={item}
+                  className={cn(
+                    "size-8 rounded-md text-sm font-medium flex items-center justify-center",
+                    item === currentPage ? "bg-primary-50 text-primary-600" : "text-gray-500 hover:bg-gray-100"
+                  )}
+                  onClick={() => setCurrentPage(item)}
+                >
+                  {item}
+                </button>
+              )
+            )}
             <button
               className="size-8 rounded-md text-sm font-medium flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
               disabled={currentPage >= (earningsResult?.totalPages ?? 1)}
@@ -2789,6 +4304,115 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
           </div>
         </div>
       </div>
+
+      {/* F-05 Entry Detail Drawer — second, self-contained instance mirroring
+          OverviewTab's (US-30), since the two tabs are separate components
+          with no shared state/context to lift into. */}
+      <Dialog open={!!detailEntryId} onOpenChange={(open) => { if (!open) closeEntryDetail() }}>
+        <DialogContent
+          variant="unanimated"
+          onInteractOutside={(e) => e.preventDefault()}
+          className="fixed right-0 top-0 h-full w-full sm:max-w-md bg-white shadow-xl overflow-y-auto p-0 gap-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-300"
+        >
+          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 sticky top-0 bg-white z-10">
+            <DialogTitle className="text-base font-semibold text-dark-blue-400">Entry Details</DialogTitle>
+            <DialogClose asChild>
+              <IconButton size="sm" variant="ghost" visual="gray"><X className="size-4" /></IconButton>
+            </DialogClose>
+          </div>
+
+          {detailLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />)}
+            </div>
+          ) : detailError === "not-found" ? (
+            <div className="p-6 text-center space-y-4">
+              <p className="text-sm text-gray-500">This entry could not be found.</p>
+              <DialogClose asChild>
+                <Button variant="outlined" visual="gray" size="sm">Close</Button>
+              </DialogClose>
+            </div>
+          ) : detailError === "error" ? (
+            <div className="p-6 text-center space-y-4">
+              <p className="text-sm text-red-600">We couldn't load this entry. Please try again.</p>
+              <Button variant="outlined" visual="gray" size="sm" onClick={() => detailEntryId && openEntryDetail(detailEntryId)}>Retry</Button>
+            </div>
+          ) : detailData ? (
+            <div className="p-6 space-y-6">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-dark-blue-400">
+                  {new Date(detailData.workStartAt).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Badge visual={detailData.entryType === "automated" ? "primary" : "warning"} size="sm">
+                    {detailData.entryType === "automated" ? "Automated" : "Manual"}
+                  </Badge>
+                  <Badge visual={detailData.status === "paid" ? "success" : detailData.status === "failed" ? "error" : "primary"} size="sm">
+                    {detailData.status === "paid" ? "Paid" : detailData.status === "failed" ? "Reversed" : "Confirmed"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-dark-blue-400">{detailData.project?.name ?? "Untitled project"}</p>
+                {detailData.project?.clientName && <p className="text-xs text-gray-400">{detailData.project.clientName}</p>}
+                {detailData.contract?.title && <p className="text-xs text-gray-400 mt-0.5">{detailData.contract.title}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time Block</p>
+                <p className="text-sm text-dark-blue-400">
+                  {new Date(detailData.workStartAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                  {" – "}
+                  {new Date(detailData.workEndAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                </p>
+                <p className="text-xs text-gray-500">{detailData.durationLabel}</p>
+              </div>
+
+              {detailData.entryType === "automated" && (detailData.avgKeyboardPct != null || detailData.avgMousePct != null) && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Activity</p>
+                  <div className="flex gap-4 text-sm text-dark-blue-400">
+                    {detailData.avgKeyboardPct != null && <span>⌨ {detailData.avgKeyboardPct}% keyboard</span>}
+                    {detailData.avgMousePct != null && <span>🖱 {detailData.avgMousePct}% mouse</span>}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fee Breakdown</p>
+                <div className="rounded-lg border border-gray-200 divide-y divide-gray-200">
+                  {detailData.feeSection.lineItems.map((item, i) => (
+                    <div key={i} className={cn("flex items-center justify-between px-4 py-2.5", item.isTotal && "bg-gray-25")}>
+                      <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.label}</span>
+                      <span className={cn("text-sm", item.isTotal ? "font-semibold text-dark-blue-400" : "text-gray-500")}>{item.amount} {item.currency}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Exchange Rate</p>
+                <p className="text-sm text-gray-500">
+                  {detailData.feeSection.fxRateLabel}
+                  {detailData.feeSection.billingCurrency !== detailData.feeSection.displayCurrency && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="ml-1 text-amber-500 cursor-help align-super">*</span>
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>This entry was billed in {detailData.feeSection.billingCurrency}. Amounts shown in {detailData.feeSection.displayCurrency} use a live rate that may differ slightly from the rate locked at the time this entry was logged.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -2825,6 +4449,7 @@ interface PayoutHistoryItem {
 
 // US-28: read-only detail dialog — no retry/cancel actions at MVP (AC-28.06).
 const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | null; onOpenChange: (open: boolean) => void }) => {
+  const router = useRouter()
   const [detail, setDetail] = useState<any | null>(null)
   const [loading, setLoading] = useState(false)
   // EC-52: a failed/404 fetch must render a distinct "not found" state, not an
@@ -2876,9 +4501,9 @@ const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | nul
         ) : (
           <div className="space-y-3 py-2">
             {[
-              ["Amount", `$${detail.amountUsd} ${detail.currency}`],
-              ["Fee", `$${detail.feeUsd}`],
-              ["Net Transfer", `$${detail.netAmountUsd}`],
+              ["Amount", `$${parseFloat(detail.amountUsd).toFixed(2)} ${detail.currency}`],
+              ["Fee", `$${parseFloat(detail.feeUsd).toFixed(2)}`],
+              ["Net Transfer", `$${parseFloat(detail.netAmountUsd).toFixed(2)}`],
               ["Method", detail.methodLabel ?? detail.methodType ?? "—"],
               ["Status", getPayoutStatusBadge(detail.status).label],
               ["Source", detail.trigger === "scheduled" ? "Scheduled" : "Manual"],
@@ -2893,10 +4518,23 @@ const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | nul
                 <span className="font-medium text-dark-blue-400 text-right max-w-[60%] truncate">{value}</span>
               </div>
             ))}
+            {/* US-50: a specific failed state with next steps, not just a status
+                badge — payout.service.ts's own cancel() error explicitly tells
+                contractors to "start a new request" for a failed payout (there's
+                no resume-same-payout endpoint), so Retry starts a fresh
+                withdrawal rather than attempting to resurrect this one. */}
             {detail.status === "failed" && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {detail.failureReason ?? "This payout could not be processed. Please contact support if the issue persists."}
                 <div className="text-xs text-red-500 mt-1">Retry attempts: {detail.retryCount ?? 0}</div>
+                <div className="flex gap-2 mt-3">
+                  <Button variant="filled" visual="primary" size="sm" onClick={() => router.push("/transfer-funds")}>
+                    Retry Withdrawal
+                  </Button>
+                  <Button variant="outlined" visual="gray" size="sm" onClick={() => window.open("mailto:support@marketeqdigital.com", "_blank")}>
+                    Contact Support
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -2938,6 +4576,15 @@ export const PayoutsTab = () => {
   const [defaultMethodLabel, setDefaultMethodLabel] = useState<string | null>(null)
   const [balance, setBalance] = useState<BalanceResponse | null>(null)
   const [completedCount, setCompletedCount] = useState<number | null>(null)
+  // US-101: a failed balance fetch must be retryable in place — previously
+  // this just logged to console and left the stat cards stuck on "-"
+  // forever, indistinguishable from a legitimate $0 state (Doc07 Error ≠
+  // Empty).
+  const [balanceError, setBalanceError] = useState(false)
+  const loadPayoutsBalance = React.useCallback(() => {
+    setBalanceError(false)
+    getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
+  }, [])
 
   useEffect(() => {
     ;(async () => {
@@ -2951,14 +4598,14 @@ export const PayoutsTab = () => {
       } catch (e) { console.error('Failed to fetch schedule', e) }
       finally { setScheduleLoading(false) }
     })()
-    getBalance().then(setBalance).catch(e => console.error("Balance fetch failed:", e))
+    loadPayoutsBalance()
     ;(async () => {
       try {
         const res = await payoutFetch(`/payouts?status=completed&page=1&pageSize=1`)
         if (res.ok) { const d = await res.json(); setCompletedCount(d.totalCount ?? 0) }
       } catch (e) { console.error('Failed to fetch completed payout count', e) }
     })()
-  }, [])
+  }, [loadPayoutsBalance])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const hasActiveFilters = !!statusFilter
@@ -2968,6 +4615,7 @@ export const PayoutsTab = () => {
     try {
       const qs = new URLSearchParams({ page: String(currentPage), pageSize: String(pageSize) })
       if (statusFilter) qs.set('status', statusFilter)
+      if (searchQuery.trim().length >= 2) qs.set('search', searchQuery.trim())
       const res = await payoutFetch(`/payouts?${qs.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.message ?? "Failed to load")
@@ -2979,7 +4627,7 @@ export const PayoutsTab = () => {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [currentPage, statusFilter])
+  }, [currentPage, statusFilter, searchQuery])
 
   useEffect(() => { loadPayouts() }, [loadPayouts])
 
@@ -3002,7 +4650,9 @@ export const PayoutsTab = () => {
           label="Next Payout"
           sublabel={scheduleLoading ? "Loading..." : nextRunAt ? new Date(nextRunAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }) : "No schedule set"}
           amount={scheduleLoading ? "-" : nextRunAt && balance ? parseFloat(balance.availableBalance).toFixed(2) : "-"}
-          extra={defaultMethodLabel ? `Bank: ${defaultMethodLabel}` : undefined}
+          extra={balanceError ? (
+            <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
+          ) : defaultMethodLabel ? `Bank: ${defaultMethodLabel}` : undefined}
         />
         {/* No date-range payout aggregate exists on payout-service - showing "Unavailable"
             rather than a client-computed guess that could silently be wrong. */}
@@ -3014,7 +4664,9 @@ export const PayoutsTab = () => {
         <StatCard
           label="Lifetime Payouts"
           amount={balance ? parseFloat(balance.totalPaidOutUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
-          extra={completedCount != null ? `${completedCount} completed payout${completedCount === 1 ? "" : "s"}` : undefined}
+          extra={balanceError ? (
+            <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
+          ) : completedCount != null ? `${completedCount} completed payout${completedCount === 1 ? "" : "s"}` : undefined}
         />
       </div>
 
@@ -3051,7 +4703,7 @@ export const PayoutsTab = () => {
             <SearchFieldInput
               placeholder="Find transactions"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             />
           </SearchField>
         </div>
@@ -3079,6 +4731,15 @@ export const PayoutsTab = () => {
               <TableRow><TableCell colSpan={6} className="text-center py-6 text-sm text-red-600">
                 {loadError} <button className="underline font-medium ml-1" onClick={() => loadPayouts()}>Retry</button>
               </TableCell></TableRow>
+            ) : payouts.length === 0 && searchQuery.trim().length >= 2 ? (
+              // Figma: a dedicated, prominent empty state for a zero-result
+              // search — "Clear Search" only clears the search term, not
+              // the status filter.
+              <TableRow><TableCell colSpan={6} className="text-center py-16">
+                <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{searchQuery}&quot;</p>
+                <p className="text-sm text-gray-400 mt-1">We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.</p>
+                <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => { setSearchQuery(""); setCurrentPage(1) }}>Clear Search</Button>
+              </TableCell></TableRow>
             ) : payouts.length === 0 && hasActiveFilters ? (
               // EC-51: "no results for this filter" is distinct from "no history at all"
               <TableRow><TableCell colSpan={6} className="text-center py-10">
@@ -3092,7 +4753,7 @@ export const PayoutsTab = () => {
               const badge = getPayoutStatusBadge(row.status)
               return (
                 <TableRow key={row.id} className="cursor-pointer" onClick={() => setDetailId(row.id)}>
-                  <TableCell className="text-sm font-medium text-dark-blue-400">${row.amountUsd} {row.currency}</TableCell>
+                  <TableCell className="text-sm font-medium text-dark-blue-400">${parseFloat(row.amountUsd).toFixed(2)} {row.currency}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <BankIcon className="size-4 text-gray-400" />
