@@ -4088,6 +4088,18 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                   <button className="text-sm text-primary-600 underline mt-1" onClick={loadEarnings}>Retry</button>
                 </TableCell>
               </TableRow>
+            ) : earningsResult?.data.length === 0 && searchQuery.length >= 2 ? (
+              /* Figma: a dedicated, prominent empty state for a zero-result
+                 search — distinct from the plain filtered-empty row, and
+                 its "Clear Search" only clears the search term, not the
+                 other active filters. */
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-16">
+                  <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{searchQuery}&quot;</p>
+                  <p className="text-sm text-gray-400 mt-1">We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.</p>
+                  <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => { setSearchQuery(""); setCurrentPage(1) }}>Clear Search</Button>
+                </TableCell>
+              </TableRow>
             ) : earningsResult?.data.length === 0 ? (
               <TableRow>
                 {/* US-25: filtered-empty vs no-data-at-all are visually distinct —
