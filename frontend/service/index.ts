@@ -49,6 +49,30 @@ const processQueue = (error: unknown = null) => {
   failedQueue = []
 }
 
+let refreshInFlight: Promise<void> | null = null
+
+/**
+ * Refresh the session, collapsing concurrent callers onto a single request.
+ *
+ * `apiFetch` (src/lib/api.ts) is a separate HTTP layer that does not go through
+ * these interceptors, so without a shared entry point a fetch-side 401 and an
+ * axios-side 401 could POST /auth/refresh concurrently — the second call would
+ * present a refresh token the first one had already consumed and log the user
+ * out. Both layers route through here so only one refresh is ever in flight.
+ */
+export const refreshSession = (): Promise<void> => {
+  if (!refreshInFlight) {
+    const AUTH_BASE = getPublicAuthUrl()
+    refreshInFlight = axiosInstance
+      .post(`${AUTH_BASE}/auth/refresh`, null)
+      .then(() => undefined)
+      .finally(() => {
+        refreshInFlight = null
+      })
+  }
+  return refreshInFlight
+}
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -80,8 +104,7 @@ axiosInstance.interceptors.response.use(
     originalRequest._retry = true
 
     try {
-      const AUTH_BASE = getPublicAuthUrl()
-      await axiosInstance.post(`${AUTH_BASE}/auth/refresh`, null)
+      await refreshSession()
       processQueue()
       return axiosInstance(originalRequest)
     } catch (refreshError) {

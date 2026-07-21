@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { EntityManager, In, Repository } from "typeorm";
@@ -11,6 +12,7 @@ import { UserPublicKey } from "./entities/user-public-key.entity";
 import { ConversationKey } from "./entities/conversation-key.entity";
 import { ConversationRawKey } from "./entities/conversation-raw-key.entity";
 import { Thread } from "../threads/entities/thread.entity";
+import { Message } from "../messages/entities/message.entity";
 
 @Injectable()
 export class EncryptionService {
@@ -25,6 +27,8 @@ export class EncryptionService {
     private readonly rawKeyRepo: Repository<ConversationRawKey>,
     @InjectRepository(Thread)
     private readonly threadRepo: Repository<Thread>,
+    @InjectRepository(Message)
+    private readonly messageRepo: Repository<Message>,
   ) {
     const secret = process.env.E2EE_SERVER_SECRET;
     if (!secret) {
@@ -123,6 +127,19 @@ export class EncryptionService {
     if (rawKeyRecord) {
       aesKeyBuffer = this.decryptServerSide(rawKeyRecord.encryptedAesKey);
     } else {
+      // Minting a fresh AES key is only correct for a thread that has never
+      // carried a message. If messages already exist they were encrypted under
+      // a key we no longer hold, and issuing a new one makes every one of them
+      // permanently undecryptable while looking like a successful recovery.
+      // Fail loudly instead — the history is recoverable only from a client
+      // that still holds the original key.
+      const messageCount = await this.messageRepo.count({ where: { threadId } });
+      if (messageCount > 0) {
+        throw new ConflictException(
+          "Conversation key material is missing for a thread that already has messages. Refusing to issue a new key, which would make existing messages permanently unreadable.",
+        );
+      }
+
       aesKeyBuffer = crypto.randomBytes(32);
       const encryptedAesKey = this.encryptServerSide(aesKeyBuffer);
       await this.rawKeyRepo.save(
