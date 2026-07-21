@@ -170,16 +170,19 @@ const TopBar = ({ current }: { current: StepId }) => (
 // ── Step 1: Amount + Speed (US-12/13/15/16) ─────────────────────────────────
 const AmountStep = ({
   amount, setAmount, speed, setSpeed,
-  balance, balanceLoading, balanceError, onRetryBalance,
+  balance, balanceLoading, balanceError, onRetryBalance, reserveUsd,
   validation, validationLoading, validationError,
 }: {
   amount: string; setAmount: (v: string) => void
   speed: "standard" | "instant"; setSpeed: (s: "standard" | "instant") => void
   balance: BalanceResponse | null; balanceLoading: boolean; balanceError: string
-  onRetryBalance: () => void
+  onRetryBalance: () => void; reserveUsd: number
   validation: ValidateAmountResponse | null; validationLoading: boolean; validationError: string
 }) => {
-  const available = balance ? parseFloat(balance.availableBalance) : 0
+  const grossAvailable = balance ? parseFloat(balance.availableBalance) : 0
+  // Figma "After reserve & threshold deductions" — the actual safe-to-withdraw
+  // ceiling, matching payout.service.ts's checkReserveBalance subtraction.
+  const available = Math.max(0, grossAvailable - reserveUsd)
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
@@ -194,16 +197,30 @@ const AmountStep = ({
           <button className="underline font-medium" onClick={onRetryBalance}>Retry</button>
         </div>
       ) : (
-        <p className="mt-2 text-sm font-light text-gray-500 leading-none">
-          Available to withdraw:{" "}
-          <span className="font-semibold text-dark-blue-400">
-            ${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-          </span>
-        </p>
+        <div className="mt-2">
+          <p className="text-sm font-light text-gray-500 leading-none">
+            Available to withdraw:{" "}
+            <span className="font-semibold text-dark-blue-400">
+              ${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+            </span>
+          </p>
+          {reserveUsd > 0 && <p className="mt-1 text-xs text-gray-400">After reserve &amp; threshold deductions</p>}
+        </div>
       )}
 
       <div className="mt-6">
-        <label className="text-sm font-medium text-dark-blue-400 block mb-1.5">Amount</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-sm font-medium text-dark-blue-400">Amount</label>
+          {available > 0 && (
+            <button
+              type="button"
+              className="text-xs font-medium text-primary-600 hover:text-primary-700"
+              onClick={() => setAmount(available.toFixed(2))}
+            >
+              Withdraw Full Amount
+            </button>
+          )}
+        </div>
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">$</span>
           {/* Doc07 Domain 3 "balance long-form-open": a balance that drops to $0
@@ -503,7 +520,12 @@ const AddBankMethodModal = ({ open, onClose, onAdded }: { open: boolean; onClose
 }
 
 // ── Step 3: Confirm (US-15/16/17) ────────────────────────────────────────────
-const ConfirmStep = ({ validation, speed, method }: { validation: ValidateAmountResponse | null; speed: "standard" | "instant"; method: DepositMethodSummary | null }) => (
+const ConfirmStep = ({
+  validation, speed, method, authorized, setAuthorized,
+}: {
+  validation: ValidateAmountResponse | null; speed: "standard" | "instant"; method: DepositMethodSummary | null
+  authorized: boolean; setAuthorized: (v: boolean) => void
+}) => (
   <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
     <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">Review and confirm</h2>
     <p className="mt-2 text-sm font-light text-gray-500 leading-none">
@@ -512,12 +534,22 @@ const ConfirmStep = ({ validation, speed, method }: { validation: ValidateAmount
 
     <dl className="mt-6 divide-y divide-gray-200 border border-gray-200 rounded-lg">
       <div className="flex items-center justify-between px-5 py-4">
-        <dt className="text-sm font-medium text-gray-500">Withdrawal amount</dt>
+        <dt className="text-sm font-medium text-gray-500">Deposit Amount</dt>
         <dd className="text-sm font-semibold text-dark-blue-400">${validation ? parseFloat(validation.amountUsd).toFixed(2) : "0.00"}</dd>
       </div>
       <div className="flex items-center justify-between px-5 py-4">
-        <dt className="text-sm font-medium text-gray-500">{speed === "instant" ? "Instant fee" : "Fee"}</dt>
-        <dd className="text-sm font-semibold text-dark-blue-400">−${validation ? parseFloat(validation.feeUsd).toFixed(2) : "0.00"}</dd>
+        <dt className="text-sm font-medium text-gray-500">Deposit Account</dt>
+        <dd className="text-sm font-semibold text-dark-blue-400">{method ? (method.nickname || method.displayLabel || method.methodType) : "No method selected"}</dd>
+      </div>
+      <div className="flex items-center justify-between px-5 py-4">
+        <dt className="text-sm font-medium text-gray-500">Deposit Method</dt>
+        <dd className="text-sm font-semibold text-dark-blue-400">
+          {speed === "instant" ? `Instant · $${validation ? parseFloat(validation.feeUsd).toFixed(2) : "0.00"} fee` : "Standard · No fee"}
+        </dd>
+      </div>
+      <div className="flex items-center justify-between px-5 py-4">
+        <dt className="text-sm font-medium text-gray-500">Estimated arrival</dt>
+        <dd className="text-sm font-semibold text-dark-blue-400">{speed === "instant" ? "About 15 minutes" : "1–2 business days"}</dd>
       </div>
       <div className="flex items-center justify-between px-5 py-4 bg-gray-50 rounded-b-lg">
         <dt className="text-base font-bold text-dark-blue-400">You'll receive</dt>
@@ -525,12 +557,12 @@ const ConfirmStep = ({ validation, speed, method }: { validation: ValidateAmount
       </div>
     </dl>
 
-    <div className="mt-6">
-      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Sending to</div>
-      <div className="mt-2 text-sm font-semibold text-dark-blue-400">
-        {method ? (method.nickname || method.displayLabel || method.methodType) : "No method selected"}
-      </div>
-    </div>
+    <label className="mt-6 flex items-start gap-2 cursor-pointer">
+      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
+      <span className="text-xs text-gray-500">
+        By confirming this withdrawal, you authorize Marketeq to initiate a direct deposit payment to your account. You acknowledge that all transfers will comply with applicable U.S. laws and banking regulations.
+      </span>
+    </label>
   </div>
 )
 
@@ -549,6 +581,12 @@ function TransferFundsInner() {
   const [balance, setBalance] = React.useState<BalanceResponse | null>(null)
   const [balanceLoading, setBalanceLoading] = React.useState(true)
   const [balanceError, setBalanceError] = React.useState("")
+  // Figma "Available balance ... After reserve & threshold deductions" — the
+  // headline number is the actual safe-to-withdraw ceiling, not the raw
+  // gross balance. reserveUsd is checked separately server-side
+  // (payout.service.ts's checkReserveBalance: availableBalance - reserve <
+  // amount), so this mirrors that same subtraction for an accurate preview.
+  const [reserveUsd, setReserveUsd] = React.useState(0)
 
   const [amount, setAmount] = React.useState("")
   const [speed, setSpeed] = React.useState<"standard" | "instant">("standard")
@@ -563,6 +601,9 @@ function TransferFundsInner() {
   const [showAddMethod, setShowAddMethod] = React.useState(false)
 
   const [idempotencyKey, setIdempotencyKey] = React.useState("")
+  // Figma: consent checkbox gates the final submit button, matching every
+  // other deposit/payout-affecting action in this epic.
+  const [authorized, setAuthorized] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [result, setResult] = React.useState<InitiateResponse | null>(null)
   const [submitError, setSubmitError] = React.useState("")
@@ -626,6 +667,12 @@ function TransferFundsInner() {
     } finally {
       setBalanceLoading(false)
     }
+    // Reserve preview is informational only — a failed fetch just leaves it
+    // at 0 (headline balance shown un-netted) rather than blocking the form.
+    try {
+      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/schedule`)
+      if (res.ok) { const d = await res.json(); setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0) }
+    } catch { /* non-blocking */ }
   }, [])
 
   const loadMethods = React.useCallback(async () => {
@@ -790,6 +837,7 @@ function TransferFundsInner() {
     setSubmitError("")
     setSubmitting(false)
     setIgnoreReserve(false)
+    setAuthorized(false)
     setStep(1)
   }
 
@@ -962,14 +1010,14 @@ function TransferFundsInner() {
             {step === 1 && (
               <AmountStep
                 amount={amount} setAmount={setAmount} speed={speed} setSpeed={setSpeed}
-                balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} onRetryBalance={loadBalance}
+                balance={balance} balanceLoading={balanceLoading} balanceError={balanceError} onRetryBalance={loadBalance} reserveUsd={reserveUsd}
                 validation={validation} validationLoading={validationLoading} validationError={validationError}
               />
             )}
             {step === 2 && (
               <MethodStep methods={methods} methodsLoading={methodsLoading} methodsError={methodsError} methodId={methodId} setMethodId={setMethodId} onAddMethod={() => setShowAddMethod(true)} />
             )}
-            {step === 3 && <ConfirmStep validation={validation} speed={speed} method={method} />}
+            {step === 3 && <ConfirmStep validation={validation} speed={speed} method={method} authorized={authorized} setAuthorized={setAuthorized} />}
           </div>
 
           {/* EC-16: balance drifted between step 1 and arrival at step 3 — Confirm
@@ -1016,8 +1064,8 @@ function TransferFundsInner() {
                 <Button onClick={submit}>Retry</Button>
               </>
             ) : step === 3 && (
-              <Button onClick={submit} disabled={submitting || !validation || !!validationError}>
-                {submitting ? "Submitting…" : `Withdraw $${validation ? parseFloat(validation.amountUsd).toFixed(2) : amount}`}
+              <Button onClick={submit} disabled={submitting || !validation || !!validationError || !authorized}>
+                {submitting ? "Submitting…" : "Deposit Now"}
               </Button>
             )}
           </div>

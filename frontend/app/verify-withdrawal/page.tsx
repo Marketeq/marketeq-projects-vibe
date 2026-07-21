@@ -26,7 +26,7 @@ const PAYOUT_SERVICE_URL = `${getPublicApiUrl()}/v1`
 
 type VerifyState =
   | { kind: "loading" }
-  | { kind: "success"; message: string; amountUsd?: string; netAmountUsd?: string; currency?: string; methodLabel?: string | null }
+  | { kind: "success"; message: string; payoutRequestId?: string; amountUsd?: string; netAmountUsd?: string; feeUsd?: string; currency?: string; methodLabel?: string | null }
   | { kind: "expired" }
   | { kind: "used" }
   | { kind: "invalid" }
@@ -115,7 +115,8 @@ function VerifyWithdrawal() {
           setState({
             kind: "success",
             message: data.message ?? "Your withdrawal has been confirmed and is being processed.",
-            amountUsd: data.amountUsd, netAmountUsd: data.netAmountUsd, currency: data.currency,
+            payoutRequestId: data.payoutRequestId,
+            amountUsd: data.amountUsd, netAmountUsd: data.netAmountUsd, feeUsd: data.feeUsd, currency: data.currency,
             methodLabel: data.methodLabel,
           })
           return
@@ -177,7 +178,9 @@ function VerifyWithdrawal() {
               </div>
               <h1 className="mt-5 text-2xl font-bold text-dark-blue-400 leading-none">Withdrawal Confirmed</h1>
               <p className="mt-3 text-sm font-light text-gray-500">{state.message}</p>
-              {/* AC-20.01: amount + destination method shown on the success screen */}
+              {/* AC-20.01: amount + destination method shown on the success screen.
+                  feeUsd > 0 implies instant speed — speed itself isn't persisted,
+                  only used transiently to compute feeUsd at initiate() time. */}
               {(state.amountUsd || state.methodLabel) && (
                 <dl className="mt-5 divide-y divide-gray-200 border border-gray-200 rounded-lg text-left">
                   {state.amountUsd && (
@@ -190,6 +193,20 @@ function VerifyWithdrawal() {
                     <div className="flex items-center justify-between px-4 py-3">
                       <dt className="text-xs font-medium text-gray-500">Sending to</dt>
                       <dd className="text-sm font-semibold text-dark-blue-400">{state.methodLabel}</dd>
+                    </div>
+                  )}
+                  {state.feeUsd != null && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <dt className="text-xs font-medium text-gray-500">Fee &amp; arrival</dt>
+                      <dd className="text-sm font-semibold text-dark-blue-400">
+                        {parseFloat(state.feeUsd) > 0 ? `$${state.feeUsd} fee · ETA about 15 minutes` : "No fee · 1–2 business days"}
+                      </dd>
+                    </div>
+                  )}
+                  {state.payoutRequestId && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <dt className="text-xs font-medium text-gray-500">Transaction ID</dt>
+                      <dd className="text-sm font-semibold text-dark-blue-400 font-mono">{state.payoutRequestId}</dd>
                     </div>
                   )}
                 </dl>

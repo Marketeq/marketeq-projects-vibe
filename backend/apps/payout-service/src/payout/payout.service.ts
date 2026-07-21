@@ -447,24 +447,33 @@ export class PayoutService {
   }
 
   // ─── US-27: GET /v1/payouts — paginated history list ──────────
-  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string) {
+  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string, search?: string) {
     const clampedSize = Math.min(Math.max(pageSize, 1), 50);
     const clampedPage = Math.max(page, 1);
 
+    const qb = this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId });
+
     // SCR-16: status filter — only accept real enum values, silently ignore
     // anything else rather than erroring on an unrecognised query param.
-    const where: any = { contractorId };
     if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
-      where.status = status as PayoutStatus;
+      qb.andWhere('p.status = :status', { status });
     }
 
-    const [rows, totalCount] = await this.payoutRepo.findAndCount({
-      where,
-      relations: ['depositMethod'],
-      order: { createdAt: 'DESC' },
-      skip: (clampedPage - 1) * clampedSize,
-      take: clampedSize,
-    });
+    // Figma "Find transactions" search on the Payouts tab — matches against
+    // the external account label (e.g. "Chase Bank"), same field toHistoryItem
+    // exposes as methodLabel.
+    if (search && search.trim().length >= 2) {
+      qb.andWhere('(LOWER(dm.displayLabel) LIKE :term OR LOWER(dm.nickname) LIKE :term)',
+        { term: `%${search.trim().toLowerCase()}%` });
+    }
+
+    const [rows, totalCount] = await qb
+      .orderBy('p.createdAt', 'DESC')
+      .skip((clampedPage - 1) * clampedSize)
+      .take(clampedSize)
+      .getManyAndCount();
 
     return {
       payouts: rows.map(r => this.toHistoryItem(r)),

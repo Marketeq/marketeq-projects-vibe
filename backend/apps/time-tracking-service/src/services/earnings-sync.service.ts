@@ -73,4 +73,48 @@ export class EarningsSyncService {
       this.logger.error(`EarningsSync failed: ${err.message}`, err.stack);
     }
   }
+
+  async syncManualTime(entry: {
+    id: string;
+    userId: string;
+    contractId: string | null;
+    taskId: string | null;
+    startTime: Date;
+    endTime: Date;
+  }): Promise<void> {
+    // No contract to bill against — nothing to sync (same constraint the
+    // screenshot path has implicitly, since it's never called without one).
+    if (!entry.contractId) return;
+    try {
+      let taskName: string | null = null;
+      if (entry.taskId) {
+        const taskRows = await this.ds.query(
+          `SELECT name FROM time_tracking.contract_tasks WHERE id = $1`,
+          [entry.taskId],
+        );
+        taskName = taskRows[0]?.name ?? null;
+      }
+
+      const durationMinutes = Math.round(
+        (entry.endTime.getTime() - entry.startTime.getTime()) / 60000,
+      );
+
+      this.events.manualTimeConfirmed({
+        userId: entry.userId,
+        contractId: entry.contractId,
+        taskId: entry.taskId,
+        taskName,
+        manualTimeId: entry.id,
+        startTime: entry.startTime.toISOString(),
+        endTime: entry.endTime.toISOString(),
+        durationMinutes,
+      });
+
+      this.logger.log(
+        `EarningsSync: published earnings.manual_time_confirmed for ${entry.contractId} ${entry.id}`,
+      );
+    } catch (err: any) {
+      this.logger.error(`EarningsSync (manual) failed: ${err.message}`, err.stack);
+    }
+  }
 }

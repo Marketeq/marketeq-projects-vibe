@@ -11,6 +11,7 @@ import { formatDistanceToNowStrict } from "date-fns"
 import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
+import { QRCodeSVG } from "qrcode.react"
 import {
   AlertCircle,
   AlertTriangle,
@@ -136,6 +137,40 @@ const PayoneerIcon = ({ className }: { className?: string }) => (
     <img src="/bank-logos/payoneer.png" className="w-9 h-9 object-contain" alt="Payoneer" />
   </div>
 )
+
+// ─── Crypto wallet provider display metadata (US-09/PS-11). Fee/token text
+// is cosmetic marketing copy (mirrors the existing hardcoded "Transfer in
+// 1-3 business days" pattern above), matching Figma exactly — not derived
+// from the backend registry, which only carries the technical network/token
+// support matrix. Icons use real brand logos where Simple Icons hosts them
+// (Binance, Coinbase, Trezor — confirmed reachable); the rest don't have a
+// hosted brand icon available, so they fall back to a colored monogram
+// badge in the provider's brand color rather than one shared placeholder
+// icon reused across every row.
+const CRYPTO_PROVIDER_META: Record<string, { tokensText: string; feeText: string; bg: string; letter: string; cdnSlug?: string }> = {
+  RAMP:       { tokensText: 'BTC, ETH, USDC',        feeText: '0.49–2.9% + network fee', bg: '#0FA968', letter: 'R' },
+  TRANSAK:    { tokensText: '100+ tokens supported', feeText: '0.5–1.5% + network fee',   bg: '#2F6FED', letter: 'T' },
+  CRYPTO_COM: { tokensText: '100+ tokens supported', feeText: '0.5–1.5% + network fee',   bg: '#12284D', letter: 'C' },
+  COINBASE:   { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#0052FF', letter: 'C', cdnSlug: 'coinbase' },
+  METAMASK:   { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#F6851B', letter: 'M' },
+  LEDGER:     { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#000000', letter: 'L' },
+  TREZOR:     { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#0A0A0A', letter: 'T', cdnSlug: 'trezor' },
+  KRAKEN:     { tokensText: 'BTC, ETH',              feeText: '0.9% + network fee',       bg: '#5741D9', letter: 'K' },
+  BINANCE:    { tokensText: 'BTC, ETH, USDT',        feeText: '0–0.1% + P2P margin',      bg: '#F0B90B', letter: 'B', cdnSlug: 'binance' },
+}
+const CryptoProviderIcon = ({ provider, className }: { provider: string; className?: string }) => {
+  const meta = CRYPTO_PROVIDER_META[provider]
+  if (!meta) return <div className={cn("size-10 rounded-lg bg-gray-100 shrink-0", className)} />
+  return (
+    <div className={cn("size-10 rounded-lg flex items-center justify-center overflow-hidden shrink-0", className)} style={{ backgroundColor: meta.bg }}>
+      {meta.cdnSlug ? (
+        <img src={`https://cdn.simpleicons.org/${meta.cdnSlug}/ffffff`} className="w-1/2 h-1/2 object-contain" alt={meta.letter} />
+      ) : (
+        <span className="text-white text-sm font-bold">{meta.letter}</span>
+      )}
+    </div>
+  )
+}
 
 const BANK_LOGOS: Record<string, string> = {
   'chase':           '/bank-logos/chase.png',
@@ -668,6 +703,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // (the schedule doesn't precompute a future payout total), so only the date is shown.
   const [scheduleNextRunAt, setScheduleNextRunAt] = React.useState<string | null>(null)
   const [scheduleLoading, setScheduleLoading] = React.useState(true)
+  // Figma "Available for Withdrawal" tooltip claims this amount excludes the
+  // reserve balance — it didn't (was showing raw availableBalanceDisplay) and
+  // the copy hardcoded a literal "$150" regardless of the contractor's actual
+  // configured reserve. Both fixed below using the real reserveUsd.
+  const [reserveUsd, setReserveUsd] = React.useState(0)
   // Sourced from the real payout history (GET /v1/payouts?status=completed) — the most
   // recently settled payout, not a static mock value.
   const [previousPayout, setPreviousPayout] = React.useState<{ amountUsd: string; methodLabel: string | null; settledAt: string } | null>(null)
@@ -721,8 +761,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // see methods.service.ts toDetailItem), so editing means full re-entry,
   // not a diff against hidden values. Starts blank whenever Edit opens on
   // an eligible (BANK_MANUAL, not-yet-verified) method.
-  const [editBankForm, setEditBankForm] = React.useState({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US' })
+  const [editBankForm, setEditBankForm] = React.useState({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: 'US' })
   const [editBankError, setEditBankError] = React.useState('')
+  // Dedicated "Bank Details Updated" / "Unable To Update Bank Info" screens
+  // (Figma) for edits that actually touch bank fields — nickname-only edits
+  // keep the plain toast, since nothing about the bank account changed.
+  const [editBankSaveState, setEditBankSaveState] = React.useState<'success' | 'error' | null>(null)
   // AC-11.01: destructive removal requires an explicit confirmation step — holds
   // the method pending confirmation, not yet deleted.
   const [confirmRemove, setConfirmRemove] = React.useState<any | null>(null)
@@ -745,12 +789,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const [cryptoProviders, setCryptoProviders] = React.useState<any[]>([])
   const [cryptoProvidersLoading, setCryptoProvidersLoading] = React.useState(false)
   // US-64: dedicated connecting/success/failure screens, not just a button
-  // label + toast + silent close.
-  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details' | 'success' | 'error'>('provider')
+  // label + toast + silent close. 'qr' and 'paste' are the two WalletConnect
+  // presentations of the same session (PS-10) offered alongside manual
+  // address entry — 'connecting' covers both the manual-submit spinner and
+  // the brief moment after a WalletConnect session reports 'connected'.
+  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details' | 'qr' | 'paste' | 'connecting' | 'success' | 'error'>('provider')
   const [cryptoForm, setCryptoForm] = React.useState({ provider: '', network: '', currency: '', address: '' })
   const [cryptoSubmitting, setCryptoSubmitting] = React.useState(false)
   const [cryptoError, setCryptoError] = React.useState('')
   const [cryptoResult, setCryptoResult] = React.useState<{ walletAddressLast6?: string; network?: string; token?: string; conversionDisplay?: string } | null>(null)
+  const [cryptoWcSession, setCryptoWcSession] = React.useState<{ sessionId: string; wcUri: string; expiresAt: string } | null>(null)
+  const [cryptoWcConsent, setCryptoWcConsent] = React.useState(false)
   const selectedCryptoProvider = cryptoProviders.find(p => p.provider === cryptoForm.provider)
   const selectedCryptoNetwork = selectedCryptoProvider?.networks?.find((n: any) => n.network === cryptoForm.network)
 
@@ -764,9 +813,65 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     finally { setCryptoProvidersLoading(false) }
   }, [cryptoProviders.length])
 
+  // ─── WalletConnect session (PS-10/PS-11) — shared by the QR-scan and
+  // paste-link screens, since they're two presentations of the same
+  // underlying session, not two separate connection mechanisms.
+  const startWalletConnectSession = React.useCallback(async () => {
+    setCryptoError('')
+    try {
+      const res = await payoutFetch(`/deposit-methods/crypto/walletconnect-session`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cryptoProvider: cryptoForm.provider, network: cryptoForm.network }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setCryptoWcSession({ sessionId: data.sessionId, wcUri: data.wcUri, expiresAt: data.expiresAt })
+      } else {
+        setCryptoError(data.message ?? 'Unable to start wallet connection.')
+        setCryptoStep('error')
+      }
+    } catch {
+      setCryptoError('Unable to start wallet connection.')
+      setCryptoStep('error')
+    }
+  }, [cryptoForm.provider, cryptoForm.network])
+
+  React.useEffect(() => {
+    if ((cryptoStep === 'qr' || cryptoStep === 'paste') && !cryptoWcSession) {
+      startWalletConnectSession()
+    }
+  }, [cryptoStep, cryptoWcSession, startWalletConnectSession])
+
+  React.useEffect(() => {
+    if ((cryptoStep !== 'qr' && cryptoStep !== 'paste') || !cryptoWcSession) return
+    const poll = async () => {
+      try {
+        const res = await payoutFetch(`/deposit-methods/crypto/walletconnect-session/${cryptoWcSession.sessionId}`)
+        const data = await res.json()
+        if (data.status === 'connected') {
+          setCryptoResult({ walletAddressLast6: data.walletAddressLast6, network: cryptoForm.network, token: cryptoForm.currency, conversionDisplay: data.conversionDisplay })
+          setCryptoWcSession(null)
+          fetchMethods()
+          setCryptoStep('success')
+        } else if (data.status === 'rejected') {
+          setCryptoError('The connection request was declined in your wallet app.')
+          setCryptoWcSession(null)
+          setCryptoStep('error')
+        } else if (data.status === 'expired') {
+          setCryptoError('This connection link expired before a wallet approved it. Please try again.')
+          setCryptoWcSession(null)
+          setCryptoStep('error')
+        }
+      } catch { /* transient network error — next poll retries */ }
+    }
+    const interval = setInterval(poll, 3000)
+    return () => clearInterval(interval)
+  }, [cryptoStep, cryptoWcSession, cryptoForm.network, cryptoForm.currency])
+
   const handleAddCryptoWallet = async () => {
     setCryptoSubmitting(true)
     setCryptoError('')
+    setCryptoStep('connecting')
     try {
       const res = await payoutFetch(`/deposit-methods`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1039,28 +1144,39 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const handleSetDefault = async (id: string) => {
     try {
       const res = await payoutFetch(`/deposit-methods/${id}/set-default`, { method: 'POST' })
-      if (res.ok) { toast({ title: 'Default updated' }); fetchMethods() }
+      if (res.ok) {
+        // Figma: names the method and, when split payout is active, states the
+        // actual live percentages rather than a generic "Default updated".
+        const target = methods.find((m: any) => m.id === id)
+        const label = target ? getMethodLabel(target).name : 'This method'
+        try {
+          const scheduleRes = await payoutFetch(`/payouts/schedule`)
+          if (scheduleRes.ok) {
+            const s = await scheduleRes.json()
+            if (s.splitEnabled && s.secondaryMethod) {
+              const secondaryLabel = s.secondaryMethod.displayLabel ?? s.secondaryMethod.methodType
+              const primaryPct = Math.round((s.primarySplitPercent ?? 100) * 100) / 100
+              const secondaryPct = Math.round((100 - primaryPct) * 100) / 100
+              toast({
+                title: `${label} is now your default deposit method.`,
+                description: `This will be used for all scheduled deposits. Split logic is on: ${primaryPct}% to ${label}, ${secondaryPct}% to ${secondaryLabel}.`,
+              })
+              fetchMethods()
+              return
+            }
+          }
+        } catch { /* fall through to the plain toast below */ }
+        toast({ title: `${label} is now your default deposit method.` })
+        fetchMethods()
+      }
       else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
     } catch (e) { toast({ title: 'Error', description: 'Failed to update default', variant: 'destructive' }) }
   }
 
-  // SCR-07: warn before changing the primary method when split payout is active —
-  // methods.service.ts's setDefault() silently repoints the schedule's
-  // primaryMethodId, which can leave a stale split configuration.
+  // SCR-07: confirm before replacing the existing default deposit method
+  // (Figma "Make this your default deposit method?").
   const [confirmSetDefault, setConfirmSetDefault] = React.useState<any | null>(null)
-  const requestSetDefault = async (method: any) => {
-    try {
-      const res = await payoutFetch(`/payouts/schedule`)
-      if (res.ok) {
-        const s = await res.json()
-        if (s.splitEnabled && s.primaryMethod?.id !== method.id) {
-          setConfirmSetDefault(method)
-          return
-        }
-      }
-    } catch { /* if the check fails, fall through to the normal set-default flow */ }
-    handleSetDefault(method.id)
-  }
+  const requestSetDefault = (method: any) => setConfirmSetDefault(method)
 
   // US-59/62/63: full bank-detail replacement, only offered for BANK_MANUAL
   // methods that haven't completed verification yet — see updateMethod() in
@@ -1071,18 +1187,25 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     if (!editingMethod) return
     setEditBankError('')
     try {
+      const editRegion = detectBankRegion(editBankForm.bankCountry)
+      const submittingBankDetails = editingBankDetails && (
+        editBankForm.bankAccountNumber.trim() || editBankForm.bankIban.trim()
+      )
       const payload: any = { nickname: editingMethod.nickname ?? '' }
-      if (editingBankDetails && editBankForm.bankAccountNumber.trim()) {
+      if (submittingBankDetails) {
         payload.bankAccountName = editBankForm.bankAccountName
-        payload.bankAccountNumber = editBankForm.bankAccountNumber
         payload.bankCountry = editBankForm.bankCountry
         payload.bankCurrency = bankCountryCurrency(editBankForm.bankCountry)
-        switch (editBankForm.bankCountry) {
+        if (editRegion !== 'SEPA') payload.bankAccountNumber = editBankForm.bankAccountNumber
+        switch (editRegion) {
           case 'US': payload.bankRoutingNumber = editBankForm.bankRoutingNumber; break
           case 'GB': payload.bankSortCode = editBankForm.bankSortCode; break
           case 'IN': payload.bankIfscCode = editBankForm.bankIfscCode; break
           case 'AU': payload.bankBsbNumber = editBankForm.bankBsbNumber; break
           case 'CA': payload.bankInstitutionNumber = editBankForm.bankInstitutionNumber; payload.bankTransitNumber = editBankForm.bankTransitNumber; break
+          case 'JP': payload.bankCode = editBankForm.bankCode; payload.bankBranchCode = editBankForm.bankBranchCode; break
+          case 'SEPA': payload.bankIban = editBankForm.bankIban; if (editBankForm.bankSwiftBic) payload.bankSwiftBic = editBankForm.bankSwiftBic; break
+          case 'SWIFT': payload.bankSwiftBic = editBankForm.bankSwiftBic; break
         }
       }
       const res = await payoutFetch(`/deposit-methods/${editingMethod.id}`, {
@@ -1097,15 +1220,24 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           // account, since that's exactly what happened underneath.
           setMicroAmounts({ amount1: '', amount2: '' })
           setVerifyState({ methodId: editingMethod.id, displayLabel: data.displayLabel ?? editingMethod.displayLabel, bankName: editBankForm.bankAccountName || '', step: 'instructions', source: 'manual' })
+          setEditingMethod(null)
+        } else if (submittingBankDetails) {
+          setEditBankSaveState('success')
         } else {
           toast({ title: 'Account updated' })
+          setEditingMethod(null)
         }
-        setEditingMethod(null)
         fetchMethods()
+      } else if (submittingBankDetails) {
+        setEditBankError(bankErrorMessage(data))
+        setEditBankSaveState('error')
       } else {
         setEditBankError(bankErrorMessage(data))
       }
-    } catch (e) { setEditBankError('Failed to update account. Please try again.') }
+    } catch (e) {
+      setEditBankError('Failed to update account. Please try again.')
+      if (editingBankDetails) setEditBankSaveState('error')
+    }
   }
 
   // AC-05.04/05.05/05.06/05.08: wrong amounts decrement an attempt counter and, on the
@@ -1281,7 +1413,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     ;(async () => {
       try {
         const res = await payoutFetch(`/payouts/schedule`)
-        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null) }
+        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null); setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0) }
       } catch (e) { console.error('Failed to fetch payout schedule', e) }
       finally { setScheduleLoading(false) }
     })()
@@ -1330,8 +1462,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           </div>
         )}
 
-        {/* Congratulations Banner */}
-        {showBanner && (
+        {/* Congratulations Banner — hidden until there's actually something to celebrate */}
+        {showBanner && balance && parseFloat(balance.totalEarnedUsd) > 0 && (
           <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
@@ -1547,7 +1679,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Button variant="link" visual="gray" size="sm" onClick={() => { if (defaultMethod) { setEditingMethod({...defaultMethod}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: defaultMethod.bankCountry || 'US' }); setEditBankError('') } }}>Edit</Button>
+                <Button variant="link" visual="gray" size="sm" onClick={() => { if (defaultMethod) { setEditingMethod({...defaultMethod}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: defaultMethod.bankCountry || 'US' }); setEditBankError(''); setEditBankSaveState(null) } }}>Edit</Button>
               </div>
               {methodsLoading ? (
                 <div className="h-10 bg-gray-100 rounded animate-pulse" />
@@ -1638,7 +1770,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       Make Default
                     </Button>
                   ) : null}
-                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setEditingMethod({...m}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: m.bankCountry || 'US' }); setEditBankError('') }}>
+                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setEditingMethod({...m}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: m.bankCountry || 'US' }); setEditBankError(''); setEditBankSaveState(null) }}>
                     <Edit03 className="size-4" />
                   </IconButton>
                   <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setConfirmRemove(m)}>
@@ -1846,7 +1978,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); setCryptoWcSession(null); setCryptoWcConsent(false); }}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
@@ -2303,50 +2435,55 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     </label>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'provider' ? (
-                  /* Step 2d.1: Crypto — provider selection (AC-09.01) */
+                  /* Step 2d.1: Crypto — "Connect Your Wallet" provider list (AC-09.01) */
                   <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect Crypto Wallet</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-base font-semibold text-dark-blue-400">Connect Your Wallet</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
-                    <p className="text-xs text-gray-400 mb-4">Select the exchange or wallet provider you want to receive crypto payouts through.</p>
+                    <p className="text-xs text-gray-400 mb-4">Select your preferred wallet to securely receive crypto payouts.</p>
                     {cryptoProvidersLoading ? (
-                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}</div>
+                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />)}</div>
                     ) : cryptoProviders.length === 0 ? (
                       <div className="text-sm text-gray-400 text-center py-6">Provider list unavailable — please try again.</div>
                     ) : (
-                      <div className="space-y-2 max-h-80 overflow-y-auto">
-                        {cryptoProviders.map((p: any) => (
-                          <div
-                            key={p.provider}
-                            className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 hover:border-primary-300 cursor-pointer"
-                            onClick={() => {
-                              const firstNetwork = p.networks?.[0]
-                              setCryptoForm({ provider: p.provider, network: firstNetwork?.network ?? '', currency: firstNetwork?.tokens?.[0] ?? '', address: '' })
-                              setCryptoStep('details')
-                            }}
-                          >
-                            <div className="size-8 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">{p.displayName?.slice(0, 2).toUpperCase()}</div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-dark-blue-400">{p.displayName}</p>
-                              <p className="text-xs text-gray-400">{p.networks?.map((n: any) => n.network).join(', ')}</p>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {cryptoProviders.map((p: any) => {
+                          const meta = CRYPTO_PROVIDER_META[p.provider]
+                          return (
+                            <div key={p.provider} className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200">
+                              <CryptoProviderIcon provider={p.provider} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-dark-blue-400">{p.displayName}</p>
+                                <p className="text-xs text-gray-400">{meta?.tokensText ?? p.networks?.map((n: any) => n.network).join(', ')}</p>
+                                {meta?.feeText && <p className="text-xs text-gray-400">{meta.feeText}</p>}
+                              </div>
+                              <Button
+                                variant="outlined" visual="gray" size="sm"
+                                onClick={() => {
+                                  setCryptoForm({ provider: p.provider, network: p.defaultNetwork ?? p.networks?.[0]?.network ?? '', currency: p.defaultToken ?? p.networks?.[0]?.tokens?.[0] ?? '', address: '' })
+                                  setCryptoWcSession(null); setCryptoWcConsent(false); setCryptoError('')
+                                  setCryptoStep('details')
+                                }}
+                              >Connect</Button>
                             </div>
-                            <Button variant="outlined" visual="gray" size="sm">Select</Button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'details' ? (
-                  /* Step 2d.2: Crypto — network/currency/address (AC-09.02/09.03/09.04) */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></IconButton>
-                      <h3 className="text-base font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setCryptoStep('provider') }}><X className="size-4" /></IconButton>
+                  /* Step 2d.2: Crypto — "Enter your wallet address" (AC-09.02/09.03/09.04).
+                     WalletConnect-capable providers also offer the QR-scan and
+                     paste-link presentations of the same session as alternatives. */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></IconButton>
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="flex flex-col items-center gap-2 -mt-6">
+                      <CryptoProviderIcon provider={cryptoForm.provider} className="size-12" />
+                      <h3 className="text-sm font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-3 mt-5">
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Network</label>
                         <select
@@ -2356,6 +2493,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                             const network = e.target.value
                             const net = selectedCryptoProvider?.networks?.find((n: any) => n.network === network)
                             setCryptoForm(f => ({...f, network, currency: net?.tokens?.[0] ?? ''}))
+                            setCryptoWcSession(null)
                           }}
                         >
                           {/* AC-09.02: only networks this provider actually supports */}
@@ -2374,69 +2512,134 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Wallet Address</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder={`Your ${cryptoForm.network || 'wallet'} address`} value={cryptoForm.address} onChange={e => { setCryptoForm(f => ({...f, address: e.target.value})); setCryptoError('') }} />
+                        <label className="text-xs text-gray-500 mb-1 block">Enter your wallet address</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="0xF23C...9u5M" value={cryptoForm.address} onChange={e => { setCryptoForm(f => ({...f, address: e.target.value})); setCryptoError('') }} />
+                        <p className="text-xs text-gray-400 mt-1">Your connection is private and secure. Wallet credentials are not stored or shared.</p>
                         {cryptoForm.address.length > 0 && cryptoForm.address.trim().length < 10 && (
                           <p className="text-xs text-red-500 mt-1">Enter a valid wallet address</p>
                         )}
                       </div>
                       {cryptoError && <p className="text-xs text-red-500">{cryptoError}</p>}
                     </div>
-                    <div className="flex gap-2 mt-5">
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setCryptoStep('provider')}>Back</Button>
+                    <div className="flex gap-2 mt-4">
                       <Button
-                        variant="filled" visual="primary" size="sm" className="flex-1"
+                        variant="filled" visual="gray" size="sm" className="flex-1 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                         onClick={handleAddCryptoWallet}
                         disabled={cryptoSubmitting || cryptoForm.address.trim().length < 10 || !cryptoForm.network || !cryptoForm.currency}
-                      >{cryptoSubmitting ? 'Connecting…' : 'Add Wallet'}</Button>
+                      >Connect Wallet</Button>
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setCryptoStep('provider')}>Cancel</Button>
                     </div>
+                    {selectedCryptoProvider?.supportsWalletConnect && (
+                      <div className="mt-5">
+                        <p className="text-xs font-semibold text-dark-blue-400 mb-2">Other ways to connect</p>
+                        <div className="space-y-2">
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('qr')}>
+                            <Search className="size-3.5" /> Scan QR code from your wallet App
+                          </button>
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('paste')}>
+                            <ExternalLink className="size-3.5" /> Paste connection link instead
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && (cryptoStep === 'qr' || cryptoStep === 'paste') ? (
+                  /* Step 2d.3: WalletConnect — QR-scan and paste-link are two
+                     presentations of the same session (PS-10). */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setCryptoStep('details')}><ChevronLeft className="size-4" /></IconButton>
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="-mt-6">
+                      <h3 className="text-sm font-semibold text-dark-blue-400 flex items-center gap-1.5">
+                        {cryptoStep === 'qr' ? 'Scan this code in your wallet app' : 'Paste Wallet connection link'}
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">{cryptoStep === 'qr' ? 'Accept the connection request in your wallet' : `Paste the connection link generated for ${selectedCryptoProvider?.displayName ?? 'your wallet'}`}</p>
+                    </div>
+                    {!cryptoWcSession ? (
+                      <div className="h-48 flex items-center justify-center">
+                        <div className="size-8 rounded-full border-2 border-gray-200 border-t-primary-500 animate-spin" />
+                      </div>
+                    ) : cryptoStep === 'qr' ? (
+                      <div className="flex justify-center py-6">
+                        <QRCodeSVG value={cryptoWcSession.wcUri} size={180} />
+                      </div>
+                    ) : (
+                      <div className="py-6">
+                        <label className="text-xs text-gray-500 mb-1 block">Connection link</label>
+                        <input readOnly className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono truncate" value={cryptoWcSession.wcUri} onClick={e => (e.target as HTMLInputElement).select()} />
+                      </div>
+                    )}
+                    {cryptoWcSession && (
+                      <div className="flex flex-col items-center gap-3">
+                        <button
+                          className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700"
+                          onClick={() => { navigator.clipboard?.writeText(cryptoWcSession.wcUri); toast({ title: 'Copied', description: 'Wallet connection link copied to clipboard.' }) }}
+                        >
+                          <ExternalLink className="size-3.5" /> Copy wallet connection link
+                        </button>
+                        <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => setCryptoWcSession(null)}>Try Again</Button>
+                      </div>
+                    )}
+                    <div className="mt-5">
+                      <p className="text-xs font-semibold text-dark-blue-400 mb-2">Other ways to connect</p>
+                      <div className="space-y-2">
+                        <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('details')}>
+                          <Search className="size-3.5" /> Enter your wallet address
+                        </button>
+                        <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep(cryptoStep === 'qr' ? 'paste' : 'qr')}>
+                          <ExternalLink className="size-3.5" /> {cryptoStep === 'qr' ? 'Paste connection link instead' : 'Scan QR code from your wallet App'}
+                        </button>
+                      </div>
+                    </div>
+                    <label className="flex items-start gap-2 cursor-pointer mt-4">
+                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={cryptoWcConsent} onChange={e => setCryptoWcConsent(e.target.checked)} />
+                      <span className="text-xs text-gray-400">By connecting your wallet, you authorize Marketeq to initiate payouts to your linked crypto wallet via WalletConnect. You acknowledge this authorization remains valid unless revoked.</span>
+                    </label>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'connecting' ? (
+                  /* US-64: "Connecting to Wallet..." transitional screen. */
+                  <div className="p-10 text-center">
+                    <CryptoProviderIcon provider={cryptoForm.provider} className="size-12 mx-auto" />
+                    <p className="text-sm font-semibold text-dark-blue-400 mt-2">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</p>
+                    <div className="mx-auto mt-6 size-10 rounded-full border-2 border-gray-200 border-t-primary-500 animate-spin" />
+                    <h3 className="text-base font-semibold text-dark-blue-400 mt-4">Connecting to Wallet...</h3>
+                    <p className="text-xs text-gray-400 mt-1">We're verifying and connecting to your wallet. This may take up to 30 seconds.</p>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'success' ? (
                   /* US-64: dedicated success screen with wallet address + current value. */
-                  <div className="p-6 text-center">
-                    <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center mb-3">
-                      <Check className="size-6 text-primary-600" />
+                  <div className="p-8 text-center relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setShowAddMethod(false); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoResult(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-5 text-primary-600" />
                     </div>
-                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet connected</h3>
-                    <div className="mt-4 rounded-lg border border-gray-200 divide-y divide-gray-200 text-left">
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Provider</span>
-                        <span className="text-sm font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? cryptoForm.provider}</span>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet Connected Successfully</h3>
+                    <div className="mt-5 rounded-lg border border-gray-200 flex divide-x divide-gray-200 text-left">
+                      <div className="flex-1 px-4 py-3">
+                        <p className="text-xs text-gray-400">Wallet Address</p>
+                        <p className="text-sm font-semibold text-dark-blue-400 font-mono">••••{cryptoResult?.walletAddressLast6 ?? cryptoForm.address.slice(-6)}</p>
                       </div>
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Address</span>
-                        <span className="text-sm font-mono text-dark-blue-400">••••{cryptoResult?.walletAddressLast6 ?? cryptoForm.address.slice(-6)}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Network</span>
-                        <span className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.network ?? cryptoForm.network}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Current value</span>
-                        <span className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.conversionDisplay ?? '—'}</span>
+                      <div className="flex-1 px-4 py-3">
+                        <p className="text-xs text-gray-400">Current Conversion Value</p>
+                        <p className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.conversionDisplay ?? '—'}</p>
                       </div>
                     </div>
-                    <Button
-                      variant="filled" visual="primary" size="sm" className="w-full mt-5"
-                      onClick={() => { setShowAddMethod(false); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoResult(null) }}
-                    >
-                      Done
-                    </Button>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'error' ? (
                   /* US-64: dedicated failure screen — retry same details, or pick a
                       different provider entirely, rather than a dead-end toast. */
-                  <div className="p-6 text-center">
-                    <div className="mx-auto size-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
-                      <X className="size-6 text-red-600" />
+                  <div className="p-8 text-center relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <AlertTriangle className="size-5 text-red-600" />
                     </div>
-                    <h3 className="text-base font-semibold text-dark-blue-400">Couldn't connect wallet</h3>
-                    <p className="mt-2 text-sm text-gray-500">{cryptoError}</p>
-                    <div className="flex gap-2 mt-5">
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => { setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError('') }}>
-                        Choose Different Provider
-                      </Button>
-                      <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={() => setCryptoStep('details')}>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet Connected Failed</h3>
+                    <p className="mt-2 text-sm text-gray-500">{cryptoError || "We couldn't connect to your selected wallet. Please check your connection and try again."}</p>
+                    <p className="mt-2 text-xs text-gray-400 italic">If the issue persists, consider selecting a different wallet provider.</p>
+                    <div className="flex items-center justify-center gap-4 mt-6">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoWcSession(null); setCryptoError('') }}>
+                        Pick Another Wallet
+                      </button>
+                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setCryptoWcSession(null); setCryptoError(''); setCryptoStep('details') }}>
                         Retry
                       </Button>
                     </div>
@@ -2446,18 +2649,22 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
             </div>
           )}
 
-          {/* Set Primary Confirmation Dialog — split-impact warning (SCR-07) */}
+          {/* Set Default Confirmation Dialog (SCR-07). setDefault() in
+              methods.service.ts only flips isDefault flags on deposit
+              methods — it never touches payout_schedules.primaryMethodId
+              (that's only ever set explicitly via PATCH /payouts/schedule),
+              so changing the default does not disable split payout. */}
           {confirmSetDefault && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConfirmSetDefault(null)}>
               <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Change Primary Method?</h3>
-                <p className="text-sm text-gray-500 mb-5">Changing your primary method will disable split payout. You can reconfigure split payout afterward.</p>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Make this your default deposit method?</h3>
+                <p className="text-sm text-gray-500 mb-5">This method will become your primary destination for all payouts, unless you have split payout enabled. Your existing default method will be replaced.</p>
                 <div className="flex gap-2">
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setConfirmSetDefault(null)}>Cancel</Button>
                   <Button
                     variant="filled" visual="primary" size="sm" className="flex-1"
                     onClick={async () => { const id = confirmSetDefault.id; setConfirmSetDefault(null); await handleSetDefault(id) }}
-                  >Change Primary</Button>
+                  >Yes, make default</Button>
                 </div>
               </div>
             </div>
@@ -2467,8 +2674,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           {confirmRemove && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !removing && setConfirmRemove(null)}>
               <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Remove Payout Method</h3>
-                <p className="text-sm text-gray-500 mb-4">This action is permanent.</p>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Remove Deposit Method?</h3>
+                <p className="text-sm text-gray-500 mb-4">Are you sure you want to remove this payout method? Once removed, funds will no longer be routed to this account.</p>
                 <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 mb-4">
                   {getMethodIcon(confirmRemove)}
                   <span className="text-sm font-medium text-dark-blue-400">{getMethodLabel(confirmRemove).name}</span>
@@ -2512,8 +2719,46 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
           {/* Edit Method Dialog */}
           {editingMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingMethod(null)}>
-              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto relative" onClick={e => e.stopPropagation()}>
+                {editBankSaveState === 'success' ? (
+                  /* Figma "Bank Details Updated" */
+                  <div className="text-center py-4">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-5 text-primary-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Bank Details Updated</h3>
+                    <p className="mt-2 text-sm text-gray-500">You updated your bank account information successfully.</p>
+                    <p className="mt-1 text-xs text-gray-400">Changes may take up to 3 days to reflect.</p>
+                  </div>
+                ) : editBankSaveState === 'error' ? (
+                  /* Figma "Unable To Update Bank Info" */
+                  <div className="text-center py-4">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <AlertTriangle className="size-5 text-red-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Unable To Update Bank Info</h3>
+                    <p className="mt-1 text-sm text-gray-500">Please check your details and try again.</p>
+                    <div className="mt-4 text-left rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <p className="text-xs font-semibold text-dark-blue-400 mb-1.5">Please check that:</p>
+                      <ul className="text-xs text-gray-500 space-y-1 list-disc list-inside">
+                        <li>All fields are filled correctly</li>
+                        <li>Account and routing numbers follow the correct format</li>
+                        <li>Bank codes like SWIFT, IBAN, or IFSC are valid</li>
+                        <li>The country selected matches the format used</li>
+                        <li>No special characters are used in bank name</li>
+                      </ul>
+                    </div>
+                    {editBankError && <p className="mt-3 text-sm text-red-600">{editBankError}</p>}
+                    <div className="flex gap-2 mt-5">
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}>Cancel</Button>
+                      <Button variant="filled" visual="primary" size="sm" className="flex-1" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setEditBankSaveState(null); setEditBankError('') }}>Retry</Button>
+                    </div>
+                  </div>
+                ) : (
+                <>
                 <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Edit Account</h3>
                 <div className="space-y-3">
                   <div>
@@ -2527,37 +2772,45 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
                   {/* US-59: bank details are re-entered fresh, never pre-filled — the
                       backend never returns raw account numbers back out (security). */}
-                  {editingBankDetails ? (
+                  {editingBankDetails ? (() => {
+                    const editRegion = detectBankRegion(editBankForm.bankCountry)
+                    return (
                     <div className="space-y-3 pt-2 border-t border-gray-200">
                       <p className="text-xs text-gray-500">
                         To correct your bank account details, re-enter them below. This restarts verification — two small deposits will arrive within 2 business days. Leave blank to keep your current (unverified) details.
                       </p>
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Country</label>
-                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={editBankForm.bankCountry} onChange={e => setEditBankForm(f => ({...f, bankCountry: e.target.value}))}>
-                          <option value="US">United States</option>
-                          <option value="GB">United Kingdom</option>
-                          <option value="IN">India</option>
-                          <option value="AU">Australia</option>
-                          <option value="CA">Canada</option>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={editBankForm.bankCountry} onChange={e => setEditBankForm(f => ({...f, bankCountry: e.target.value, bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: ''}))}>
+                          <option value="US">🇺🇸 United States</option>
+                          <option value="DE">🇪🇺 Europe</option>
+                          <option value="IN">🇮🇳 India</option>
+                          <option value="AU">🇦🇺 Australia</option>
+                          <option value="GB">🇬🇧 United Kingdom</option>
+                          <option value="JP">🇯🇵 Japan</option>
+                          <option value="SG">🌏 Asia</option>
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={editBankForm.bankAccountName} onChange={e => setEditBankForm(f => ({...f, bankAccountName: e.target.value}))} />
+                        <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank of America" value={editBankForm.bankAccountName} onChange={e => setEditBankForm(f => ({...f, bankAccountName: e.target.value}))} />
                       </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={editBankForm.bankAccountNumber} onChange={e => setEditBankForm(f => ({...f, bankAccountNumber: e.target.value}))} />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={editBankForm.bankAccountNumberConfirm} onChange={e => setEditBankForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
-                        {editBankForm.bankAccountNumberConfirm.length > 0 && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber && (
-                          <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
-                        )}
-                      </div>
-                      {editBankForm.bankCountry === 'US' && (
+                      {editRegion !== 'SEPA' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={editBankForm.bankAccountNumber} onChange={e => setEditBankForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={editBankForm.bankAccountNumberConfirm} onChange={e => setEditBankForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
+                            {editBankForm.bankAccountNumberConfirm.length > 0 && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber && (
+                              <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
+                            )}
+                          </div>
+                        </>
+                      )}
+                      {editRegion === 'US' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Routing Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={editBankForm.bankRoutingNumber} onChange={e => setEditBankForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
@@ -2566,7 +2819,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'GB' && (
+                      {editRegion === 'GB' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 12-34-56" value={editBankForm.bankSortCode} onChange={e => setEditBankForm(f => ({...f, bankSortCode: e.target.value}))} />
@@ -2575,7 +2828,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'IN' && (
+                      {editRegion === 'IN' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={editBankForm.bankIfscCode} onChange={e => setEditBankForm(f => ({...f, bankIfscCode: e.target.value}))} />
@@ -2584,7 +2837,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'AU' && (
+                      {editRegion === 'AU' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 123-456" value={editBankForm.bankBsbNumber} onChange={e => setEditBankForm(f => ({...f, bankBsbNumber: e.target.value}))} />
@@ -2593,7 +2846,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'CA' && (
+                      {editRegion === 'CA' && (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
@@ -2611,8 +2864,44 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           </div>
                         </div>
                       )}
+                      {editRegion === 'JP' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Bank Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="4 digits" value={editBankForm.bankCode} onChange={e => setEditBankForm(f => ({...f, bankCode: e.target.value}))} />
+                            {editBankForm.bankCode.length > 0 && !isValidJpBankCode(editBankForm.bankCode) && <p className="text-xs text-red-500 mt-1">4 digits required.</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Branch Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={editBankForm.bankBranchCode} onChange={e => setEditBankForm(f => ({...f, bankBranchCode: e.target.value}))} />
+                            {editBankForm.bankBranchCode.length > 0 && !isValidJpBranchCode(editBankForm.bankBranchCode) && <p className="text-xs text-red-500 mt-1">3 digits required.</p>}
+                          </div>
+                        </div>
+                      )}
+                      {editRegion === 'SEPA' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">IBAN</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter your full IBAN (starts with country code, e.g., DE...)" value={editBankForm.bankIban} onChange={e => setEditBankForm(f => ({...f, bankIban: e.target.value}))} />
+                            {editBankForm.bankIban.length > 0 && !isValidIban(editBankForm.bankIban) && <p className="text-xs text-red-500 mt-1">Invalid IBAN.</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Number (optional)</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter 8 or 11 character SWIFT/BIC Code" value={editBankForm.bankSwiftBic} onChange={e => setEditBankForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                            {editBankForm.bankSwiftBic.length > 0 && !isValidSwiftBic(editBankForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Invalid SWIFT/BIC code.</p>}
+                          </div>
+                        </>
+                      )}
+                      {editRegion === 'SWIFT' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter 8 or 11 character SWIFT/BIC Code" value={editBankForm.bankSwiftBic} onChange={e => setEditBankForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {editBankForm.bankSwiftBic.length > 0 && !isValidSwiftBic(editBankForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Invalid SWIFT/BIC code.</p>}
+                        </div>
+                      )}
                     </div>
-                  ) : editingMethod.methodType === 'BANK_MANUAL' && editingMethod.verificationStatus === 'verified' ? (
+                    )
+                  })() : editingMethod.methodType === 'BANK_MANUAL' && editingMethod.verificationStatus === 'verified' ? (
                     <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
                       This account is verified and its bank details can't be changed here — remove it and add a new one instead.
                     </p>
@@ -2624,22 +2913,31 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setEditingMethod(null)}>Cancel</Button>
                   <Button
                     variant="filled" visual="primary" size="sm" className="flex-1"
-                    disabled={
-                      editingBankDetails && editBankForm.bankAccountNumber.trim().length > 0 && (
-                        editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber ||
+                    disabled={(() => {
+                      if (!editingBankDetails) return false
+                      const editRegion = detectBankRegion(editBankForm.bankCountry)
+                      const touchedBankDetails = editBankForm.bankAccountNumber.trim().length > 0 || editBankForm.bankIban.trim().length > 0
+                      if (!touchedBankDetails) return false
+                      return (
                         !editBankForm.bankAccountName.trim() ||
-                        (editBankForm.bankCountry === 'US' && !isValidAbaRouting(editBankForm.bankRoutingNumber)) ||
-                        (editBankForm.bankCountry === 'GB' && !isValidSortCode(editBankForm.bankSortCode)) ||
-                        (editBankForm.bankCountry === 'IN' && !isValidIfsc(editBankForm.bankIfscCode)) ||
-                        (editBankForm.bankCountry === 'AU' && !isValidBsb(editBankForm.bankBsbNumber)) ||
-                        (editBankForm.bankCountry === 'CA' && (!isValidCaInstitution(editBankForm.bankInstitutionNumber) || !isValidCaTransit(editBankForm.bankTransitNumber)))
+                        (editRegion !== 'SEPA' && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber) ||
+                        (editRegion === 'US' && !isValidAbaRouting(editBankForm.bankRoutingNumber)) ||
+                        (editRegion === 'GB' && !isValidSortCode(editBankForm.bankSortCode)) ||
+                        (editRegion === 'IN' && !isValidIfsc(editBankForm.bankIfscCode)) ||
+                        (editRegion === 'AU' && !isValidBsb(editBankForm.bankBsbNumber)) ||
+                        (editRegion === 'CA' && (!isValidCaInstitution(editBankForm.bankInstitutionNumber) || !isValidCaTransit(editBankForm.bankTransitNumber))) ||
+                        (editRegion === 'JP' && (!isValidJpBankCode(editBankForm.bankCode) || !isValidJpBranchCode(editBankForm.bankBranchCode))) ||
+                        (editRegion === 'SEPA' && !isValidIban(editBankForm.bankIban)) ||
+                        (editRegion === 'SWIFT' && !isValidSwiftBic(editBankForm.bankSwiftBic))
                       )
-                    }
+                    })()}
                     onClick={handleUpdateMethod}
                   >
                     Save Changes
                   </Button>
                 </div>
+                </>
+                )}
               </div>
             </div>
           )}
@@ -2658,7 +2956,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   <HelpCircle className="size-4 text-gray-400" />
                 </TooltipTrigger>
                 <TooltipContent visual="white" size="md">
-                  <p>Earnings currently eligible for manual withdrawal. This amount excludes your $150 reserve balance and any pending transactions. You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
+                  <p>Earnings currently eligible for manual withdrawal. {reserveUsd > 0 ? `This amount excludes your $${reserveUsd.toFixed(2)} reserve balance and any pending transactions.` : "This amount excludes any pending transactions."} You can update these preferences under <button type="button" className="text-primary-600 underline hover:text-primary-700" onClick={() => onEditPayoutSchedule?.()}>Payout Settings</button>.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -2688,11 +2986,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 How does billing work?
               </button>
             </div>
-          ) : (
+          ) : (() => {
+            // reserveUsd is in USD (payout-service's schedule) while
+            // availableBalanceDisplay may be FX-converted — apply the same
+            // implicit rate the backend already computed rather than mixing
+            // currencies.
+            const grossUsd = balance ? parseFloat(balance.availableBalance) : 0
+            const grossDisplay = balance ? parseFloat(balance.availableBalanceDisplay) : 0
+            const rate = grossUsd > 0 ? grossDisplay / grossUsd : 1
+            const netDisplay = balance ? Math.max(0, grossDisplay - reserveUsd * rate) : 0
+            return (
             <>
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-3xl font-bold text-dark-blue-400">
-                  <span className="text-base align-top">$</span>{balance ? Math.floor(parseFloat(balance.availableBalanceDisplay)).toLocaleString() : "..."}<span className="text-lg">.{balance ? parseFloat(balance.availableBalanceDisplay).toFixed(2).split(".")[1] : "00"}</span>
+                  <span className="text-base align-top">$</span>{balance ? Math.floor(netDisplay).toLocaleString() : "..."}<span className="text-lg">.{balance ? netDisplay.toFixed(2).split(".")[1] : "00"}</span>
                   {/* US-08: never conditionally hidden, even though the balance
                       might look "off" from what the contractor expects. */}
                   {balance?.stale && (
@@ -2732,7 +3039,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   payoutMinimum, $50 default) — the /transfer-funds page still enforces this itself,
                   this is only a client-side UX guard against an obviously-doomed flow. */}
               {(() => {
-                const withdrawableUsd = balance ? parseFloat(balance.availableBalanceDisplay) : null
+                const withdrawableUsd = balance ? netDisplay : null
                 const belowMinimum = withdrawableUsd !== null && withdrawableUsd < 50
                 const isLoading = withdrawableUsd === null
                 return (
@@ -2752,7 +3059,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 )
               })()}
             </>
-          )}
+            )
+          })()}
         </div>
 
         {/* Recent Activity — derived from real payout history (no dedicated
@@ -2884,6 +3192,17 @@ export const HelpSupportDialog = ({ open, onOpenChange }: { open: boolean; onOpe
   </Dialog>
 )
 
+// Split-payout row icon (Figma). A smaller, local counterpart to
+// OverviewTab's getMethodIcon — that one isn't reachable from here since
+// it's a closure inside a different component.
+const renderScheduleMethodIcon = (m: any) => {
+  if (m.methodType === "PAYPAL") return <PaypalIcon className="size-5" />
+  if (m.methodType === "WISE") return <WiseIcon className="size-5" />
+  if (m.methodType === "PAYONEER") return <PayoneerIcon className="size-5" />
+  if (m.methodType === "CRYPTO") return <CryptoProviderIcon provider={m.cryptoProvider} className="size-5" />
+  return <BankLogo bankName={m.nickname || ""} size={20} />
+}
+
 export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; onSaved?: () => void }) => {
   const { toast } = useToast()
 
@@ -2910,18 +3229,39 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
   const [frequency, setFrequency] = useState("weekly")
   const [dayOfWeek, setDayOfWeek] = useState(1)
   const [dayOfMonth, setDayOfMonth] = useState(1)
-  const [customIntervalDays, setCustomIntervalDays] = useState(7)
+  // Figma "Repeat Every [N] [Days/Weeks/Months]" — customIntervalDays is the
+  // only column the backend stores, so weeks/months are converted to days
+  // before saving (weeks*7, months*30) and back when hydrating from a saved
+  // schedule. customIntervalCount is the number shown in the unit the user
+  // picked, not the raw day count.
+  const [customIntervalUnit, setCustomIntervalUnit] = useState<'days' | 'weeks' | 'months'>('days')
+  const [customIntervalCount, setCustomIntervalCount] = useState(7)
   // US-72: optional window for a custom schedule, e.g. pause payouts during
   // a planned absence without disabling the schedule outright. yyyy-mm-dd
-  // strings for <input type="date">; empty string = unset.
+  // strings for <input type="date">; empty string = unset. Figma gates the
+  // end date behind a "Stop Deposits On" toggle rather than showing it bare.
   const [scheduleStartDate, setScheduleStartDate] = useState("")
   const [scheduleEndDate, setScheduleEndDate] = useState("")
+  const [stopDepositsEnabled, setStopDepositsEnabled] = useState(false)
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
   const [scheduleUpdatedAt, setScheduleUpdatedAt] = useState<string | null>(null)
 
-  // Minimum payout + reserve
+  // Minimum payout + reserve. Figma shows preset buttons ($25/$50/$100/$150/
+  // $250) plus a Custom amount input, not a plain on/off toggle — backend
+  // (schedule.service.ts) enforces 0 <= reserveUsd <= 250 regardless of
+  // which UI sets it, so presets are fully within that range already.
   const [thresholdUsd, setThresholdUsd] = useState("50")
   const [reserveUsd, setReserveUsd] = useState("0")
+  const RESERVE_PRESETS = [25, 50, 100, 150, 250]
+  const [reserveCustomOpen, setReserveCustomOpen] = useState(false)
+  const [reserveCustomValue, setReserveCustomValue] = useState("")
+
+  // Split payout — Figma's "Auto Split" toggle switches between a fixed
+  // 50/50 default and manual per-side percent entry; there's no backend
+  // auto-balance algorithm (primarySplitPercent is the only stored value,
+  // secondarySplitPercent is just its complement), so "auto" just means
+  // "keep it at 50/50 and don't let the user type a number".
+  const [autoSplit, setAutoSplit] = useState(true)
 
   // Authorization
   const [authorized, setAuthorized] = useState(false)
@@ -2933,7 +3273,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
     if (frequency === "bi_weekly") return `Bi-Weekly (every other ${selectedDayFull})`
     if (frequency === "monthly") return `Monthly (on the ${dayOfMonth}${dayOfMonth === 1 ? "st" : dayOfMonth === 2 ? "nd" : dayOfMonth === 3 ? "rd" : "th"})`
     if (frequency === "daily") return "Daily (every day)"
-    if (frequency === "custom") return `Every ${customIntervalDays} day${customIntervalDays === 1 ? "" : "s"}`
+    if (frequency === "custom") return `Every ${customIntervalCount} ${customIntervalUnit}${customIntervalCount === 1 ? customIntervalUnit.slice(0, -1) : customIntervalUnit}`
     return "Select schedule"
   }
 
@@ -2955,16 +3295,31 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
         setSplitEnabled(!!s.splitEnabled)
         setSecondaryMethodId(s.secondaryMethod?.id ?? "")
         setPrimarySplitPercent(s.primarySplitPercent ?? 50)
+        setAutoSplit((s.primarySplitPercent ?? 50) === 50)
         setInitial({ splitEnabled: !!s.splitEnabled, secondaryMethodId: s.secondaryMethod?.id ?? "", primarySplitPercent: s.primarySplitPercent ?? 50 })
         setIsActive(s.isActive ?? true)
         setFrequency(s.frequency ?? "weekly")
         setDayOfWeek(s.dayOfWeek ?? 1)
         setDayOfMonth(s.dayOfMonth ?? 1)
-        setCustomIntervalDays(s.customIntervalDays ?? 7)
+        const loadedIntervalDays = s.customIntervalDays ?? 7
+        if (loadedIntervalDays >= 30 && loadedIntervalDays % 30 === 0) {
+          setCustomIntervalUnit("months"); setCustomIntervalCount(loadedIntervalDays / 30)
+        } else if (loadedIntervalDays % 7 === 0) {
+          setCustomIntervalUnit("weeks"); setCustomIntervalCount(loadedIntervalDays / 7)
+        } else {
+          setCustomIntervalUnit("days"); setCustomIntervalCount(loadedIntervalDays)
+        }
         setScheduleStartDate(s.startDate ? s.startDate.slice(0, 10) : "")
         setScheduleEndDate(s.endDate ? s.endDate.slice(0, 10) : "")
+        setStopDepositsEnabled(!!s.endDate)
         setThresholdUsd(s.thresholdUsd ? String(Math.round(parseFloat(s.thresholdUsd))) : "50")
-        setReserveUsd(s.reserveUsd ? String(Math.round(parseFloat(s.reserveUsd))) : "0")
+        const loadedReserve = s.reserveUsd ? Math.round(parseFloat(s.reserveUsd)) : 0
+        setReserveUsd(String(loadedReserve))
+        if (loadedReserve > 0 && !RESERVE_PRESETS.includes(loadedReserve)) {
+          setReserveCustomOpen(true); setReserveCustomValue(String(loadedReserve))
+        } else {
+          setReserveCustomOpen(false); setReserveCustomValue("")
+        }
         // AC-25.03: next run date is always the server-computed value, never derived client-side.
         setNextRunAt(s.nextRunAt ?? null)
         setScheduleUpdatedAt(s.updatedAt ?? null)
@@ -2991,10 +3346,14 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
       if (frequency === "weekly" || frequency === "bi_weekly") schedulePayload.dayOfWeek = dayOfWeek
       if (frequency === "monthly") schedulePayload.dayOfMonth = dayOfMonth
       if (frequency === "custom") {
-        schedulePayload.customIntervalDays = customIntervalDays
+        // customIntervalDays is the only interval column the backend stores —
+        // weeks/months are converted to days before saving (weeks*7, months*30).
+        const unitMultiplier = customIntervalUnit === "months" ? 30 : customIntervalUnit === "weeks" ? 7 : 1
+        schedulePayload.customIntervalDays = customIntervalCount * unitMultiplier
+        schedulePayload.dayOfWeek = dayOfWeek
         // Explicit null (not omitted) clears a previously-set date server-side.
         schedulePayload.startDate = scheduleStartDate ? new Date(scheduleStartDate).toISOString() : null
-        schedulePayload.endDate = scheduleEndDate ? new Date(scheduleEndDate).toISOString() : null
+        schedulePayload.endDate = stopDepositsEnabled && scheduleEndDate ? new Date(scheduleEndDate).toISOString() : null
       }
 
       const scheduleRes = await payoutFetch(`/payouts/schedule`, { method: "PUT", headers, body: JSON.stringify(schedulePayload) })
@@ -3022,7 +3381,19 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
 
       onOpenChange(false)
       onSaved?.()
-      toast({ title: "Payout schedule updated", description: getScheduleLabel() })
+      // Figma: split on/off gets its own specific toast naming the actual
+      // methods/percentages involved, not the generic schedule-updated one.
+      if (splitEnabled && !initial.splitEnabled) {
+        const primaryLabel = methods.find((m) => m.id === primaryMethodId)?.displayLabel ?? methods.find((m) => m.id === primaryMethodId)?.nickname ?? "your primary method"
+        const secondaryLabel = methods.find((m) => m.id === secondaryMethodId)?.displayLabel ?? methods.find((m) => m.id === secondaryMethodId)?.nickname ?? "your secondary method"
+        const secondaryPct = Math.round((100 - primarySplitPercent) * 100) / 100
+        toast({ title: "Split Deposits activated.", description: `Funds will be distributed: ${primarySplitPercent}% to ${primaryLabel}, ${secondaryPct}% to ${secondaryLabel}.` })
+      } else if (!splitEnabled && initial.splitEnabled) {
+        const defaultLabel = methods.find((m) => m.id === primaryMethodId)?.displayLabel ?? methods.find((m) => m.id === primaryMethodId)?.nickname ?? "your default method"
+        toast({ title: "Split Deposits turned off.", description: `You turned off split Deposits. All deposits will go to your default method: ${defaultLabel}.` })
+      } else {
+        toast({ title: "Payout schedule updated", description: getScheduleLabel() })
+      }
     } catch {
       setFormError("Unable to save — please try again.")
     } finally {
@@ -3123,23 +3494,41 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-xs text-gray-500 mb-1 block">Primary %</label>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-500">Auto Split</span>
+                        <Switch
+                          checked={autoSplit}
+                          onCheckedChange={(c) => { setAutoSplit(c as boolean); if (c) setPrimarySplitPercent(50) }}
+                          size="sm"
+                        />
+                      </div>
+
+                      {/* Per-method rows (Figma): icon + name + percent + remove.
+                          Removing either side has the same effect — there's no
+                          backend concept of a 2-method split with one side gone —
+                          so both route through the existing disable-split confirm. */}
+                      {[
+                        { m: methods.find((mm) => mm.id === primaryMethodId), pct: primarySplitPercent, isPrimary: true },
+                        { m: methods.find((mm) => mm.id === secondaryMethodId), pct: Math.round((100 - primarySplitPercent) * 100) / 100, isPrimary: false },
+                      ].map(({ m, pct, isPrimary }, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                          <span className="shrink-0">{m ? renderScheduleMethodIcon(m) : <BankIcon className="size-5 text-gray-400" />}</span>
+                          <span className="flex-1 min-w-0 text-sm font-medium text-dark-blue-400 truncate">{m ? (m.nickname || m.displayLabel || m.methodType) : (isPrimary ? "Select a payout method" : "Select a secondary method")}</span>
                           <Input
                             type="number" min={0} max={100}
-                            value={primarySplitPercent}
+                            className="w-16 text-right"
+                            disabled={autoSplit || !isPrimary}
+                            value={pct}
                             // AC-23.03/23.04: accept the raw value (including 0/100) so the
                             // inline error below can actually be seen — clamping silently
                             // would make those values impossible to type in the first place.
                             onChange={(e) => setPrimarySplitPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
                           />
+                          <span className="text-sm text-gray-400">%</span>
+                          <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if (initial.splitEnabled) { setConfirmDisableSplit(true) } else { setSplitEnabled(false) } }}><Trash01 className="size-4" /></IconButton>
                         </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-gray-500 mb-1 block">Secondary % (auto)</label>
-                          <Input type="number" value={Math.round((100 - primarySplitPercent) * 100) / 100} disabled />
-                        </div>
-                      </div>
+                      ))}
                       {(primarySplitPercent <= 0 || primarySplitPercent >= 100) && (
                         <p className="text-xs text-red-500">Each method must receive between 1% and 99% — 0% or 100% is not a valid split.</p>
                       )}
@@ -3168,30 +3557,51 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   {frequency === "custom" && (
                     <>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Every N days (1–365)</label>
-                        <Input type="number" min={1} max={365} value={customIntervalDays} onChange={(e) => setCustomIntervalDays(Math.min(365, Math.max(1, parseInt(e.target.value) || 1)))} />
+                        <label className="text-xs text-gray-500 mb-1 block">Start Deposits On</label>
+                        <Input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Repeat Every</label>
+                          <Input
+                            type="number" min={1} max={customIntervalUnit === "days" ? 365 : customIntervalUnit === "weeks" ? 52 : 12}
+                            value={customIntervalCount}
+                            onChange={(e) => setCustomIntervalCount(Math.max(1, parseInt(e.target.value) || 1))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">&nbsp;</label>
+                          <Select value={customIntervalUnit} onValueChange={(v) => setCustomIntervalUnit(v as 'days' | 'weeks' | 'months')}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="days">Days</SelectItem>
+                              <SelectItem value="weeks">Weeks</SelectItem>
+                              <SelectItem value="months">Months</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       {/* US-72: optional window — e.g. pause payouts during a
                           planned absence without disabling the schedule outright. */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between gap-4">
                         <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Start date (optional)</label>
-                          <Input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                          <label className="text-sm font-semibold text-dark-blue-400">Stop Deposits On <span className="font-normal text-gray-400">(optional)</span></label>
+                          <p className="text-xs text-gray-500 mt-0.5">Select a date when you want deposits to stop.</p>
                         </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
-                          <Input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
-                        </div>
+                        <Switch checked={stopDepositsEnabled} onCheckedChange={(c) => setStopDepositsEnabled(c as boolean)} size="sm" />
                       </div>
-                      {scheduleStartDate && scheduleEndDate && scheduleEndDate <= scheduleStartDate && (
-                        <p className="text-xs text-red-500">End date must be after start date.</p>
+                      {stopDepositsEnabled && (
+                        <Input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
+                      )}
+                      {stopDepositsEnabled && scheduleStartDate && scheduleEndDate && scheduleEndDate <= scheduleStartDate && (
+                        <p className="text-xs text-red-500">Stop date must be after the start date.</p>
                       )}
                     </>
                   )}
                 </div>
 
                 {/* ── Select Deposit Day ── */}
-                {(frequency === "weekly" || frequency === "bi_weekly") && (
+                {(frequency === "weekly" || frequency === "bi_weekly" || frequency === "custom") && (
                   <div className="space-y-2">
                     <Label size="sm" className="font-semibold text-dark-blue-400">Select Deposit Day</Label>
                     <ToggleGroupRoot
@@ -3272,19 +3682,70 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   </Select>
                 </div>
 
-                {/* ── Reserve Balance ── Figma: a single on/off toggle, not a preset
-                    amount picker. PS-03 confirms reserveUsd is $0 (disabled) or up to
-                    $250 (enabled) — "on" reserves the platform max, "off" is $0. */}
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-dark-blue-400">Reserve Balance <span className="font-normal text-gray-400">(optional)</span></label>
-                    <p className="text-xs text-gray-500 mt-0.5">Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.</p>
+                {/* ── Reserve Balance ── Figma: preset amount buttons + Custom,
+                    gated behind an on/off toggle. schedule.service.ts enforces
+                    0 <= reserveUsd <= 250 regardless of which button set it. */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <label className="text-sm font-semibold text-dark-blue-400">Reserve Balance <span className="font-normal text-gray-400">(optional)</span></label>
+                      <p className="text-xs text-gray-500 mt-0.5">Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.</p>
+                    </div>
+                    <Switch
+                      checked={Number(reserveUsd) > 0}
+                      onCheckedChange={(c) => {
+                        if (c) { setReserveUsd(String(RESERVE_PRESETS[0])) }
+                        else { setReserveUsd("0"); setReserveCustomOpen(false); setReserveCustomValue("") }
+                      }}
+                      size="sm"
+                    />
                   </div>
-                  <Switch
-                    checked={Number(reserveUsd) > 0}
-                    onCheckedChange={(c) => setReserveUsd(c ? "250" : "0")}
-                    size="sm"
-                  />
+                  {Number(reserveUsd) > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        {RESERVE_PRESETS.map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            className={cn(
+                              "rounded-lg border px-3 py-2 text-sm font-medium text-center",
+                              !reserveCustomOpen && Number(reserveUsd) === amt
+                                ? "border-primary-500 text-primary-600 bg-primary-25"
+                                : "border-gray-200 text-dark-blue-400 hover:border-primary-300"
+                            )}
+                            onClick={() => { setReserveUsd(String(amt)); setReserveCustomOpen(false); setReserveCustomValue("") }}
+                          >Reserve ${amt}</button>
+                        ))}
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-sm font-medium text-center",
+                            reserveCustomOpen ? "border-primary-500 text-primary-600 bg-primary-25" : "border-gray-200 text-dark-blue-400 hover:border-primary-300"
+                          )}
+                          onClick={() => { setReserveCustomOpen(true); setReserveCustomValue(RESERVE_PRESETS.includes(Number(reserveUsd)) ? "" : reserveUsd) }}
+                        >Custom</button>
+                      </div>
+                      {reserveCustomOpen && (
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                            <Input
+                              type="number" min={1} max={249} placeholder="Enter custom amount" className="pl-6"
+                              value={reserveCustomValue}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setReserveCustomValue(v)
+                                const n = parseInt(v)
+                                if (!isNaN(n)) setReserveUsd(String(Math.max(0, Math.min(249, n))))
+                              }}
+                            />
+                          </div>
+                          <button type="button" className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setReserveCustomOpen(false); setReserveCustomValue(""); setReserveUsd(String(RESERVE_PRESETS[0])) }}>Cancel</button>
+                        </div>
+                      )}
+                      {reserveCustomOpen && <p className="text-xs text-gray-400">Custom amount needs to be under $250.</p>}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Authorization ── */}
@@ -3318,7 +3779,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
             <Button variant="outlined" visual="gray">Cancel</Button>
           </DialogClose>
           <Button
-            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100)) || (frequency === "custom" && !!scheduleStartDate && !!scheduleEndDate && scheduleEndDate <= scheduleStartDate)}
+            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100)) || (frequency === "custom" && stopDepositsEnabled && !!scheduleStartDate && !!scheduleEndDate && scheduleEndDate <= scheduleStartDate)}
             onClick={handleSave}
           >
             {saving ? "Saving…" : "Save"}
@@ -3676,6 +4137,18 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 <TableCell colSpan={8} className="text-center py-10">
                   <p className="text-sm text-red-600">We couldn't load your earnings. Please try again.</p>
                   <button className="text-sm text-primary-600 underline mt-1" onClick={loadEarnings}>Retry</button>
+                </TableCell>
+              </TableRow>
+            ) : earningsResult?.data.length === 0 && searchQuery.length >= 2 ? (
+              /* Figma: a dedicated, prominent empty state for a zero-result
+                 search — distinct from the plain filtered-empty row, and
+                 its "Clear Search" only clears the search term, not the
+                 other active filters. */
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-16">
+                  <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{searchQuery}&quot;</p>
+                  <p className="text-sm text-gray-400 mt-1">We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.</p>
+                  <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => { setSearchQuery(""); setCurrentPage(1) }}>Clear Search</Button>
                 </TableCell>
               </TableRow>
             ) : earningsResult?.data.length === 0 ? (
@@ -4142,6 +4615,7 @@ export const PayoutsTab = () => {
     try {
       const qs = new URLSearchParams({ page: String(currentPage), pageSize: String(pageSize) })
       if (statusFilter) qs.set('status', statusFilter)
+      if (searchQuery.trim().length >= 2) qs.set('search', searchQuery.trim())
       const res = await payoutFetch(`/payouts?${qs.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.message ?? "Failed to load")
@@ -4153,7 +4627,7 @@ export const PayoutsTab = () => {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [currentPage, statusFilter])
+  }, [currentPage, statusFilter, searchQuery])
 
   useEffect(() => { loadPayouts() }, [loadPayouts])
 
@@ -4229,7 +4703,7 @@ export const PayoutsTab = () => {
             <SearchFieldInput
               placeholder="Find transactions"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             />
           </SearchField>
         </div>
@@ -4256,6 +4730,15 @@ export const PayoutsTab = () => {
             ) : loadError ? (
               <TableRow><TableCell colSpan={6} className="text-center py-6 text-sm text-red-600">
                 {loadError} <button className="underline font-medium ml-1" onClick={() => loadPayouts()}>Retry</button>
+              </TableCell></TableRow>
+            ) : payouts.length === 0 && searchQuery.trim().length >= 2 ? (
+              // Figma: a dedicated, prominent empty state for a zero-result
+              // search — "Clear Search" only clears the search term, not
+              // the status filter.
+              <TableRow><TableCell colSpan={6} className="text-center py-16">
+                <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{searchQuery}&quot;</p>
+                <p className="text-sm text-gray-400 mt-1">We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.</p>
+                <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => { setSearchQuery(""); setCurrentPage(1) }}>Clear Search</Button>
               </TableCell></TableRow>
             ) : payouts.length === 0 && hasActiveFilters ? (
               // EC-51: "no results for this filter" is distinct from "no history at all"

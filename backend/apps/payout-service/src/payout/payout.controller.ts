@@ -92,8 +92,8 @@ export class PayoutController {
   @UseGuards(JwtAuthGuard)
   @Get()
   @HttpCode(200)
-  async list(@Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('status') status?: string) {
-    return this.payoutService.listPayouts(req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20, status);
+  async list(@Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('status') status?: string, @Query('search') search?: string) {
+    return this.payoutService.listPayouts(req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20, status, search);
   }
 
   // US-28: full detail for a single payout request
