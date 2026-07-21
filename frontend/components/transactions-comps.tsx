@@ -126,8 +126,8 @@ const PaypalIcon = ({ className }: { className?: string }) => (
 )
 
 const WiseIcon = ({ className }: { className?: string }) => (
-  <div className={cn("size-10 rounded-full bg-[#9FE870] flex items-center justify-center overflow-hidden", className)}>
-    <img src="https://cdn.simpleicons.org/wise/163300" className="w-3 h-3 object-contain" alt="Wise" />
+  <div className={cn("size-10 rounded-full bg-[#9FE870] flex items-center justify-center overflow-hidden shrink-0", className)}>
+    <img src="https://cdn.simpleicons.org/wise/163300" className="w-1/2 h-1/2 object-contain" alt="Wise" />
   </div>
 )
 
