@@ -3056,10 +3056,6 @@ export default function Projects() {
   const currentCategorySlugs = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug].filter(
     (slug): slug is string => Boolean(slug)
   )
-  const recommendedServiceSeeds = scopeSeedItems(
-    serviceCardMocks,
-    currentCategorySlugs
-  )
   const recommendedTeamSeeds = scopeSeedItems(teamSeeds, currentCategorySlugs)
   const recommendedTalentSeeds = scopeSeedItems(
     topTalentMock,
@@ -4607,96 +4603,57 @@ export default function Projects() {
                       value="Services"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsServices.length > 0
-                          ? listingsServices.slice(0, 8)
-                          : recommendedServiceSeeds
-                        ).map((item: any, idx: number) => {
-                          const service =
-                            listingsServices.length > 0 ? item : null
-                          const mock =
-                            listingsServices.length > 0
-                              ? recommendedServiceSeeds[
-                                  idx % recommendedServiceSeeds.length
-                                ]
-                              : item
-                          const key = service?.id ?? idx
-                          return (
-                            <SwiperSlide className="w-[355px]" key={key}>
-                              <ListingCard
-                                kind="service"
-                                id={service?.id ?? `mock-${idx}`}
-                                title={service?.title || mock.title}
-                                description={
-                                  service?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
-                                budget={
-                                  service?.priceMin
-                                    ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                    : mock.budget
-                                }
-                                rating={4.9}
-                                reviewCount={5}
-                                href={
-                                  service
-                                    ? buildServiceUrl(
-                                        currentCategoryPath,
-                                        service.slug,
-                                        service.id
-                                      )
-                                    : buildServiceUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                collaborators={(talentUsers.length > 0
-                                  ? talentUsers.slice(0, 4)
-                                  : []
-                                ).map((u: any) => u?.avatarUrl || "/woman.jpg")}
-                                favoriteSlot={
-                                  service ? (
-                                    <FavoriteRoot
-                                      value={favoritedItems.has(
-                                        String(service.id)
-                                      )}
-                                      onValueChange={(pressed) =>
-                                        handleFavoriteToggle(
-                                          String(service.id),
-                                          "service",
-                                          pressed
-                                        )
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  ) : null
-                                }
-                              />
-                            </SwiperSlide>
+                        {getCarouselItemsForTab(serviceItems, "Featured")
+                          .filter(
+                            (service: any) =>
+                              service?.mediaUrls?.[0] &&
+                              service?.title &&
+                              (service.priceMin ??
+                                service.budget ??
+                                service.price)
                           )
-                        })}
+                          .slice(0, 8)
+                          .map((service: any, idx: number) => {
+                            const key = service.id ?? idx
+                            return (
+                              <SwiperSlide className="w-[355px]" key={key}>
+                                <ListingCard
+                                  kind="service"
+                                  id={service.id ?? `service-${idx}`}
+                                  title={service.title}
+                                  description={service?.shortDescription}
+                                  mediaUrl={service?.mediaUrls?.[0]}
+                                  duration={
+                                    service.duration
+                                      ? `Starting from ${service.duration}`
+                                      : ""
+                                  }
+                                  budget={String(
+                                    service.priceMin ??
+                                      service.budget ??
+                                      service.price ??
+                                      ""
+                                  )}
+                                  rating={Number(service.rating) || undefined}
+                                  reviewCount={service.reviewCount}
+                                  href={
+                                    service.slug && service.id
+                                      ? serviceDetailsUrl(service.slug, service.id)
+                                      : listingHref("services")
+                                  }
+                                  collaborators={getListingCollaborators(service)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={service.id}
+                                      type="service"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
+                              </SwiperSlide>
+                            )
+                          })}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("services")}
@@ -5340,125 +5297,71 @@ export default function Projects() {
                 </div>
 
                 <Button
+                  asChild
                   variant="link"
                   visual="gray"
                   size="lg"
-                  className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                  className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                 >
-                  Explore More Services
+                  <NextLink href={exploreMoreHref("services")}>Explore More Services</NextLink>
                 </Button>
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                {(() => {
-                  const baseItems =
-                    listingsServices.length > 0
-                      ? listingsServices.slice(0, 8)
-                      : fromLength(8)
-                  const tabShiftMap: Record<string, number> = {
-                    Featured: 0,
-                    Newest: 1,
-                    "Most Popular": 2,
-                    Trending: 3,
-                    "Top-Rated": 4,
-                    Bestsellers: 5,
-                  }
-                  const shift = tabShiftMap[activeTopServicesTab] ?? 0
-                  const serviceItems =
-                    baseItems.length > 0
-                      ? baseItems
-                          .slice(shift)
-                          .concat(baseItems.slice(0, shift))
-                      : baseItems
-
-                  return serviceItems.map((item: any, idx: number) => {
-                  const service = listingsServices.length > 0 ? item : null
-                  const mock = serviceCardMocks[idx % serviceCardMocks.length]
-
-                  return (
-                    <ListingCard
-                      key={service?.id ?? `top-service-${idx}`}
-                      kind="service"
-                      id={service?.id ?? `top-service-${idx}`}
-                      title={service?.title || mock.title}
-                      description={
-                        service?.description?.slice(0, 120) ||
-                        mock.description
-                      }
-                      mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
-                      budget={
-                        service?.priceMin
-                          ? `$${Number(service.priceMin).toLocaleString()}/month`
-                          : mock.budget
-                      }
-                      rating={4.9}
-                      reviewCount={5}
-                      href={
-                        service
-                          ? buildServiceUrl(
-                              currentCategoryPath,
-                              service.slug,
-                              service.id
-                            )
-                          : buildServiceUrl(
-                              currentCategoryPath,
-                              mock.slug,
-                              mock.id
-                            )
-                      }
-                      collaborators={(talentUsers.length > 0
-                        ? talentUsers.slice(0, 6)
-                        : Array(6).fill("/woman.jpg")
-                      ).map(
-                        (u: any) =>
-                          (typeof u === "string" ? u : u?.avatarUrl) ||
-                          "/woman.jpg"
-                      )}
-                      favoriteSlot={
-                        <FavoriteRoot
-                          value={
-                            service
-                              ? favoritedItems.has(String(service.id))
-                              : undefined
-                          }
-                          onValueChange={
-                            service
-                              ? (pressed) =>
-                                  handleFavoriteToggle(
-                                    String(service.id),
-                                    "service",
-                                    pressed
-                                  )
-                              : undefined
-                          }
-                        >
-                          {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-block">
-                                    <Favorite />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {pressed ? (
-                                    <span className="inline-flex items-center gap-x-1">
-                                      <Check className="size-[15px] shrink-0 text-green-500" />
-                                      Saved
-                                    </span>
-                                  ) : (
-                                    "Save to favorites"
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </FavoriteRoot>
-                      }
-                    />
+                {getCarouselItemsForTab(serviceItems, activeTopServicesTab)
+                  .filter(
+                    (service: any) =>
+                      service?.mediaUrls?.[0] &&
+                      service?.title &&
+                      (service.priceMin ?? service.budget ?? service.price)
                   )
-                  })
-                })()}
+                  .slice(0, 8)
+                  .map((service: any, idx: number) => {
+                    return (
+                      <motion.div
+                        key={`${activeTopServicesTab}-${service.id ?? idx}`}
+                        initial="enter"
+                        animate="ideal"
+                        variants={contentVariants}
+                        transition={contentTransition}
+                      >
+                        <ListingCard
+                          kind="service"
+                          id={service.id ?? `top-service-${idx}`}
+                          title={service.title}
+                          description={service?.shortDescription}
+                          mediaUrl={service?.mediaUrls?.[0]}
+                          duration={
+                            service.duration
+                              ? `Starting from ${service.duration}`
+                              : ""
+                          }
+                          budget={String(
+                            service.priceMin ??
+                              service.budget ??
+                              service.price ??
+                              ""
+                          )}
+                          rating={Number(service.rating) || undefined}
+                          reviewCount={service.reviewCount}
+                          href={
+                            service.slug && service.id
+                              ? serviceDetailsUrl(service.slug, service.id)
+                              : listingHref("services")
+                          }
+                          collaborators={getListingCollaborators(service)}
+                          favoriteSlot={
+                            <FavoriteButton
+                              itemId={service.id ?? `top-service-${idx}`}
+                              type="service"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
+                          }
+                        />
+                      </motion.div>
+                    )
+                  })}
               </div>
             </div>
           )}
@@ -6349,107 +6252,59 @@ export default function Projects() {
                     ].map((tabValue) => (
                       <TabsContent key={tabValue} value={tabValue}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                          {(listingsServices.length > 0
-                            ? listingsServices.slice(0, 8)
-                            : fromLength(8)
-                          ).map((item: any, idx: number) => {
-                            const service =
-                              listingsServices.length > 0 ? item : null
-                            const mock =
-                              serviceCardMocks[idx % serviceCardMocks.length]
-
-                            return (
-                              <SwiperSlide
-                                className="w-[355px]"
-                                key={service?.id ?? `${tabValue}-${idx}`}
-                              >
-                                <ListingCard
-                                  kind="service"
-                                  id={service?.id ?? `top-service-${idx}`}
-                                  title={service?.title || mock.title}
-                                  description={
-                                    service?.description?.slice(0, 120) ||
-                                    mock.description
-                                  }
-                                  mediaUrl={
-                                    service?.mediaUrls?.[0] || mock.mediaUrl
-                                  }
-                                  budget={
-                                    service?.priceMin
-                                      ? `$${Number(service.priceMin).toLocaleString()}/month`
-                                      : mock.budget
-                                  }
-                                  rating={4.9}
-                                  reviewCount={5}
-                                  href={
-                                    service
-                                      ? buildServiceUrl(
-                                          currentCategoryPath,
-                                          service.slug,
-                                          service.id
-                                        )
-                                      : buildServiceUrl(
-                                          currentCategoryPath,
-                                          mock.slug,
-                                          mock.id
-                                        )
-                                  }
-                                  collaborators={(talentUsers.length > 0
-                                    ? talentUsers.slice(0, 6)
-                                    : Array(6).fill("/woman.jpg")
-                                  ).map(
-                                    (u: any) =>
-                                      (typeof u === "string"
-                                        ? u
-                                        : u?.avatarUrl) || "/woman.jpg"
-                                  )}
-                                  favoriteSlot={
-                                    <FavoriteRoot
-                                      value={
-                                        service
-                                          ? favoritedItems.has(
-                                              String(service.id)
-                                            )
-                                          : undefined
-                                      }
-                                      onValueChange={
-                                        service
-                                          ? (pressed) =>
-                                              handleFavoriteToggle(
-                                                String(service.id),
-                                                "service",
-                                                pressed
-                                              )
-                                          : undefined
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  }
-                                />
-                              </SwiperSlide>
+                          {getCarouselItemsForTab(serviceItems, tabValue)
+                            .filter(
+                              (service: any) =>
+                                service?.mediaUrls?.[0] &&
+                                service?.title &&
+                                (service.priceMin ??
+                                  service.budget ??
+                                  service.price)
                             )
-                          })}
+                            .slice(0, 8)
+                            .map((service: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  className="h-auto w-[355px]"
+                                  key={service.id ?? `${tabValue}-${idx}`}
+                                >
+                                  <ListingCard
+                                    kind="service"
+                                    id={service.id ?? `top-service-${idx}`}
+                                    title={service.title}
+                                    description={service?.shortDescription}
+                                    mediaUrl={service?.mediaUrls?.[0]}
+                                    duration={
+                                      service.duration
+                                        ? `Starting from ${service.duration}`
+                                        : ""
+                                    }
+                                    budget={String(
+                                      service.priceMin ??
+                                        service.budget ??
+                                        service.price ??
+                                        ""
+                                    )}
+                                    rating={Number(service.rating) || undefined}
+                                    reviewCount={service.reviewCount}
+                                    href={
+                                      service.slug && service.id
+                                        ? serviceDetailsUrl(service.slug, service.id)
+                                        : listingHref("services")
+                                    }
+                                    collaborators={getListingCollaborators(service)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={service.id ?? `${tabValue}-${idx}`}
+                                        type="service"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -6459,8 +6314,9 @@ export default function Projects() {
             </div>
           )}
 
-
-          {pageKind === "teams" && (
+          {/* Teams feature temporarily hidden from category pages. */}
+          {/* Original: {pageKind === "teams" && ( */}
+          {false && pageKind === "teams" && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <div className="flex flex-wrap items-start justify-between gap-6">
@@ -6550,208 +6406,28 @@ export default function Projects() {
               </Tabs>
             </div>
           )}
-
-          {pageKind === "services" && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Featured">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top Services
-              </h1>
-              <SwiperRoot>
+          {(l1 || l2) && !l3 && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Industry">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Narrow Your {sectionLabel} Search
+                </h1>
                 <div className="mt-6 flex justify-between items-center">
                   <TabsList className="flex items-center gap-x-3">
-                    {[
-                      "Featured",
-                      "Newest",
-                      "Most Popular",
-                      "Trending",
-                      "Top-Rated",
-                    ].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      size="lg"
-                      className="underline hover:text-dark-blue-400"
-                    >
-                      Explore More Services
-                    </Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronLeft className="size-[18px]" />
-                        </IconButton>
-                      </SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronRight className="size-[18px]" />
-                        </IconButton>
-                      </SwiperNextTrigger>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  {[
-                    "Featured",
-                    "Newest",
-                    "Most Popular",
-                    "Trending",
-                    "Top-Rated",
-                  ].map((tabValue) => (
-                    <TabsContent key={tabValue} value={tabValue}>
-                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsServices.length > 0
-                          ? listingsServices.slice(0, 8)
-                          : fromLength(8)
-                        ).map((item: any, idx: number) => {
-                          const service =
-                            listingsServices.length > 0 ? item : null
-                          const mock =
-                            serviceCardMocks[idx % serviceCardMocks.length]
-                          return (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={service?.id ?? idx}
-                            >
-                              <ListingCard
-                                kind="service"
-                                id={service?.id ?? `mock-${idx}`}
-                                title={service?.title || mock.title}
-                                description={
-                                  service?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
-                                budget={
-                                  service?.priceMin
-                                    ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                    : mock.budget
-                                }
-                                rating={4.9}
-                                reviewCount={5}
-                                href={
-                                  service
-                                    ? buildServiceUrl(
-                                        currentCategoryPath,
-                                        service.slug,
-                                        service.id
-                                      )
-                                    : buildServiceUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                collaborators={(talentUsers.length > 0
-                                  ? talentUsers.slice(0, 6)
-                                  : Array(6).fill("/woman.jpg")
-                                ).map(
-                                  (u: any) =>
-                                    (typeof u === "string"
-                                      ? u
-                                      : u?.avatarUrl) || "/woman.jpg"
-                                )}
-                                favoriteSlot={
-                                  service ? (
-                                    <FavoriteRoot
-                                      value={favoritedItems.has(
-                                        String(service.id)
-                                      )}
-                                      onValueChange={(pressed) =>
-                                        handleFavoriteToggle(
-                                          String(service.id),
-                                          "service",
-                                          pressed
-                                        )
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  ) : null
-                                }
-                              />
-                            </SwiperSlide>
-                          )
-                        })}
-                      </SwiperContent>
-                    </TabsContent>
-                  ))}
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
-          )}
-          {isL1OrL2AllPage && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Project Type">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Narrow Your {sectionLabel} Search
-              </h1>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
                   <Badge
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Project Type">Project Type</TabsTrigger>
-                  </Badge>
-                  {/* <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Industry">Industry</TabsTrigger>
-                  </Badge> */}
+                  </Badge> 
                     <Badge
                       variant="circular"
                       visual="gray"
                       size="lg"
-                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                       asChild
                     >
                       <TabsTrigger value="Budget">Budget</TabsTrigger>
@@ -7953,175 +7629,89 @@ export default function Projects() {
                     ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                          <SwiperSlide className="w-[355px] h-auto">
-                            <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
-                              <h1 className="text-[28px] font-bold leading-none text-white">
-                                Cybersecurity Services
-                              </h1>
-                              <p className="mt-3 text-lg font-light leading-none text-white">
-                                Explore cloud computing services tailored to
-                                meet your unique business needs.
-                              </p>
-                              <div className="mt-8 flex flex-col gap-y-3">
-                                <Button
-                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-error-800 hover:bg-white text-error-700"
-                                  size="lg"
-                                >
-                                  Explore More{" "}
-                                  <ArrowRight className="size-[15px]" />
-                                </Button>
-                              </div>
-                            </article>
-                          </SwiperSlide>
-                          {(listingsServices.length > 0
-                            ? listingsServices.slice(0, 8)
-                            : fromLength(8)
-                          ).map((item: any, idx: number) => {
-                            const service =
-                              listingsServices.length > 0 ? item : null
-                            const mock =
-                              serviceCardMocks[idx % serviceCardMocks.length]
-                            const href = service
-                              ? buildServiceUrl(
-                                  currentCategoryPath,
-                                  service.slug,
-                                  service.id
-                                )
-                              : buildServiceUrl(
-                                  currentCategoryPath,
-                                  mock.slug,
-                                  mock.id
-                                )
-                            return (
-                              <SwiperSlide
-                                key={service?.id ?? idx}
-                                className="w-[355px]"
-                              >
-                                <NextLink
-                                  href={href}
-                                  className="block focus-visible:outline-none"
-                                >
-                                  <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                    <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage
-                                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                        src={
-                                          service?.mediaUrls?.[0] ||
-                                          mock.mediaUrl
-                                        }
-                                        alt={service?.title || mock.title}
-                                        fill
-                                        sizes="33vw"
-                                      />
-                                      <span className="absolute right-2 top-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          className="size-3 shrink-0"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          aria-hidden="true"
-                                        >
-                                          <path d="M21 12a9 9 0 0 1-15.5 6.3" />
-                                          <path d="M3 12A9 9 0 0 1 18.5 5.7" />
-                                          <path d="M7 18H5v-2" />
-                                          <path d="M17 6h2v2" />
-                                        </svg>
-                                        <span className="truncate">Service</span>
-                                      </span>
-                                    </div>
-                                    <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                        {service?.title || mock.title}
-                                      </span>
-                                      <div className="inline-flex items-center gap-x-1">
-                                        <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                          4.9{" "}
-                                          <span className="font-extralight">
-                                            (5)
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                      {service?.description?.slice(0, 140) ||
-                                        mock.description}
-                                    </p>
-                                    <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          Starting from{" "}
-                                          {service?.duration || mock.duration}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Money className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          {service?.priceMin
-                                            ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                            : mock.budget}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="mt-5 flex items-end justify-between">
-                                      <AvatarGroup
-                                        max={5}
-                                        size="sm"
-                                        excess
-                                        excessClassName="border-gray-300 text-gray-500"
-                                      >
-                                        {(talentUsers.length > 0
-                                          ? talentUsers.slice(0, 6)
-                                          : fromLength(6)
-                                        ).map((u: any, k: number) => (
-                                          <Avatar
-                                            key={u?.id ?? k}
-                                            size="sm"
-                                            className="border-2 border-white hover:ring-0 active:ring-0"
-                                          >
-                                            <AvatarImage
-                                              src={u?.avatarUrl || "/woman.jpg"}
-                                              alt={u?.firstName || "Team"}
-                                            />
-                                            <AvatarFallback>
-                                              {u?.firstName?.[0] || "T"}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                        ))}
-                                      </AvatarGroup>
-                                      <FavoriteRoot>
-                                        {({ pressed }) => (
-                                          <TooltipProvider delayDuration={75}>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="inline-block">
-                                                  <Favorite />
-                                                </span>
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                {pressed ? (
-                                                  <span className="inline-flex items-center gap-x-1">
-                                                    <Check className="size-[15px] shrink-0 text-green-500" />
-                                                    Saved
-                                                  </span>
-                                                ) : (
-                                                  "Save to favorites"
-                                                )}
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        )}
-                                      </FavoriteRoot>
-                                    </div>
-                                  </article>
-                                </NextLink>
-                              </SwiperSlide>
+                          {!(l2 && pageKind === "show-all") && (
+                            <SwiperSlide className="h-[420px] w-[355px]">
+                              <article className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
+                                <h1 className="text-[28px] font-bold leading-none text-white">
+                                  {sub.name} Services
+                                </h1>
+                                <p className="mt-3 text-lg font-light leading-none text-white">
+                                  Explore {sub.name} services tailored to
+                                  meet your unique business needs.
+                                </p>
+                                <div className="mt-8 flex flex-col gap-y-3">
+                                  <Button
+                                    asChild
+                                    className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 px-6 h-12 text-base font-semibold"
+                                    style={{ color: "#D92D20" }}
+                                    size="lg"
+                                  >
+                                    <NextLink href={exploreMoreHref("services")}>
+                                      Explore More{" "}
+                                      <ArrowRight className="size-[15px] ml-2" />
+                                    </NextLink>
+                                  </Button>
+                                </div>
+                              </article>
+                            </SwiperSlide>
+                          )}
+                          {getCarouselItemsForCategoryTab(
+                            serviceItems,
+                            sub,
+                            l2 && pageKind === "show-all" ? "Top-Rated" : "Featured"
+                          )
+                            .filter(
+                              (service: any) =>
+                                service?.mediaUrls?.[0] &&
+                                service?.title &&
+                                (service.priceMin ??
+                                  service.budget ??
+                                  service.price)
                             )
-                          })}
+                            .slice(0, 8)
+                            .map((service: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  key={service.id ?? idx}
+                                  className="h-[420px] w-[355px]"
+                                >
+                                  <ListingCard
+                                    kind="service"
+                                    id={service.id ?? `top-service-${idx}`}
+                                    title={service.title}
+                                    description={service?.shortDescription}
+                                    mediaUrl={service?.mediaUrls?.[0]}
+                                    budget={String(
+                                      service.priceMin ??
+                                        service.budget ??
+                                        service.price ??
+                                        ""
+                                    )}
+                                    duration={
+                                      service.duration
+                                        ? `Starting from ${service.duration}`
+                                        : ""
+                                    }
+                                    rating={Number(service.rating) || undefined}
+                                    reviewCount={service.reviewCount}
+                                    href={
+                                      service.slug && service.id
+                                        ? serviceDetailsUrl(service.slug, service.id)
+                                        : listingHref("services")
+                                    }
+                                    collaborators={getListingCollaborators(service)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={service.id}
+                                        type="service"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
                         </SwiperContent>
                       </TabsContent>
                     ))}
