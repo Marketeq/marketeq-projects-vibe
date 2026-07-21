@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
-import { apiFetch } from "@/src/lib/api"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -112,6 +112,32 @@ import { BlockReportDialog } from "./block-report-dialog"
 import { ForwardMessageDialog } from "./forward-message-dialog"
 import { Bubble, YourBubble } from "./message-components"
 import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
+
+/**
+ * Turn a key-unwrap failure into a message that matches what actually went
+ * wrong. Every failure here used to be reported as a decryption error, so an
+ * expired session or an unreachable backend told the user their conversation
+ * key was corrupt — pointing debugging at the crypto layer instead of the
+ * session. Only a genuine crypto failure gets the decryption wording.
+ */
+function describeKeyFailure(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401)
+      return "Your session expired. Sign in again to view this conversation."
+    if (err.status === 403)
+      return "You don't have access to this conversation."
+    if (err.status === 404)
+      return "This conversation's encryption key is no longer available."
+    if (err.status >= 500)
+      return "Messaging is temporarily unavailable. Try again in a moment."
+    return "Couldn't load this conversation. Try again."
+  }
+  if (err instanceof TypeError) {
+    // fetch() rejects with TypeError for network/CORS failures
+    return "Couldn't reach the server. Check your connection and try again."
+  }
+  return "Could not decrypt this conversation key. Refresh and try again."
+}
 
 interface ChatsProps {
   selectedConversation: Conversation | null
@@ -596,9 +622,7 @@ export function Chats({
           console.error("Failed to unwrap conversation key after retry", retryErr)
           if (!ac.signal.aborted) {
             setKeyReady(false)
-            setKeyError(
-              "Could not decrypt this conversation key. Refresh and try again."
-            )
+            setKeyError(describeKeyFailure(retryErr))
           }
         }
       }
