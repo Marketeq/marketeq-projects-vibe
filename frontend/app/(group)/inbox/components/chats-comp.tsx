@@ -128,6 +128,10 @@ function describeKeyFailure(err: unknown): string {
       return "You don't have access to this conversation."
     if (err.status === 404)
       return "This conversation's encryption key is no longer available."
+    // 409/422 are both permanent server-side key-material problems. Telling the
+    // user to retry would be false — no amount of retrying recovers these.
+    if (err.status === 409 || err.status === 422)
+      return "This conversation can't be unlocked. Its encryption key is missing from the server — contact support."
     if (err.status >= 500)
       return "Messaging is temporarily unavailable. Try again in a moment."
     return "Couldn't load this conversation. Try again."
@@ -592,6 +596,20 @@ export function Chats({
         await fetchAndUnwrap()
       } catch (firstErr: any) {
         if (firstErr?.name === "AbortError") return
+        // The recovery below only helps when our wrapped key is stale. If the
+        // server says its own key material is unusable (409/422) no client-side
+        // rewrap can fix it, and the DELETE would discard a wrapped key the
+        // server is unable to reissue. Report it instead of churning.
+        if (
+          firstErr instanceof ApiError &&
+          (firstErr.status === 409 || firstErr.status === 422)
+        ) {
+          if (!ac.signal.aborted) {
+            setKeyReady(false)
+            setKeyError(describeKeyFailure(firstErr))
+          }
+          return
+        }
         // The wrapped key doesn't match our private key — either a stale wrap
         // from before a key rotation, or messaging-service holds a public key
         // that no longer matches our private key. Re-publish our LOCAL public
