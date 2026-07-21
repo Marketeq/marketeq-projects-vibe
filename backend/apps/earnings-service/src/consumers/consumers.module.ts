@@ -9,6 +9,7 @@ import { PayoutCompletedConsumer }     from './payout-completed.consumer';
 import { PayoutFailedConsumer }        from './payout-failed.consumer';
 import { ContractActivatedConsumer }   from './contract-activated.consumer';
 import { ScreenshotConfirmedConsumer } from './screenshot-confirmed.consumer';
+import { ManualTimeConfirmedConsumer } from './manual-time-confirmed.consumer';
 import { InternalModule }              from '../internal/internal.module';
 import { EarningsCache }               from '../entities/earnings-cache.entity';
 import { BalanceSnapshot }             from '../entities/balance-snapshot.entity';
@@ -22,7 +23,7 @@ import { ContractLabelCache }          from '../entities/contract-label-cache.en
   providers: [
     TransactionCreatedConsumer, TransactionReversedConsumer,
     PayoutCompletedConsumer, PayoutFailedConsumer, ContractActivatedConsumer,
-    ScreenshotConfirmedConsumer,
+    ScreenshotConfirmedConsumer, ManualTimeConfirmedConsumer,
   ],
 })
 export class ConsumersModule {}
