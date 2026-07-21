@@ -570,8 +570,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const [removeImpact, setRemoveImpact] = React.useState<{ isPrimary: boolean; isActiveSecondary: boolean } | null>(null)
   const [removeAck, setRemoveAck] = React.useState(false)
   const [removeError, setRemoveError] = React.useState('')
-  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', paypalEmailConfirm: '', nickname: '', bankConsent: false })
-  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', attemptsLeft?: number, lockedUntil?: string} | null>(null)
+  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false })
+  // source distinguishes the Stripe-connect flow from the manual/micro-deposit
+  // flow — Figma specs different copy for each ("securely linked"/"Connection
+  // Failed" for Stripe vs "has been verified"/"Verification Failed" for manual).
+  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', source: 'stripe' | 'manual', attemptsLeft?: number, lockedUntil?: string} | null>(null)
   const [microAmounts, setMicroAmounts] = React.useState({amount1:'', amount2:''})
 
   // ─── Crypto wallet (US-09) — provider/network/currency driven by the real
@@ -663,8 +666,6 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         }
         // "Bank Name" (e.g. "Chase") is cosmetic only — not a backend-validated field.
         if (addForm.bankAccountName) payload.nickname = addForm.bankAccountName
-      } else if (addForm.methodType === 'PAYPAL') {
-        payload.paypalEmail = addForm.paypalEmail
       } else if (addForm.nickname) {
         payload.nickname = addForm.nickname
       }
@@ -677,7 +678,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         if (data.duplicate) {
           toast({ title: 'Account already linked', description: 'This account is already connected.' })
         } else {
-          const last4 = addForm.bankAccountNumber.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions' })
+          const last4 = addForm.bankAccountNumber.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions', source: 'manual' })
           setShowAddMethod(false)
         }
       } else {
@@ -722,13 +723,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
       setShowAddMethod(false)
       const displayLabel = method.displayLabel ?? `${bankName} ••••${method.bankAccountLast4 ?? '4242'}`
-      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'verifying' })
+      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'verifying', source: 'stripe' })
       await new Promise(r => setTimeout(r, 2500))
-      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'success' })
+      setVerifyState({ methodId: method.id, displayLabel, bankName, step: 'success', source: 'stripe' })
       fetchMethods()
     } catch (e) {
       setAddForm(f => ({...f, _stripeConnecting: false} as any))
-      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed' })
+      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed', source: 'stripe' })
       setShowAddMethod(false)
     }
   }
@@ -740,7 +741,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // the contractor back on this page with ?oauth=success|error (handled by the
   // effect below, mirroring how OverviewTab already reacts to other async state).
   const [oauthConnecting, setOauthConnecting] = React.useState(false)
-  const handleConnectOAuth = async (methodType: 'WISE' | 'PAYONEER') => {
+  const handleConnectOAuth = async (methodType: 'PAYPAL' | 'WISE' | 'PAYONEER') => {
     setOauthConnecting(true)
     try {
       const res = await payoutFetch(`/deposit-methods`, {
@@ -751,6 +752,13 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       if (!res.ok) throw new Error(data.message ?? 'Failed to start connection')
       const oauthUrl = data.verification?.oauthUrl
       if (!oauthUrl) throw new Error('No authorization URL returned')
+      // The provider callback (oauth.controller.ts) redirects back with only
+      // ?oauth=success&methodId=... or ?oauth=error&code=... — no provider
+      // name on the error path (nothing was created yet to read it off of).
+      // Stash it client-side across the full-page redirect so the returning
+      // "PayPal/Wise/Payoneer Connected" / "Couldn't Connect" screen knows
+      // which provider it's reporting on.
+      sessionStorage.setItem('oauth_pending_provider', methodType)
       window.location.href = oauthUrl
     } catch (e: any) {
       setOauthConnecting(false)
@@ -766,21 +774,41 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     ERR_DEPOSIT_METHOD_NOT_FOUND: 'We could not find the connection request. Please try again.',
     ERR_OAUTH_UNSUPPORTED: 'This provider is not currently supported.',
   }
+  // Figma: a dedicated "X Connected" / "Couldn't Connect to X" screen, not
+  // just a toast — the toast alone gave no confirmation of *which* account
+  // got linked or a way to set it default/retry in place.
+  const [oauthResult, setOauthResult] = React.useState<{
+    provider: 'PAYPAL' | 'WISE' | 'PAYONEER'
+    status: 'success' | 'error'
+    method?: any
+    errorMessage?: string
+  } | null>(null)
+
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const oauthResult = params.get('oauth')
-    if (!oauthResult) return
-    if (oauthResult === 'success') {
-      toast({ title: 'Account connected', description: 'Your deposit method has been verified.' })
+    const result = params.get('oauth')
+    if (!result) return
+    const provider = (sessionStorage.getItem('oauth_pending_provider') as 'PAYPAL' | 'WISE' | 'PAYONEER' | null) ?? 'PAYPAL'
+    sessionStorage.removeItem('oauth_pending_provider')
+    if (result === 'success') {
+      const methodId = params.get('methodId')
       fetchMethods()
+      if (methodId) {
+        payoutFetch(`/deposit-methods/${methodId}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((method) => setOauthResult({ provider, status: 'success', method }))
+          .catch(() => setOauthResult({ provider, status: 'success' }))
+      } else {
+        setOauthResult({ provider, status: 'success' })
+      }
     } else {
       const code = params.get('code') ?? undefined
-      toast({ title: 'Connection failed', description: (code && OAUTH_ERROR_MESSAGES[code]) ?? 'We were unable to connect your account. Please try again.', variant: 'destructive' })
+      setOauthResult({ provider, status: 'error', errorMessage: code ? OAUTH_ERROR_MESSAGES[code] : undefined })
     }
     params.delete('oauth'); params.delete('methodId'); params.delete('code')
     const qs = params.toString()
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
-  }, [fetchMethods, toast])
+  }, [fetchMethods])
 
   // AC-09.01: fetch the 9 supported providers from server config when the crypto
   // step is entered — never hardcode the provider list client-side.
@@ -896,7 +924,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           // scratch — same "up to 2 business days" copy as adding a new
           // account, since that's exactly what happened underneath.
           setMicroAmounts({ amount1: '', amount2: '' })
-          setVerifyState({ methodId: editingMethod.id, displayLabel: data.displayLabel ?? editingMethod.displayLabel, bankName: editBankForm.bankAccountName || '', step: 'instructions' })
+          setVerifyState({ methodId: editingMethod.id, displayLabel: data.displayLabel ?? editingMethod.displayLabel, bankName: editBankForm.bankAccountName || '', step: 'instructions', source: 'manual' })
         } else {
           toast({ title: 'Account updated' })
         }
@@ -1529,7 +1557,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         <BankLogo bankName={verifyState.bankName} size={80} />
                         <span className="text-sm font-medium text-dark-blue-400">{verifyState.bankName || 'Your Bank'}</span>
                       </div>
-                      <h4 className="text-base font-semibold text-dark-blue-400">Your bank account has been securely linked.</h4>
+                      <h4 className="text-base font-semibold text-dark-blue-400">
+                        {verifyState.source === 'stripe' ? 'Your bank account has been securely linked.' : 'Your bank account has been verified.'}
+                      </h4>
                       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3">
                         <BankIcon className="size-5 text-gray-500" />
                         <div className="flex flex-col items-start">
@@ -1546,11 +1576,21 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 {verifyState.step === 'failed' && (
                   <div className="p-6 text-center space-y-4">
                     <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><AlertTriangle className="size-6 text-warning-600" /></div>
-                    <h4 className="text-base font-semibold text-dark-blue-400">Connection Failed</h4>
-                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information.</p>
+                    <h4 className="text-base font-semibold text-dark-blue-400">{verifyState.source === 'stripe' ? 'Connection Failed' : 'Verification Failed'}</h4>
+                    <p className="text-sm text-gray-500">
+                      {verifyState.source === 'stripe'
+                        ? "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
+                        : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
+                    </p>
                     <div className="flex gap-2 items-center justify-between">
                       <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
-                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>Retry</Button>
+                      <Button
+                        variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />}
+                        onClick={() => {
+                          if (verifyState.source === 'stripe') { const bankName = verifyState.bankName; setVerifyState(null); handleConnectStripe(bankName) }
+                          else setVerifyState(s => s ? {...s, step: 'amounts'} : null)
+                        }}
+                      >Retry</Button>
                     </div>
                   </div>
                 )}
@@ -1579,9 +1619,62 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
             </div>
           )}
 
+          {/* PayPal/Wise/Payoneer OAuth return — dedicated "X Connected" /
+              "Couldn't Connect to X" screens (Figma), replacing what used to be
+              a toast-only confirmation with no way to set default or retry in place. */}
+          {oauthResult && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setOauthResult(null)}>
+              <div className="bg-white rounded-xl w-full max-w-md shadow-xl p-6 relative" onClick={e => e.stopPropagation()}>
+                <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setOauthResult(null)}><X className="size-4" /></IconButton>
+                {oauthResult.status === 'success' ? (
+                  <div className="text-center py-2 space-y-4">
+                    <div className="flex flex-col items-center gap-1">
+                      {oauthResult.provider === 'PAYPAL' ? <PayPalDefault className="size-10" />
+                        : oauthResult.provider === 'WISE' ? <WiseIcon className="size-12" />
+                        : <PayoneerDefault className="size-10" />}
+                    </div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">
+                      {oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'} Connected
+                    </h4>
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3 text-left">
+                      {oauthResult.provider === 'PAYPAL' ? <PayPalDefault className="size-5" />
+                        : oauthResult.provider === 'WISE' ? <WiseIcon className="size-5 rounded-full" />
+                        : <PayoneerDefault className="size-5" />}
+                      <div className="flex flex-col items-start min-w-0">
+                        <span className="text-sm font-medium text-dark-blue-400">
+                          {oauthResult.provider === 'PAYPAL' ? 'Paypal Email' : oauthResult.provider === 'WISE' ? 'Wise Account' : 'Payoneer Account'}
+                        </span>
+                        <span className="text-xs text-gray-400 truncate">
+                          {oauthResult.method?.paypalEmail ?? oauthResult.method?.displayLabel ?? oauthResult.method?.nickname ?? '—'}
+                        </span>
+                      </div>
+                      <Badge visual="success" size="sm" className="ml-auto shrink-0">Verified</Badge>
+                    </div>
+                    <Button variant="light" visual="primary" size="sm" className="w-full" onClick={async () => { if (oauthResult.method?.id) await handleSetDefault(oauthResult.method.id); setOauthResult(null) }}>Set As Default Deposit Method</Button>
+                    <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setOauthResult(null)}>Back to Deposit Methods</Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-2 space-y-4">
+                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><AlertTriangle className="size-6 text-warning-600" /></div>
+                    <h4 className="text-base font-semibold text-dark-blue-400">
+                      Couldn't Connect to {oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'}
+                    </h4>
+                    <p className="text-sm text-gray-500">
+                      {oauthResult.errorMessage ?? `We were unable to link your ${oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'} account. You may have canceled the login or encountered a connection issue.`}
+                    </p>
+                    <div className="flex gap-2 items-center justify-between">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => setOauthResult(null)}>Back to Deposit Methods</button>
+                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { const provider = oauthResult.provider; setOauthResult(null); handleConnectOAuth(provider) }}>Retry</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', paypalEmail: '', paypalEmailConfirm: '', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
@@ -1892,72 +1985,42 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       >Save</Button>
                     </div>
                   </div>
-                ) : addForm.methodType === 'PAYPAL' ? (
-                  /* Step 2b: PayPal */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect PayPal</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
-                    </div>
-                    <div className="flex flex-col items-center py-4 gap-3">
-                      <PaypalIcon className="size-12" />
-                      <p className="text-sm text-gray-500 text-center">You'll be redirected to PayPal to securely connect your account.</p>
-                      <p className="text-xs text-gray-400 text-center">By connecting your account, you authorize Marketeq to send deposits to your linked PayPal account.</p>
-                    </div>
-                    <div className="space-y-3 mb-4">
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">PayPal Email (dev mode)</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="your@paypal.com" value={addForm.paypalEmail} onChange={e => setAddForm(f => ({...f, paypalEmail: e.target.value}))} />
-                      </div>
-                      <div>
-                        {/* SCR-04: anti-typo protection for the payout destination email */}
-                        <label className="text-xs text-gray-500 mb-1 block">Confirm PayPal Email</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter email address" value={addForm.paypalEmailConfirm} onChange={e => setAddForm(f => ({...f, paypalEmailConfirm: e.target.value}))} />
-                        {addForm.paypalEmailConfirm.length > 0 && addForm.paypalEmailConfirm.toLowerCase() !== addForm.paypalEmail.toLowerCase() && (
-                          <p className="text-xs text-red-500 mt-1">Email addresses do not match</p>
-                        )}
-                      </div>
-                    </div>
-                    {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/gray
-                        with a leftIcon brand mark, same as the app's other social/
-                        provider connect buttons (see GoogleLoginButton.tsx). */}
-                    <Button
-                      variant="outlined" visual="gray" size="sm" className="w-full gap-x-3 active:ring-4 active:ring-gray-100"
-                      leftIcon={<PayPalDefault />}
-                      disabled={!addForm.paypalEmail.trim() || addForm.paypalEmailConfirm.toLowerCase() !== addForm.paypalEmail.toLowerCase()}
-                      onClick={handleAddMethod}
-                    >Connect PayPal</Button>
-                    <Button variant="link" visual="gray" size="sm" className="w-full mt-2" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</Button>
-                  </div>
-                ) : addForm.methodType === 'WISE' || addForm.methodType === 'PAYONEER' ? (
-                  /* Step 2c: Wise / Payoneer — real OAuth redirect (AC-07.01/07.04, AC-08.01/08.04) */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
-                    </div>
-                    <div className="flex flex-col items-center py-4 gap-3">
-                      {addForm.methodType === 'WISE' ? <WiseIcon className="size-12" /> : <PayoneerIcon className="size-12" />}
-                      <p className="text-sm text-gray-500 text-center">You'll be redirected to {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} to securely connect your account.</p>
+                ) : addForm.methodType === 'PAYPAL' || addForm.methodType === 'WISE' || addForm.methodType === 'PAYONEER' ? (
+                  /* Step 2b/2c: PayPal / Wise / Payoneer — real OAuth redirect
+                     (AC-06.01/06.04, AC-07.01/07.04, AC-08.01/08.04). One shared
+                     screen: same backend call (handleConnectOAuth -> POST
+                     /deposit-methods -> verification.oauthUrl -> redirect) and
+                     the same Figma layout for all three providers — centered
+                     icon, no title bar, single X close in the corner. */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="flex flex-col items-center pt-4 pb-2 gap-3">
+                      {addForm.methodType === 'PAYPAL' ? <PayPalDefault className="size-10" />
+                        : addForm.methodType === 'WISE' ? <WiseIcon className="size-12" />
+                        : <PayoneerDefault className="size-10" />}
+                      <h3 className="text-base font-semibold text-dark-blue-400 text-center px-2">
+                        You'll be redirected to {addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} to securely connect your account.
+                      </h3>
                       <p className="text-xs text-gray-400 text-center">Securely handle your information through a trusted third party.</p>
                     </div>
-                    <label className="flex items-start gap-2 cursor-pointer mb-4">
-                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
-                      <span className="text-xs text-gray-400">By connecting your account, you authorize Marketeq to send deposits to your linked {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} account. You agree to abide by their terms and conditions for receiving business payments.</span>
-                    </label>
-                    {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/gray
-                        with a leftIcon brand mark. Wise has no icon in
-                        @blend-metrics/icons/payment-methods, so WiseIcon (this file's
-                        existing brand-badge component) fills that one slot. */}
+                    {/* Storybook Buttons/Button pattern, adapted: Figma shows this
+                        specific CTA as a solid dark/black button rather than the
+                        outlined "GoogleOutlined" style used elsewhere — no
+                        filled+gray compound variant exists in button.tsx, so the
+                        dark styling is layered on via className on top of the
+                        shared Button component (still gets its focus/disabled/
+                        sizing behavior from the component, not a raw <button>). */}
                     <Button
-                      variant="outlined" visual="gray" size="sm" className="w-full gap-x-3 active:ring-4 active:ring-gray-100"
-                      leftIcon={addForm.methodType === 'WISE' ? <WiseIcon className="size-5 rounded-full" /> : <PayoneerDefault />}
+                      variant="filled" visual="gray" size="sm"
+                      className="w-full mt-2 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                       disabled={!addForm.bankConsent || oauthConnecting}
-                      onClick={() => handleConnectOAuth(addForm.methodType as 'WISE' | 'PAYONEER')}
-                    >{oauthConnecting ? 'Connecting…' : `Connect ${addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
-                    <Button variant="link" visual="gray" size="sm" className="w-full mt-2" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</Button>
+                      onClick={() => handleConnectOAuth(addForm.methodType as 'PAYPAL' | 'WISE' | 'PAYONEER')}
+                    >{oauthConnecting ? 'Connecting…' : `Continue To ${addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
+                    <Button variant="link" visual="gray" size="sm" className="w-full mt-2" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Back to Deposit Methods</Button>
+                    <label className="flex items-start gap-2 cursor-pointer mt-4">
+                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
+                      <span className="text-xs text-gray-400">By connecting your account, you authorize Marketeq to send deposits to your linked {addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} account. You agree to abide by {addForm.methodType === 'PAYPAL' ? "PayPal's" : addForm.methodType === 'WISE' ? "Wise's" : "Payoneer's"} terms and conditions for receiving business payments.</span>
+                    </label>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'provider' ? (
                   /* Step 2d.1: Crypto — provider selection (AC-09.01) */
