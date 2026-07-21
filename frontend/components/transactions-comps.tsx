@@ -2272,9 +2272,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                      icon, no title bar, single X close in the corner. Figma places
                      the provider icon to the left of the heading, side by side —
                      not centered above it. */
-                  <div className="p-6 relative">
+                  <div className="p-8 relative min-h-[520px] flex flex-col">
                     <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
-                    <div className="flex items-center pt-4 pb-2 gap-4">
+                    <div className="flex items-center pt-6 pb-3 gap-4">
                       {addForm.methodType === 'PAYPAL' ? <PayPalDefault className="size-14 shrink-0" />
                         : addForm.methodType === 'WISE' ? <WiseIcon className="size-14 shrink-0" />
                         : <PayoneerDefault className="size-14 shrink-0" />}
@@ -2283,6 +2283,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       </h3>
                     </div>
                     <p className="text-xs text-gray-400 pb-2">Securely handle your information through a trusted third party.</p>
+                    <div className="grow" />
                     {/* Storybook Buttons/Button pattern, adapted: Figma shows this
                         specific CTA as a solid dark/black button rather than the
                         outlined "GoogleOutlined" style used elsewhere — no
@@ -2297,7 +2298,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       onClick={() => handleConnectOAuth(addForm.methodType as 'PAYPAL' | 'WISE' | 'PAYONEER')}
                     >{oauthConnecting ? 'Connecting…' : `Continue To ${addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
                     <Button variant="link" visual="gray" size="sm" className="w-full mt-2" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Back to Deposit Methods</Button>
-                    <label className="flex items-start gap-2 cursor-pointer mt-4">
+                    <label className="flex items-start gap-2 cursor-pointer mt-6">
                       <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
                       <span className="text-xs text-gray-400">By connecting your account, you authorize Marketeq to send deposits to your linked {addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} account. You agree to abide by {addForm.methodType === 'PAYPAL' ? "PayPal's" : addForm.methodType === 'WISE' ? "Wise's" : "Payoneer's"} terms and conditions for receiving business payments.</span>
                     </label>
