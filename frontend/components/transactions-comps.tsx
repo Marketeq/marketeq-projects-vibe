@@ -270,9 +270,147 @@ const getStripeJs = () => {
 
 // ─── Global bank (US-04) — country drives required fields & currency ────────
 // Mirrors backend/apps/payout-service/src/methods/bank-validation.service.ts's
-// per-region field requirements (AC-04.02/04.03) and format checks (AC-04.04/04.05)
-// for the subset of countries this form exposes.
-const BANK_COUNTRY_CURRENCY: Record<string, string> = { US: 'USD', GB: 'GBP', IN: 'INR', AU: 'AUD', CA: 'CAD' }
+// per-region field requirements (AC-04.02/04.03) and format checks (AC-04.04/04.05).
+// Every country below maps to a real backend-validated region — nothing here
+// is selectable without matching server-side support.
+const SEPA_COUNTRIES = new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','CH','MC','SM','AD','VA'])
+const UK_COUNTRIES = new Set(['GB','GG','JE','IM'])
+const GCC_COUNTRIES = new Set(['AE','SA','QA','BH','KW','OM'])
+const BACS_COUNTRIES = new Set(['BR','MX','ZA','NG','KE','PK','BD','PH','ID','VN','TH','MY'])
+const OFAC_BLOCKED_COUNTRIES = new Set(['CU','IR','KP','SD','SY'])
+const SEPA_CURRENCY_MAP: Record<string, string> = { BG:'BGN', CZ:'CZK', DK:'DKK', HU:'HUF', PL:'PLN', RO:'RON', SE:'SEK', IS:'ISK', NO:'NOK', CH:'CHF', LI:'CHF' }
+const GCC_CURRENCY_MAP: Record<string, string> = { AE:'AED', SA:'SAR', QA:'QAR', BH:'BHD', KW:'KWD', OM:'OMR' }
+
+type BankRegion = 'US' | 'GB' | 'IN' | 'AU' | 'JP' | 'CA' | 'CN' | 'RU' | 'MX' | 'SEPA' | 'GCC' | 'BACS' | 'SWIFT'
+function detectBankRegion(country: string): BankRegion {
+  const c = (country || '').toUpperCase()
+  if (c === 'US') return 'US'
+  if (c === 'IN') return 'IN'
+  if (c === 'AU') return 'AU'
+  if (c === 'JP') return 'JP'
+  if (c === 'CA') return 'CA'
+  if (c === 'CN') return 'CN'
+  if (c === 'RU') return 'RU'
+  if (c === 'MX') return 'MX'
+  if (UK_COUNTRIES.has(c)) return 'GB'
+  if (SEPA_COUNTRIES.has(c)) return 'SEPA'
+  if (GCC_COUNTRIES.has(c)) return 'GCC'
+  if (BACS_COUNTRIES.has(c)) return 'BACS'
+  return 'SWIFT'
+}
+function bankCountryCurrency(country: string): string {
+  const region = detectBankRegion(country)
+  const c = (country || '').toUpperCase()
+  switch (region) {
+    case 'US': return 'USD'
+    case 'GB': return 'GBP'
+    case 'IN': return 'INR'
+    case 'AU': return 'AUD'
+    case 'JP': return 'JPY'
+    case 'CA': return 'CAD'
+    case 'CN': return 'CNY'
+    case 'RU': return 'RUB'
+    case 'MX': return 'MXN'
+    case 'SEPA': return SEPA_CURRENCY_MAP[c] ?? 'EUR'
+    case 'GCC': return GCC_CURRENCY_MAP[c] ?? 'USD'
+    default: return 'USD'
+  }
+}
+// Full ISO 3166-1 country list, alphabetized to match Figma. OFAC-sanctioned
+// countries are still listed (so the picker isn't mysteriously missing them)
+// but selecting one surfaces ERR_DEPOSIT_COUNTRY_RESTRICTED from the backend,
+// same as bank-validation.service.ts's own OFAC check.
+const ALL_COUNTRIES: { code: string; name: string; flag: string }[] = [
+  { code: 'AF', name: 'Afghanistan', flag: '🇦🇫' }, { code: 'AL', name: 'Albania', flag: '🇦🇱' },
+  { code: 'DZ', name: 'Algeria', flag: '🇩🇿' }, { code: 'AD', name: 'Andorra', flag: '🇦🇩' },
+  { code: 'AO', name: 'Angola', flag: '🇦🇴' }, { code: 'AG', name: 'Antigua and Barbuda', flag: '🇦🇬' },
+  { code: 'AR', name: 'Argentina', flag: '🇦🇷' }, { code: 'AM', name: 'Armenia', flag: '🇦🇲' },
+  { code: 'AU', name: 'Australia', flag: '🇦🇺' }, { code: 'AT', name: 'Austria', flag: '🇦🇹' },
+  { code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿' }, { code: 'BS', name: 'Bahamas', flag: '🇧🇸' },
+  { code: 'BH', name: 'Bahrain', flag: '🇧🇭' }, { code: 'BD', name: 'Bangladesh', flag: '🇧🇩' },
+  { code: 'BB', name: 'Barbados', flag: '🇧🇧' }, { code: 'BY', name: 'Belarus', flag: '🇧🇾' },
+  { code: 'BE', name: 'Belgium', flag: '🇧🇪' }, { code: 'BZ', name: 'Belize', flag: '🇧🇿' },
+  { code: 'BJ', name: 'Benin', flag: '🇧🇯' }, { code: 'BT', name: 'Bhutan', flag: '🇧🇹' },
+  { code: 'BO', name: 'Bolivia', flag: '🇧🇴' }, { code: 'BA', name: 'Bosnia and Herzegovina', flag: '🇧🇦' },
+  { code: 'BW', name: 'Botswana', flag: '🇧🇼' }, { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+  { code: 'BN', name: 'Brunei', flag: '🇧🇳' }, { code: 'BG', name: 'Bulgaria', flag: '🇧🇬' },
+  { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫' }, { code: 'BI', name: 'Burundi', flag: '🇧🇮' },
+  { code: 'KH', name: 'Cambodia', flag: '🇰🇭' }, { code: 'CM', name: 'Cameroon', flag: '🇨🇲' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' }, { code: 'CV', name: 'Cape Verde', flag: '🇨🇻' },
+  { code: 'CF', name: 'Central African Republic', flag: '🇨🇫' }, { code: 'TD', name: 'Chad', flag: '🇹🇩' },
+  { code: 'CL', name: 'Chile', flag: '🇨🇱' }, { code: 'CN', name: 'China', flag: '🇨🇳' },
+  { code: 'CO', name: 'Colombia', flag: '🇨🇴' }, { code: 'KM', name: 'Comoros', flag: '🇰🇲' },
+  { code: 'CG', name: 'Congo', flag: '🇨🇬' }, { code: 'CR', name: 'Costa Rica', flag: '🇨🇷' },
+  { code: 'HR', name: 'Croatia', flag: '🇭🇷' }, { code: 'CU', name: 'Cuba', flag: '🇨🇺' },
+  { code: 'CY', name: 'Cyprus', flag: '🇨🇾' }, { code: 'CZ', name: 'Czech Republic', flag: '🇨🇿' },
+  { code: 'DK', name: 'Denmark', flag: '🇩🇰' }, { code: 'DJ', name: 'Djibouti', flag: '🇩🇯' },
+  { code: 'DM', name: 'Dominica', flag: '🇩🇲' }, { code: 'DO', name: 'Dominican Republic', flag: '🇩🇴' },
+  { code: 'EC', name: 'Ecuador', flag: '🇪🇨' }, { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+  { code: 'SV', name: 'El Salvador', flag: '🇸🇻' }, { code: 'EE', name: 'Estonia', flag: '🇪🇪' },
+  { code: 'SZ', name: 'Eswatini', flag: '🇸🇿' }, { code: 'ET', name: 'Ethiopia', flag: '🇪🇹' },
+  { code: 'FJ', name: 'Fiji', flag: '🇫🇯' }, { code: 'FI', name: 'Finland', flag: '🇫🇮' },
+  { code: 'FR', name: 'France', flag: '🇫🇷' }, { code: 'GA', name: 'Gabon', flag: '🇬🇦' },
+  { code: 'GM', name: 'Gambia', flag: '🇬🇲' }, { code: 'GE', name: 'Georgia', flag: '🇬🇪' },
+  { code: 'DE', name: 'Germany', flag: '🇩🇪' }, { code: 'GH', name: 'Ghana', flag: '🇬🇭' },
+  { code: 'GR', name: 'Greece', flag: '🇬🇷' }, { code: 'GD', name: 'Grenada', flag: '🇬🇩' },
+  { code: 'GT', name: 'Guatemala', flag: '🇬🇹' }, { code: 'GN', name: 'Guinea', flag: '🇬🇳' },
+  { code: 'GY', name: 'Guyana', flag: '🇬🇾' }, { code: 'HT', name: 'Haiti', flag: '🇭🇹' },
+  { code: 'HN', name: 'Honduras', flag: '🇭🇳' }, { code: 'HU', name: 'Hungary', flag: '🇭🇺' },
+  { code: 'IS', name: 'Iceland', flag: '🇮🇸' }, { code: 'IN', name: 'India', flag: '🇮🇳' },
+  { code: 'ID', name: 'Indonesia', flag: '🇮🇩' }, { code: 'IR', name: 'Iran', flag: '🇮🇷' },
+  { code: 'IQ', name: 'Iraq', flag: '🇮🇶' }, { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
+  { code: 'IL', name: 'Israel', flag: '🇮🇱' }, { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+  { code: 'JM', name: 'Jamaica', flag: '🇯🇲' }, { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+  { code: 'JO', name: 'Jordan', flag: '🇯🇴' }, { code: 'KZ', name: 'Kazakhstan', flag: '🇰🇿' },
+  { code: 'KE', name: 'Kenya', flag: '🇰🇪' }, { code: 'KW', name: 'Kuwait', flag: '🇰🇼' },
+  { code: 'KG', name: 'Kyrgyzstan', flag: '🇰🇬' }, { code: 'LA', name: 'Laos', flag: '🇱🇦' },
+  { code: 'LV', name: 'Latvia', flag: '🇱🇻' }, { code: 'LB', name: 'Lebanon', flag: '🇱🇧' },
+  { code: 'LS', name: 'Lesotho', flag: '🇱🇸' }, { code: 'LR', name: 'Liberia', flag: '🇱🇷' },
+  { code: 'LY', name: 'Libya', flag: '🇱🇾' }, { code: 'LI', name: 'Liechtenstein', flag: '🇱🇮' },
+  { code: 'LT', name: 'Lithuania', flag: '🇱🇹' }, { code: 'LU', name: 'Luxembourg', flag: '🇱🇺' },
+  { code: 'MG', name: 'Madagascar', flag: '🇲🇬' }, { code: 'MW', name: 'Malawi', flag: '🇲🇼' },
+  { code: 'MY', name: 'Malaysia', flag: '🇲🇾' }, { code: 'MV', name: 'Maldives', flag: '🇲🇻' },
+  { code: 'ML', name: 'Mali', flag: '🇲🇱' }, { code: 'MT', name: 'Malta', flag: '🇲🇹' },
+  { code: 'MR', name: 'Mauritania', flag: '🇲🇷' }, { code: 'MU', name: 'Mauritius', flag: '🇲🇺' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' }, { code: 'MD', name: 'Moldova', flag: '🇲🇩' },
+  { code: 'MC', name: 'Monaco', flag: '🇲🇨' }, { code: 'MN', name: 'Mongolia', flag: '🇲🇳' },
+  { code: 'ME', name: 'Montenegro', flag: '🇲🇪' }, { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
+  { code: 'MZ', name: 'Mozambique', flag: '🇲🇿' }, { code: 'MM', name: 'Myanmar', flag: '🇲🇲' },
+  { code: 'NA', name: 'Namibia', flag: '🇳🇦' }, { code: 'NP', name: 'Nepal', flag: '🇳🇵' },
+  { code: 'NL', name: 'Netherlands', flag: '🇳🇱' }, { code: 'NZ', name: 'New Zealand', flag: '🇳🇿' },
+  { code: 'NI', name: 'Nicaragua', flag: '🇳🇮' }, { code: 'NE', name: 'Niger', flag: '🇳🇪' },
+  { code: 'NG', name: 'Nigeria', flag: '🇳🇬' }, { code: 'MK', name: 'North Macedonia', flag: '🇲🇰' },
+  { code: 'NO', name: 'Norway', flag: '🇳🇴' }, { code: 'OM', name: 'Oman', flag: '🇴🇲' },
+  { code: 'PK', name: 'Pakistan', flag: '🇵🇰' }, { code: 'PA', name: 'Panama', flag: '🇵🇦' },
+  { code: 'PG', name: 'Papua New Guinea', flag: '🇵🇬' }, { code: 'PY', name: 'Paraguay', flag: '🇵🇾' },
+  { code: 'PE', name: 'Peru', flag: '🇵🇪' }, { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+  { code: 'PL', name: 'Poland', flag: '🇵🇱' }, { code: 'PT', name: 'Portugal', flag: '🇵🇹' },
+  { code: 'QA', name: 'Qatar', flag: '🇶🇦' }, { code: 'RO', name: 'Romania', flag: '🇷🇴' },
+  { code: 'RU', name: 'Russia', flag: '🇷🇺' }, { code: 'RW', name: 'Rwanda', flag: '🇷🇼' },
+  { code: 'WS', name: 'Samoa', flag: '🇼🇸' }, { code: 'SM', name: 'San Marino', flag: '🇸🇲' },
+  { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦' }, { code: 'SN', name: 'Senegal', flag: '🇸🇳' },
+  { code: 'RS', name: 'Serbia', flag: '🇷🇸' }, { code: 'SC', name: 'Seychelles', flag: '🇸🇨' },
+  { code: 'SL', name: 'Sierra Leone', flag: '🇸🇱' }, { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+  { code: 'SK', name: 'Slovakia', flag: '🇸🇰' }, { code: 'SI', name: 'Slovenia', flag: '🇸🇮' },
+  { code: 'SO', name: 'Somalia', flag: '🇸🇴' }, { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+  { code: 'KR', name: 'South Korea', flag: '🇰🇷' }, { code: 'SS', name: 'South Sudan', flag: '🇸🇸' },
+  { code: 'ES', name: 'Spain', flag: '🇪🇸' }, { code: 'LK', name: 'Sri Lanka', flag: '🇱🇰' },
+  { code: 'SD', name: 'Sudan', flag: '🇸🇩' }, { code: 'SR', name: 'Suriname', flag: '🇸🇷' },
+  { code: 'SE', name: 'Sweden', flag: '🇸🇪' }, { code: 'CH', name: 'Switzerland', flag: '🇨🇭' },
+  { code: 'SY', name: 'Syria', flag: '🇸🇾' }, { code: 'TW', name: 'Taiwan', flag: '🇹🇼' },
+  { code: 'TJ', name: 'Tajikistan', flag: '🇹🇯' }, { code: 'TZ', name: 'Tanzania', flag: '🇹🇿' },
+  { code: 'TH', name: 'Thailand', flag: '🇹🇭' }, { code: 'TG', name: 'Togo', flag: '🇹🇬' },
+  { code: 'TO', name: 'Tonga', flag: '🇹🇴' }, { code: 'TT', name: 'Trinidad and Tobago', flag: '🇹🇹' },
+  { code: 'TN', name: 'Tunisia', flag: '🇹🇳' }, { code: 'TR', name: 'Turkey', flag: '🇹🇷' },
+  { code: 'TM', name: 'Turkmenistan', flag: '🇹🇲' }, { code: 'UG', name: 'Uganda', flag: '🇺🇬' },
+  { code: 'UA', name: 'Ukraine', flag: '🇺🇦' }, { code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' }, { code: 'US', name: 'United States', flag: '🇺🇸' },
+  { code: 'UY', name: 'Uruguay', flag: '🇺🇾' }, { code: 'UZ', name: 'Uzbekistan', flag: '🇺🇿' },
+  { code: 'VU', name: 'Vanuatu', flag: '🇻🇺' }, { code: 'VA', name: 'Vatican City', flag: '🇻🇦' },
+  { code: 'VE', name: 'Venezuela', flag: '🇻🇪' }, { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
+  { code: 'YE', name: 'Yemen', flag: '🇾🇪' }, { code: 'ZM', name: 'Zambia', flag: '🇿🇲' },
+  { code: 'ZW', name: 'Zimbabwe', flag: '🇿🇼' },
+]
 const isValidAbaRouting = (routing: string) => {
   if (!/^\d{9}$/.test(routing)) return false
   const d = routing.split('').map(Number)
@@ -283,6 +421,29 @@ const isValidIfsc = (v: string) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.toUpperCase()
 const isValidBsb = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ''))
 const isValidCaInstitution = (v: string) => /^\d{3}$/.test(v)
 const isValidCaTransit = (v: string) => /^\d{5}$/.test(v)
+const isValidJpBankCode = (v: string) => /^\d{4}$/.test(v)
+const isValidJpBranchCode = (v: string) => /^\d{3}$/.test(v)
+const isValidSwiftBic = (v: string) => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v.toUpperCase())
+const isValidIban = (iban: string) => {
+  const clean = iban.replace(/\s/g, '').toUpperCase()
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return false
+  const rearranged = clean.slice(4) + clean.slice(0, 4)
+  const numeric = rearranged.split('').map(c => (isNaN(Number(c)) ? (c.charCodeAt(0) - 55).toString() : c)).join('')
+  let remainder = BigInt(0)
+  for (const chunk of numeric.match(/.{1,9}/g) ?? []) remainder = BigInt(remainder.toString() + chunk) % BigInt(97)
+  return remainder === BigInt(1)
+}
+const isValidClabe = (clabe: string) => {
+  if (!/^\d{18}$/.test(clabe)) return false
+  const d = clabe.split('').map(Number)
+  const weights = [3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7]
+  const sum = weights.reduce((acc, w, i) => acc + (w * d[i]) % 10, 0)
+  return (10 - (sum % 10)) % 10 === d[17]
+}
+const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
+const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
+const isValidBik = (v: string) => /^\d{9}$/.test(v)
+const isValidRuAccountNumber = (v: string) => /^\d{20}$/.test(v)
 
 // US-63: bank-validation.service.ts throws these exact ERR_BANK_* codes as
 // errorCode — mapped here to a friendly, field-specific checklist instead of
@@ -303,6 +464,8 @@ const BANK_FIELD_ERROR_MESSAGES: Record<string, string> = {
   ERR_BANK_INSTITUTION_INVALID: 'Institution number must be 3 digits.',
   ERR_BANK_TRANSIT_INVALID: 'Transit number must be 5 digits.',
   ERR_BANK_CLABE_INVALID: 'CLABE must be 18 digits.',
+  ERR_BANK_CNAPS_INVALID: 'CNAPS code must be 12 digits.',
+  ERR_BANK_BIK_INVALID: 'BIK must be 9 digits.',
   ERR_DEPOSIT_COUNTRY_RESTRICTED: 'Payouts to this country are not currently supported.',
   ERR_DEPOSIT_METHOD_DUPLICATE: 'This account is already linked.',
   ERR_DEPOSIT_METHOD_VERIFIED_LOCKED: 'A verified account can’t be edited — remove it and add a new one instead.',
@@ -570,7 +733,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const [removeImpact, setRemoveImpact] = React.useState<{ isPrimary: boolean; isActiveSecondary: boolean } | null>(null)
   const [removeAck, setRemoveAck] = React.useState(false)
   const [removeError, setRemoveError] = React.useState('')
-  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false })
+  const [addForm, setAddForm] = React.useState({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false })
   // source distinguishes the Stripe-connect flow from the manual/micro-deposit
   // flow — Figma specs different copy for each ("securely linked"/"Connection
   // Failed" for Stripe vs "has been verified"/"Verification Failed" for manual).
@@ -654,15 +817,23 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         payload.bankAccountName = addForm.nickname
         payload.bankAccountNumber = addForm.bankAccountNumber
         payload.bankCountry = addForm.bankCountry
-        payload.bankCurrency = BANK_COUNTRY_CURRENCY[addForm.bankCountry] ?? 'USD'
+        payload.bankCurrency = bankCountryCurrency(addForm.bankCountry)
         // AC-04.02/04.03: routing field adapts by region — only the field(s) relevant
-        // to the selected country are sent.
-        switch (addForm.bankCountry) {
+        // to the selected country's region are sent, mirroring bank-validation.service.ts.
+        switch (detectBankRegion(addForm.bankCountry)) {
           case 'US': payload.bankRoutingNumber = addForm.bankRoutingNumber; break
           case 'GB': payload.bankSortCode = addForm.bankSortCode; break
           case 'IN': payload.bankIfscCode = addForm.bankIfscCode; break
           case 'AU': payload.bankBsbNumber = addForm.bankBsbNumber; break
           case 'CA': payload.bankInstitutionNumber = addForm.bankInstitutionNumber; payload.bankTransitNumber = addForm.bankTransitNumber; break
+          case 'JP': payload.bankCode = addForm.bankCode; payload.bankBranchCode = addForm.bankBranchCode; break
+          case 'MX': payload.bankClabe = addForm.bankClabe; delete payload.bankAccountNumber; break
+          case 'CN': payload.bankCnapsCode = addForm.bankCnapsCode; break
+          case 'RU': payload.bankBik = addForm.bankBik; break
+          case 'SEPA': payload.bankIban = addForm.bankIban; delete payload.bankAccountNumber; if (addForm.bankSwiftBic) payload.bankSwiftBic = addForm.bankSwiftBic; break
+          case 'GCC': payload.bankIban = addForm.bankIban; payload.bankSwiftBic = addForm.bankSwiftBic; delete payload.bankAccountNumber; break
+          case 'BACS': payload.bankSwiftBic = addForm.bankSwiftBic; break
+          case 'SWIFT': payload.bankSwiftBic = addForm.bankSwiftBic; break
         }
         // "Bank Name" (e.g. "Chase") is cosmetic only — not a backend-validated field.
         if (addForm.bankAccountName) payload.nickname = addForm.bankAccountName
@@ -678,7 +849,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         if (data.duplicate) {
           toast({ title: 'Account already linked', description: 'This account is already connected.' })
         } else {
-          const last4 = addForm.bankAccountNumber.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions', source: 'manual' })
+          const identifier = addForm.bankAccountNumber || addForm.bankClabe || addForm.bankIban
+          const last4 = identifier.slice(-4); setMicroAmounts({ amount1: '', amount2: '' }); setVerifyState({ methodId: data.depositMethodId, displayLabel: data.displayLabel ?? ('••••' + last4), bankName: addForm.bankAccountName || '', step: 'instructions', source: 'manual' })
           setShowAddMethod(false)
         }
       } else {
@@ -904,7 +1076,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         payload.bankAccountName = editBankForm.bankAccountName
         payload.bankAccountNumber = editBankForm.bankAccountNumber
         payload.bankCountry = editBankForm.bankCountry
-        payload.bankCurrency = BANK_COUNTRY_CURRENCY[editBankForm.bankCountry] ?? 'USD'
+        payload.bankCurrency = bankCountryCurrency(editBankForm.bankCountry)
         switch (editBankForm.bankCountry) {
           case 'US': payload.bankRoutingNumber = editBankForm.bankRoutingNumber; break
           case 'GB': payload.bankSortCode = editBankForm.bankSortCode; break
@@ -1674,7 +1846,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
@@ -1844,7 +2016,47 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     )}
                   </div>
                 ) : addForm.methodType === 'BANK_MANUAL' ? (
-                  /* Step 2a: Bank manual form — fields adapt by country (AC-04.02/04.03) */
+                  /* Step 2a: Bank manual form — fields adapt by country/region
+                     (AC-04.02/04.03), mirroring bank-validation.service.ts's full
+                     region set (US/GB/IN/AU/JP/CA/CN/RU/MX/SEPA/GCC/BACS/SWIFT),
+                     not just the 5-country subset this form used to expose. */
+                  (() => {
+                    const region = detectBankRegion(addForm.bankCountry)
+                    const selectedCountry = ALL_COUNTRIES.find(c => c.code === addForm.bankCountry)
+                    const filteredCountries = addForm.bankCountrySearch
+                      ? ALL_COUNTRIES.filter(c => c.name.toLowerCase().includes(addForm.bankCountrySearch.toLowerCase()))
+                      : ALL_COUNTRIES
+                    const selectCountry = (code: string) => setAddForm(f => ({
+                      ...f, bankCountry: code, bankCountrySearch: '', bankCountryOpen: false,
+                      bankCurrency: bankCountryCurrency(code),
+                      // Region change: clear every region-specific field so a stale
+                      // sort code / IFSC / BSB / IBAN can't be silently submitted.
+                      bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '',
+                      bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '',
+                      bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '',
+                    }))
+                    const saveDisabled =
+                      !addForm.nickname.trim() || !addForm.bankConsent ||
+                      OFAC_BLOCKED_COUNTRIES.has(addForm.bankCountry.toUpperCase()) ||
+                      (region !== 'MX' && region !== 'SEPA' && region !== 'GCC' && (
+                        !addForm.bankAccountNumber.trim() ||
+                        addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber
+                      )) ||
+                      (region === 'US' && !isValidAbaRouting(addForm.bankRoutingNumber)) ||
+                      (region === 'GB' && !isValidSortCode(addForm.bankSortCode)) ||
+                      (region === 'IN' && !isValidIfsc(addForm.bankIfscCode)) ||
+                      (region === 'AU' && !isValidBsb(addForm.bankBsbNumber)) ||
+                      (region === 'CA' && (!isValidCaInstitution(addForm.bankInstitutionNumber) || !isValidCaTransit(addForm.bankTransitNumber))) ||
+                      (region === 'JP' && (!isValidJpBankCode(addForm.bankCode) || !isValidJpBranchCode(addForm.bankBranchCode) || !/^\d{7}$/.test(addForm.bankAccountNumber))) ||
+                      (region === 'MX' && !isValidClabe(addForm.bankClabe)) ||
+                      (region === 'CN' && (!isValidCnaps(addForm.bankCnapsCode) || !isValidCnAccountNumber(addForm.bankAccountNumber))) ||
+                      (region === 'RU' && (!isValidBik(addForm.bankBik) || !isValidRuAccountNumber(addForm.bankAccountNumber))) ||
+                      (region === 'SEPA' && !isValidIban(addForm.bankIban)) ||
+                      (region === 'GCC' && (!isValidIban(addForm.bankIban) || !isValidSwiftBic(addForm.bankSwiftBic))) ||
+                      (region === 'BACS' && (!isValidSwiftBic(addForm.bankSwiftBic) || !addForm.bankAccountNumber.trim())) ||
+                      (region === 'SWIFT' && (!isValidSwiftBic(addForm.bankSwiftBic) || !addForm.bankAccountNumber.trim()))
+
+                    return (
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></IconButton>
@@ -1852,30 +2064,39 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
                     <div className="space-y-3">
-                      <div>
+                      <div className="relative">
                         <label className="text-xs text-gray-500 mb-1 block">Country</label>
-                        <select
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          value={addForm.bankCountry}
-                          onChange={e => {
-                            const bankCountry = e.target.value
-                            // Region change: clear the previous region's fields so a stale
-                            // sort code / IFSC / BSB can't be silently submitted for the new country.
-                            setAddForm(f => ({
-                              ...f, bankCountry,
-                              bankCurrency: BANK_COUNTRY_CURRENCY[bankCountry] ?? 'USD',
-                              bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '',
-                              bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '',
-                            }))
-                          }}
-                        >
-                          <option value="US">🇺🇸 United States</option>
-                          <option value="GB">🇬🇧 United Kingdom</option>
-                          <option value="IN">🇮🇳 India</option>
-                          <option value="CA">🇨🇦 Canada</option>
-                          <option value="AU">🇦🇺 Australia</option>
-                        </select>
+                        <div className="relative">
+                          <input
+                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm"
+                            placeholder="Select country"
+                            value={addForm.bankCountryOpen ? addForm.bankCountrySearch : (selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '')}
+                            onFocus={() => setAddForm(f => ({...f, bankCountryOpen: true, bankCountrySearch: ''}))}
+                            onBlur={() => setTimeout(() => setAddForm(f => ({...f, bankCountryOpen: false})), 150)}
+                            onChange={e => setAddForm(f => ({...f, bankCountrySearch: e.target.value}))}
+                          />
+                          <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
+                        </div>
+                        {addForm.bankCountryOpen && (
+                          <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                            {filteredCountries.length === 0 ? (
+                              <p className="text-xs text-gray-400 text-center py-4">No countries found</p>
+                            ) : filteredCountries.map(c => (
+                              <button
+                                key={c.code}
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
+                                onClick={() => selectCountry(c.code)}
+                              >
+                                <span>{c.flag}</span> <span className="text-dark-blue-400">{c.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      {OFAC_BLOCKED_COUNTRIES.has(addForm.bankCountry.toUpperCase()) && (
+                        <p className="text-xs text-red-500">Payouts to this country are not currently supported.</p>
+                      )}
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
                         <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank of America" value={addForm.bankAccountName} onChange={e => setAddForm(f => ({...f, bankAccountName: e.target.value}))} />
@@ -1884,7 +2105,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
                         <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={addForm.nickname} onChange={e => setAddForm(f => ({...f, nickname: e.target.value}))} />
                       </div>
-                      {addForm.bankCountry === 'US' && (
+                      {region === 'US' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Account Type</label>
                           <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={addForm.accountType} onChange={e => setAddForm(f => ({...f, accountType: e.target.value}))}>
@@ -1894,21 +2115,28 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           </select>
                         </div>
                       )}
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={addForm.bankAccountNumber} onChange={e => setAddForm(f => ({...f, bankAccountNumber: e.target.value}))} />
-                      </div>
-                      <div>
-                        {/* SCR-02: anti-typo protection — a mistyped account number sends
-                            funds nowhere recoverable, so it must be entered twice. */}
-                        <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={addForm.bankAccountNumberConfirm} onChange={e => setAddForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
-                        {addForm.bankAccountNumberConfirm.length > 0 && addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber && (
-                          <p className="text-xs text-red-500 mt-1">Account numbers do not match</p>
-                        )}
-                      </div>
 
-                      {addForm.bankCountry === 'US' && (
+                      {/* Account number — every region except MX (CLABE only)/SEPA/GCC
+                          (IBAN only) uses a plain account number field. */}
+                      {region !== 'MX' && region !== 'SEPA' && region !== 'GCC' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={addForm.bankAccountNumber} onChange={e => setAddForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                          </div>
+                          <div>
+                            {/* SCR-02: anti-typo protection — a mistyped account number sends
+                                funds nowhere recoverable, so it must be entered twice. */}
+                            <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={addForm.bankAccountNumberConfirm} onChange={e => setAddForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
+                            {addForm.bankAccountNumberConfirm.length > 0 && addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber && (
+                              <p className="text-xs text-red-500 mt-1">Account numbers do not match</p>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {region === 'US' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Bank Routing Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={addForm.bankRoutingNumber} onChange={e => setAddForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
@@ -1917,7 +2145,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'GB' && (
+                      {region === 'GB' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 12-34-56" value={addForm.bankSortCode} onChange={e => setAddForm(f => ({...f, bankSortCode: e.target.value}))} />
@@ -1926,7 +2154,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'IN' && (
+                      {region === 'IN' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={addForm.bankIfscCode} onChange={e => setAddForm(f => ({...f, bankIfscCode: e.target.value}))} />
@@ -1935,7 +2163,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'AU' && (
+                      {region === 'AU' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 123-456" value={addForm.bankBsbNumber} onChange={e => setAddForm(f => ({...f, bankBsbNumber: e.target.value}))} />
@@ -1944,7 +2172,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {addForm.bankCountry === 'CA' && (
+                      {region === 'CA' && (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
@@ -1962,6 +2190,62 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           </div>
                         </div>
                       )}
+                      {region === 'JP' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Bank Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="4 digits" value={addForm.bankCode} onChange={e => setAddForm(f => ({...f, bankCode: e.target.value}))} />
+                            {addForm.bankCode.length > 0 && !isValidJpBankCode(addForm.bankCode) && <p className="text-xs text-red-500 mt-1">4 digits required</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Branch Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={addForm.bankBranchCode} onChange={e => setAddForm(f => ({...f, bankBranchCode: e.target.value}))} />
+                            {addForm.bankBranchCode.length > 0 && !isValidJpBranchCode(addForm.bankBranchCode) && <p className="text-xs text-red-500 mt-1">3 digits required</p>}
+                          </div>
+                        </div>
+                      )}
+                      {region === 'MX' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">CLABE</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="18-digit CLABE" value={addForm.bankClabe} onChange={e => setAddForm(f => ({...f, bankClabe: e.target.value}))} />
+                          {addForm.bankClabe.length > 0 && !isValidClabe(addForm.bankClabe) && <p className="text-xs text-red-500 mt-1">Enter a valid 18-digit CLABE</p>}
+                        </div>
+                      )}
+                      {region === 'CN' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">CNAPS Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="12 digits" value={addForm.bankCnapsCode} onChange={e => setAddForm(f => ({...f, bankCnapsCode: e.target.value}))} />
+                          {addForm.bankCnapsCode.length > 0 && !isValidCnaps(addForm.bankCnapsCode) && <p className="text-xs text-red-500 mt-1">12 digits required</p>}
+                        </div>
+                      )}
+                      {region === 'RU' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">BIK</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9 digits" value={addForm.bankBik} onChange={e => setAddForm(f => ({...f, bankBik: e.target.value}))} />
+                          {addForm.bankBik.length > 0 && !isValidBik(addForm.bankBik) && <p className="text-xs text-red-500 mt-1">9 digits required</p>}
+                        </div>
+                      )}
+                      {(region === 'SEPA' || region === 'GCC') && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">IBAN</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. DE89370400440532013000" value={addForm.bankIban} onChange={e => setAddForm(f => ({...f, bankIban: e.target.value}))} />
+                          {addForm.bankIban.length > 0 && !isValidIban(addForm.bankIban) && <p className="text-xs text-red-500 mt-1">Enter a valid IBAN</p>}
+                        </div>
+                      )}
+                      {(region === 'GCC' || region === 'BACS' || region === 'SWIFT') && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. DEUTDEFF" value={addForm.bankSwiftBic} onChange={e => setAddForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {addForm.bankSwiftBic.length > 0 && !isValidSwiftBic(addForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Enter a valid SWIFT/BIC code</p>}
+                        </div>
+                      )}
+                      {region === 'SEPA' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Code (optional)</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. DEUTDEFF" value={addForm.bankSwiftBic} onChange={e => setAddForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {addForm.bankSwiftBic.length > 0 && !isValidSwiftBic(addForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Enter a valid SWIFT/BIC code</p>}
+                        </div>
+                      )}
 
                       <label className="flex items-start gap-2 cursor-pointer">
                         <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
@@ -1973,18 +2257,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       <Button
                         variant="filled" visual="primary" size="sm" className="flex-1"
                         onClick={handleAddMethod}
-                        disabled={
-                          !addForm.nickname.trim() || !addForm.bankAccountNumber.trim() || !addForm.bankConsent ||
-                          addForm.bankAccountNumberConfirm !== addForm.bankAccountNumber ||
-                          (addForm.bankCountry === 'US' && !isValidAbaRouting(addForm.bankRoutingNumber)) ||
-                          (addForm.bankCountry === 'GB' && !isValidSortCode(addForm.bankSortCode)) ||
-                          (addForm.bankCountry === 'IN' && !isValidIfsc(addForm.bankIfscCode)) ||
-                          (addForm.bankCountry === 'AU' && !isValidBsb(addForm.bankBsbNumber)) ||
-                          (addForm.bankCountry === 'CA' && (!isValidCaInstitution(addForm.bankInstitutionNumber) || !isValidCaTransit(addForm.bankTransitNumber)))
-                        }
+                        disabled={saveDisabled}
                       >Save</Button>
                     </div>
                   </div>
+                    )
+                  })()
                 ) : addForm.methodType === 'PAYPAL' || addForm.methodType === 'WISE' || addForm.methodType === 'PAYONEER' ? (
                   /* Step 2b/2c: PayPal / Wise / Payoneer — real OAuth redirect
                      (AC-06.01/06.04, AC-07.01/07.04, AC-08.01/08.04). One shared
