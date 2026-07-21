@@ -40,6 +40,8 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
   metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
+  'manual-time': 'timeTracking', // time-tracking-service manual-time entries — was
+                                  // missing entirely, so GET/POST /manual-time always 404'd
   public: 'users',               // public talent profiles live in user-service
   admin: 'admin',
   'affiliate-referral': 'affiliateReferral',
