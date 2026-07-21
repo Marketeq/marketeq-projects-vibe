@@ -3153,6 +3153,17 @@ export const HelpSupportDialog = ({ open, onOpenChange }: { open: boolean; onOpe
   </Dialog>
 )
 
+// Split-payout row icon (Figma). A smaller, local counterpart to
+// OverviewTab's getMethodIcon — that one isn't reachable from here since
+// it's a closure inside a different component.
+const renderScheduleMethodIcon = (m: any) => {
+  if (m.methodType === "PAYPAL") return <PaypalIcon className="size-5" />
+  if (m.methodType === "WISE") return <WiseIcon className="size-5" />
+  if (m.methodType === "PAYONEER") return <PayoneerIcon className="size-5" />
+  if (m.methodType === "CRYPTO") return <CryptoProviderIcon provider={m.cryptoProvider} className="size-5" />
+  return <BankLogo bankName={m.nickname || ""} size={20} />
+}
+
 export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; onSaved?: () => void }) => {
   const { toast } = useToast()
 
@@ -3179,18 +3190,39 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
   const [frequency, setFrequency] = useState("weekly")
   const [dayOfWeek, setDayOfWeek] = useState(1)
   const [dayOfMonth, setDayOfMonth] = useState(1)
-  const [customIntervalDays, setCustomIntervalDays] = useState(7)
+  // Figma "Repeat Every [N] [Days/Weeks/Months]" — customIntervalDays is the
+  // only column the backend stores, so weeks/months are converted to days
+  // before saving (weeks*7, months*30) and back when hydrating from a saved
+  // schedule. customIntervalCount is the number shown in the unit the user
+  // picked, not the raw day count.
+  const [customIntervalUnit, setCustomIntervalUnit] = useState<'days' | 'weeks' | 'months'>('days')
+  const [customIntervalCount, setCustomIntervalCount] = useState(7)
   // US-72: optional window for a custom schedule, e.g. pause payouts during
   // a planned absence without disabling the schedule outright. yyyy-mm-dd
-  // strings for <input type="date">; empty string = unset.
+  // strings for <input type="date">; empty string = unset. Figma gates the
+  // end date behind a "Stop Deposits On" toggle rather than showing it bare.
   const [scheduleStartDate, setScheduleStartDate] = useState("")
   const [scheduleEndDate, setScheduleEndDate] = useState("")
+  const [stopDepositsEnabled, setStopDepositsEnabled] = useState(false)
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
   const [scheduleUpdatedAt, setScheduleUpdatedAt] = useState<string | null>(null)
 
-  // Minimum payout + reserve
+  // Minimum payout + reserve. Figma shows preset buttons ($25/$50/$100/$150/
+  // $250) plus a Custom amount input, not a plain on/off toggle — backend
+  // (schedule.service.ts) enforces 0 <= reserveUsd <= 250 regardless of
+  // which UI sets it, so presets are fully within that range already.
   const [thresholdUsd, setThresholdUsd] = useState("50")
   const [reserveUsd, setReserveUsd] = useState("0")
+  const RESERVE_PRESETS = [25, 50, 100, 150, 250]
+  const [reserveCustomOpen, setReserveCustomOpen] = useState(false)
+  const [reserveCustomValue, setReserveCustomValue] = useState("")
+
+  // Split payout — Figma's "Auto Split" toggle switches between a fixed
+  // 50/50 default and manual per-side percent entry; there's no backend
+  // auto-balance algorithm (primarySplitPercent is the only stored value,
+  // secondarySplitPercent is just its complement), so "auto" just means
+  // "keep it at 50/50 and don't let the user type a number".
+  const [autoSplit, setAutoSplit] = useState(true)
 
   // Authorization
   const [authorized, setAuthorized] = useState(false)
@@ -3202,7 +3234,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
     if (frequency === "bi_weekly") return `Bi-Weekly (every other ${selectedDayFull})`
     if (frequency === "monthly") return `Monthly (on the ${dayOfMonth}${dayOfMonth === 1 ? "st" : dayOfMonth === 2 ? "nd" : dayOfMonth === 3 ? "rd" : "th"})`
     if (frequency === "daily") return "Daily (every day)"
-    if (frequency === "custom") return `Every ${customIntervalDays} day${customIntervalDays === 1 ? "" : "s"}`
+    if (frequency === "custom") return `Every ${customIntervalCount} ${customIntervalUnit}${customIntervalCount === 1 ? customIntervalUnit.slice(0, -1) : customIntervalUnit}`
     return "Select schedule"
   }
 
@@ -3224,16 +3256,31 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
         setSplitEnabled(!!s.splitEnabled)
         setSecondaryMethodId(s.secondaryMethod?.id ?? "")
         setPrimarySplitPercent(s.primarySplitPercent ?? 50)
+        setAutoSplit((s.primarySplitPercent ?? 50) === 50)
         setInitial({ splitEnabled: !!s.splitEnabled, secondaryMethodId: s.secondaryMethod?.id ?? "", primarySplitPercent: s.primarySplitPercent ?? 50 })
         setIsActive(s.isActive ?? true)
         setFrequency(s.frequency ?? "weekly")
         setDayOfWeek(s.dayOfWeek ?? 1)
         setDayOfMonth(s.dayOfMonth ?? 1)
-        setCustomIntervalDays(s.customIntervalDays ?? 7)
+        const loadedIntervalDays = s.customIntervalDays ?? 7
+        if (loadedIntervalDays >= 30 && loadedIntervalDays % 30 === 0) {
+          setCustomIntervalUnit("months"); setCustomIntervalCount(loadedIntervalDays / 30)
+        } else if (loadedIntervalDays % 7 === 0) {
+          setCustomIntervalUnit("weeks"); setCustomIntervalCount(loadedIntervalDays / 7)
+        } else {
+          setCustomIntervalUnit("days"); setCustomIntervalCount(loadedIntervalDays)
+        }
         setScheduleStartDate(s.startDate ? s.startDate.slice(0, 10) : "")
         setScheduleEndDate(s.endDate ? s.endDate.slice(0, 10) : "")
+        setStopDepositsEnabled(!!s.endDate)
         setThresholdUsd(s.thresholdUsd ? String(Math.round(parseFloat(s.thresholdUsd))) : "50")
-        setReserveUsd(s.reserveUsd ? String(Math.round(parseFloat(s.reserveUsd))) : "0")
+        const loadedReserve = s.reserveUsd ? Math.round(parseFloat(s.reserveUsd)) : 0
+        setReserveUsd(String(loadedReserve))
+        if (loadedReserve > 0 && !RESERVE_PRESETS.includes(loadedReserve)) {
+          setReserveCustomOpen(true); setReserveCustomValue(String(loadedReserve))
+        } else {
+          setReserveCustomOpen(false); setReserveCustomValue("")
+        }
         // AC-25.03: next run date is always the server-computed value, never derived client-side.
         setNextRunAt(s.nextRunAt ?? null)
         setScheduleUpdatedAt(s.updatedAt ?? null)
@@ -3260,10 +3307,14 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
       if (frequency === "weekly" || frequency === "bi_weekly") schedulePayload.dayOfWeek = dayOfWeek
       if (frequency === "monthly") schedulePayload.dayOfMonth = dayOfMonth
       if (frequency === "custom") {
-        schedulePayload.customIntervalDays = customIntervalDays
+        // customIntervalDays is the only interval column the backend stores —
+        // weeks/months are converted to days before saving (weeks*7, months*30).
+        const unitMultiplier = customIntervalUnit === "months" ? 30 : customIntervalUnit === "weeks" ? 7 : 1
+        schedulePayload.customIntervalDays = customIntervalCount * unitMultiplier
+        schedulePayload.dayOfWeek = dayOfWeek
         // Explicit null (not omitted) clears a previously-set date server-side.
         schedulePayload.startDate = scheduleStartDate ? new Date(scheduleStartDate).toISOString() : null
-        schedulePayload.endDate = scheduleEndDate ? new Date(scheduleEndDate).toISOString() : null
+        schedulePayload.endDate = stopDepositsEnabled && scheduleEndDate ? new Date(scheduleEndDate).toISOString() : null
       }
 
       const scheduleRes = await payoutFetch(`/payouts/schedule`, { method: "PUT", headers, body: JSON.stringify(schedulePayload) })
@@ -3392,23 +3443,41 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-xs text-gray-500 mb-1 block">Primary %</label>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-500">Auto Split</span>
+                        <Switch
+                          checked={autoSplit}
+                          onCheckedChange={(c) => { setAutoSplit(c as boolean); if (c) setPrimarySplitPercent(50) }}
+                          size="sm"
+                        />
+                      </div>
+
+                      {/* Per-method rows (Figma): icon + name + percent + remove.
+                          Removing either side has the same effect — there's no
+                          backend concept of a 2-method split with one side gone —
+                          so both route through the existing disable-split confirm. */}
+                      {[
+                        { m: methods.find((mm) => mm.id === primaryMethodId), pct: primarySplitPercent, isPrimary: true },
+                        { m: methods.find((mm) => mm.id === secondaryMethodId), pct: Math.round((100 - primarySplitPercent) * 100) / 100, isPrimary: false },
+                      ].map(({ m, pct, isPrimary }, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                          <span className="shrink-0">{m ? renderScheduleMethodIcon(m) : <BankIcon className="size-5 text-gray-400" />}</span>
+                          <span className="flex-1 min-w-0 text-sm font-medium text-dark-blue-400 truncate">{m ? (m.nickname || m.displayLabel || m.methodType) : (isPrimary ? "Select a payout method" : "Select a secondary method")}</span>
                           <Input
                             type="number" min={0} max={100}
-                            value={primarySplitPercent}
+                            className="w-16 text-right"
+                            disabled={autoSplit || !isPrimary}
+                            value={pct}
                             // AC-23.03/23.04: accept the raw value (including 0/100) so the
                             // inline error below can actually be seen — clamping silently
                             // would make those values impossible to type in the first place.
                             onChange={(e) => setPrimarySplitPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
                           />
+                          <span className="text-sm text-gray-400">%</span>
+                          <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if (initial.splitEnabled) { setConfirmDisableSplit(true) } else { setSplitEnabled(false) } }}><Trash01 className="size-4" /></IconButton>
                         </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-gray-500 mb-1 block">Secondary % (auto)</label>
-                          <Input type="number" value={Math.round((100 - primarySplitPercent) * 100) / 100} disabled />
-                        </div>
-                      </div>
+                      ))}
                       {(primarySplitPercent <= 0 || primarySplitPercent >= 100) && (
                         <p className="text-xs text-red-500">Each method must receive between 1% and 99% — 0% or 100% is not a valid split.</p>
                       )}
@@ -3437,30 +3506,51 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   {frequency === "custom" && (
                     <>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Every N days (1–365)</label>
-                        <Input type="number" min={1} max={365} value={customIntervalDays} onChange={(e) => setCustomIntervalDays(Math.min(365, Math.max(1, parseInt(e.target.value) || 1)))} />
+                        <label className="text-xs text-gray-500 mb-1 block">Start Deposits On</label>
+                        <Input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Repeat Every</label>
+                          <Input
+                            type="number" min={1} max={customIntervalUnit === "days" ? 365 : customIntervalUnit === "weeks" ? 52 : 12}
+                            value={customIntervalCount}
+                            onChange={(e) => setCustomIntervalCount(Math.max(1, parseInt(e.target.value) || 1))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">&nbsp;</label>
+                          <Select value={customIntervalUnit} onValueChange={(v) => setCustomIntervalUnit(v as 'days' | 'weeks' | 'months')}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="days">Days</SelectItem>
+                              <SelectItem value="weeks">Weeks</SelectItem>
+                              <SelectItem value="months">Months</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       {/* US-72: optional window — e.g. pause payouts during a
                           planned absence without disabling the schedule outright. */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between gap-4">
                         <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Start date (optional)</label>
-                          <Input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                          <label className="text-sm font-semibold text-dark-blue-400">Stop Deposits On <span className="font-normal text-gray-400">(optional)</span></label>
+                          <p className="text-xs text-gray-500 mt-0.5">Select a date when you want deposits to stop.</p>
                         </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">End date (optional)</label>
-                          <Input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
-                        </div>
+                        <Switch checked={stopDepositsEnabled} onCheckedChange={(c) => setStopDepositsEnabled(c as boolean)} size="sm" />
                       </div>
-                      {scheduleStartDate && scheduleEndDate && scheduleEndDate <= scheduleStartDate && (
-                        <p className="text-xs text-red-500">End date must be after start date.</p>
+                      {stopDepositsEnabled && (
+                        <Input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
+                      )}
+                      {stopDepositsEnabled && scheduleStartDate && scheduleEndDate && scheduleEndDate <= scheduleStartDate && (
+                        <p className="text-xs text-red-500">Stop date must be after the start date.</p>
                       )}
                     </>
                   )}
                 </div>
 
                 {/* ── Select Deposit Day ── */}
-                {(frequency === "weekly" || frequency === "bi_weekly") && (
+                {(frequency === "weekly" || frequency === "bi_weekly" || frequency === "custom") && (
                   <div className="space-y-2">
                     <Label size="sm" className="font-semibold text-dark-blue-400">Select Deposit Day</Label>
                     <ToggleGroupRoot
@@ -3541,19 +3631,70 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
                   </Select>
                 </div>
 
-                {/* ── Reserve Balance ── Figma: a single on/off toggle, not a preset
-                    amount picker. PS-03 confirms reserveUsd is $0 (disabled) or up to
-                    $250 (enabled) — "on" reserves the platform max, "off" is $0. */}
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-dark-blue-400">Reserve Balance <span className="font-normal text-gray-400">(optional)</span></label>
-                    <p className="text-xs text-gray-500 mt-0.5">Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.</p>
+                {/* ── Reserve Balance ── Figma: preset amount buttons + Custom,
+                    gated behind an on/off toggle. schedule.service.ts enforces
+                    0 <= reserveUsd <= 250 regardless of which button set it. */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <label className="text-sm font-semibold text-dark-blue-400">Reserve Balance <span className="font-normal text-gray-400">(optional)</span></label>
+                      <p className="text-xs text-gray-500 mt-0.5">Keep up to $250 in your account after each payout to automatically cover subscription or platform fees without disruption.</p>
+                    </div>
+                    <Switch
+                      checked={Number(reserveUsd) > 0}
+                      onCheckedChange={(c) => {
+                        if (c) { setReserveUsd(String(RESERVE_PRESETS[0])) }
+                        else { setReserveUsd("0"); setReserveCustomOpen(false); setReserveCustomValue("") }
+                      }}
+                      size="sm"
+                    />
                   </div>
-                  <Switch
-                    checked={Number(reserveUsd) > 0}
-                    onCheckedChange={(c) => setReserveUsd(c ? "250" : "0")}
-                    size="sm"
-                  />
+                  {Number(reserveUsd) > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        {RESERVE_PRESETS.map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            className={cn(
+                              "rounded-lg border px-3 py-2 text-sm font-medium text-center",
+                              !reserveCustomOpen && Number(reserveUsd) === amt
+                                ? "border-primary-500 text-primary-600 bg-primary-25"
+                                : "border-gray-200 text-dark-blue-400 hover:border-primary-300"
+                            )}
+                            onClick={() => { setReserveUsd(String(amt)); setReserveCustomOpen(false); setReserveCustomValue("") }}
+                          >Reserve ${amt}</button>
+                        ))}
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-sm font-medium text-center",
+                            reserveCustomOpen ? "border-primary-500 text-primary-600 bg-primary-25" : "border-gray-200 text-dark-blue-400 hover:border-primary-300"
+                          )}
+                          onClick={() => { setReserveCustomOpen(true); setReserveCustomValue(RESERVE_PRESETS.includes(Number(reserveUsd)) ? "" : reserveUsd) }}
+                        >Custom</button>
+                      </div>
+                      {reserveCustomOpen && (
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                            <Input
+                              type="number" min={1} max={249} placeholder="Enter custom amount" className="pl-6"
+                              value={reserveCustomValue}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setReserveCustomValue(v)
+                                const n = parseInt(v)
+                                if (!isNaN(n)) setReserveUsd(String(Math.max(0, Math.min(249, n))))
+                              }}
+                            />
+                          </div>
+                          <button type="button" className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setReserveCustomOpen(false); setReserveCustomValue(""); setReserveUsd(String(RESERVE_PRESETS[0])) }}>Cancel</button>
+                        </div>
+                      )}
+                      {reserveCustomOpen && <p className="text-xs text-gray-400">Custom amount needs to be under $250.</p>}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Authorization ── */}
@@ -3587,7 +3728,7 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
             <Button variant="outlined" visual="gray">Cancel</Button>
           </DialogClose>
           <Button
-            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100)) || (frequency === "custom" && !!scheduleStartDate && !!scheduleEndDate && scheduleEndDate <= scheduleStartDate)}
+            disabled={!authorized || saving || loading || methods.length === 0 || (splitEnabled && (primarySplitPercent <= 0 || primarySplitPercent >= 100)) || (frequency === "custom" && stopDepositsEnabled && !!scheduleStartDate && !!scheduleEndDate && scheduleEndDate <= scheduleStartDate)}
             onClick={handleSave}
           >
             {saving ? "Saving…" : "Save"}
