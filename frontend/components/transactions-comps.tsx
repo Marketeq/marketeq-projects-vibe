@@ -8,6 +8,7 @@ import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
 import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { formatDistanceToNowStrict } from "date-fns"
+import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
 import {
@@ -1453,7 +1454,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 {verifyState.step === 'instructions' && (
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <button onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'BANK_MANUAL'})) }} className="text-gray-400 hover:text-gray-600"><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'BANK_MANUAL'})) }}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { if(verifyState?.methodId) deleteMethod(verifyState.methodId); setVerifyState(null); setShowAddMethod(false); fetchMethods() }}><X className="size-4" /></IconButton>
                     </div>
@@ -1474,7 +1475,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 {verifyState.step === 'amounts' && (
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <button onClick={() => setVerifyState(s => s ? {...s, step: 'instructions'} : null)} className="text-gray-400 hover:text-gray-600"><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(s => s ? {...s, step: 'instructions'} : null)}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setVerifyState(null)}><X className="size-4" /></IconButton>
                     </div>
@@ -1626,7 +1627,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   <div className="p-6">
                     {!(addForm as any)._selectedBank && <>
                       <div className="flex items-center gap-2 mb-2">
-                        <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></button>
+                        <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''}))}><ChevronLeft className="size-4" /></IconButton>
                         <h3 className="text-base font-semibold text-dark-blue-400">Connect your bank account</h3>
                         <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''})); }}><X className="size-4" /></IconButton>
                       </div>
@@ -1700,8 +1701,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           <p className="text-sm text-gray-500 px-4">
                             You'll be securely connected to <strong>{(addForm as any)._selectedBank}</strong> through Stripe. Your banking credentials are never shared with Marketeq.
                           </p>
+                          {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/
+                              gray with a leftIcon brand mark, matching the other provider
+                              connect buttons (PayPal/Wise/Payoneer) and GoogleLoginButton.tsx. */}
                           <Button
-                            variant="filled" visual="primary" size="sm" className="w-full py-3 text-base"
+                            variant="outlined" visual="gray" size="sm" className="w-full py-3 text-base gap-x-3 active:ring-4 active:ring-gray-100"
+                            leftIcon={<StripeDefault />}
                             disabled={!!(addForm as any)._stripeConnecting}
                             onClick={() => handleConnectStripe((addForm as any)._selectedBank)}
                           >
@@ -1747,7 +1752,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   /* Step 2a: Bank manual form — fields adapt by country (AC-04.02/04.03) */
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
@@ -1889,7 +1894,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   /* Step 2b: PayPal */
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Connect PayPal</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
@@ -1912,18 +1917,22 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         )}
                       </div>
                     </div>
+                    {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/gray
+                        with a leftIcon brand mark, same as the app's other social/
+                        provider connect buttons (see GoogleLoginButton.tsx). */}
                     <Button
-                      variant="filled" visual="primary" size="sm" className="w-full"
+                      variant="outlined" visual="gray" size="sm" className="w-full gap-x-3 active:ring-4 active:ring-gray-100"
+                      leftIcon={<PayPalDefault />}
                       disabled={!addForm.paypalEmail.trim() || addForm.paypalEmailConfirm.toLowerCase() !== addForm.paypalEmail.toLowerCase()}
                       onClick={handleAddMethod}
-                    >Continue To PayPal</Button>
-                    <button className="w-full text-center text-xs text-gray-400 mt-2 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</button>
+                    >Connect PayPal</Button>
+                    <Button variant="link" visual="gray" size="sm" className="w-full mt-2" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</Button>
                   </div>
                 ) : addForm.methodType === 'WISE' || addForm.methodType === 'PAYONEER' ? (
                   /* Step 2c: Wise / Payoneer — real OAuth redirect (AC-07.01/07.04, AC-08.01/08.04) */
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Connect {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
@@ -1936,18 +1945,23 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       <input type="checkbox" className="mt-0.5 accent-primary-600" checked={addForm.bankConsent} onChange={e => setAddForm(f => ({...f, bankConsent: e.target.checked}))} />
                       <span className="text-xs text-gray-400">By connecting your account, you authorize Marketeq to send deposits to your linked {addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} account. You agree to abide by their terms and conditions for receiving business payments.</span>
                     </label>
+                    {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/gray
+                        with a leftIcon brand mark. Wise has no icon in
+                        @blend-metrics/icons/payment-methods, so WiseIcon (this file's
+                        existing brand-badge component) fills that one slot. */}
                     <Button
-                      variant="filled" visual="primary" size="sm" className="w-full"
+                      variant="outlined" visual="gray" size="sm" className="w-full gap-x-3 active:ring-4 active:ring-gray-100"
+                      leftIcon={addForm.methodType === 'WISE' ? <WiseIcon className="size-5 rounded-full" /> : <PayoneerDefault />}
                       disabled={!addForm.bankConsent || oauthConnecting}
                       onClick={() => handleConnectOAuth(addForm.methodType as 'WISE' | 'PAYONEER')}
-                    >{oauthConnecting ? 'Connecting…' : `Continue To ${addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
-                    <button className="w-full text-center text-xs text-gray-400 mt-2 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</button>
+                    >{oauthConnecting ? 'Connecting…' : `Connect ${addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
+                    <Button variant="link" visual="gray" size="sm" className="w-full mt-2" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>← Back to Deposit Methods</Button>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'provider' ? (
                   /* Step 2d.1: Crypto — provider selection (AC-09.01) */
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Connect Crypto Wallet</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
@@ -1983,7 +1997,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   /* Step 2d.2: Crypto — network/currency/address (AC-09.02/09.03/09.04) */
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <button className="text-gray-400 hover:text-gray-600" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></button>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setCryptoStep('provider') }}><X className="size-4" /></IconButton>
                     </div>
