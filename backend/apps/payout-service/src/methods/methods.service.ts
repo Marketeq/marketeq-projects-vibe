@@ -221,6 +221,74 @@ export class MethodsService {
       method.nickname = dto.nickname;
     }
 
+    // US-59: full bank-detail edit. Only for BANK_MANUAL methods that
+    // haven't completed verification — once VERIFIED, silently changing the
+    // underlying account number without re-verifying it would let a
+    // compromised session redirect future payouts, so those must be
+    // removed and re-added instead (US-62's "up to 3 days" copy only
+    // applies to this path, since it always restarts micro-deposit
+    // verification below).
+    const bankFields: (keyof UpdateMethodDto)[] = [
+      'bankAccountName', 'bankAccountNumber', 'bankCountry', 'bankCurrency',
+      'bankRoutingNumber', 'bankIban', 'bankSwiftBic', 'bankIfscCode',
+      'bankBsbNumber', 'bankSortCode', 'bankCode', 'bankBranchCode',
+      'bankInstitutionNumber', 'bankTransitNumber', 'bankClabe',
+      'bankCnapsCode', 'bankBik', 'bankKorrespondentAccount', 'bankCpfCnpj',
+      'bankAgencia', 'bankConta',
+    ];
+    const isBankDetailEdit = bankFields.some((f) => dto[f] !== undefined);
+
+    if (isBankDetailEdit) {
+      if (method.methodType !== MethodType.BANK_MANUAL) {
+        throw new PayoutError('Bank details can only be edited for manually-added bank accounts.',
+          HttpStatus.BAD_REQUEST, 'ERR_DEPOSIT_METHOD_NOT_EDITABLE');
+      }
+      if (method.verificationStatus === VerificationStatus.VERIFIED) {
+        throw new PayoutError('A verified account cannot be edited — remove it and add a new one instead.',
+          HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_VERIFIED_LOCKED');
+      }
+
+      // US-63: BankValidationService throws PayoutError with the exact
+      // ERR_BANK_* code as its message — the frontend maps these to a
+      // friendly checklist rather than showing the raw code.
+      this.bankValidator.validate(dto);
+
+      const rawAccount = dto.bankAccountNumber ?? dto.bankIban ?? '';
+      if (rawAccount) {
+        const accountHash = createHash('sha256').update(rawAccount.replace(/\s/g, '').toLowerCase()).digest('hex');
+        const existingMethod = await this.methodRepo.findOne({
+          where: { contractorId, accountNumberHash: accountHash, isActive: true },
+        });
+        if (existingMethod && existingMethod.id !== method.id) {
+          throw new PayoutError('This account is already linked.',
+            HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_DUPLICATE');
+        }
+        method.accountNumberHash = accountHash;
+      }
+      method.bankAccountName = dto.bankAccountName ?? null;
+      method.bankAccountLast4 = this.bankEncryption.last4(dto.bankAccountNumber ?? dto.bankIban ?? '');
+      method.bankCountry = dto.bankCountry ?? null;
+      method.bankCurrency = dto.bankCurrency ?? null;
+      method.bankIbanLast4 = dto.bankIban ? dto.bankIban.slice(-4) : null;
+      method.displayLabel = this.bankValidator.generateDisplayLabel(dto);
+      method.verificationStatus = VerificationStatus.PENDING;
+
+      // Any changed account number must never inherit a verification that
+      // was issued for the old one — expire it and start fresh.
+      await this.verifyRepo.update(
+        { depositMethodId: method.id, status: VerificationStatus.PENDING },
+        { status: VerificationStatus.EXPIRED },
+      );
+      await this.methodRepo.save(method);
+      const verification = await this.createVerification(method, dto as unknown as AddMethodDto);
+      await this.auditService.log({
+        contractorId, actorType: 'contractor', actorId: contractorId,
+        action: 'method.bank_details_updated',
+        metadata: { methodId: method.id },
+      });
+      return { ...this.toDetailItem(method), verification };
+    }
+
     if (dto.isDefault === true) {
       await this.setDefault(contractorId, methodId);
       method.isDefault = true;

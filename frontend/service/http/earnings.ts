@@ -113,7 +113,58 @@ export async function getEarnings(query: EarningsQuery = {}): Promise<EarningsLi
   return res.data
 }
 
-export async function getEarningDetail(id: string) {
+export interface EarningDetailLineItem {
+  label: string
+  amount: string
+  currency: string
+  amountRaw: string
+  currencyRaw: string
+  isTotal?: boolean
+}
+
+export interface EarningDetailFeeSection {
+  grossAmount: string
+  grossAmountDisplay: string
+  feeAmount: string
+  feeAmountDisplay: string
+  netAmount: string
+  netAmountDisplay: string
+  grossAmountUsd: string
+  feeAmountUsd: string
+  netAmountUsd: string
+  billingCurrency: string
+  displayCurrency: string
+  fxRateToUsd: string
+  fxRateLabel: string
+  feeLabel: string
+  feePercent: string
+  lineItems: EarningDetailLineItem[]
+}
+
+export interface EarningDetail {
+  id: string
+  entryType: "automated" | "manual"
+  status: "paid" | "failed" | "confirmed"
+  grossAmount: string
+  feeAmount: string
+  netAmount: string
+  netAmountDisplay: string
+  currency: string
+  displayCurrency: string
+  fxRateToUsd: string
+  workStartAt: string
+  workEndAt: string
+  durationMinutes: number
+  durationLabel: string
+  avgKeyboardPct: number | null
+  avgMousePct: number | null
+  reversedAt: string | null
+  contract: { id: string; title: string; status: string } | null
+  project: { id: string; name: string; clientHandle: string | null; clientName: string | null } | null
+  feeSection: EarningDetailFeeSection
+}
+
+export async function getEarningDetail(id: string): Promise<EarningDetail> {
   const res = await earningsAxios.get(`/earnings/${id}`)
   return res.data
 }
@@ -122,12 +173,24 @@ export interface BalanceResponse {
   availableBalance: string
   availableBalanceDisplay: string
   displayCurrency: string
+  // US-07: secondary amount shown only when localCurrency !== displayCurrency.
+  // Backend (balance.service.ts) already computes and returns both — the
+  // frontend type just never declared them, so this was silently unused.
+  availableBalanceLocal: string
+  localCurrency: string
   reserveBalance: string
   pendingHoldUsd: string
   totalEarnedUsd: string
   totalPaidOutUsd: string
   displayLabel: string
+  // US-08: explicit stale-FX signal — never hidden, always flagged with an
+  // asterisk on the balance amount when true.
+  stale: boolean
   lastUpdatedAt: string
+  // US-01 Last Updated Label: when the balance figure was cached, distinct
+  // from lastUpdatedAt (which reflects the underlying ledger snapshot, not
+  // the cache read that actually produced this response).
+  cachedAt?: string
 }
 
 export async function getBalance(): Promise<BalanceResponse> {
@@ -144,12 +207,16 @@ export async function getBalance(): Promise<BalanceResponse> {
         availableBalance: "0.00",
         availableBalanceDisplay: "0.00",
         displayCurrency: "USD",
+        availableBalanceLocal: "0.00",
+        localCurrency: "USD",
         reserveBalance: "0.00",
         pendingHoldUsd: "0.00",
         totalEarnedUsd: "0.00",
         totalPaidOutUsd: "0.00",
         displayLabel: "After reserve & threshold deductions",
+        stale: false,
         lastUpdatedAt: new Date().toISOString(),
+        cachedAt: new Date().toISOString(),
       }
     }
     throw e

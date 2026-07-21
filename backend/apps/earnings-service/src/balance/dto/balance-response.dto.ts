@@ -9,6 +9,7 @@ export class BalanceResponseDto {
   totalEarnedUsd:          string;
   totalPaidOutUsd:         string;
   displayLabel:            string;
+  stale:                   boolean;
   lastUpdatedAt:           string;
   cachedAt:                string;
 }

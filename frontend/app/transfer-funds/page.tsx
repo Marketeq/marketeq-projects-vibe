@@ -12,7 +12,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
-import { ArrowLeft, Check, Lock } from "@blend-metrics/icons"
+import { AlertTriangle, ArrowLeft, Check, Lock, RefreshCcw01 } from "@blend-metrics/icons"
 import { Logo3 } from "@/components/icons"
 import { Button, Input } from "@/components/ui"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -106,6 +106,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_PAYOUT_NOT_FOUND: "This withdrawal is no longer awaiting verification.",
   ERR_PAYOUT_INVALID_AMOUNT: "The amount entered is not valid.",
   ERR_PAYOUT_FEE_EXCEEDS_AMOUNT: "The instant withdrawal fee exceeds this amount. Choose Standard or increase the amount.",
+  ERR_RESERVE_BALANCE_TOO_LOW: "Your reserve balance is too low for this withdrawal. Edit your reserve amount in payout settings or reduce the withdrawal amount.",
 }
 
 // ERR-02/ERR-11: mandated copy names the actual current balance — the backend
@@ -245,7 +246,7 @@ const AmountStep = ({
           >
             <div className="text-sm font-semibold text-dark-blue-400">Instant</div>
             <div className="text-xs text-gray-500 mt-1">
-              {validation ? `$${validation.instantPreview.feeUsd} fee · faster settlement` : "Flat fee · faster settlement"}
+              {validation ? `$${parseFloat(validation.instantPreview.feeUsd).toFixed(2)} fee · faster settlement` : "Flat fee · faster settlement"}
             </div>
           </button>
         </div>
@@ -260,15 +261,15 @@ const AmountStep = ({
             <>
               <div className="flex items-center justify-between px-4 py-2.5">
                 <span className="text-xs font-medium text-gray-500">Gross amount</span>
-                <span className="text-sm font-semibold text-dark-blue-400">${validation.amountUsd}</span>
+                <span className="text-sm font-semibold text-dark-blue-400">${parseFloat(validation.amountUsd).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-2.5">
                 <span className="text-xs font-medium text-gray-500">Fee</span>
-                <span className="text-sm font-semibold text-dark-blue-400">${validation.feeUsd}</span>
+                <span className="text-sm font-semibold text-dark-blue-400">${parseFloat(validation.feeUsd).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 rounded-b-lg">
                 <span className="text-xs font-medium text-gray-500">Net transfer</span>
-                <span className="text-sm font-bold text-dark-blue-400">${validation.netAmountUsd}</span>
+                <span className="text-sm font-bold text-dark-blue-400">${parseFloat(validation.netAmountUsd).toFixed(2)}</span>
               </div>
             </>
           ) : null}
@@ -280,15 +281,24 @@ const AmountStep = ({
 
 // ── Step 2: Method (US-14) ───────────────────────────────────────────────────
 const MethodStep = ({
-  methods, methodsLoading, methodsError, methodId, setMethodId,
+  methods, methodsLoading, methodsError, methodId, setMethodId, onAddMethod,
 }: {
   methods: DepositMethodSummary[]; methodsLoading: boolean; methodsError: string
   methodId: string | null; setMethodId: (id: string) => void
+  onAddMethod: () => void
 }) => {
-  const router = useRouter()
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
-      <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">Where should we send it?</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-dark-blue-400 leading-none">Where should we send it?</h2>
+        {/* US-46: stays in the withdrawal flow — previously this exited to the
+            Payouts tab entirely, losing the amount/speed already chosen. */}
+        {methods.length > 0 && (
+          <button className="text-sm text-primary-600 font-medium hover:text-primary-700" onClick={onAddMethod}>
+            + Add a method
+          </button>
+        )}
+      </div>
       <p className="mt-2 text-sm font-light text-gray-500 leading-none">Only verified payout methods can receive a withdrawal.</p>
 
       <div className="mt-6 space-y-3">
@@ -300,7 +310,7 @@ const MethodStep = ({
           // AC-14.08/F-32: empty-selector state — no verified methods available
           <div className="text-center py-6">
             <p className="text-sm text-gray-500 mb-3">You don't have a verified payout method yet.</p>
-            <Button variant="outlined" visual="gray" onClick={() => router.push("/earnings?tab=payouts")}>Add a payout method</Button>
+            <Button variant="outlined" visual="gray" onClick={onAddMethod}>Add a payout method</Button>
           </div>
         ) : (
           methods.map((m) => {
@@ -331,6 +341,167 @@ const MethodStep = ({
   )
 }
 
+// US-46: bank-manual only — Stripe FC/PayPal/Wise/Payoneer all redirect to an
+// external hosted flow regardless of where the "Add" trigger lives, so an
+// in-page modal genuinely keeps the contractor in-flow only for the manual
+// bank-details path. A manually-added account also isn't instantly verified
+// (micro-deposits take up to 2 business days), so it can't be selected in
+// this same session — the modal is explicit about that rather than implying
+// otherwise.
+const ADD_METHOD_COUNTRY_CURRENCY: Record<string, string> = { US: "USD", GB: "GBP", IN: "INR", AU: "AUD", CA: "CAD" }
+const AddBankMethodModal = ({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: () => void }) => {
+  const [form, setForm] = React.useState({ bankAccountName: "", bankAccountNumber: "", bankAccountNumberConfirm: "", bankRoutingNumber: "", bankSortCode: "", bankIfscCode: "", bankBsbNumber: "", bankInstitutionNumber: "", bankTransitNumber: "", bankCountry: "US" })
+  const [submitting, setSubmitting] = React.useState(false)
+  const [error, setError] = React.useState("")
+  const [done, setDone] = React.useState(false)
+
+  const isValidAbaRouting = (routing: string) => {
+    if (!/^\d{9}$/.test(routing)) return false
+    const d = routing.split("").map(Number)
+    return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + 1 * (d[2] + d[5] + d[8])) % 10 === 0
+  }
+  const isValidSortCode = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ""))
+  const isValidIfsc = (v: string) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.toUpperCase())
+  const isValidBsb = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ""))
+  const isValidCaInstitution = (v: string) => /^\d{3}$/.test(v)
+  const isValidCaTransit = (v: string) => /^\d{5}$/.test(v)
+
+  if (!open) return null
+
+  const disabled =
+    !form.bankAccountName.trim() || !form.bankAccountNumber.trim() ||
+    form.bankAccountNumberConfirm !== form.bankAccountNumber ||
+    (form.bankCountry === "US" && !isValidAbaRouting(form.bankRoutingNumber)) ||
+    (form.bankCountry === "GB" && !isValidSortCode(form.bankSortCode)) ||
+    (form.bankCountry === "IN" && !isValidIfsc(form.bankIfscCode)) ||
+    (form.bankCountry === "AU" && !isValidBsb(form.bankBsbNumber)) ||
+    (form.bankCountry === "CA" && (!isValidCaInstitution(form.bankInstitutionNumber) || !isValidCaTransit(form.bankTransitNumber)))
+
+  const submit = async () => {
+    setSubmitting(true)
+    setError("")
+    try {
+      const payload: any = {
+        methodType: "BANK_MANUAL",
+        bankAccountName: form.bankAccountName,
+        bankAccountNumber: form.bankAccountNumber,
+        bankCountry: form.bankCountry,
+        bankCurrency: ADD_METHOD_COUNTRY_CURRENCY[form.bankCountry] ?? "USD",
+        nickname: form.bankAccountName,
+      }
+      switch (form.bankCountry) {
+        case "US": payload.bankRoutingNumber = form.bankRoutingNumber; break
+        case "GB": payload.bankSortCode = form.bankSortCode; break
+        case "IN": payload.bankIfscCode = form.bankIfscCode; break
+        case "AU": payload.bankBsbNumber = form.bankBsbNumber; break
+        case "CA": payload.bankInstitutionNumber = form.bankInstitutionNumber; payload.bankTransitNumber = form.bankTransitNumber; break
+      }
+      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/deposit-methods`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.message ?? "Please check your details and try again."); return }
+      setDone(true)
+      onAdded()
+    } catch {
+      setError("Failed to add account. Please try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        {done ? (
+          <div className="text-center py-4">
+            <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+              <Check className="size-6 text-primary-600" />
+            </div>
+            <h3 className="text-base font-semibold text-dark-blue-400">Account added</h3>
+            <p className="mt-2 text-sm text-gray-500">Two small deposits will arrive within 2 business days to verify this account. It'll be available to withdraw to once verified.</p>
+            <Button className="mt-4 w-full" onClick={onClose}>Done</Button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Add Bank Account</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Country</label>
+                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.bankCountry} onChange={(e) => setForm((f) => ({ ...f, bankCountry: e.target.value }))}>
+                  <option value="US">United States</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="IN">India</option>
+                  <option value="AU">Australia</option>
+                  <option value="CA">Canada</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={form.bankAccountName} onChange={(e) => setForm((f) => ({ ...f, bankAccountName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={form.bankAccountNumber} onChange={(e) => setForm((f) => ({ ...f, bankAccountNumber: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={form.bankAccountNumberConfirm} onChange={(e) => setForm((f) => ({ ...f, bankAccountNumberConfirm: e.target.value }))} />
+                {form.bankAccountNumberConfirm.length > 0 && form.bankAccountNumberConfirm !== form.bankAccountNumber && (
+                  <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
+                )}
+              </div>
+              {form.bankCountry === "US" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Routing Number</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={form.bankRoutingNumber} onChange={(e) => setForm((f) => ({ ...f, bankRoutingNumber: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "GB" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits" value={form.bankSortCode} onChange={(e) => setForm((f) => ({ ...f, bankSortCode: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "IN" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={form.bankIfscCode} onChange={(e) => setForm((f) => ({ ...f, bankIfscCode: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "AU" && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits" value={form.bankBsbNumber} onChange={(e) => setForm((f) => ({ ...f, bankBsbNumber: e.target.value }))} />
+                </div>
+              )}
+              {form.bankCountry === "CA" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={form.bankInstitutionNumber} onChange={(e) => setForm((f) => ({ ...f, bankInstitutionNumber: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Transit Number</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="5 digits" value={form.bankTransitNumber} onChange={(e) => setForm((f) => ({ ...f, bankTransitNumber: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+              {error && <p className="text-sm text-red-600">{error}</p>}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={onClose}>Cancel</Button>
+              <Button variant="filled" visual="primary" size="sm" className="flex-1" disabled={disabled || submitting} onClick={submit}>
+                {submitting ? "Adding…" : "Add Account"}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Step 3: Confirm (US-15/16/17) ────────────────────────────────────────────
 const ConfirmStep = ({ validation, speed, method }: { validation: ValidateAmountResponse | null; speed: "standard" | "instant"; method: DepositMethodSummary | null }) => (
   <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-8">
@@ -342,15 +513,15 @@ const ConfirmStep = ({ validation, speed, method }: { validation: ValidateAmount
     <dl className="mt-6 divide-y divide-gray-200 border border-gray-200 rounded-lg">
       <div className="flex items-center justify-between px-5 py-4">
         <dt className="text-sm font-medium text-gray-500">Withdrawal amount</dt>
-        <dd className="text-sm font-semibold text-dark-blue-400">${validation?.amountUsd ?? "0.00"}</dd>
+        <dd className="text-sm font-semibold text-dark-blue-400">${validation ? parseFloat(validation.amountUsd).toFixed(2) : "0.00"}</dd>
       </div>
       <div className="flex items-center justify-between px-5 py-4">
         <dt className="text-sm font-medium text-gray-500">{speed === "instant" ? "Instant fee" : "Fee"}</dt>
-        <dd className="text-sm font-semibold text-dark-blue-400">−${validation?.feeUsd ?? "0.00"}</dd>
+        <dd className="text-sm font-semibold text-dark-blue-400">−${validation ? parseFloat(validation.feeUsd).toFixed(2) : "0.00"}</dd>
       </div>
       <div className="flex items-center justify-between px-5 py-4 bg-gray-50 rounded-b-lg">
         <dt className="text-base font-bold text-dark-blue-400">You'll receive</dt>
-        <dd className="text-base font-bold text-dark-blue-400">${validation?.netAmountUsd ?? "0.00"}</dd>
+        <dd className="text-base font-bold text-dark-blue-400">${validation ? parseFloat(validation.netAmountUsd).toFixed(2) : "0.00"}</dd>
       </div>
     </dl>
 
@@ -389,11 +560,19 @@ function TransferFundsInner() {
   const [methodsLoading, setMethodsLoading] = React.useState(true)
   const [methodsError, setMethodsError] = React.useState("")
   const [methodId, setMethodId] = React.useState<string | null>(null)
+  const [showAddMethod, setShowAddMethod] = React.useState(false)
 
   const [idempotencyKey, setIdempotencyKey] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
   const [result, setResult] = React.useState<InitiateResponse | null>(null)
   const [submitError, setSubmitError] = React.useState("")
+  // Figma: 4 dedicated full-screen decline/failure states, replacing what
+  // used to be a single generic inline error banner on step 3.
+  const [declineState, setDeclineState] = React.useState<{
+    type: "below_minimum" | "reserve_too_low" | "network_failure" | "method_invalid"
+    reserveUsd?: string
+  } | null>(null)
+  const [ignoreReserve, setIgnoreReserve] = React.useState(false)
 
   const [resending, setResending] = React.useState(false)
   const [resendDisabled, setResendDisabled] = React.useState(false)
@@ -572,31 +751,37 @@ function TransferFundsInner() {
     if (!methodId || !validation) return
     setSubmitting(true)
     setSubmitError("")
+    setDeclineState(null)
     try {
       const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey }),
+        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve }),
       })
       const data = await res.json()
       if (!res.ok) {
-        // AC-17.04/17.05: specific, mapped errors — balance-changed and invalid-method
-        // route back to the relevant step rather than a dead end. These navigate away,
-        // so re-enabling here is safe: the Confirm button isn't visible on steps 1/2,
-        // and a fresh idempotency key is minted when the contractor returns to step 3.
-        setSubmitError(resolveErrorMessage(data, "Something went wrong — please try again."))
-        if (data.errorCode === "ERR_INSUFFICIENT_BALANCE") { loadBalance(); setStep(1); setSubmitting(false) }
-        else if (data.errorCode === "ERR_PAYOUT_METHOD_NOT_FOUND" || data.errorCode === "ERR_PAYOUT_METHOD_UNVERIFIED") { loadMethods(); setStep(2); setSubmitting(false) }
-        // Unmapped/generic failures stay on step 3 with Confirm disabled — only the
-        // explicit Retry control (same idempotency key) or Try Again (fresh flow) can proceed.
+        // AC-17.04/17.05: specific, mapped errors — balance-changed routes back to
+        // step 1 rather than a dead end (fresh idempotency key minted on return to
+        // step 3). Everything else in this class of error is now a dedicated
+        // full-screen decline state (Figma) instead of an inline banner.
+        if (data.errorCode === "ERR_INSUFFICIENT_BALANCE") {
+          setSubmitError(resolveErrorMessage(data, "Something went wrong — please try again."))
+          loadBalance(); setStep(1); setSubmitting(false)
+          return
+        }
+        setSubmitting(false)
+        if (data.errorCode === "ERR_BELOW_MINIMUM_AMOUNT") { setDeclineState({ type: "below_minimum" }); return }
+        if (data.errorCode === "ERR_RESERVE_BALANCE_TOO_LOW") { setDeclineState({ type: "reserve_too_low", reserveUsd: data.reserveUsd }); return }
+        if (data.errorCode === "ERR_PAYOUT_METHOD_NOT_FOUND" || data.errorCode === "ERR_PAYOUT_METHOD_UNVERIFIED") { loadMethods(); setDeclineState({ type: "method_invalid" }); return }
+        setDeclineState({ type: "network_failure" })
         return
       }
       // AC-17.06/EC-47: a 409/replay from the idempotency layer is a success, not an error.
       setResult(data)
       setSubmitting(false)
     } catch {
-      setSubmitError("We couldn't reach the server. Your withdrawal may or may not have been submitted — check your payout history before retrying.")
-      // Network/unknown failure: also stays on step 3 with Confirm disabled (see above).
+      setSubmitting(false)
+      setDeclineState({ type: "network_failure" })
     }
   }
 
@@ -604,6 +789,7 @@ function TransferFundsInner() {
   const tryAgainFresh = () => {
     setSubmitError("")
     setSubmitting(false)
+    setIgnoreReserve(false)
     setStep(1)
   }
 
@@ -671,7 +857,7 @@ function TransferFundsInner() {
             </div>
             <h1 className="mt-5 text-2xl font-bold text-dark-blue-400 leading-none">Check your email</h1>
             <p className="mt-3 text-sm font-light text-gray-500">
-              We sent a confirmation link to <strong>{result.magicLinkSentTo}</strong>. Click it to confirm this ${result.amountUsd} withdrawal — the link expires in 15 minutes. Nothing is sent until you confirm.
+              We sent a confirmation link to <strong>{result.magicLinkSentTo}</strong>. Click it to confirm this ${parseFloat(result.amountUsd).toFixed(2)} withdrawal — the link expires in 15 minutes. Nothing is sent until you confirm.
             </p>
 
             {/* AC-19.01: resend generates a new token and invalidates the previous one.
@@ -692,6 +878,63 @@ function TransferFundsInner() {
               <Button variant="outlined" visual="gray" onClick={() => router.push("/earnings?tab=payouts")}>View Payout History</Button>
               <Button onClick={() => router.push("/earnings?tab=payouts")}>Done</Button>
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Figma: 4 dedicated full-screen decline/failure states (see submit()'s
+  // error-code routing above) — replaces what used to be a single generic
+  // inline banner on step 3 for all of these.
+  if (declineState) {
+    const isDecline = declineState.type === "below_minimum" || declineState.type === "reserve_too_low"
+    const heading = isDecline ? "Your withdrawal was declined." : "Your withdrawal attempt failed."
+    const body =
+      declineState.type === "below_minimum"
+        ? "Your withdrawal is below the minimum amount. Please try again with a higher amount or change your payout threshold in settings."
+        : declineState.type === "reserve_too_low"
+        ? `Your reserve balance is too low. You can either ignore the reserve balance for this transfer, or you can edit the reserve amount in your payout settings.`
+        : declineState.type === "method_invalid"
+        ? "Your selected deposit method is either unverified or unsupported. Please select a different deposit method or verify your selected deposit account."
+        : "This may be due to a temporary network issue. Please try again."
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TopBar current={3} />
+        <div className="px-6 py-[80px]">
+          <div className="max-w-[560px] mx-auto bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-10 text-center">
+            <div className="mx-auto size-12 rounded-full bg-warning-50 flex items-center justify-center">
+              <AlertTriangle className="size-6 text-warning-600" />
+            </div>
+            <h1 className="mt-4 text-xl font-bold text-dark-blue-400 leading-tight">{heading}</h1>
+            <p className="mt-3 text-sm font-light text-gray-500">{body}</p>
+
+            {declineState.type === "below_minimum" && (
+              <div className="mt-8 flex items-center justify-center gap-x-4">
+                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setDeclineState(null); setIgnoreReserve(false); setStep(1) }}>Retry with Higher Amount</button>
+                <Button variant="outlined" visual="gray" onClick={() => router.push("/earnings?tab=payouts")}>Change Payout Threshold</Button>
+              </div>
+            )}
+            {declineState.type === "reserve_too_low" && (
+              <div className="mt-8 flex items-center justify-center gap-x-4">
+                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => router.push("/earnings?tab=payouts")}>Edit Reserve</button>
+                <Button
+                  variant="outlined" visual="gray"
+                  onClick={() => { setIgnoreReserve(true); setDeclineState(null); submit() }}
+                >Ignore Reserve Balance</Button>
+              </div>
+            )}
+            {declineState.type === "network_failure" && (
+              <div className="mt-8 flex items-center justify-center">
+                <Button variant="outlined" visual="gray" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setDeclineState(null); submit() }}>Retry</Button>
+              </div>
+            )}
+            {declineState.type === "method_invalid" && (
+              <div className="mt-8 flex items-center justify-center gap-x-4">
+                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => router.push("/earnings?tab=payouts")}>Verify Deposit Account</button>
+                <Button variant="outlined" visual="gray" onClick={() => { setDeclineState(null); setStep(2) }}>Select a Different Method</Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -724,7 +967,7 @@ function TransferFundsInner() {
               />
             )}
             {step === 2 && (
-              <MethodStep methods={methods} methodsLoading={methodsLoading} methodsError={methodsError} methodId={methodId} setMethodId={setMethodId} />
+              <MethodStep methods={methods} methodsLoading={methodsLoading} methodsError={methodsError} methodId={methodId} setMethodId={setMethodId} onAddMethod={() => setShowAddMethod(true)} />
             )}
             {step === 3 && <ConfirmStep validation={validation} speed={speed} method={method} />}
           </div>
@@ -739,7 +982,18 @@ function TransferFundsInner() {
           )}
 
           {submitError && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div>
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p>{submitError}</p>
+              {/* US-50.03: this is the "Withdrawal Request Failed" terminal state
+                  (submitting stays true deliberately for the generic/unmapped
+                  failure branch — see submit() — so this box persists until the
+                  contractor explicitly acts, matching US-50.04's "no auto-dismiss"). */}
+              {submitting && (
+                <a href="mailto:support@marketeqdigital.com" className="inline-block mt-1.5 text-red-700 underline font-medium">
+                  Contact Support
+                </a>
+              )}
+            </div>
           )}
 
           <div className="mt-6 flex items-center justify-end gap-x-3">
@@ -763,12 +1017,13 @@ function TransferFundsInner() {
               </>
             ) : step === 3 && (
               <Button onClick={submit} disabled={submitting || !validation || !!validationError}>
-                {submitting ? "Submitting…" : `Withdraw $${validation?.amountUsd ?? amount}`}
+                {submitting ? "Submitting…" : `Withdraw $${validation ? parseFloat(validation.amountUsd).toFixed(2) : amount}`}
               </Button>
             )}
           </div>
         </div>
       </div>
+      <AddBankMethodModal open={showAddMethod} onClose={() => setShowAddMethod(false)} onAdded={loadMethods} />
     </div>
   )
 }
