@@ -4,7 +4,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import { exportPrivateKey } from "@/src/crypto/keys"
+import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { getCurrentUser } from "@/utils/auth"
@@ -566,7 +566,20 @@ export function Chats({
         await fetchAndUnwrap()
       } catch (firstErr: any) {
         if (firstErr?.name === "AbortError") return
-        // Key mismatch — delete the stale wrapped key and let the server re-wrap
+        // The wrapped key doesn't match our private key — either a stale wrap
+        // from before a key rotation, or messaging-service holds a public key
+        // that no longer matches our private key. Re-publish our LOCAL public
+        // key first so the server rewraps conversation keys to the keypair we
+        // actually hold, then delete this thread's wrapped key and refetch so
+        // it is re-wrapped fresh.
+        try {
+          await republishPublicKey(getCurrentUser()?.id)
+        } catch (republishErr) {
+          console.warn(
+            "Public-key re-publish before key retry failed",
+            republishErr
+          )
+        }
         try {
           await apiFetch(
             `/api/messaging/conversations/${convId}/key`,
@@ -1872,7 +1885,14 @@ export function Chats({
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
                   <span className="text-sm text-dark-blue-400">
-                    {receiverUser.recentJobTitle || receiverUser.jobTitles?.[0]}
+                    {receiverUser.recentJobTitle ||
+                      (typeof receiverUser.jobTitles?.[0] === "string"
+                        ? receiverUser.jobTitles?.[0]
+                        : (
+                            receiverUser.jobTitles?.[0] as unknown as {
+                              jobTitle?: string
+                            }
+                          )?.jobTitle)}
                   </span>
                 </>
               ) : null}

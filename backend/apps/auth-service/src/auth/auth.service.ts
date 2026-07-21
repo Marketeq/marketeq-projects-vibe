@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  GatewayTimeoutException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -8,6 +9,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
@@ -691,6 +693,39 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * True if the error means the provider was unreachable or too slow to
+   * respond (network error, timeout) rather than a genuine 4xx rejection.
+   */
+  private isProviderUnreachable(error: unknown): boolean {
+    return (
+      axios.isAxiosError(error) &&
+      (!error.response || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')
+    );
+  }
+
+  /**
+   * Classifies a failed outbound OAuth provider call (Google/LinkedIn) and
+   * throws the appropriate exception: a timeout/no-response distinguishes
+   * "provider unreachable" from a genuine 4xx "token/code rejected" case,
+   * so the frontend shows a non-technical "try again" message instead of
+   * a misleading "invalid token" during a provider outage or timeout.
+   * Timeout (504) vs. unreachable (503) is kept distinct at the status-code
+   * level for logs/monitoring, but both use the same user-facing message.
+   */
+  private throwProviderError(error: unknown, provider: 'Google' | 'LinkedIn', invalidMessage: string): never {
+    const unavailableMessage = `${provider} sign-in is unavailable right now. Please try again shortly.`;
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new GatewayTimeoutException(unavailableMessage);
+      }
+      if (!error.response) {
+        throw new ServiceUnavailableException(unavailableMessage);
+      }
+    }
+    throw new UnauthorizedException(invalidMessage);
+  }
+
   async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
     let accessToken = dto.access_token;
     let idToken = dto.id_token ?? dto.credential;
@@ -739,13 +774,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
         idToken = response.data?.id_token ?? idToken;
-      } catch {
-        throw new UnauthorizedException('Invalid Google auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google auth code');
       }
     }
 
@@ -776,11 +812,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { id_token: idToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google token');
       }
 
       if (!tokenInfo?.email || !tokenInfo?.sub) {
@@ -808,11 +845,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { access_token: accessToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google access token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google access token');
       }
 
       aud = tokenInfo.audience ?? tokenInfo.aud ?? tokenInfo.issued_to;
@@ -830,15 +868,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://www.googleapis.com/oauth2/v3/userinfo',
           {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 10000,
           },
         );
         email = email ?? response.data?.email;
         emailVerified = emailVerified ?? response.data?.email_verified;
         firstName = response.data?.given_name;
         lastName = response.data?.family_name;
-      } catch {
+      } catch (error) {
         if (!email) {
-          throw new UnauthorizedException('Invalid Google access token');
+          this.throwProviderError(error, 'Google', 'Invalid Google access token');
         }
       }
 
@@ -967,12 +1006,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
-      } catch {
-        throw new UnauthorizedException('Invalid LinkedIn auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn auth code');
       }
     }
 
@@ -1944,9 +1984,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async fetchLinkedInProfile(
     accessToken: string,
   ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
+    let firstStepUnreachable = false;
+
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
       });
 
       const email = response.data?.email;
@@ -1963,7 +2006,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       if (email) {
         return { email, emailVerified, firstName, lastName };
       }
-    } catch {
+    } catch (error) {
+      firstStepUnreachable = this.isProviderUnreachable(error);
       // fallback below
     }
 
@@ -1976,13 +2020,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             q: 'members',
             projection: '(elements*(handle~))',
           },
+          timeout: 10000,
         },
       );
 
       const email =
         response.data?.elements?.[0]?.['handle~']?.emailAddress ?? undefined;
       return { email };
-    } catch {
+    } catch (error) {
+      if (firstStepUnreachable || this.isProviderUnreachable(error)) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn token');
+      }
       return {};
     }
   }

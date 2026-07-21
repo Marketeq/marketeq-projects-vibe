@@ -14,7 +14,6 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     if (isLoading) return
 
     if (!user) {
-      didOpenModal.current = true
       setPendingRedirect(pathname || "/")
       openAuthModal("sign-in")
       return
@@ -47,6 +46,16 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     routeCheck()
   }, [user, isLoading, pathname])
+
+  // Only arm the "closed without logging in" check once the modal has
+  // actually committed as open — prevents a same-tick race where this
+  // effect reads a stale authModalOpen=false right after routeCheck
+  // requests the modal to open, which would fire router.back() instantly.
+  useEffect(() => {
+    if (authModalOpen && !user && !isLoading) {
+      didOpenModal.current = true
+    }
+  }, [authModalOpen, user, isLoading])
 
   // If user closed the modal without logging in, go back to previous page
   useEffect(() => {
