@@ -2269,18 +2269,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                      screen: same backend call (handleConnectOAuth -> POST
                      /deposit-methods -> verification.oauthUrl -> redirect) and
                      the same Figma layout for all three providers — centered
-                     icon, no title bar, single X close in the corner. */
+                     icon, no title bar, single X close in the corner. Figma places
+                     the provider icon to the left of the heading, side by side —
+                     not centered above it. */
                   <div className="p-6 relative">
                     <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
-                    <div className="flex flex-col items-center pt-4 pb-2 gap-3">
-                      {addForm.methodType === 'PAYPAL' ? <PayPalDefault className="size-10" />
-                        : addForm.methodType === 'WISE' ? <WiseIcon className="size-12" />
-                        : <PayoneerDefault className="size-10" />}
-                      <h3 className="text-base font-semibold text-dark-blue-400 text-center px-2">
+                    <div className="flex items-center pt-4 pb-2 gap-4">
+                      {addForm.methodType === 'PAYPAL' ? <PayPalDefault className="size-14 shrink-0" />
+                        : addForm.methodType === 'WISE' ? <WiseIcon className="size-14 shrink-0" />
+                        : <PayoneerDefault className="size-14 shrink-0" />}
+                      <h3 className="text-base font-semibold text-dark-blue-400">
                         You'll be redirected to {addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'} to securely connect your account.
                       </h3>
-                      <p className="text-xs text-gray-400 text-center">Securely handle your information through a trusted third party.</p>
                     </div>
+                    <p className="text-xs text-gray-400 pb-2">Securely handle your information through a trusted third party.</p>
                     {/* Storybook Buttons/Button pattern, adapted: Figma shows this
                         specific CTA as a solid dark/black button rather than the
                         outlined "GoogleOutlined" style used elsewhere — no
