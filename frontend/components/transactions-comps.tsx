@@ -13,6 +13,7 @@ import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   BarChartSquare02,
@@ -33,6 +34,7 @@ import {
   Mail01,
   MoreHorizontal,
   Plus,
+  RefreshCcw01,
   Search,
   Settings02,
   Trash01,
@@ -1537,18 +1539,18 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         <Badge visual="success" size="sm" className="ml-auto">Verified</Badge>
                       </div>
                     </div>
-                    <Button variant="filled" visual="primary" size="sm" className="w-full" onClick={async () => { await handleSetDefault(verifyState.methodId); setVerifyState(null) }}>Set As Default Deposit Method</Button>
-                    <Button variant="outlined" visual="gray" size="sm" className="w-full" onClick={() => { setVerifyState(null); fetchMethods() }}>← Back to Deposit Methods</Button>
+                    <Button variant="light" visual="primary" size="sm" className="w-full" onClick={async () => { await handleSetDefault(verifyState.methodId); setVerifyState(null) }}>Set As Default Deposit Method</Button>
+                    <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</Button>
                   </div>
                 )}
                 {verifyState.step === 'failed' && (
                   <div className="p-6 text-center space-y-4">
-                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><span className="text-warning-600 text-2xl">⚠</span></div>
+                    <div className="size-12 mx-auto flex items-center justify-center rounded-full bg-warning-50"><AlertTriangle className="size-6 text-warning-600" /></div>
                     <h4 className="text-base font-semibold text-dark-blue-400">Connection Failed</h4>
-                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. This may be due to a temporary network issue. Your account is unaffected — you can try again.</p>
-                    <div className="flex gap-2">
-                      <button className="flex-1 text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>↺ Retry</Button>
+                    <p className="text-sm text-gray-500">We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information.</p>
+                    <div className="flex gap-2 items-center justify-between">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
+                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => setVerifyState(s => s ? {...s, step: 'amounts'} : null)}>Retry</Button>
                     </div>
                   </div>
                 )}
