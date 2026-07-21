@@ -756,8 +756,12 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // see methods.service.ts toDetailItem), so editing means full re-entry,
   // not a diff against hidden values. Starts blank whenever Edit opens on
   // an eligible (BANK_MANUAL, not-yet-verified) method.
-  const [editBankForm, setEditBankForm] = React.useState({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US' })
+  const [editBankForm, setEditBankForm] = React.useState({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: 'US' })
   const [editBankError, setEditBankError] = React.useState('')
+  // Dedicated "Bank Details Updated" / "Unable To Update Bank Info" screens
+  // (Figma) for edits that actually touch bank fields — nickname-only edits
+  // keep the plain toast, since nothing about the bank account changed.
+  const [editBankSaveState, setEditBankSaveState] = React.useState<'success' | 'error' | null>(null)
   // AC-11.01: destructive removal requires an explicit confirmation step — holds
   // the method pending confirmation, not yet deleted.
   const [confirmRemove, setConfirmRemove] = React.useState<any | null>(null)
@@ -1140,23 +1144,10 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     } catch (e) { toast({ title: 'Error', description: 'Failed to update default', variant: 'destructive' }) }
   }
 
-  // SCR-07: warn before changing the primary method when split payout is active —
-  // methods.service.ts's setDefault() silently repoints the schedule's
-  // primaryMethodId, which can leave a stale split configuration.
+  // SCR-07: confirm before replacing the existing default deposit method
+  // (Figma "Make this your default deposit method?").
   const [confirmSetDefault, setConfirmSetDefault] = React.useState<any | null>(null)
-  const requestSetDefault = async (method: any) => {
-    try {
-      const res = await payoutFetch(`/payouts/schedule`)
-      if (res.ok) {
-        const s = await res.json()
-        if (s.splitEnabled && s.primaryMethod?.id !== method.id) {
-          setConfirmSetDefault(method)
-          return
-        }
-      }
-    } catch { /* if the check fails, fall through to the normal set-default flow */ }
-    handleSetDefault(method.id)
-  }
+  const requestSetDefault = (method: any) => setConfirmSetDefault(method)
 
   // US-59/62/63: full bank-detail replacement, only offered for BANK_MANUAL
   // methods that haven't completed verification yet — see updateMethod() in
@@ -1167,18 +1158,25 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     if (!editingMethod) return
     setEditBankError('')
     try {
+      const editRegion = detectBankRegion(editBankForm.bankCountry)
+      const submittingBankDetails = editingBankDetails && (
+        editBankForm.bankAccountNumber.trim() || editBankForm.bankIban.trim()
+      )
       const payload: any = { nickname: editingMethod.nickname ?? '' }
-      if (editingBankDetails && editBankForm.bankAccountNumber.trim()) {
+      if (submittingBankDetails) {
         payload.bankAccountName = editBankForm.bankAccountName
-        payload.bankAccountNumber = editBankForm.bankAccountNumber
         payload.bankCountry = editBankForm.bankCountry
         payload.bankCurrency = bankCountryCurrency(editBankForm.bankCountry)
-        switch (editBankForm.bankCountry) {
+        if (editRegion !== 'SEPA') payload.bankAccountNumber = editBankForm.bankAccountNumber
+        switch (editRegion) {
           case 'US': payload.bankRoutingNumber = editBankForm.bankRoutingNumber; break
           case 'GB': payload.bankSortCode = editBankForm.bankSortCode; break
           case 'IN': payload.bankIfscCode = editBankForm.bankIfscCode; break
           case 'AU': payload.bankBsbNumber = editBankForm.bankBsbNumber; break
           case 'CA': payload.bankInstitutionNumber = editBankForm.bankInstitutionNumber; payload.bankTransitNumber = editBankForm.bankTransitNumber; break
+          case 'JP': payload.bankCode = editBankForm.bankCode; payload.bankBranchCode = editBankForm.bankBranchCode; break
+          case 'SEPA': payload.bankIban = editBankForm.bankIban; if (editBankForm.bankSwiftBic) payload.bankSwiftBic = editBankForm.bankSwiftBic; break
+          case 'SWIFT': payload.bankSwiftBic = editBankForm.bankSwiftBic; break
         }
       }
       const res = await payoutFetch(`/deposit-methods/${editingMethod.id}`, {
@@ -1193,15 +1191,24 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           // account, since that's exactly what happened underneath.
           setMicroAmounts({ amount1: '', amount2: '' })
           setVerifyState({ methodId: editingMethod.id, displayLabel: data.displayLabel ?? editingMethod.displayLabel, bankName: editBankForm.bankAccountName || '', step: 'instructions', source: 'manual' })
+          setEditingMethod(null)
+        } else if (submittingBankDetails) {
+          setEditBankSaveState('success')
         } else {
           toast({ title: 'Account updated' })
+          setEditingMethod(null)
         }
-        setEditingMethod(null)
         fetchMethods()
+      } else if (submittingBankDetails) {
+        setEditBankError(bankErrorMessage(data))
+        setEditBankSaveState('error')
       } else {
         setEditBankError(bankErrorMessage(data))
       }
-    } catch (e) { setEditBankError('Failed to update account. Please try again.') }
+    } catch (e) {
+      setEditBankError('Failed to update account. Please try again.')
+      if (editingBankDetails) setEditBankSaveState('error')
+    }
   }
 
   // AC-05.04/05.05/05.06/05.08: wrong amounts decrement an attempt counter and, on the
@@ -1643,7 +1650,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Button variant="link" visual="gray" size="sm" onClick={() => { if (defaultMethod) { setEditingMethod({...defaultMethod}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: defaultMethod.bankCountry || 'US' }); setEditBankError('') } }}>Edit</Button>
+                <Button variant="link" visual="gray" size="sm" onClick={() => { if (defaultMethod) { setEditingMethod({...defaultMethod}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: defaultMethod.bankCountry || 'US' }); setEditBankError(''); setEditBankSaveState(null) } }}>Edit</Button>
               </div>
               {methodsLoading ? (
                 <div className="h-10 bg-gray-100 rounded animate-pulse" />
@@ -1734,7 +1741,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       Make Default
                     </Button>
                   ) : null}
-                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setEditingMethod({...m}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: m.bankCountry || 'US' }); setEditBankError('') }}>
+                  <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setEditingMethod({...m}); setEditBankForm({ bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankCountry: m.bankCountry || 'US' }); setEditBankError(''); setEditBankSaveState(null) }}>
                     <Edit03 className="size-4" />
                   </IconButton>
                   <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setConfirmRemove(m)}>
@@ -2613,18 +2620,22 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
             </div>
           )}
 
-          {/* Set Primary Confirmation Dialog — split-impact warning (SCR-07) */}
+          {/* Set Default Confirmation Dialog (SCR-07). setDefault() in
+              methods.service.ts only flips isDefault flags on deposit
+              methods — it never touches payout_schedules.primaryMethodId
+              (that's only ever set explicitly via PATCH /payouts/schedule),
+              so changing the default does not disable split payout. */}
           {confirmSetDefault && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConfirmSetDefault(null)}>
               <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Change Primary Method?</h3>
-                <p className="text-sm text-gray-500 mb-5">Changing your primary method will disable split payout. You can reconfigure split payout afterward.</p>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Make this your default deposit method?</h3>
+                <p className="text-sm text-gray-500 mb-5">This method will become your primary destination for all payouts, unless you have split payout enabled. Your existing default method will be replaced.</p>
                 <div className="flex gap-2">
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setConfirmSetDefault(null)}>Cancel</Button>
                   <Button
                     variant="filled" visual="primary" size="sm" className="flex-1"
                     onClick={async () => { const id = confirmSetDefault.id; setConfirmSetDefault(null); await handleSetDefault(id) }}
-                  >Change Primary</Button>
+                  >Yes, make default</Button>
                 </div>
               </div>
             </div>
@@ -2634,8 +2645,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           {confirmRemove && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !removing && setConfirmRemove(null)}>
               <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Remove Payout Method</h3>
-                <p className="text-sm text-gray-500 mb-4">This action is permanent.</p>
+                <h3 className="text-base font-semibold text-dark-blue-400 mb-1">Remove Deposit Method?</h3>
+                <p className="text-sm text-gray-500 mb-4">Are you sure you want to remove this payout method? Once removed, funds will no longer be routed to this account.</p>
                 <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 mb-4">
                   {getMethodIcon(confirmRemove)}
                   <span className="text-sm font-medium text-dark-blue-400">{getMethodLabel(confirmRemove).name}</span>
@@ -2679,8 +2690,46 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
           {/* Edit Method Dialog */}
           {editingMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditingMethod(null)}>
-              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto relative" onClick={e => e.stopPropagation()}>
+                {editBankSaveState === 'success' ? (
+                  /* Figma "Bank Details Updated" */
+                  <div className="text-center py-4">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-5 text-primary-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Bank Details Updated</h3>
+                    <p className="mt-2 text-sm text-gray-500">You updated your bank account information successfully.</p>
+                    <p className="mt-1 text-xs text-gray-400">Changes may take up to 3 days to reflect.</p>
+                  </div>
+                ) : editBankSaveState === 'error' ? (
+                  /* Figma "Unable To Update Bank Info" */
+                  <div className="text-center py-4">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <AlertTriangle className="size-5 text-red-600" />
+                    </div>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Unable To Update Bank Info</h3>
+                    <p className="mt-1 text-sm text-gray-500">Please check your details and try again.</p>
+                    <div className="mt-4 text-left rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <p className="text-xs font-semibold text-dark-blue-400 mb-1.5">Please check that:</p>
+                      <ul className="text-xs text-gray-500 space-y-1 list-disc list-inside">
+                        <li>All fields are filled correctly</li>
+                        <li>Account and routing numbers follow the correct format</li>
+                        <li>Bank codes like SWIFT, IBAN, or IFSC are valid</li>
+                        <li>The country selected matches the format used</li>
+                        <li>No special characters are used in bank name</li>
+                      </ul>
+                    </div>
+                    {editBankError && <p className="mt-3 text-sm text-red-600">{editBankError}</p>}
+                    <div className="flex gap-2 mt-5">
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => { setEditingMethod(null); setEditBankSaveState(null) }}>Cancel</Button>
+                      <Button variant="filled" visual="primary" size="sm" className="flex-1" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setEditBankSaveState(null); setEditBankError('') }}>Retry</Button>
+                    </div>
+                  </div>
+                ) : (
+                <>
                 <h3 className="text-base font-semibold text-dark-blue-400 mb-4">Edit Account</h3>
                 <div className="space-y-3">
                   <div>
@@ -2694,37 +2743,45 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
                   {/* US-59: bank details are re-entered fresh, never pre-filled — the
                       backend never returns raw account numbers back out (security). */}
-                  {editingBankDetails ? (
+                  {editingBankDetails ? (() => {
+                    const editRegion = detectBankRegion(editBankForm.bankCountry)
+                    return (
                     <div className="space-y-3 pt-2 border-t border-gray-200">
                       <p className="text-xs text-gray-500">
                         To correct your bank account details, re-enter them below. This restarts verification — two small deposits will arrive within 2 business days. Leave blank to keep your current (unverified) details.
                       </p>
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Country</label>
-                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={editBankForm.bankCountry} onChange={e => setEditBankForm(f => ({...f, bankCountry: e.target.value}))}>
-                          <option value="US">United States</option>
-                          <option value="GB">United Kingdom</option>
-                          <option value="IN">India</option>
-                          <option value="AU">Australia</option>
-                          <option value="CA">Canada</option>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={editBankForm.bankCountry} onChange={e => setEditBankForm(f => ({...f, bankCountry: e.target.value, bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: ''}))}>
+                          <option value="US">🇺🇸 United States</option>
+                          <option value="DE">🇪🇺 Europe</option>
+                          <option value="IN">🇮🇳 India</option>
+                          <option value="AU">🇦🇺 Australia</option>
+                          <option value="GB">🇬🇧 United Kingdom</option>
+                          <option value="JP">🇯🇵 Japan</option>
+                          <option value="SG">🌏 Asia</option>
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Account Holder Name</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Doe" value={editBankForm.bankAccountName} onChange={e => setEditBankForm(f => ({...f, bankAccountName: e.target.value}))} />
+                        <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank of America" value={editBankForm.bankAccountName} onChange={e => setEditBankForm(f => ({...f, bankAccountName: e.target.value}))} />
                       </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={editBankForm.bankAccountNumber} onChange={e => setEditBankForm(f => ({...f, bankAccountNumber: e.target.value}))} />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={editBankForm.bankAccountNumberConfirm} onChange={e => setEditBankForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
-                        {editBankForm.bankAccountNumberConfirm.length > 0 && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber && (
-                          <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
-                        )}
-                      </div>
-                      {editBankForm.bankCountry === 'US' && (
+                      {editRegion !== 'SEPA' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Up to 17 digits" value={editBankForm.bankAccountNumber} onChange={e => setEditBankForm(f => ({...f, bankAccountNumber: e.target.value}))} />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Confirm Account Number</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Re-enter account number" value={editBankForm.bankAccountNumberConfirm} onChange={e => setEditBankForm(f => ({...f, bankAccountNumberConfirm: e.target.value}))} />
+                            {editBankForm.bankAccountNumberConfirm.length > 0 && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber && (
+                              <p className="text-xs text-red-500 mt-1">Account numbers don't match.</p>
+                            )}
+                          </div>
+                        </>
+                      )}
+                      {editRegion === 'US' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Routing Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="9-digit ABA routing number" value={editBankForm.bankRoutingNumber} onChange={e => setEditBankForm(f => ({...f, bankRoutingNumber: e.target.value}))} />
@@ -2733,7 +2790,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'GB' && (
+                      {editRegion === 'GB' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Sort Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 12-34-56" value={editBankForm.bankSortCode} onChange={e => setEditBankForm(f => ({...f, bankSortCode: e.target.value}))} />
@@ -2742,7 +2799,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'IN' && (
+                      {editRegion === 'IN' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">IFSC Code</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="e.g. HDFC0001234" value={editBankForm.bankIfscCode} onChange={e => setEditBankForm(f => ({...f, bankIfscCode: e.target.value}))} />
@@ -2751,7 +2808,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'AU' && (
+                      {editRegion === 'AU' && (
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">BSB Number</label>
                           <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="6 digits, e.g. 123-456" value={editBankForm.bankBsbNumber} onChange={e => setEditBankForm(f => ({...f, bankBsbNumber: e.target.value}))} />
@@ -2760,7 +2817,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           )}
                         </div>
                       )}
-                      {editBankForm.bankCountry === 'CA' && (
+                      {editRegion === 'CA' && (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="text-xs text-gray-500 mb-1 block">Institution Number</label>
@@ -2778,8 +2835,44 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           </div>
                         </div>
                       )}
+                      {editRegion === 'JP' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Bank Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="4 digits" value={editBankForm.bankCode} onChange={e => setEditBankForm(f => ({...f, bankCode: e.target.value}))} />
+                            {editBankForm.bankCode.length > 0 && !isValidJpBankCode(editBankForm.bankCode) && <p className="text-xs text-red-500 mt-1">4 digits required.</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Branch Code</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="3 digits" value={editBankForm.bankBranchCode} onChange={e => setEditBankForm(f => ({...f, bankBranchCode: e.target.value}))} />
+                            {editBankForm.bankBranchCode.length > 0 && !isValidJpBranchCode(editBankForm.bankBranchCode) && <p className="text-xs text-red-500 mt-1">3 digits required.</p>}
+                          </div>
+                        </div>
+                      )}
+                      {editRegion === 'SEPA' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">IBAN</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter your full IBAN (starts with country code, e.g., DE...)" value={editBankForm.bankIban} onChange={e => setEditBankForm(f => ({...f, bankIban: e.target.value}))} />
+                            {editBankForm.bankIban.length > 0 && !isValidIban(editBankForm.bankIban) && <p className="text-xs text-red-500 mt-1">Invalid IBAN.</p>}
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">SWIFT/BIC Number (optional)</label>
+                            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter 8 or 11 character SWIFT/BIC Code" value={editBankForm.bankSwiftBic} onChange={e => setEditBankForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                            {editBankForm.bankSwiftBic.length > 0 && !isValidSwiftBic(editBankForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Invalid SWIFT/BIC code.</p>}
+                          </div>
+                        </>
+                      )}
+                      {editRegion === 'SWIFT' && (
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">SWIFT Code</label>
+                          <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase" placeholder="Enter 8 or 11 character SWIFT/BIC Code" value={editBankForm.bankSwiftBic} onChange={e => setEditBankForm(f => ({...f, bankSwiftBic: e.target.value}))} />
+                          {editBankForm.bankSwiftBic.length > 0 && !isValidSwiftBic(editBankForm.bankSwiftBic) && <p className="text-xs text-red-500 mt-1">Invalid SWIFT/BIC code.</p>}
+                        </div>
+                      )}
                     </div>
-                  ) : editingMethod.methodType === 'BANK_MANUAL' && editingMethod.verificationStatus === 'verified' ? (
+                    )
+                  })() : editingMethod.methodType === 'BANK_MANUAL' && editingMethod.verificationStatus === 'verified' ? (
                     <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
                       This account is verified and its bank details can't be changed here — remove it and add a new one instead.
                     </p>
@@ -2791,22 +2884,31 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setEditingMethod(null)}>Cancel</Button>
                   <Button
                     variant="filled" visual="primary" size="sm" className="flex-1"
-                    disabled={
-                      editingBankDetails && editBankForm.bankAccountNumber.trim().length > 0 && (
-                        editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber ||
+                    disabled={(() => {
+                      if (!editingBankDetails) return false
+                      const editRegion = detectBankRegion(editBankForm.bankCountry)
+                      const touchedBankDetails = editBankForm.bankAccountNumber.trim().length > 0 || editBankForm.bankIban.trim().length > 0
+                      if (!touchedBankDetails) return false
+                      return (
                         !editBankForm.bankAccountName.trim() ||
-                        (editBankForm.bankCountry === 'US' && !isValidAbaRouting(editBankForm.bankRoutingNumber)) ||
-                        (editBankForm.bankCountry === 'GB' && !isValidSortCode(editBankForm.bankSortCode)) ||
-                        (editBankForm.bankCountry === 'IN' && !isValidIfsc(editBankForm.bankIfscCode)) ||
-                        (editBankForm.bankCountry === 'AU' && !isValidBsb(editBankForm.bankBsbNumber)) ||
-                        (editBankForm.bankCountry === 'CA' && (!isValidCaInstitution(editBankForm.bankInstitutionNumber) || !isValidCaTransit(editBankForm.bankTransitNumber)))
+                        (editRegion !== 'SEPA' && editBankForm.bankAccountNumberConfirm !== editBankForm.bankAccountNumber) ||
+                        (editRegion === 'US' && !isValidAbaRouting(editBankForm.bankRoutingNumber)) ||
+                        (editRegion === 'GB' && !isValidSortCode(editBankForm.bankSortCode)) ||
+                        (editRegion === 'IN' && !isValidIfsc(editBankForm.bankIfscCode)) ||
+                        (editRegion === 'AU' && !isValidBsb(editBankForm.bankBsbNumber)) ||
+                        (editRegion === 'CA' && (!isValidCaInstitution(editBankForm.bankInstitutionNumber) || !isValidCaTransit(editBankForm.bankTransitNumber))) ||
+                        (editRegion === 'JP' && (!isValidJpBankCode(editBankForm.bankCode) || !isValidJpBranchCode(editBankForm.bankBranchCode))) ||
+                        (editRegion === 'SEPA' && !isValidIban(editBankForm.bankIban)) ||
+                        (editRegion === 'SWIFT' && !isValidSwiftBic(editBankForm.bankSwiftBic))
                       )
-                    }
+                    })()}
                     onClick={handleUpdateMethod}
                   >
                     Save Changes
                   </Button>
                 </div>
+                </>
+                )}
               </div>
             </div>
           )}
