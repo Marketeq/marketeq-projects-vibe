@@ -1,10 +1,13 @@
 import * as crypto from "crypto";
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  UnprocessableEntityException,
+  OnModuleInit,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { EntityManager, In, Repository } from "typeorm";
@@ -15,7 +18,8 @@ import { Thread } from "../threads/entities/thread.entity";
 import { Message } from "../messages/entities/message.entity";
 
 @Injectable()
-export class EncryptionService {
+export class EncryptionService implements OnModuleInit {
+  private readonly logger = new Logger(EncryptionService.name);
   private readonly serverKey: Buffer;
 
   constructor(
@@ -35,6 +39,58 @@ export class EncryptionService {
       throw new Error("E2EE_SERVER_SECRET environment variable is required");
     }
     this.serverKey = crypto.createHash("sha256").update(secret).digest();
+  }
+
+  /**
+   * Report at boot whether E2EE_SERVER_SECRET can still decrypt the conversation
+   * key material already in the database.
+   *
+   * The secret is only ever read from the environment, so a wrong value is
+   * delivered exactly like a right one — nothing fails until a user opens an
+   * affected conversation, and then it surfaces as a generic 500 per thread with
+   * no hint that the secret is the cause. Sampling here turns a silent,
+   * per-conversation mystery into one loud line at startup.
+   *
+   * Deliberately does not throw: threads keyed under the current secret still
+   * work, and refusing to boot would take messaging down for everyone.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const sample = await this.rawKeyRepo.find({ take: 25 });
+      if (!sample.length) {
+        this.logger.log("E2EE key check: no conversation key material stored yet");
+        return;
+      }
+
+      let readable = 0;
+      for (const record of sample) {
+        try {
+          this.decryptServerSide(record.encryptedAesKey);
+          readable += 1;
+        } catch {
+          /* counted below */
+        }
+      }
+
+      const unreadable = sample.length - readable;
+      if (unreadable === 0) {
+        this.logger.log(
+          `E2EE key check: all ${sample.length} sampled conversation keys decrypt correctly`,
+        );
+        return;
+      }
+
+      this.logger.error(
+        `E2EE key check: ${unreadable}/${sample.length} sampled conversation keys FAILED to decrypt. ` +
+          "E2EE_SERVER_SECRET does not match the value these rows were encrypted with, so affected " +
+          "conversations cannot be opened. Restore the previous secret to recover them — a new secret " +
+          "cannot decrypt existing key material.",
+      );
+    } catch (err) {
+      this.logger.warn(
+        `E2EE key check could not run: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   async storePublicKey(
@@ -125,7 +181,22 @@ export class EncryptionService {
     const rawKeyRecord = await this.rawKeyRepo.findOne({ where: { threadId } });
 
     if (rawKeyRecord) {
-      aesKeyBuffer = this.decryptServerSide(rawKeyRecord.encryptedAesKey);
+      try {
+        aesKeyBuffer = this.decryptServerSide(rawKeyRecord.encryptedAesKey);
+      } catch (err) {
+        // AES-GCM auth-tag failure: the stored key material was encrypted with a
+        // different E2EE_SERVER_SECRET. This escaped as an unhandled 500, which
+        // reads as a transient outage and hides a permanent, config-level cause.
+        this.logger.error(
+          `Conversation key for thread ${threadId} cannot be decrypted with the current ` +
+            "E2EE_SERVER_SECRET. This is a secret mismatch, not a transient fault; the previous " +
+            "secret is required to recover this thread. " +
+            `(${err instanceof Error ? err.message : String(err)})`,
+        );
+        throw new UnprocessableEntityException(
+          "This conversation's encryption key cannot be recovered with the server's current key material.",
+        );
+      }
     } else {
       // Minting a fresh AES key is only correct for a thread that has never
       // carried a message. If messages already exist they were encrypted under
