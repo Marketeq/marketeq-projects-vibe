@@ -2272,7 +2272,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                      icon, no title bar, single X close in the corner. Figma places
                      the provider icon to the left of the heading, side by side —
                      not centered above it. */
-                  <div className="p-8 relative min-h-[520px] flex flex-col">
+                  <div className="p-8 relative flex flex-col">
                     <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     <div className="flex items-center pt-6 pb-3 gap-4">
                       {addForm.methodType === 'PAYPAL' ? <PayPalDefault className="size-14 shrink-0" />
@@ -2283,7 +2283,6 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       </h3>
                     </div>
                     <p className="text-xs text-gray-400 pb-2">Securely handle your information through a trusted third party.</p>
-                    <div className="grow" />
                     {/* Storybook Buttons/Button pattern, adapted: Figma shows this
                         specific CTA as a solid dark/black button rather than the
                         outlined "GoogleOutlined" style used elsewhere — no
@@ -2293,7 +2292,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         sizing behavior from the component, not a raw <button>). */}
                     <Button
                       variant="filled" visual="gray" size="sm"
-                      className="w-full mt-2 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
+                      className="w-full mt-6 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                       disabled={!addForm.bankConsent || oauthConnecting}
                       onClick={() => handleConnectOAuth(addForm.methodType as 'PAYPAL' | 'WISE' | 'PAYONEER')}
                     >{oauthConnecting ? 'Connecting…' : `Continue To ${addForm.methodType === 'PAYPAL' ? 'PayPal' : addForm.methodType === 'WISE' ? 'Wise' : 'Payoneer'}`}</Button>
