@@ -11,6 +11,7 @@ import { formatDistanceToNowStrict } from "date-fns"
 import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { useToast } from "@/components/ui"
+import { QRCodeSVG } from "qrcode.react"
 import {
   AlertCircle,
   AlertTriangle,
@@ -136,6 +137,40 @@ const PayoneerIcon = ({ className }: { className?: string }) => (
     <img src="/bank-logos/payoneer.png" className="w-9 h-9 object-contain" alt="Payoneer" />
   </div>
 )
+
+// ─── Crypto wallet provider display metadata (US-09/PS-11). Fee/token text
+// is cosmetic marketing copy (mirrors the existing hardcoded "Transfer in
+// 1-3 business days" pattern above), matching Figma exactly — not derived
+// from the backend registry, which only carries the technical network/token
+// support matrix. Icons use real brand logos where Simple Icons hosts them
+// (Binance, Coinbase, Trezor — confirmed reachable); the rest don't have a
+// hosted brand icon available, so they fall back to a colored monogram
+// badge in the provider's brand color rather than one shared placeholder
+// icon reused across every row.
+const CRYPTO_PROVIDER_META: Record<string, { tokensText: string; feeText: string; bg: string; letter: string; cdnSlug?: string }> = {
+  RAMP:       { tokensText: 'BTC, ETH, USDC',        feeText: '0.49–2.9% + network fee', bg: '#0FA968', letter: 'R' },
+  TRANSAK:    { tokensText: '100+ tokens supported', feeText: '0.5–1.5% + network fee',   bg: '#2F6FED', letter: 'T' },
+  CRYPTO_COM: { tokensText: '100+ tokens supported', feeText: '0.5–1.5% + network fee',   bg: '#12284D', letter: 'C' },
+  COINBASE:   { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#0052FF', letter: 'C', cdnSlug: 'coinbase' },
+  METAMASK:   { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#F6851B', letter: 'M' },
+  LEDGER:     { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#000000', letter: 'L' },
+  TREZOR:     { tokensText: 'BTC, ETH, USDC',        feeText: '1.49% + network fee',      bg: '#0A0A0A', letter: 'T', cdnSlug: 'trezor' },
+  KRAKEN:     { tokensText: 'BTC, ETH',              feeText: '0.9% + network fee',       bg: '#5741D9', letter: 'K' },
+  BINANCE:    { tokensText: 'BTC, ETH, USDT',        feeText: '0–0.1% + P2P margin',      bg: '#F0B90B', letter: 'B', cdnSlug: 'binance' },
+}
+const CryptoProviderIcon = ({ provider, className }: { provider: string; className?: string }) => {
+  const meta = CRYPTO_PROVIDER_META[provider]
+  if (!meta) return <div className={cn("size-10 rounded-lg bg-gray-100 shrink-0", className)} />
+  return (
+    <div className={cn("size-10 rounded-lg flex items-center justify-center overflow-hidden shrink-0", className)} style={{ backgroundColor: meta.bg }}>
+      {meta.cdnSlug ? (
+        <img src={`https://cdn.simpleicons.org/${meta.cdnSlug}/ffffff`} className="w-1/2 h-1/2 object-contain" alt={meta.letter} />
+      ) : (
+        <span className="text-white text-sm font-bold">{meta.letter}</span>
+      )}
+    </div>
+  )
+}
 
 const BANK_LOGOS: Record<string, string> = {
   'chase':           '/bank-logos/chase.png',
@@ -745,12 +780,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const [cryptoProviders, setCryptoProviders] = React.useState<any[]>([])
   const [cryptoProvidersLoading, setCryptoProvidersLoading] = React.useState(false)
   // US-64: dedicated connecting/success/failure screens, not just a button
-  // label + toast + silent close.
-  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details' | 'success' | 'error'>('provider')
+  // label + toast + silent close. 'qr' and 'paste' are the two WalletConnect
+  // presentations of the same session (PS-10) offered alongside manual
+  // address entry — 'connecting' covers both the manual-submit spinner and
+  // the brief moment after a WalletConnect session reports 'connected'.
+  const [cryptoStep, setCryptoStep] = React.useState<'provider' | 'details' | 'qr' | 'paste' | 'connecting' | 'success' | 'error'>('provider')
   const [cryptoForm, setCryptoForm] = React.useState({ provider: '', network: '', currency: '', address: '' })
   const [cryptoSubmitting, setCryptoSubmitting] = React.useState(false)
   const [cryptoError, setCryptoError] = React.useState('')
   const [cryptoResult, setCryptoResult] = React.useState<{ walletAddressLast6?: string; network?: string; token?: string; conversionDisplay?: string } | null>(null)
+  const [cryptoWcSession, setCryptoWcSession] = React.useState<{ sessionId: string; wcUri: string; expiresAt: string } | null>(null)
+  const [cryptoWcConsent, setCryptoWcConsent] = React.useState(false)
   const selectedCryptoProvider = cryptoProviders.find(p => p.provider === cryptoForm.provider)
   const selectedCryptoNetwork = selectedCryptoProvider?.networks?.find((n: any) => n.network === cryptoForm.network)
 
@@ -764,9 +804,65 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     finally { setCryptoProvidersLoading(false) }
   }, [cryptoProviders.length])
 
+  // ─── WalletConnect session (PS-10/PS-11) — shared by the QR-scan and
+  // paste-link screens, since they're two presentations of the same
+  // underlying session, not two separate connection mechanisms.
+  const startWalletConnectSession = React.useCallback(async () => {
+    setCryptoError('')
+    try {
+      const res = await payoutFetch(`/deposit-methods/crypto/walletconnect-session`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cryptoProvider: cryptoForm.provider, network: cryptoForm.network }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setCryptoWcSession({ sessionId: data.sessionId, wcUri: data.wcUri, expiresAt: data.expiresAt })
+      } else {
+        setCryptoError(data.message ?? 'Unable to start wallet connection.')
+        setCryptoStep('error')
+      }
+    } catch {
+      setCryptoError('Unable to start wallet connection.')
+      setCryptoStep('error')
+    }
+  }, [cryptoForm.provider, cryptoForm.network])
+
+  React.useEffect(() => {
+    if ((cryptoStep === 'qr' || cryptoStep === 'paste') && !cryptoWcSession) {
+      startWalletConnectSession()
+    }
+  }, [cryptoStep, cryptoWcSession, startWalletConnectSession])
+
+  React.useEffect(() => {
+    if ((cryptoStep !== 'qr' && cryptoStep !== 'paste') || !cryptoWcSession) return
+    const poll = async () => {
+      try {
+        const res = await payoutFetch(`/deposit-methods/crypto/walletconnect-session/${cryptoWcSession.sessionId}`)
+        const data = await res.json()
+        if (data.status === 'connected') {
+          setCryptoResult({ walletAddressLast6: data.walletAddressLast6, network: cryptoForm.network, token: cryptoForm.currency, conversionDisplay: data.conversionDisplay })
+          setCryptoWcSession(null)
+          fetchMethods()
+          setCryptoStep('success')
+        } else if (data.status === 'rejected') {
+          setCryptoError('The connection request was declined in your wallet app.')
+          setCryptoWcSession(null)
+          setCryptoStep('error')
+        } else if (data.status === 'expired') {
+          setCryptoError('This connection link expired before a wallet approved it. Please try again.')
+          setCryptoWcSession(null)
+          setCryptoStep('error')
+        }
+      } catch { /* transient network error — next poll retries */ }
+    }
+    const interval = setInterval(poll, 3000)
+    return () => clearInterval(interval)
+  }, [cryptoStep, cryptoWcSession, cryptoForm.network, cryptoForm.currency])
+
   const handleAddCryptoWallet = async () => {
     setCryptoSubmitting(true)
     setCryptoError('')
+    setCryptoStep('connecting')
     try {
       const res = await payoutFetch(`/deposit-methods`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1846,7 +1942,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
           {/* Add Method Dialog — multi-step */}
           {showAddMethod && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setShowAddMethod(false); setAddForm({ methodType: 'PICK', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankIban: '', bankSwiftBic: '', bankCode: '', bankBranchCode: '', bankClabe: '', bankCnapsCode: '', bankBik: '', bankCountry: 'US', bankCountrySearch: '', bankCountryOpen: false, bankCurrency: 'USD', accountType: 'CHECKING', nickname: '', bankConsent: false }); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError(''); setCryptoResult(null); setCryptoWcSession(null); setCryptoWcConsent(false); }}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-xl overflow-hidden relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Step 1: Pick method */}
                 {!addForm.methodType || addForm.methodType === 'PICK' ? (
@@ -2303,50 +2399,55 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     </label>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'provider' ? (
-                  /* Step 2d.1: Crypto — provider selection (AC-09.01) */
+                  /* Step 2d.1: Crypto — "Connect Your Wallet" provider list (AC-09.01) */
                   <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
-                      <h3 className="text-base font-semibold text-dark-blue-400">Connect Crypto Wallet</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-base font-semibold text-dark-blue-400">Connect Your Wallet</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
-                    <p className="text-xs text-gray-400 mb-4">Select the exchange or wallet provider you want to receive crypto payouts through.</p>
+                    <p className="text-xs text-gray-400 mb-4">Select your preferred wallet to securely receive crypto payouts.</p>
                     {cryptoProvidersLoading ? (
-                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />)}</div>
+                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />)}</div>
                     ) : cryptoProviders.length === 0 ? (
                       <div className="text-sm text-gray-400 text-center py-6">Provider list unavailable — please try again.</div>
                     ) : (
-                      <div className="space-y-2 max-h-80 overflow-y-auto">
-                        {cryptoProviders.map((p: any) => (
-                          <div
-                            key={p.provider}
-                            className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 hover:border-primary-300 cursor-pointer"
-                            onClick={() => {
-                              const firstNetwork = p.networks?.[0]
-                              setCryptoForm({ provider: p.provider, network: firstNetwork?.network ?? '', currency: firstNetwork?.tokens?.[0] ?? '', address: '' })
-                              setCryptoStep('details')
-                            }}
-                          >
-                            <div className="size-8 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">{p.displayName?.slice(0, 2).toUpperCase()}</div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-dark-blue-400">{p.displayName}</p>
-                              <p className="text-xs text-gray-400">{p.networks?.map((n: any) => n.network).join(', ')}</p>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {cryptoProviders.map((p: any) => {
+                          const meta = CRYPTO_PROVIDER_META[p.provider]
+                          return (
+                            <div key={p.provider} className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200">
+                              <CryptoProviderIcon provider={p.provider} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-dark-blue-400">{p.displayName}</p>
+                                <p className="text-xs text-gray-400">{meta?.tokensText ?? p.networks?.map((n: any) => n.network).join(', ')}</p>
+                                {meta?.feeText && <p className="text-xs text-gray-400">{meta.feeText}</p>}
+                              </div>
+                              <Button
+                                variant="outlined" visual="gray" size="sm"
+                                onClick={() => {
+                                  setCryptoForm({ provider: p.provider, network: p.defaultNetwork ?? p.networks?.[0]?.network ?? '', currency: p.defaultToken ?? p.networks?.[0]?.tokens?.[0] ?? '', address: '' })
+                                  setCryptoWcSession(null); setCryptoWcConsent(false); setCryptoError('')
+                                  setCryptoStep('details')
+                                }}
+                              >Connect</Button>
                             </div>
-                            <Button variant="outlined" visual="gray" size="sm">Select</Button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'details' ? (
-                  /* Step 2d.2: Crypto — network/currency/address (AC-09.02/09.03/09.04) */
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></IconButton>
-                      <h3 className="text-base font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
-                      <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => { setShowAddMethod(false); setCryptoStep('provider') }}><X className="size-4" /></IconButton>
+                  /* Step 2d.2: Crypto — "Enter your wallet address" (AC-09.02/09.03/09.04).
+                     WalletConnect-capable providers also offer the QR-scan and
+                     paste-link presentations of the same session as alternatives. */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setCryptoStep('provider'); setCryptoError('') }}><ChevronLeft className="size-4" /></IconButton>
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="flex flex-col items-center gap-2 -mt-6">
+                      <CryptoProviderIcon provider={cryptoForm.provider} className="size-12" />
+                      <h3 className="text-sm font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</h3>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-3 mt-5">
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">Network</label>
                         <select
@@ -2356,6 +2457,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                             const network = e.target.value
                             const net = selectedCryptoProvider?.networks?.find((n: any) => n.network === network)
                             setCryptoForm(f => ({...f, network, currency: net?.tokens?.[0] ?? ''}))
+                            setCryptoWcSession(null)
                           }}
                         >
                           {/* AC-09.02: only networks this provider actually supports */}
@@ -2374,69 +2476,134 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Wallet Address</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder={`Your ${cryptoForm.network || 'wallet'} address`} value={cryptoForm.address} onChange={e => { setCryptoForm(f => ({...f, address: e.target.value})); setCryptoError('') }} />
+                        <label className="text-xs text-gray-500 mb-1 block">Enter your wallet address</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="0xF23C...9u5M" value={cryptoForm.address} onChange={e => { setCryptoForm(f => ({...f, address: e.target.value})); setCryptoError('') }} />
+                        <p className="text-xs text-gray-400 mt-1">Your connection is private and secure. Wallet credentials are not stored or shared.</p>
                         {cryptoForm.address.length > 0 && cryptoForm.address.trim().length < 10 && (
                           <p className="text-xs text-red-500 mt-1">Enter a valid wallet address</p>
                         )}
                       </div>
                       {cryptoError && <p className="text-xs text-red-500">{cryptoError}</p>}
                     </div>
-                    <div className="flex gap-2 mt-5">
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setCryptoStep('provider')}>Back</Button>
+                    <div className="flex gap-2 mt-4">
                       <Button
-                        variant="filled" visual="primary" size="sm" className="flex-1"
+                        variant="filled" visual="gray" size="sm" className="flex-1 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                         onClick={handleAddCryptoWallet}
                         disabled={cryptoSubmitting || cryptoForm.address.trim().length < 10 || !cryptoForm.network || !cryptoForm.currency}
-                      >{cryptoSubmitting ? 'Connecting…' : 'Add Wallet'}</Button>
+                      >Connect Wallet</Button>
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setCryptoStep('provider')}>Cancel</Button>
                     </div>
+                    {selectedCryptoProvider?.supportsWalletConnect && (
+                      <div className="mt-5">
+                        <p className="text-xs font-semibold text-dark-blue-400 mb-2">Other ways to connect</p>
+                        <div className="space-y-2">
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('qr')}>
+                            <Search className="size-3.5" /> Scan QR code from your wallet App
+                          </button>
+                          <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('paste')}>
+                            <ExternalLink className="size-3.5" /> Paste connection link instead
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && (cryptoStep === 'qr' || cryptoStep === 'paste') ? (
+                  /* Step 2d.3: WalletConnect — QR-scan and paste-link are two
+                     presentations of the same session (PS-10). */
+                  <div className="p-6 relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setCryptoStep('details')}><ChevronLeft className="size-4" /></IconButton>
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="-mt-6">
+                      <h3 className="text-sm font-semibold text-dark-blue-400 flex items-center gap-1.5">
+                        {cryptoStep === 'qr' ? 'Scan this code in your wallet app' : 'Paste Wallet connection link'}
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">{cryptoStep === 'qr' ? 'Accept the connection request in your wallet' : `Paste the connection link generated for ${selectedCryptoProvider?.displayName ?? 'your wallet'}`}</p>
+                    </div>
+                    {!cryptoWcSession ? (
+                      <div className="h-48 flex items-center justify-center">
+                        <div className="size-8 rounded-full border-2 border-gray-200 border-t-primary-500 animate-spin" />
+                      </div>
+                    ) : cryptoStep === 'qr' ? (
+                      <div className="flex justify-center py-6">
+                        <QRCodeSVG value={cryptoWcSession.wcUri} size={180} />
+                      </div>
+                    ) : (
+                      <div className="py-6">
+                        <label className="text-xs text-gray-500 mb-1 block">Connection link</label>
+                        <input readOnly className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono truncate" value={cryptoWcSession.wcUri} onClick={e => (e.target as HTMLInputElement).select()} />
+                      </div>
+                    )}
+                    {cryptoWcSession && (
+                      <div className="flex flex-col items-center gap-3">
+                        <button
+                          className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700"
+                          onClick={() => { navigator.clipboard?.writeText(cryptoWcSession.wcUri); toast({ title: 'Copied', description: 'Wallet connection link copied to clipboard.' }) }}
+                        >
+                          <ExternalLink className="size-3.5" /> Copy wallet connection link
+                        </button>
+                        <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => setCryptoWcSession(null)}>Try Again</Button>
+                      </div>
+                    )}
+                    <div className="mt-5">
+                      <p className="text-xs font-semibold text-dark-blue-400 mb-2">Other ways to connect</p>
+                      <div className="space-y-2">
+                        <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep('details')}>
+                          <Search className="size-3.5" /> Enter your wallet address
+                        </button>
+                        <button className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700" onClick={() => setCryptoStep(cryptoStep === 'qr' ? 'paste' : 'qr')}>
+                          <ExternalLink className="size-3.5" /> {cryptoStep === 'qr' ? 'Paste connection link instead' : 'Scan QR code from your wallet App'}
+                        </button>
+                      </div>
+                    </div>
+                    <label className="flex items-start gap-2 cursor-pointer mt-4">
+                      <input type="checkbox" className="mt-0.5 accent-primary-600" checked={cryptoWcConsent} onChange={e => setCryptoWcConsent(e.target.checked)} />
+                      <span className="text-xs text-gray-400">By connecting your wallet, you authorize Marketeq to initiate payouts to your linked crypto wallet via WalletConnect. You acknowledge this authorization remains valid unless revoked.</span>
+                    </label>
+                  </div>
+                ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'connecting' ? (
+                  /* US-64: "Connecting to Wallet..." transitional screen. */
+                  <div className="p-10 text-center">
+                    <CryptoProviderIcon provider={cryptoForm.provider} className="size-12 mx-auto" />
+                    <p className="text-sm font-semibold text-dark-blue-400 mt-2">{selectedCryptoProvider?.displayName ?? 'Crypto Wallet'}</p>
+                    <div className="mx-auto mt-6 size-10 rounded-full border-2 border-gray-200 border-t-primary-500 animate-spin" />
+                    <h3 className="text-base font-semibold text-dark-blue-400 mt-4">Connecting to Wallet...</h3>
+                    <p className="text-xs text-gray-400 mt-1">We're verifying and connecting to your wallet. This may take up to 30 seconds.</p>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'success' ? (
                   /* US-64: dedicated success screen with wallet address + current value. */
-                  <div className="p-6 text-center">
-                    <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center mb-3">
-                      <Check className="size-6 text-primary-600" />
+                  <div className="p-8 text-center relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => { setShowAddMethod(false); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoResult(null) }}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-primary-50 flex items-center justify-center mb-3">
+                      <Check className="size-5 text-primary-600" />
                     </div>
-                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet connected</h3>
-                    <div className="mt-4 rounded-lg border border-gray-200 divide-y divide-gray-200 text-left">
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Provider</span>
-                        <span className="text-sm font-semibold text-dark-blue-400">{selectedCryptoProvider?.displayName ?? cryptoForm.provider}</span>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet Connected Successfully</h3>
+                    <div className="mt-5 rounded-lg border border-gray-200 flex divide-x divide-gray-200 text-left">
+                      <div className="flex-1 px-4 py-3">
+                        <p className="text-xs text-gray-400">Wallet Address</p>
+                        <p className="text-sm font-semibold text-dark-blue-400 font-mono">••••{cryptoResult?.walletAddressLast6 ?? cryptoForm.address.slice(-6)}</p>
                       </div>
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Address</span>
-                        <span className="text-sm font-mono text-dark-blue-400">••••{cryptoResult?.walletAddressLast6 ?? cryptoForm.address.slice(-6)}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Network</span>
-                        <span className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.network ?? cryptoForm.network}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-xs font-medium text-gray-500">Current value</span>
-                        <span className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.conversionDisplay ?? '—'}</span>
+                      <div className="flex-1 px-4 py-3">
+                        <p className="text-xs text-gray-400">Current Conversion Value</p>
+                        <p className="text-sm font-semibold text-dark-blue-400">{cryptoResult?.conversionDisplay ?? '—'}</p>
                       </div>
                     </div>
-                    <Button
-                      variant="filled" visual="primary" size="sm" className="w-full mt-5"
-                      onClick={() => { setShowAddMethod(false); setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoResult(null) }}
-                    >
-                      Done
-                    </Button>
                   </div>
                 ) : addForm.methodType === 'CRYPTO' && cryptoStep === 'error' ? (
                   /* US-64: dedicated failure screen — retry same details, or pick a
                       different provider entirely, rather than a dead-end toast. */
-                  <div className="p-6 text-center">
-                    <div className="mx-auto size-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
-                      <X className="size-6 text-red-600" />
+                  <div className="p-8 text-center relative">
+                    <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
+                    <div className="mx-auto size-10 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                      <AlertTriangle className="size-5 text-red-600" />
                     </div>
-                    <h3 className="text-base font-semibold text-dark-blue-400">Couldn't connect wallet</h3>
-                    <p className="mt-2 text-sm text-gray-500">{cryptoError}</p>
-                    <div className="flex gap-2 mt-5">
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => { setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoError('') }}>
-                        Choose Different Provider
-                      </Button>
-                      <Button variant="filled" visual="primary" size="sm" className="flex-1" onClick={() => setCryptoStep('details')}>
+                    <h3 className="text-base font-semibold text-dark-blue-400">Wallet Connected Failed</h3>
+                    <p className="mt-2 text-sm text-gray-500">{cryptoError || "We couldn't connect to your selected wallet. Please check your connection and try again."}</p>
+                    <p className="mt-2 text-xs text-gray-400 italic">If the issue persists, consider selecting a different wallet provider.</p>
+                    <div className="flex items-center justify-center gap-4 mt-6">
+                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setCryptoStep('provider'); setCryptoForm({ provider: '', network: '', currency: '', address: '' }); setCryptoWcSession(null); setCryptoError('') }}>
+                        Pick Another Wallet
+                      </button>
+                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setCryptoWcSession(null); setCryptoError(''); setCryptoStep('details') }}>
                         Retry
                       </Button>
                     </div>
