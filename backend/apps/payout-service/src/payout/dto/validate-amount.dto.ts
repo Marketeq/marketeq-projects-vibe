@@ -1,4 +1,4 @@
-import { IsString, IsIn, IsNotEmpty } from 'class-validator';
+import { IsString, IsIn, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 
 export class ValidateAmountDto {
   @IsString() @IsNotEmpty()
@@ -6,6 +6,12 @@ export class ValidateAmountDto {
 
   @IsIn(['instant', 'standard'])
   speed: 'instant' | 'standard';
+
+  // Figma "Your withdrawal was declined — reserve balance is too low":
+  // the contractor can explicitly bypass the reserve-balance floor for
+  // this one transfer rather than being hard-blocked.
+  @IsOptional() @IsBoolean()
+  ignoreReserve?: boolean;
 }
 
 export class ValidateAmountResponseDto {

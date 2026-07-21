@@ -12,7 +12,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
-import { ArrowLeft, Check, Lock } from "@blend-metrics/icons"
+import { AlertTriangle, ArrowLeft, Check, Lock, RefreshCcw01 } from "@blend-metrics/icons"
 import { Logo3 } from "@/components/icons"
 import { Button, Input } from "@/components/ui"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -106,6 +106,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_PAYOUT_NOT_FOUND: "This withdrawal is no longer awaiting verification.",
   ERR_PAYOUT_INVALID_AMOUNT: "The amount entered is not valid.",
   ERR_PAYOUT_FEE_EXCEEDS_AMOUNT: "The instant withdrawal fee exceeds this amount. Choose Standard or increase the amount.",
+  ERR_RESERVE_BALANCE_TOO_LOW: "Your reserve balance is too low for this withdrawal. Edit your reserve amount in payout settings or reduce the withdrawal amount.",
 }
 
 // ERR-02/ERR-11: mandated copy names the actual current balance — the backend
@@ -565,6 +566,13 @@ function TransferFundsInner() {
   const [submitting, setSubmitting] = React.useState(false)
   const [result, setResult] = React.useState<InitiateResponse | null>(null)
   const [submitError, setSubmitError] = React.useState("")
+  // Figma: 4 dedicated full-screen decline/failure states, replacing what
+  // used to be a single generic inline error banner on step 3.
+  const [declineState, setDeclineState] = React.useState<{
+    type: "below_minimum" | "reserve_too_low" | "network_failure" | "method_invalid"
+    reserveUsd?: string
+  } | null>(null)
+  const [ignoreReserve, setIgnoreReserve] = React.useState(false)
 
   const [resending, setResending] = React.useState(false)
   const [resendDisabled, setResendDisabled] = React.useState(false)
@@ -743,31 +751,37 @@ function TransferFundsInner() {
     if (!methodId || !validation) return
     setSubmitting(true)
     setSubmitError("")
+    setDeclineState(null)
     try {
       const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey }),
+        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve }),
       })
       const data = await res.json()
       if (!res.ok) {
-        // AC-17.04/17.05: specific, mapped errors — balance-changed and invalid-method
-        // route back to the relevant step rather than a dead end. These navigate away,
-        // so re-enabling here is safe: the Confirm button isn't visible on steps 1/2,
-        // and a fresh idempotency key is minted when the contractor returns to step 3.
-        setSubmitError(resolveErrorMessage(data, "Something went wrong — please try again."))
-        if (data.errorCode === "ERR_INSUFFICIENT_BALANCE") { loadBalance(); setStep(1); setSubmitting(false) }
-        else if (data.errorCode === "ERR_PAYOUT_METHOD_NOT_FOUND" || data.errorCode === "ERR_PAYOUT_METHOD_UNVERIFIED") { loadMethods(); setStep(2); setSubmitting(false) }
-        // Unmapped/generic failures stay on step 3 with Confirm disabled — only the
-        // explicit Retry control (same idempotency key) or Try Again (fresh flow) can proceed.
+        // AC-17.04/17.05: specific, mapped errors — balance-changed routes back to
+        // step 1 rather than a dead end (fresh idempotency key minted on return to
+        // step 3). Everything else in this class of error is now a dedicated
+        // full-screen decline state (Figma) instead of an inline banner.
+        if (data.errorCode === "ERR_INSUFFICIENT_BALANCE") {
+          setSubmitError(resolveErrorMessage(data, "Something went wrong — please try again."))
+          loadBalance(); setStep(1); setSubmitting(false)
+          return
+        }
+        setSubmitting(false)
+        if (data.errorCode === "ERR_BELOW_MINIMUM_AMOUNT") { setDeclineState({ type: "below_minimum" }); return }
+        if (data.errorCode === "ERR_RESERVE_BALANCE_TOO_LOW") { setDeclineState({ type: "reserve_too_low", reserveUsd: data.reserveUsd }); return }
+        if (data.errorCode === "ERR_PAYOUT_METHOD_NOT_FOUND" || data.errorCode === "ERR_PAYOUT_METHOD_UNVERIFIED") { loadMethods(); setDeclineState({ type: "method_invalid" }); return }
+        setDeclineState({ type: "network_failure" })
         return
       }
       // AC-17.06/EC-47: a 409/replay from the idempotency layer is a success, not an error.
       setResult(data)
       setSubmitting(false)
     } catch {
-      setSubmitError("We couldn't reach the server. Your withdrawal may or may not have been submitted — check your payout history before retrying.")
-      // Network/unknown failure: also stays on step 3 with Confirm disabled (see above).
+      setSubmitting(false)
+      setDeclineState({ type: "network_failure" })
     }
   }
 
@@ -775,6 +789,7 @@ function TransferFundsInner() {
   const tryAgainFresh = () => {
     setSubmitError("")
     setSubmitting(false)
+    setIgnoreReserve(false)
     setStep(1)
   }
 
@@ -863,6 +878,63 @@ function TransferFundsInner() {
               <Button variant="outlined" visual="gray" onClick={() => router.push("/earnings?tab=payouts")}>View Payout History</Button>
               <Button onClick={() => router.push("/earnings?tab=payouts")}>Done</Button>
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Figma: 4 dedicated full-screen decline/failure states (see submit()'s
+  // error-code routing above) — replaces what used to be a single generic
+  // inline banner on step 3 for all of these.
+  if (declineState) {
+    const isDecline = declineState.type === "below_minimum" || declineState.type === "reserve_too_low"
+    const heading = isDecline ? "Your withdrawal was declined." : "Your withdrawal attempt failed."
+    const body =
+      declineState.type === "below_minimum"
+        ? "Your withdrawal is below the minimum amount. Please try again with a higher amount or change your payout threshold in settings."
+        : declineState.type === "reserve_too_low"
+        ? `Your reserve balance is too low. You can either ignore the reserve balance for this transfer, or you can edit the reserve amount in your payout settings.`
+        : declineState.type === "method_invalid"
+        ? "Your selected deposit method is either unverified or unsupported. Please select a different deposit method or verify your selected deposit account."
+        : "This may be due to a temporary network issue. Please try again."
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TopBar current={3} />
+        <div className="px-6 py-[80px]">
+          <div className="max-w-[560px] mx-auto bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-10 text-center">
+            <div className="mx-auto size-12 rounded-full bg-warning-50 flex items-center justify-center">
+              <AlertTriangle className="size-6 text-warning-600" />
+            </div>
+            <h1 className="mt-4 text-xl font-bold text-dark-blue-400 leading-tight">{heading}</h1>
+            <p className="mt-3 text-sm font-light text-gray-500">{body}</p>
+
+            {declineState.type === "below_minimum" && (
+              <div className="mt-8 flex items-center justify-center gap-x-4">
+                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setDeclineState(null); setIgnoreReserve(false); setStep(1) }}>Retry with Higher Amount</button>
+                <Button variant="outlined" visual="gray" onClick={() => router.push("/earnings?tab=payouts")}>Change Payout Threshold</Button>
+              </div>
+            )}
+            {declineState.type === "reserve_too_low" && (
+              <div className="mt-8 flex items-center justify-center gap-x-4">
+                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => router.push("/earnings?tab=payouts")}>Edit Reserve</button>
+                <Button
+                  variant="outlined" visual="gray"
+                  onClick={() => { setIgnoreReserve(true); setDeclineState(null); submit() }}
+                >Ignore Reserve Balance</Button>
+              </div>
+            )}
+            {declineState.type === "network_failure" && (
+              <div className="mt-8 flex items-center justify-center">
+                <Button variant="outlined" visual="gray" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { setDeclineState(null); submit() }}>Retry</Button>
+              </div>
+            )}
+            {declineState.type === "method_invalid" && (
+              <div className="mt-8 flex items-center justify-center gap-x-4">
+                <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => router.push("/earnings?tab=payouts")}>Verify Deposit Account</button>
+                <Button variant="outlined" visual="gray" onClick={() => { setDeclineState(null); setStep(2) }}>Select a Different Method</Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

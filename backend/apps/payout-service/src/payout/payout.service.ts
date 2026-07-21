@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
 import { MagicLinkToken }     from '../entities/magic-link-token.entity';
+import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
 import { AuditService }       from '../audit/audit.service';
@@ -36,6 +37,8 @@ export class PayoutService {
     private readonly methodRepo: Repository<DepositMethod>,
     @InjectRepository(MagicLinkToken)
     private readonly mlTokenRepo: Repository<MagicLinkToken>,
+    @InjectRepository(PayoutSchedule)
+    private readonly scheduleRepo: Repository<PayoutSchedule>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
@@ -120,6 +123,8 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE', { availableBalanceUsd: available.toFixed(2) });
     }
 
+    await this.checkReserveBalance(contractorId, amount, available, dto.ignoreReserve);
+
     const instantFee = parseFloat(INSTANT_FEE);
     const standardNet = amount;
     const instantNet = amount - instantFee;
@@ -188,6 +193,8 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE',
         { availableBalanceUsd: balance ? parseFloat(balance.availableBalance).toFixed(2) : undefined });
     }
+
+    await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
     // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
     // contractor who passes the pre-flight gate can't still be blocked here (or
@@ -554,5 +561,31 @@ export class PayoutService {
     if (!email || !email.includes('@')) return 'your email';
     const [local, domain] = email.split('@');
     return `${local[0]}***@${domain}`;
+  }
+
+  // Figma "Your withdrawal was declined — reserve balance is too low": an
+  // ad-hoc withdrawal previously had no reserve awareness at all (reserveUsd
+  // on payout_schedules only applied to the scheduled-payout engine's own
+  // calculatePayoutAmount() in schedule.service.ts). A contractor could
+  // withdraw their entire available balance manually, silently defeating the
+  // reserve they configured. This enforces the same floor for ad-hoc
+  // withdrawals, with an explicit, one-time bypass (ignoreReserve) rather
+  // than a hard, unrecoverable block — matches the Figma copy ("You can
+  // either ignore the reserve balance for this transfer, or edit the
+  // reserve amount in your payout settings").
+  private async checkReserveBalance(
+    contractorId: string, amount: number, availableBalance: number, ignoreReserve?: boolean,
+  ): Promise<void> {
+    if (ignoreReserve) return;
+    const schedule = await this.scheduleRepo.findOne({ where: { contractorId } });
+    const reserve = schedule ? parseFloat(schedule.reserveUsd) : 0;
+    if (reserve <= 0) return;
+    if (availableBalance - reserve < amount) {
+      throw new PayoutError(
+        'Your reserve balance is too low for this withdrawal.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_RESERVE_BALANCE_TOO_LOW',
+        { reserveUsd: reserve.toFixed(2), availableBalanceUsd: availableBalance.toFixed(2) },
+      );
+    }
   }
 }
