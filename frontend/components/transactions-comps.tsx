@@ -4564,6 +4564,7 @@ export const PayoutsTab = () => {
     try {
       const qs = new URLSearchParams({ page: String(currentPage), pageSize: String(pageSize) })
       if (statusFilter) qs.set('status', statusFilter)
+      if (searchQuery.trim().length >= 2) qs.set('search', searchQuery.trim())
       const res = await payoutFetch(`/payouts?${qs.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.message ?? "Failed to load")
@@ -4575,7 +4576,7 @@ export const PayoutsTab = () => {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [currentPage, statusFilter])
+  }, [currentPage, statusFilter, searchQuery])
 
   useEffect(() => { loadPayouts() }, [loadPayouts])
 
@@ -4651,7 +4652,7 @@ export const PayoutsTab = () => {
             <SearchFieldInput
               placeholder="Find transactions"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             />
           </SearchField>
         </div>
@@ -4678,6 +4679,15 @@ export const PayoutsTab = () => {
             ) : loadError ? (
               <TableRow><TableCell colSpan={6} className="text-center py-6 text-sm text-red-600">
                 {loadError} <button className="underline font-medium ml-1" onClick={() => loadPayouts()}>Retry</button>
+              </TableCell></TableRow>
+            ) : payouts.length === 0 && searchQuery.trim().length >= 2 ? (
+              // Figma: a dedicated, prominent empty state for a zero-result
+              // search — "Clear Search" only clears the search term, not
+              // the status filter.
+              <TableRow><TableCell colSpan={6} className="text-center py-16">
+                <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{searchQuery}&quot;</p>
+                <p className="text-sm text-gray-400 mt-1">We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.</p>
+                <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => { setSearchQuery(""); setCurrentPage(1) }}>Clear Search</Button>
               </TableCell></TableRow>
             ) : payouts.length === 0 && hasActiveFilters ? (
               // EC-51: "no results for this filter" is distinct from "no history at all"
