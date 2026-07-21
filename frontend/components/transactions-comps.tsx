@@ -1144,7 +1144,31 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const handleSetDefault = async (id: string) => {
     try {
       const res = await payoutFetch(`/deposit-methods/${id}/set-default`, { method: 'POST' })
-      if (res.ok) { toast({ title: 'Default updated' }); fetchMethods() }
+      if (res.ok) {
+        // Figma: names the method and, when split payout is active, states the
+        // actual live percentages rather than a generic "Default updated".
+        const target = methods.find((m: any) => m.id === id)
+        const label = target ? getMethodLabel(target).name : 'This method'
+        try {
+          const scheduleRes = await payoutFetch(`/payouts/schedule`)
+          if (scheduleRes.ok) {
+            const s = await scheduleRes.json()
+            if (s.splitEnabled && s.secondaryMethod) {
+              const secondaryLabel = s.secondaryMethod.displayLabel ?? s.secondaryMethod.methodType
+              const primaryPct = Math.round((s.primarySplitPercent ?? 100) * 100) / 100
+              const secondaryPct = Math.round((100 - primaryPct) * 100) / 100
+              toast({
+                title: `${label} is now your default deposit method.`,
+                description: `This will be used for all scheduled deposits. Split logic is on: ${primaryPct}% to ${label}, ${secondaryPct}% to ${secondaryLabel}.`,
+              })
+              fetchMethods()
+              return
+            }
+          }
+        } catch { /* fall through to the plain toast below */ }
+        toast({ title: `${label} is now your default deposit method.` })
+        fetchMethods()
+      }
       else { const e = await res.json(); toast({ title: 'Error', description: e.message, variant: 'destructive' }) }
     } catch (e) { toast({ title: 'Error', description: 'Failed to update default', variant: 'destructive' }) }
   }
@@ -3357,7 +3381,19 @@ export const PayoutScheduleDialog = ({ open, onOpenChange, onSaved }: { open: bo
 
       onOpenChange(false)
       onSaved?.()
-      toast({ title: "Payout schedule updated", description: getScheduleLabel() })
+      // Figma: split on/off gets its own specific toast naming the actual
+      // methods/percentages involved, not the generic schedule-updated one.
+      if (splitEnabled && !initial.splitEnabled) {
+        const primaryLabel = methods.find((m) => m.id === primaryMethodId)?.displayLabel ?? methods.find((m) => m.id === primaryMethodId)?.nickname ?? "your primary method"
+        const secondaryLabel = methods.find((m) => m.id === secondaryMethodId)?.displayLabel ?? methods.find((m) => m.id === secondaryMethodId)?.nickname ?? "your secondary method"
+        const secondaryPct = Math.round((100 - primarySplitPercent) * 100) / 100
+        toast({ title: "Split Deposits activated.", description: `Funds will be distributed: ${primarySplitPercent}% to ${primaryLabel}, ${secondaryPct}% to ${secondaryLabel}.` })
+      } else if (!splitEnabled && initial.splitEnabled) {
+        const defaultLabel = methods.find((m) => m.id === primaryMethodId)?.displayLabel ?? methods.find((m) => m.id === primaryMethodId)?.nickname ?? "your default method"
+        toast({ title: "Split Deposits turned off.", description: `You turned off split Deposits. All deposits will go to your default method: ${defaultLabel}.` })
+      } else {
+        toast({ title: "Payout schedule updated", description: getScheduleLabel() })
+      }
     } catch {
       setFormError("Unable to save — please try again.")
     } finally {
