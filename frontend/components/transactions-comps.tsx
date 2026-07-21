@@ -1426,8 +1426,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           </div>
         )}
 
-        {/* Congratulations Banner */}
-        {showBanner && (
+        {/* Congratulations Banner — hidden until there's actually something to celebrate */}
+        {showBanner && balance && parseFloat(balance.totalEarnedUsd) > 0 && (
           <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
