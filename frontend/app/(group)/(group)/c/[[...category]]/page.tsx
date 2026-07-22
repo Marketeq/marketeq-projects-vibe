@@ -4261,14 +4261,14 @@ export default function Projects() {
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
                       {/* Original: {["Projects", "Services", "Teams", "Talent"].map( */}
-                      {["Projects", "Services", "Talent"].map(                       
-                         (tab) => (
+                      {["Projects", "Services", "Talent"].map(
+                        (tab) => (
                           <Badge
                             key={tab}
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 p`x-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4280,7 +4280,7 @@ export default function Projects() {
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild>
                         <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
                           visual="gray"
                           variant="outlined"
                         >
@@ -4289,7 +4289,7 @@ export default function Projects() {
                       </SwiperPrevTrigger>
                       <SwiperNextTrigger asChild>
                         <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
                           visual="gray"
                           variant="outlined"
                         >
@@ -7821,7 +7821,7 @@ export default function Projects() {
         </div>
       </div> */}
 
-      <div className="p-[50px] bg-white border-t border-gray-200">
+      <div className="mt-[50px] p-[50px] bg-white border-t border-gray-200">
         <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
           More Ways to Explore
         </h1>
@@ -7920,7 +7920,7 @@ export default function Projects() {
 
           <div className="mt-3 max-w-[346px] text-xs leading-[19px] text-center mx-auto">
             You may unsubscribe at any time. By signing up, you agree to
-            Marketeq&apos;s <span className="underline">Privacy Policy</span>{" "}
+            Marketeq's <span className="underline">Privacy Policy</span>{" "}
             and <span className="underline">Terms of Use</span>.
           </div>
         </div>
