@@ -34,6 +34,7 @@ import { isAfter, isBefore } from "date-fns"
 import CurrencyInput from "react-currency-input-field"
 import {
   Controller,
+  DefaultValues,
   FormProvider,
   SubmitHandler,
   useForm,
@@ -483,6 +484,16 @@ const workExperienceFormSchema = z
 
 type WorkExperienceFormValues = z.infer<typeof workExperienceFormSchema>
 
+const workExperienceFormDefaultValues = {
+  currentlyWorkHere: false,
+  jobDescription: "",
+  jobTitle: "",
+  employer: "",
+  endDate: undefined,
+  startDate: undefined,
+  skills: [],
+} as DefaultValues<WorkExperienceFormValues>
+
 const months = [
   { name: "January", value: 1 },
   { name: "February", value: 2 },
@@ -698,6 +709,16 @@ const certificationsFormSchema = z
   )
 
 type CertificationsFormValues = z.infer<typeof certificationsFormSchema>
+
+const certificationsFormDefaultValues = {
+  credentialId: "",
+  credentialsUrl: "",
+  name: "",
+  canNotExpire: false,
+  issuedDate: undefined,
+  expirationDate: undefined,
+  skills: [],
+} as DefaultValues<CertificationsFormValues>
 
 // ============================================================
 // AboutMeDialog
@@ -2074,15 +2095,7 @@ export const WorkExperienceDialog = ({
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
     mode: "onChange",
-    defaultValues: {
-      currentlyWorkHere: false,
-      jobDescription: "",
-      jobTitle: "",
-      employer: "",
-      endDate: undefined,
-      startDate: undefined,
-      skills: [],
-    },
+    defaultValues: workExperienceFormDefaultValues,
   })
   const [serverError, setServerError] = useState<string | null>(null)
   const MAX_EXPERIENCE_ENTRIES = 30
@@ -2219,7 +2232,7 @@ export const WorkExperienceDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(workExperienceFormDefaultValues)
     }
   }, [open, editIndex])
 
@@ -2879,7 +2892,7 @@ export const EducationDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(educationFormDefaultValues)
     }
   }, [open, editIndex])
 
@@ -4236,15 +4249,7 @@ export const CertificationsDialog = ({
   } = useForm<CertificationsFormValues>({
     resolver: zodResolver(certificationsFormSchema),
     mode: "onChange",
-    defaultValues: {
-      credentialId: "",
-      credentialsUrl: "",
-      name: "",
-      canNotExpire: false,
-      issuedDate: undefined,
-      expirationDate: undefined,
-      skills: [],
-    },
+    defaultValues: certificationsFormDefaultValues,
   })
   const [isShowing, setIsShowing] = useState(false)
   const [editingId, setEditingId] = useState<string | undefined>()
@@ -4286,7 +4291,7 @@ export const CertificationsDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(certificationsFormDefaultValues)
     }
   }, [open, editIndex, edit, reset])
 
@@ -4656,10 +4661,7 @@ export const CertificationsDialog = ({
                                 <ComboboxInput
                                   className="w-full"
                                   size="lg"
-                                  displayValue={(skill: {
-                                    id: number
-                                    name: string
-                                  }) => skill.name}
+                                  displayValue={() => query}
                                   onChange={(event) =>
                                     setQuery(event.target.value)
                                   }
