@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useParams, useRouter } from "next/navigation"
 import { ProjectChatPanel } from "./project-chat-panel"
+import { RecentQuestionsManager } from "./recent-questions-manager"
 
 const ClientListingView = dynamic(
   () => import("@/app/(group)/(group)/project-details/[slug]/page"),
@@ -6999,45 +7000,75 @@ export default function ProjectDetails() {
                             <>
                               {onlineTeam.length > 0 && (
                               <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                                <Avatar size="md">
-                                  <AvatarImage
-                                    src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                                    alt={onlineTeam[0].firstName || "Team member"}
-                                  />
-                                  <AvatarFallback>
-                                    {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                                  </AvatarFallback>
-                                </Avatar>
+                                {onlineTeam.length === 1 ? (
+                                  <>
+                                    <Avatar size="md">
+                                      <AvatarImage
+                                        src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                        alt={
+                                          onlineTeam[0].firstName || "Team member"
+                                        }
+                                      />
+                                      <AvatarFallback>
+                                        {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                      </AvatarFallback>
+                                    </Avatar>
 
-                                <div className="flex flex-col items-start gap-y-2">
-                                  <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                    {onlineTeam.length >= 2
-                                      ? onlineTeam
-                                          .slice(0, 2)
-                                          .map(
-                                            (m: any) => m.firstName || m.username
-                                          )
-                                          .join(", ")
-                                      : onlineTeam[0].firstName ||
-                                        onlineTeam[0].username}
-                                    {onlineTeam.length > 2
-                                      ? ` +${onlineTeam.length - 2}`
-                                      : ""}{" "}
-                                    {onlineTeam.length < 2 &&
-                                      onlineTeam[0].username && (
-                                        <span className="text-xs leading-none text-extralight text-gray-500">
-                                          @{onlineTeam[0].username}
+                                    <div className="flex flex-col items-start gap-y-2">
+                                      <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                        {onlineTeam[0].firstName ||
+                                          onlineTeam[0].username}{" "}
+                                        {onlineTeam[0].username && (
+                                          <span className="text-xs leading-none text-extralight text-gray-500">
+                                            @{onlineTeam[0].username}
+                                          </span>
+                                        )}
+                                      </span>
+
+                                      <div className="flex items-center gap-x-1">
+                                        <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                        <span className="text-xs leading-none text-dark-blue-400">
+                                          Online
                                         </span>
-                                      )}
-                                  </span>
-
-                                  <div className="flex items-center gap-x-1">
-                                    <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                    <span className="text-xs leading-none text-dark-blue-400">
-                                      Online
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex flex-col items-center gap-y-2">
+                                    <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                      Live Chat
                                     </span>
+
+                                    <AvatarGroup size="sm" max={3} excess>
+                                      {onlineTeam.map((m: any, i: number) => (
+                                        <Avatar
+                                          key={m.username ?? i}
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                          size="sm"
+                                        >
+                                          {m.avatarUrl ? (
+                                            <AvatarImage
+                                              src={m.avatarUrl}
+                                              alt={m.firstName}
+                                            />
+                                          ) : null}
+                                          <AvatarFallback>
+                                            {(m.firstName || "?")
+                                              .charAt(0)
+                                              .toUpperCase()}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      ))}
+                                    </AvatarGroup>
+
+                                    <div className="flex items-center gap-x-1">
+                                      <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                      <span className="text-xs leading-none text-dark-blue-400">
+                                        {onlineTeam.length} team members online
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                               )}
 
@@ -7914,253 +7945,7 @@ export default function ProjectDetails() {
                                 )}
 
                                 {questionsTab === "dialog-recent" && (
-                                  <Tabs
-                                    value={recentQTab}
-                                    onValueChange={setRecentQTab}
-                                    unanimated
-                                  >
-                                    <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
-                                      <TabsTrigger value="all">
-                                        All
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          8
-                                        </Badge>
-                                      </TabsTrigger>
-                                      <TabsTrigger value="awaiting">
-                                        Awaiting Response
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          5
-                                        </Badge>
-                                      </TabsTrigger>
-                                      <TabsTrigger value="answered">
-                                        Answered
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          3
-                                        </Badge>
-                                      </TabsTrigger>
-                                    </TabsList>
-
-                                    <TabsContent value="all">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                What is the expected timeline
-                                                for this project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Kevin{" "}
-                                            <span className="text-gray-400">
-                                              @usernamehere
-                                            </span>{" "}
-                                            3 weeks ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We typically complete projects
-                                                within 4-6 weeks depending on
-                                                scope. We&apos;ll provide a
-                                                detailed timeline after our
-                                                initial consultation.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                Can I request changes after the
-                                                project starts?
-                                              </p>
-                                            </div>
-                                            <IconButton
-                                              variant="ghost"
-                                              visual="gray"
-                                              size="sm"
-                                              className="rounded-full text-gray-500 hover:text-gray-800"
-                                            >
-                                              <Edit03 className="size-4" />
-                                            </IconButton>
-                                          </div>
-                                          <p className="mt-2 text-xs text-gray-500">
-                                            Asked by Sarah{" "}
-                                            <span className="text-gray-400">
-                                              @sarahdesigns
-                                            </span>{" "}
-                                            2 weeks ago
-                                          </p>
-                                        </div>
-
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                How do you handle communication
-                                                during the project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Alex{" "}
-                                            <span className="text-gray-400">
-                                              @alexdev
-                                            </span>{" "}
-                                            1 week ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We use Slack for daily updates
-                                                and have weekly video calls to
-                                                review progress. You&apos;ll
-                                                always know where things stand.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="awaiting">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <p className="text-sm font-medium text-dark-blue-400">
-                                              Can I request changes after the
-                                              project starts?
-                                            </p>
-                                            <IconButton
-                                              variant="ghost"
-                                              visual="gray"
-                                              size="sm"
-                                              className="rounded-full text-gray-500 hover:text-gray-800"
-                                            >
-                                              <Edit03 className="size-4" />
-                                            </IconButton>
-                                          </div>
-                                          <p className="mt-2 text-xs text-gray-500">
-                                            Asked by Sarah{" "}
-                                            <span className="text-gray-400">
-                                              @sarahdesigns
-                                            </span>{" "}
-                                            2 weeks ago
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="answered">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                What is the expected timeline
-                                                for this project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Kevin{" "}
-                                            <span className="text-gray-400">
-                                              @usernamehere
-                                            </span>{" "}
-                                            3 weeks ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We typically complete projects
-                                                within 4-6 weeks depending on
-                                                scope.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-                                  </Tabs>
+                                  <RecentQuestionsManager projectId={String(project.id)} />
                                 )}
                               </div>
                             </Tabs>

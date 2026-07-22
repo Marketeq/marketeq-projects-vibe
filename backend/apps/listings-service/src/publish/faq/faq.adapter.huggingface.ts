@@ -73,6 +73,49 @@ export class FaqAdapterHuggingFace extends FaqAdapter {
     }
   }
 
+  async suggestQuestions(ctx: FaqContext): Promise<string[]> {
+    if (!this.apiKey) return this.heuristic.suggestQuestions(ctx);
+    try {
+      const content = await this.generate(this.buildQuestionsPrompt(ctx));
+      const parsed = content ? this.parseStringArray(content) : null;
+      if (parsed && parsed.length >= 3) return parsed.slice(0, 8);
+      return this.heuristic.suggestQuestions(ctx);
+    } catch (err) {
+      this.logger.warn(
+        `HF question generation failed, falling back to heuristic: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return this.heuristic.suggestQuestions(ctx);
+    }
+  }
+
+  private buildQuestionsPrompt(ctx: FaqContext): string {
+    return `<s>[INST] You are generating questions a buyer would ask about a marketplace listing before purchasing.
+
+${this.contextLines(ctx)}
+
+Generate 8 concise questions a buyer would want answered before starting, specific to this listing.
+Do not answer them. Return ONLY a JSON array of question strings.
+[/INST]`;
+  }
+
+  private parseStringArray(text: string): string[] | null {
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) return null;
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (!Array.isArray(parsed)) return null;
+      const out = parsed
+        .filter((x: unknown) => typeof x === 'string')
+        .map((x: string) => x.trim())
+        .filter(Boolean);
+      return out.length ? out : null;
+    } catch {
+      return null;
+    }
+  }
+
   private contextLines(ctx: FaqContext): string {
     const lines: string[] = [];
     lines.push(

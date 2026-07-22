@@ -18,10 +18,16 @@ import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
+import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
+  private static readonly SUGGESTED_TTL_MS = 60 * 60 * 1000;
+  private readonly suggestedQuestionsCache = new Map<
+    string,
+    { questions: string[]; expiresAt: number }
+  >();
 
   constructor(
     @InjectRepository(Project)
@@ -30,7 +36,43 @@ export class ProjectsService {
     private readonly deliverablesAdapter: DeliverablesAdapter,
     @Inject('ALGOLIA_CLIENT')
     private readonly algoliaClient: ClientProxy,
+    @Inject(FAQ_ADAPTER)
+    private readonly faqAdapter: FaqAdapter,
   ) {}
+
+  async getSuggestedQuestions(projectId: string): Promise<string[]> {
+    const cached = this.suggestedQuestionsCache.get(projectId);
+    if (cached && cached.expiresAt > Date.now()) return cached.questions;
+
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) return [];
+
+    const scope = (project.scope ?? []).map((phase: any) => ({
+      phaseName: phase?.title ?? phase?.phaseName ?? '',
+      tasks: (phase?.tasks ?? [])
+        .map((t: any) => t?.title ?? t?.name ?? '')
+        .filter(Boolean),
+    }));
+
+    const questions = await this.faqAdapter.suggestQuestions({
+      title: project.title,
+      listingType: (project as any).listingType,
+      categories: project.categories,
+      skills: project.skills,
+      tags: project.tags,
+      durationMonths: project.durationMonths,
+      shortDescription: project.shortDescription,
+      fullDescription: project.description,
+      scope,
+    });
+
+    const result = questions.slice(0, 10);
+    this.suggestedQuestionsCache.set(projectId, {
+      questions: result,
+      expiresAt: Date.now() + ProjectsService.SUGGESTED_TTL_MS,
+    });
+    return result;
+  }
 
   async findAll(status = ListingStatus.Published) {
     const items = await this.repo.find({

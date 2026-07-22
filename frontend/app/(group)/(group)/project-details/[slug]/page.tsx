@@ -68,6 +68,7 @@ import {
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { ProjectAPI } from "@/service/http/project"
 import { ChatsContextProvider } from "@/components/chat"
+import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
@@ -318,7 +319,20 @@ const Chats = ({
 
   const [threadId, setThreadId] = React.useState<string | null>(null)
   const [messages, setMessages] = React.useState<
-    Array<{ id: string; senderId: string; content?: string | null; createdAt: string }>
+    Array<{
+      id: string
+      senderId: string
+      content?: string | null
+      createdAt: string
+      messageType?: string
+      attachments?: Array<{
+        id: string
+        fileUrl: string
+        fileType: string
+        fileName?: string | null
+        fileSize?: number | null
+      }>
+    }>
   >([])
   const chatBottomRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -484,7 +498,22 @@ const Chats = ({
                           mine ? "bg-primary-50" : "bg-gray-50"
                         )}
                       >
-                        <p className="text-sm text-dark-blue-400">{m.content}</p>
+                        {m.attachments?.[0] && (
+                          <MessageAttachmentView attachment={m.attachments[0]} />
+                        )}
+                        {m.messageType === "gif" && m.content ? (
+                          <img
+                            src={m.content}
+                            alt="GIF"
+                            className="rounded-md w-60 h-auto max-h-80"
+                          />
+                        ) : (
+                          m.content && (
+                            <p className="text-sm text-dark-blue-400">
+                              {m.content}
+                            </p>
+                          )
+                        )}
                         <p
                           className={cn(
                             "mt-1 text-xs text-gray-400",
@@ -722,6 +751,9 @@ export default function ProjectDetails({
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
   const [pendingQuestion, setPendingQuestion] = React.useState("")
+  const [askErrored, setAskErrored] = React.useState(false)
+  const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
+  const [askModalOpen, setAskModalOpen] = React.useState(false)
   const { isOnline } = useOnlineUsers()
 
   // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
@@ -738,6 +770,34 @@ export default function ProjectDetails({
     if (question !== undefined) setPendingQuestion(question)
     setSelected("Live Chat")
   }, [])
+
+  const handleAsk = React.useCallback(() => {
+    if (pendingQuestion.trim()) {
+      setAskModalOpen(false)
+      openLiveChat()
+    } else {
+      setAskErrored(true)
+      setShowAskErrorMsg(true)
+    }
+  }, [pendingQuestion, openLiveChat])
+
+  const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
+    []
+  )
+  React.useEffect(() => {
+    const pid = project?.id ? String(project.id) : ""
+    if (!pid) return
+    let cancelled = false
+    ProjectAPI.GetSuggestedQuestions(pid)
+      .then((res) => {
+        if (!cancelled)
+          setSuggestedQuestions(Array.isArray(res?.data) ? res.data : [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [project?.id])
 
   // Owner viewing their own listing shouldn't be able to ask questions on it
   // (Chris: "hide that for your own"). True in view-as-client preview, or when
@@ -2092,43 +2152,73 @@ export default function ProjectDetails({
 
                         {onlineTeam.length > 0 && (
                         <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                          <Avatar size="md">
-                            <AvatarImage
-                              src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                              alt={onlineTeam[0].firstName || "Team member"}
-                            />
-                            <AvatarFallback>
-                              {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
+                          {onlineTeam.length === 1 ? (
+                            <>
+                              <Avatar size="md">
+                                <AvatarImage
+                                  src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                  alt={onlineTeam[0].firstName || "Team member"}
+                                />
+                                <AvatarFallback>
+                                  {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
 
-                          <div className="flex flex-col items-start gap-y-2">
-                            <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                              {onlineTeam.length >= 2
-                                ? onlineTeam
-                                    .slice(0, 2)
-                                    .map((m: any) => m.firstName || m.username)
-                                    .join(", ")
-                                : onlineTeam[0].firstName ||
-                                  onlineTeam[0].username}
-                              {onlineTeam.length > 2
-                                ? ` +${onlineTeam.length - 2}`
-                                : ""}{" "}
-                              {onlineTeam.length < 2 &&
-                                onlineTeam[0].username && (
-                                  <span className="text-xs leading-none text-extralight text-gray-500">
-                                    @{onlineTeam[0].username}
+                              <div className="flex flex-col items-start gap-y-2">
+                                <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                  {onlineTeam[0].firstName ||
+                                    onlineTeam[0].username}{" "}
+                                  {onlineTeam[0].username && (
+                                    <span className="text-xs leading-none text-extralight text-gray-500">
+                                      @{onlineTeam[0].username}
+                                    </span>
+                                  )}
+                                </span>
+
+                                <div className="flex items-center gap-x-1">
+                                  <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                  <span className="text-xs leading-none text-dark-blue-400">
+                                    Online
                                   </span>
-                                )}
-                            </span>
-
-                            <div className="flex items-center gap-x-1">
-                              <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                              <span className="text-xs leading-none text-dark-blue-400">
-                                Online
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center gap-y-2">
+                              <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                Live Chat
                               </span>
+
+                              <AvatarGroup size="sm" max={3} excess>
+                                {onlineTeam.map((m: any, i: number) => (
+                                  <Avatar
+                                    key={m.username ?? i}
+                                    className="border-2 border-white hover:ring-0 active:ring-0"
+                                    size="sm"
+                                  >
+                                    {m.avatarUrl ? (
+                                      <AvatarImage
+                                        src={m.avatarUrl}
+                                        alt={m.firstName}
+                                      />
+                                    ) : null}
+                                    <AvatarFallback>
+                                      {(m.firstName || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                              </AvatarGroup>
+
+                              <div className="flex items-center gap-x-1">
+                                <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                <span className="text-xs leading-none text-dark-blue-400">
+                                  {onlineTeam.length} team members online
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                         )}
 
@@ -2144,27 +2234,48 @@ export default function ProjectDetails({
 
                           <div className="mt-3 flex gap-x-2 items-center">
                             <Input
-                              className="flex-auto"
+                              className={cn(
+                                "flex-auto",
+                                showAskErrorMsg &&
+                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
+                              )}
                               placeholder="Type your question..."
                               value={pendingQuestion}
-                              onChange={(e) => setPendingQuestion(e.target.value)}
+                              onFocus={() => setShowAskErrorMsg(false)}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setPendingQuestion(v)
+                                if (v.trim()) {
+                                  setAskErrored(false)
+                                  setShowAskErrorMsg(false)
+                                }
+                              }}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") openLiveChat()
+                                if (e.key === "Enter") handleAsk()
                               }}
                             />
                             <Button
                               className="text-xs leading-none"
                               size="lg"
-                              onClick={() => openLiveChat()}
+                              disabled={askErrored && !pendingQuestion.trim()}
+                              onClick={handleAsk}
                             >
                               Ask Question
                             </Button>
                           </div>
 
                           <div className="mt-2 flex items-center justify-between">
-                            <span className="text-xs text-dark-blue-400 leading-none">
-                              A team member will reach out to you as soon as
-                              possible.
+                            <span
+                              className={cn(
+                                "text-xs leading-none",
+                                showAskErrorMsg
+                                  ? "font-medium text-error-500"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              {showAskErrorMsg
+                                ? "Please enter your question above"
+                                : "A team member will reach out to you as soon as possible."}
                             </span>
 
                             <span className="text-xs text-dark-blue-400 leading-none">
@@ -2172,78 +2283,21 @@ export default function ProjectDetails({
                             </span>
                           </div>
 
-                          <div className="mt-6 flex items-center gap-3 flex-wrap">
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your portfolio?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                          </div>
+                          {suggestedQuestions.length > 0 && (
+                            <div className="mt-6 flex items-center gap-3 flex-wrap">
+                              {suggestedQuestions.map((q, idx) => (
+                                <Badge
+                                  key={`sq-${idx}`}
+                                  className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                                  size="lg"
+                                  visual="gray"
+                                  onClick={() => openLiveChat(q)}
+                                >
+                                  {q}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         )}
 
@@ -2379,28 +2433,41 @@ export default function ProjectDetails({
                             </TabsContent>
 
                             <TabsContent value="Recently Asked Questions">
-                              {!project.recentQuestions ||
-                              project.recentQuestions.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-10 text-center">
-                                  <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                    <HelpCircle className="size-5 text-gray-400" />
+                              {(() => {
+                                const visibleQuestions = (
+                                  (project.recentQuestions as Array<{
+                                    question: string
+                                    answer?: string | null
+                                    hidden?: boolean
+                                    moderationFailed?: boolean
+                                  }>) ?? []
+                                ).filter(
+                                  (q) =>
+                                    q &&
+                                    q.answer &&
+                                    !q.hidden &&
+                                    !q.moderationFailed
+                                )
+                                return visibleQuestions.length === 0 ? (
+                                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                                    <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                      <HelpCircle className="size-5 text-gray-400" />
+                                    </div>
+                                    <h3 className="text-sm font-semibold text-dark-blue-400">
+                                      No questions yet
+                                    </h3>
+                                    <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                      When people ask questions on this listing,
+                                      they&apos;ll show up here.
+                                    </p>
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">
-                                    No questions yet
-                                  </h3>
-                                  <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    When people ask questions on this listing,
-                                    they&apos;ll show up here.
-                                  </p>
-                                </div>
-                              ) : (
-                                <Accordion
-                                  type="single"
-                                  className="pt-6 space-y-[15px]"
-                                  defaultValue="rq-0"
-                                >
-                                  {(project.recentQuestions as string[]).map(
-                                    (q, idx) => (
+                                ) : (
+                                  <Accordion
+                                    type="single"
+                                    className="pt-6 space-y-[15px]"
+                                    defaultValue="rq-0"
+                                  >
+                                    {visibleQuestions.map((q, idx) => (
                                       <AccordionItem
                                         key={`rq-${idx}`}
                                         className="rounded-lg bg-white border border-gray-300"
@@ -2408,15 +2475,18 @@ export default function ProjectDetails({
                                       >
                                         <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
                                           <span className="flex-auto text-left inline-block">
-                                            {q}
+                                            {q.question}
                                           </span>
                                           <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                         </AccordionTrigger>
+                                        <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
+                                          {q.answer}
+                                        </DisclosureContent>
                                       </AccordionItem>
-                                    )
-                                  )}
-                                </Accordion>
-                              )}
+                                    ))}
+                                  </Accordion>
+                                )
+                              })()}
                             </TabsContent>
                           </Tabs>
 
@@ -2430,13 +2500,79 @@ export default function ProjectDetails({
                                 <Button
                                   variant="outlined"
                                   visual="gray"
-                                  onClick={() => openLiveChat()}
+                                  onClick={() => setAskModalOpen(true)}
                                 >
                                   Ask a question
                                 </Button>
                               </div>
                             </div>
                           )}
+
+                          <Dialog
+                            open={askModalOpen}
+                            onOpenChange={setAskModalOpen}
+                          >
+                            <DialogContent className="max-w-[560px] p-6">
+                              <DialogTitle className="inline-flex items-center gap-x-2 text-base font-semibold text-dark-blue-400">
+                                <HelpCircle className="size-[18px] text-primary-500" />
+                                Have a specific question in mind?
+                              </DialogTitle>
+
+                              <div className="mt-4 flex items-center gap-x-2">
+                                <Input
+                                  autoFocus
+                                  className={cn(
+                                    "flex-auto",
+                                    showAskErrorMsg &&
+                                      "border-error-300 focus:border-error-300 focus:ring-error-100"
+                                  )}
+                                  placeholder="Type your question..."
+                                  value={pendingQuestion}
+                                  onFocus={() => setShowAskErrorMsg(false)}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setPendingQuestion(v)
+                                    if (v.trim()) {
+                                      setAskErrored(false)
+                                      setShowAskErrorMsg(false)
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleAsk()
+                                  }}
+                                />
+                                <Button
+                                  className="text-xs leading-none"
+                                  size="lg"
+                                  disabled={
+                                    askErrored && !pendingQuestion.trim()
+                                  }
+                                  onClick={handleAsk}
+                                >
+                                  Ask Question
+                                </Button>
+                              </div>
+
+                              <div className="mt-2 flex items-center justify-between">
+                                <span
+                                  className={cn(
+                                    "text-xs leading-none",
+                                    showAskErrorMsg
+                                      ? "font-medium text-error-500"
+                                      : "text-dark-blue-400"
+                                  )}
+                                >
+                                  {showAskErrorMsg
+                                    ? "Please enter your question above"
+                                    : "A team member will reach out to you as soon as possible."}
+                                </span>
+
+                                <span className="text-xs text-dark-blue-400 leading-none">
+                                  Avg. response time: 20 mins
+                                </span>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                       </div>
 
