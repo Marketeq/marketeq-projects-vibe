@@ -260,10 +260,6 @@ const marketplaceTalentTabs = [
 // --- Temporary imports To allow For code to complie after the force push to main ---.
 import { projectSeeds } from "@/data/projects.seed"
 import { serviceSeeds } from "@/data/services.seed"
-import { talentSeeds } from "@/data/talent.seed"
-import { teamSeeds } from "@/data/teams.seed"
-import { buildServiceUrl } from "@/src/lib/urlHelpers"
-import { MarkerPin02 } from "@blend-metrics/icons"
 // --- end temporary imports ---
 
 // Still referenced by the "Browse by Type" section (talent/subcat scope,
@@ -301,127 +297,6 @@ const browseSkillMocks = [
   "Azure",
   "Infrastructure as Code",
 ]
-
-const topTalentMock = talentSeeds
-
-function TopTalentCard({ talent }: { talent: (typeof topTalentMock)[number] }) {
-  const profileHref = `/talent-profile?username=${encodeURIComponent(talent.username)}`
-
-  return (
-    <article className="relative flex min-h-[448px] cursor-pointer flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-dark-blue-400 shadow-[0px_1px_2px_0px_rgba(16,24,40,.04)]">
-      <NextLink
-        href={profileHref}
-        aria-label={`View ${talent.username} profile`}
-        className="absolute inset-0 z-[1] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#306CFE]"
-      />
-      <div className="relative mx-5 mt-5 h-[150px] overflow-hidden rounded-md bg-gray-100">
-        <NextImage
-          src={talent.photo}
-          alt={`${talent.username} profile`}
-          fill
-          sizes="(min-width: 1280px) 25vw, (min-width: 768px) 50vw, 100vw"
-          className={`object-cover ${talent.status === "away" ? "grayscale" : ""}`}
-        />
-        <div className="absolute left-4 top-4 z-10 inline-flex h-7 items-center gap-1.5 rounded bg-black/55 px-2.5 text-xs font-bold text-white">
-          <Star className="size-3.5 fill-none text-white" />
-          All Stars
-        </div>
-        <FavoriteRoot>
-          {({ pressed }) => (
-            <TooltipProvider delayDuration={75}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="absolute right-4 top-4 z-20 inline-block">
-                    <Favorite
-                      className="size-7 text-white hover:text-white data-[state=on]:text-[#306CFE]"
-                      starClassName="size-7 stroke-[2]"
-                    />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {pressed ? (
-                    <span className="inline-flex items-center gap-x-1">
-                      <Check className="size-[15px] shrink-0 text-green-500" />
-                      Saved
-                    </span>
-                  ) : (
-                    "Save to favorites"
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </FavoriteRoot>
-      </div>
-
-      <div
-        className={`absolute left-5 top-[151px] z-20 flex size-9 items-center justify-center rounded-full border-4 border-white text-white ${
-          talent.status === "away" ? "bg-[#FDB022]" : "bg-[#12B76A]"
-        }`}
-      >
-        {talent.status === "away" ? (
-          <Clock className="size-4" />
-        ) : (
-          <Check className="size-4" />
-        )}
-      </div>
-
-      <div className="px-5 pb-5 pt-4">
-        <p className="text-lg font-bold leading-none text-dark-blue-400">
-          {talent.rate}
-          <span className="text-sm font-medium">/hr</span>
-        </p>
-        <div className="mt-5">
-          <h2 className="text-base font-bold leading-5 text-dark-blue-400">
-            {talent.username}{" "}
-            <span className="font-normal text-gray-400">{talent.handle}</span>
-          </h2>
-          <p className="text-base font-bold leading-5 text-dark-blue-400">
-            {talent.role}
-          </p>
-          <p className="mt-3 text-sm leading-5 text-[#66739A]">
-            {talent.experience}
-          </p>
-        </div>
-
-        <div className="mt-5 flex items-center gap-2 text-xs font-semibold leading-4 text-[#667085]">
-          <MarkerPin02 className="size-4 text-[#667085]" />
-          <span>{talent.location}</span>
-        </div>
-
-        <div className="mt-5 flex h-[30px] items-center">
-          <div className="flex h-full items-center gap-1 rounded-l bg-[#F8FAFF] px-2">
-            {fromLength(5).map((_, idx) => (
-              <Star
-                key={idx}
-                className="size-[15px] fill-[#306CFE] text-[#306CFE]"
-              />
-            ))}
-            <span className="ml-1 text-sm font-bold leading-none text-dark-blue-400">
-              {talent.rating}
-            </span>
-          </div>
-          <div className="flex h-full items-center bg-white px-4 text-sm font-bold leading-none text-dark-blue-400">
-            {talent.projects}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-auto border-t border-gray-200 bg-gray-50 px-4 py-4">
-        <div className="flex flex-wrap gap-x-3 gap-y-2 text-xs font-bold leading-5 text-gray-400">
-          {talent.skills.map((skill, idx) => (
-            <span
-              key={`${skill}-${idx}`}
-              className={skill === "More..." ? "ml-auto text-gray-600" : ""}
-            >
-              {skill}
-            </span>
-          ))}
-        </div>
-      </div>
-    </article>
-  )
-}
 
 const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
   research: {
@@ -3056,11 +2931,6 @@ export default function Projects() {
   const currentCategorySlugs = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug].filter(
     (slug): slug is string => Boolean(slug)
   )
-  const recommendedTeamSeeds = scopeSeedItems(teamSeeds, currentCategorySlugs)
-  const recommendedTalentSeeds = scopeSeedItems(
-    topTalentMock,
-    currentCategorySlugs
-  )
 
   /** Build a link to the kind-specific listing page at the current depth. */
   const listingHref = (
@@ -4233,86 +4103,36 @@ export default function Projects() {
                         variant="link"
                         visual="gray"
                         size="lg"
-                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                        className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                       >
-                        Explore More Teams
+                        <NextLink href={exploreMoreHref("teams")}>Explore More Teams</NextLink>
                       </Button>
                     </div>
                     <div className="mt-6">
-                      {marketplaceTabs.map((tabValue) => (
+                      {marketplaceTalentTabs.map((tabValue) => (
                         <TabsContent key={tabValue} value={tabValue}>
                           <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                            {fromLength(8).map((idx) => {
-                              const service =
-                                listingsServices.length > 0
-                                  ? listingsServices[idx % listingsServices.length]
-                                  : null
-                              const mock =
-                                serviceCardMocks[idx % serviceCardMocks.length]
-                              return (
+                            {getCarouselItemsForTab(teamItems, tabValue).map(
+                              (team: any) => (
                                 <SwiperSlide
                                   className="w-[355px]"
-                                  key={service?.id ?? `l3-service-${idx}`}
+                                  key={`l3-team-${team.id}`}
                                 >
                                   <ListingCard
-                                    kind="service"
-                                    id={service?.id ?? `l3-service-${idx}`}
-                                    title={
-                                      service?.title ||
-                                      mock.title
-                                    }
-                                    description={
-                                      service?.description?.slice(0, 120) ||
-                                      mock.description
-                                    }
-                                    mediaUrl={
-                                      service?.mediaUrls?.[0] ||
-                                      service?.coverImage ||
-                                      mock.mediaUrl
-                                    }
-                                    budget={
-                                      service?.priceMin
-                                        ? `$${Number(service.priceMin).toLocaleString()}/month`
-                                        : mock.budget
-                                    }
-                                    rating={4.9}
-                                    reviewCount={5}
-                                    href={
-                                      service
-                                        ? buildServiceUrl(
-                                            currentCategoryPath,
-                                            service.slug,
-                                            service.id
-                                          )
-                                        : buildServiceUrl(
-                                            currentCategoryPath,
-                                            mock.slug,
-                                            mock.id
-                                          )
-                                    }
-                                    collaborators={Array(6).fill("/woman.jpg")}
+                                    kind="team"
+                                    {...team}
                                     favoriteSlot={
-                                      <FavoriteRoot>
-                                        {({ pressed }) => (
-                                          <TooltipProvider delayDuration={75}>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="inline-block">
-                                                  <Favorite />
-                                                </span>
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                {pressed ? "Saved" : "Save to favorites"}
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        )}
-                                      </FavoriteRoot>
+                                      <FavoriteButton
+                                        itemId={team.id}
+                                        type="team"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
                                     }
                                   />
                                 </SwiperSlide>
                               )
-                            })}
+                            )}
                           </SwiperContent>
                         </TabsContent>
                       ))}
@@ -4321,76 +4141,6 @@ export default function Projects() {
                 </Tabs>
               </div>
               )}
-
-              <div className="mt-[50px]">
-                <Tabs defaultValue="Featured">
-                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                    {l3Meta ? `${l2Meta?.name ?? currentName} Teams` : `${currentName} Teams`}
-                  </h1>
-                  <SwiperRoot>
-                    <div className="mt-6 flex items-center justify-between">
-                      <TabsList className="flex items-center gap-x-3">
-                        {marketplaceTalentTabs.map(
-                          (tab) => (
-                            <Badge
-                              key={tab}
-                              variant="circular"
-                              visual="gray"
-                              size="lg"
-                              className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                              asChild
-                            >
-                              <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                            </Badge>
-                          )
-                        )}
-                      </TabsList>
-                      <Button
-                        variant="link"
-                        visual="gray"
-                        size="lg"
-                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
-                      >
-                        Explore More Teams
-                      </Button>
-                    </div>
-                    <div className="mt-6">
-                      {marketplaceTalentTabs.map(
-                        (tabValue) => (
-                          <TabsContent key={tabValue} value={tabValue}>
-                            <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                              {teamSeeds.map((team) => (
-                                <SwiperSlide
-                                  className="w-[355px]"
-                                  key={`l3-team-${team.id}`}
-                                >
-                                  <ListingCard
-                                    kind="team"
-                                    id={team.id}
-                                    name={team.name}
-                                    handle={team.handle}
-                                    tagline={team.tagline}
-                                    experience={team.experience}
-                                    rate={team.rate}
-                                    locations={team.location}
-                                    rating={team.rating}
-                                    projectCount={team.completedProjects}
-                                    skills={team.skills}
-                                    memberAvatars={team.memberAvatars}
-                                    previousClientLogos={team.previousClientLogos}
-                                    favoriteSlot={<FavoriteRoot>{() => <Favorite />}</FavoriteRoot>}
-                                  />
-                                </SwiperSlide>
-                              ))}
-                            </SwiperContent>
-                          </TabsContent>
-                        )
-                      )}
-                    </div>
-                  </SwiperRoot>
-                </Tabs>
-              </div>
-
               <div className="mt-[50px]">
                 <Tabs defaultValue="Featured">
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -4405,32 +4155,66 @@ export default function Projects() {
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
                           </Badge>
                         ))}
                       </TabsList>
-                      <Button
-                        variant="link"
-                        visual="gray"
-                        size="lg"
-                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
-                      >
-                        Explore More Talent
-                      </Button>
+                      <div className="flex items-center gap-x-8">
+                        <Button
+                          asChild
+                          variant="link"
+                          visual="gray"
+                          size="lg"
+                          className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
+                        >
+                          <NextLink href={exploreMoreHref("talent")}>Explore More Talent</NextLink>
+                        </Button>
+                        <div className="flex items-center gap-x-3">
+                          <SwiperPrevTrigger asChild>
+                            <IconButton
+                              className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                              visual="gray"
+                              variant="outlined"
+                            >
+                              <ChevronLeft className="size-[18px]" />
+                            </IconButton>
+                          </SwiperPrevTrigger>
+                          <SwiperNextTrigger asChild>
+                            <IconButton
+                              className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                              visual="gray"
+                              variant="outlined"
+                            >
+                              <ChevronRight className="size-[18px]" />
+                            </IconButton>
+                          </SwiperNextTrigger>
+                        </div>
+                      </div>
                     </div>
                     <div className="mt-6">
                       {marketplaceTalentTabs.map((tabValue) => (
                         <TabsContent key={tabValue} value={tabValue}>
                           <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                            {topTalentMock.map((talent) => (
+                            {getCarouselItemsForTab(talentUsers, tabValue).map((talent: any, idx: number) => (
                               <SwiperSlide
                                 className="w-[355px]"
                                 key={`l3-star-${tabValue}-${talent.id}`}
                               >
-                                <TopTalentCard talent={talent} />
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(talent, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={talent.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
                               </SwiperSlide>
                             ))}
                           </SwiperContent>
@@ -4476,14 +4260,15 @@ export default function Projects() {
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {["Projects", "Services", "Teams", "Talent"].map(
-                        (tab) => (
+                      {/* Original: {["Projects", "Services", "Teams", "Talent"].map( */}
+                      {["Projects", "Services", "Talent"].map(                       
+                         (tab) => (
                           <Badge
                             key={tab}
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border bg-white border-gray-300 p`x-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -4672,54 +4457,28 @@ export default function Projects() {
                       </SwiperContent>
                     </TabsContent>
 
+                    {/* Original: <TabsContent className="gap-5 flex items-center" value="Teams"> */}
+                    {false && (
                     <TabsContent
                       className="gap-5 flex items-center"
                       value="Teams"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {recommendedTeamSeeds.map((team) => (
+                        {teamItems.map((team: any) => (
                           <SwiperSlide
                             className="w-[355px]"
                             key={`recommended-team-${team.id}`}
                           >
                             <ListingCard
                               kind="team"
-                              id={team.id}
-                              name={team.name}
-                              handle={team.handle}
-                              tagline={team.tagline}
-                              experience={team.experience}
-                              rate={team.rate}
-                              locations={team.location}
-                              rating={team.rating}
-                              projectCount={team.completedProjects}
-                              skills={team.skills}
-                              memberAvatars={team.memberAvatars}
-                              previousClientLogos={team.previousClientLogos}
+                              {...team}
                               favoriteSlot={
-                                <FavoriteRoot>
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block">
-                                            <Favorite />
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (
-                                            <span className="inline-flex items-center gap-x-1">
-                                              <Check className="size-[15px] shrink-0 text-green-500" />
-                                              Saved
-                                            </span>
-                                          ) : (
-                                            "Save to favorites"
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
+                                <FavoriteButton
+                                  itemId={team.id}
+                                  type="team"
+                                  favoritedItems={favoritedItems}
+                                  onToggle={handleFavoriteToggle}
+                                />
                               }
                             />
                           </SwiperSlide>
@@ -4741,56 +4500,38 @@ export default function Projects() {
                         </SwiperSlide>
                       </SwiperContent>
                     </TabsContent>
+                    )}
 
                     <TabsContent
                       className="gap-5 flex items-center"
                       value="Talent"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {talentUsers.length > 0
-                          ? talentUsers
-                              .slice(0, 8)
-                              .map((u: TalentUser, idx: number) => (
-                            <SwiperSlide className="w-[355px]" key={u.id}>
-                              <ListingCard
-                                kind="talent"
-                                {...talentToCardProps(u, idx)}
-                              />
-                            </SwiperSlide>
-                              ))
-                          : recommendedTalentSeeds.map((talent) => (
-                              <SwiperSlide
-                                className="w-[355px]"
-                                key={`recommended-talent-${talent.id}`}
-                              >
-                                <ListingCard
-                                  kind="talent"
-                                  id={talent.id}
-                                  username={talent.username}
-                                  name={talent.username}
-                                  handle={talent.handle}
-                                  role={talent.role}
-                                  photo={talent.photo}
-                                  rate={talent.rate}
-                                  experience={talent.experience}
-                                  country={talent.location}
-                                  rating={Number(talent.rating)}
-                                  projects={Number.parseInt(
-                                    talent.projects,
-                                    10
-                                  )}
-                                  allStars
-                                  skills={talent.skills}
-                                  href={`/talent-profile?username=${encodeURIComponent(talent.username)}`}
+                        {getCarouselItemsForTab(talentUsers, "Featured").slice(0, 8).map((u: TalentUser, idx: number) => (
+                          <SwiperSlide
+                            className="h-[448px] w-[355px]"
+                            key={u.id}
+                          >
+                            <ListingCard
+                              kind="talent"
+                              {...talentToCardProps(u, idx)}
+                              favoriteSlot={
+                                <FavoriteButton
+                                  itemId={u.id}
+                                  type="talent"
+                                  favoritedItems={favoritedItems}
+                                  onToggle={handleFavoriteToggle}
                                 />
-                              </SwiperSlide>
-                            ))}
+                              }
+                            />
+                          </SwiperSlide>
+                        ))}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("talent")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex flex-col ] bg-gray-700 items-start px-6 py-[50px] justify-end">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Talent in {currentName}
                               </h1>
@@ -4962,7 +4703,9 @@ export default function Projects() {
               and on the kind-filtered /teams page, where it serves as the
               primary "Top Software Development Teams" section from the L1
               Teams design. */}
-          {isL1OrL2AllPage && (
+
+          {/* Teams feature temporarily hidden from category pages. */}
+          {false && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
@@ -4992,17 +4735,18 @@ export default function Projects() {
                     </TabsList>
                     <div className="flex items-center gap-x-8">
                       <Button
+                        asChild
                         variant="link"
                         visual="gray"
                         size="lg"
-                        className="underline hover:text-dark-blue-400"
+                        className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                       >
-                        Explore More Teams
+                        <NextLink href={exploreMoreHref("teams")}>Explore More Teams</NextLink>
                       </Button>
                       <div className="flex items-center gap-x-3">
                         <SwiperPrevTrigger asChild>
                           <IconButton
-                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
                             visual="gray"
                             variant="outlined"
                           >
@@ -5376,44 +5120,57 @@ export default function Projects() {
                     </h1>
                     <TabsList className="mt-6 flex flex-wrap items-center gap-3">
                       {marketplaceTalentTabs.map((tab) => (
-                        <TabsTrigger
+                        <Badge
                           key={tab}
-                          value={tab}
-                          className="flex h-8 items-center rounded-full border border-gray-300 bg-white px-3.5 text-sm font-medium text-gray-500 transition-colors data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                          asChild
                         >
-                          {tab}
-                        </TabsTrigger>
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
                       ))}
                     </TabsList>
                   </div>
 
                   <Button
+                    asChild
                     variant="link"
                     visual="gray"
                     size="lg"
-                    className="mt-[58px] h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                    className="mt-[58px] h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                   >
-                    Explore More Talent
+                    <NextLink href={exploreMoreHref("talent")}>Explore More Talent</NextLink>
                   </Button>
                 </div>
 
                 <div className="mt-7">
                   {marketplaceTalentTabs.map((tabValue) => (
-                <TabsContent
-                  key={tabValue}
-                  value={tabValue}
-                  className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
-                >
-                  {Array.from({ length: 8 }, (_, idx) => topTalentMock[idx % topTalentMock.length]).map(
-                    (talent, idx) => (
-                      <TopTalentCard
-                        key={`${tabValue}-${talent.id}-${idx}`}
-                        talent={talent}
-                      />
-                    )
-                  )}
-                </TabsContent>                  
-              ))}
+                    <TabsContent
+                      key={tabValue}
+                      value={tabValue}
+                      className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
+                    >
+                      {getCarouselItemsForTab(talentUsers, tabValue)
+                        .slice(0, 8)
+                        .map((talent: any, idx: number) => (
+                        <ListingCard
+                          key={`${tabValue}-${talent.id}-${idx}`}
+                          kind="talent"
+                          {...talentToCardProps(talent, idx)}
+                          favoriteSlot={
+                            <FavoriteButton
+                              itemId={talent.id}
+                              type="talent"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
+                          }
+                        />
+                      ))}
+                    </TabsContent>
+                  ))}
                 </div>
               </Tabs>
             </div>
@@ -6357,46 +6114,18 @@ export default function Projects() {
                       value={tabValue}
                       className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
                     >
-                      {teamSeeds.map((team) => (
+                      {getCarouselItemsForTab(teamItems, tabValue).map((team: any) => (
                         <ListingCard
                           key={`${tabValue}-${team.id}`}
                           kind="team"
-                          id={team.id}
-                          name={team.name}
-                          handle={team.handle}
-                          tagline={team.tagline}
-                          experience={team.experience}
-                          rate={team.rate}
-                          locations={team.location}
-                          rating={team.rating}
-                          projectCount={team.completedProjects}
-                          skills={team.skills}
-                          memberAvatars={team.memberAvatars}
-                          previousClientLogos={team.previousClientLogos}
+                          {...team}
                           favoriteSlot={
-                            <FavoriteRoot>
-                              {({ pressed }) => (
-                                <TooltipProvider delayDuration={75}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-block">
-                                        <Favorite />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {pressed ? (
-                                        <span className="inline-flex items-center gap-x-1">
-                                          <Check className="size-[15px] shrink-0 text-green-500" />
-                                          Saved
-                                        </span>
-                                      ) : (
-                                        "Save to favorites"
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </FavoriteRoot>
+                            <FavoriteButton
+                              itemId={team.id}
+                              type="team"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
                           }
                         />
                       ))}
@@ -6708,35 +6437,27 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={u?.id ?? idx}
-                            >
-                              {talentUsers.length > 0 ? (
+                          {getCarouselItemsForTab(talentUsers, tabValue)
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-[448px] w-[355px]"
+                                key={u?.id ?? idx}
+                              >
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
-                              ) : (
-                                <ListingCard
-                                  kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
-                                />
-                              )}
-                            </SwiperSlide>
-                          ))}
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7182,35 +6903,31 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={u?.id ?? idx}
-                            >
-                              {talentUsers.length > 0 ? (
+                          {getCarouselItemsForCategoryTab(
+                            talentUsers,
+                            sub,
+                            "Newest"
+                          )
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-[448px] w-[355px]"
+                                key={u?.id ?? idx}
+                              >
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
-                              ) : (
-                                <ListingCard
-                                  kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
-                                />
-                              )}
-                            </SwiperSlide>
-                          ))}
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7367,35 +7084,27 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={u?.id ?? idx}
-                            >
-                              {talentUsers.length > 0 ? (
+                          {talentUsers
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-[448px] w-[355px]"
+                                key={u?.id ?? idx}
+                              >
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
-                              ) : (
-                                <ListingCard
-                                  kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
-                                />
-                              )}
-                            </SwiperSlide>
-                          ))}
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7534,10 +7243,13 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
+                          {getCarouselItemsForCategoryTab(
+                            talentUsers,
+                            sub,
+                            "Newest"
+                          )
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
                             <SwiperSlide
                               className="w-[355px]"
                               key={u?.id ?? idx}
@@ -7546,19 +7258,27 @@ export default function Projects() {
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
                               ) : (
                                 <ListingCard
                                   kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
+                                  {...u}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
                               )}
                             </SwiperSlide>
