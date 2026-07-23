@@ -1,12 +1,14 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
+import { ClientProxy } from '@nestjs/microservices';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
@@ -19,11 +21,15 @@ import {
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     @InjectRepository(Project)
     private readonly repo: Repository<Project>,
     @Inject(DELIVERABLES_ADAPTER)
     private readonly deliverablesAdapter: DeliverablesAdapter,
+    @Inject('ALGOLIA_CLIENT')
+    private readonly algoliaClient: ClientProxy,
   ) {}
 
   async findAll(status = ListingStatus.Published) {
@@ -193,6 +199,7 @@ export class ProjectsService {
     });
 
     const saved = await this.repo.save(item);
+    this.emitAlgoliaUpsert(saved);
     return { ...this.shapeProject(saved), _contentType: 'project' };
   }
 
@@ -219,6 +226,7 @@ export class ProjectsService {
     });
 
     const saved = await this.repo.save(item);
+    this.emitAlgoliaUpsert(saved);
     return this.shapeProject(saved);
   }
 
@@ -246,6 +254,8 @@ export class ProjectsService {
     }
 
     await this.repo.update(id, writable);
+    const updated = await this.repo.findOne({ where: { id } });
+    if (updated) this.emitAlgoliaUpsert(updated);
     return this.findOne(id);
   }
 
@@ -254,6 +264,8 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     await this.repo.update(id, { status: ListingStatus.Published });
+    const published = await this.repo.findOne({ where: { id } });
+    if (published) this.emitAlgoliaUpsert(published);
     return this.findOne(id);
   }
 
@@ -262,12 +274,38 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     await this.repo.delete(id);
+    this.algoliaClient.emit<void>('listing.deleted', { id }).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit listing.deleted for ${id}: ${err.message}`),
+    });
   }
 
   private assertOwnership(project: Project, userId: string): void {
     if (!userId || project.createdBy !== userId) {
       throw new ForbiddenException('You do not have permission to modify this project');
     }
+  }
+
+  private emitAlgoliaUpsert(project: Project): void {
+    const payload = {
+      id: String(project.id),
+      title: project.title,
+      description: project.shortDescription ?? project.description?.substring(0, 500) ?? null,
+      category: project.category ?? project.categories?.[0] ?? null,
+      categories: project.categories ?? [],
+      subcategories: project.subcategories ?? [],
+      skills: project.skills ?? [],
+      tags: project.tags ?? [],
+      industries: project.industry ?? [],
+      budget: project.budget != null ? Number(project.budget) : null,
+      status: project.status,
+      slug: project.slug,
+    };
+    const event = project.status === ListingStatus.Published ? 'listing.updated' : 'listing.created';
+    this.algoliaClient.emit<void>(event, payload).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit ${event} for ${project.id}: ${err.message}`),
+    });
   }
 
   private normalizeRequiredText(value: unknown, message: string): string {
