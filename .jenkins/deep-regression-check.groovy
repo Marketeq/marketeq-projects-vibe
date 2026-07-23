@@ -184,7 +184,7 @@ pipeline {
                 withCredentials([string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_KEY')]) {
                     sh '''#!/bin/bash
                         # Skip if verdict already exists
-                        if [ -f verdict.json ]; then
+                        if [ -f /tmp/verdict.json ]; then
                             echo "Verdict already set, skipping AI analysis"
                             exit 0
                         fi
@@ -308,7 +308,7 @@ PROMPT_END
 
                         if [ -z "$PROMPT_JSON" ] || [ "$PROMPT_LEN" -lt 100 ]; then
                             echo "Failed to encode prompt (length=$PROMPT_LEN)"
-                            echo '{"verdict":"ERROR","summary":"Failed to encode prompt","regressions":[]}' > verdict.json
+                            echo '{"verdict":"ERROR","summary":"Failed to encode prompt","regressions":[]}' > /tmp/verdict.json
                             exit 0
                         fi
 
@@ -342,7 +342,7 @@ print('Request body written:', len(json.dumps(body)), 'chars')
 
                         # Parse verdict using repo script
                         if [ -f "repo/.jenkins/scripts/parse_verdict.py" ]; then
-                            echo "$RESPONSE" | python3 repo/.jenkins/scripts/parse_verdict.py > verdict.json 2>/dev/null
+                            echo "$RESPONSE" | python3 repo/.jenkins/scripts/parse_verdict.py > /tmp/verdict.json 2>/dev/null
                         else
                             echo "$RESPONSE" | python3 -c "
 import sys,json
@@ -357,12 +357,12 @@ try:
  print(json.dumps(json.loads(t)))
 except Exception as e:
  print(json.dumps({'verdict':'ERROR','summary':str(e),'regressions':[]}))
-" > verdict.json 2>/dev/null
+" > /tmp/verdict.json 2>/dev/null
                         fi
 
                         # Read verdict
-                        VERDICT=$(cat verdict.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','ERROR'))" 2>/dev/null || echo "ERROR")
-                        REG_COUNT=$(cat verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
+                        VERDICT=$(cat /tmp/verdict.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','ERROR'))" 2>/dev/null || echo "ERROR")
+                        REG_COUNT=$(cat /tmp/verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
 
                         echo "========================================"
                         echo "VERDICT: $VERDICT"
@@ -371,7 +371,7 @@ except Exception as e:
 
                         # Pretty print
                         if [ -f "repo/.jenkins/scripts/pretty_print.py" ]; then
-                            cat verdict.json | python3 repo/.jenkins/scripts/pretty_print.py 2>/dev/null || true
+                            cat /tmp/verdict.json | python3 repo/.jenkins/scripts/pretty_print.py 2>/dev/null || true
                         fi
 
                         if [ "$VERDICT" = "BLOCK" ]; then
@@ -397,7 +397,7 @@ except Exception as e:
                             else
                                 echo "## Deep Regression Check"
                                 echo ""
-                                cat verdict.json 2>/dev/null
+                                cat /tmp/verdict.json 2>/dev/null
                                 echo ""
                                 echo "<!-- deep-regression-check -->"
                             fi
@@ -433,8 +433,8 @@ except Exception as e:
                 if (params.HEAD_SHA?.trim()) {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                         sh """
-                            VERDICT=\$(cat verdict.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','?'))" 2>/dev/null || echo "?")
-                            REG_COUNT=\$(cat verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
+                            VERDICT=\$(cat /tmp/verdict.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','?'))" 2>/dev/null || echo "?")
+                            REG_COUNT=\$(cat /tmp/verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
                             if [ "\$VERDICT" = "RISKY" ]; then
                                 DESC="Risky - \${REG_COUNT} regression(s) found"
                             else
@@ -453,7 +453,7 @@ except Exception as e:
                 if (params.HEAD_SHA?.trim()) {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                         sh """
-                            REG_COUNT=\$(cat verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "?")
+                            REG_COUNT=\$(cat /tmp/verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "?")
                             curl -sf -X POST -H "Authorization: token \$GH_TOKEN" -H "Content-Type: application/json" \
                                 -d "{\\"state\\":\\"failure\\",\\"context\\":\\"Jenkins / Deep Regression Check\\",\\"description\\":\\"BLOCKED - \${REG_COUNT} critical regression(s)\\",\\"target_url\\":\\"${BUILD_URL}\\"}" \
                                 "https://api.github.com/repos/${REPO}/statuses/${HEAD_SHA}" > /dev/null 2>&1 || true
