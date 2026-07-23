@@ -7618,9 +7618,15 @@ export default function ProjectDetails() {
 
                                         <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
                                           {faqGenLoading ? (
-                                            <p className="py-8 text-center text-sm text-gray-500">
-                                              Generating suggestions…
-                                            </p>
+                                            <div className="flex flex-col items-center justify-center gap-3 py-12">
+                                              <Spinner
+                                                size={32}
+                                                strokeWidth={4}
+                                              />
+                                              <p className="text-sm text-gray-500">
+                                                Generating suggestions…
+                                              </p>
+                                            </div>
                                           ) : faqGenError ? (
                                             <div className="py-8 text-center">
                                               <p className="text-sm text-error-500">
