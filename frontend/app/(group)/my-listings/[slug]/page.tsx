@@ -395,6 +395,15 @@ const toEmbedUrl = (raw?: string | null): string => {
   return url
 }
 
+const toVideoThumb = (raw?: string | null): string => {
+  if (!raw) return ""
+  const yt = raw.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
+  return ""
+}
+
 const backendErrorMessage = (err: any): string => {
   const raw = err?.response?.data?.message
   if (Array.isArray(raw)) return raw.join(" ")
@@ -4261,16 +4270,27 @@ export default function ProjectDetails() {
                         {project.featuredVideo && (
                           <div className="group/slide shrink-0 w-[calc(33.333%-8px)]">
                             <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                              <iframe
-                                src={toEmbedUrl(project.featuredVideo)}
-                                className={cn(
-                                  "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
-                                  videoHidden && "opacity-40 blur-[1px]"
-                                )}
-                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                tabIndex={-1}
-                                title="Featured video"
-                              />
+                              {toVideoThumb(project.featuredVideo) ? (
+                                <img
+                                  src={toVideoThumb(project.featuredVideo)}
+                                  alt="Featured video"
+                                  className={cn(
+                                    "absolute inset-0 w-full h-full object-cover pointer-events-none transition-all duration-300",
+                                    videoHidden && "opacity-40 blur-[1px]"
+                                  )}
+                                />
+                              ) : (
+                                <iframe
+                                  src={toEmbedUrl(project.featuredVideo)}
+                                  className={cn(
+                                    "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
+                                    videoHidden && "opacity-40 blur-[1px]"
+                                  )}
+                                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  tabIndex={-1}
+                                  title="Featured video"
+                                />
+                              )}
                               <div
                                 className={cn(
                                   "absolute inset-0 flex items-center justify-center pointer-events-none group-hover/slide:opacity-0 transition-opacity duration-200",
