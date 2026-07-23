@@ -89,7 +89,7 @@ export class OAuthService {
   }
 
   // ─── Initiate OAuth (create method + store state) ─────────────
-  async initiateOAuth(contractorId: string, methodType: MethodType): Promise<{ depositMethodId: string; redirectUrl: string; provider: string }> {
+  async initiateOAuth(contractorId: string, methodType: MethodType): Promise<{ depositMethodId: string; redirectUrl: string; provider: string; expiresAt: string }> {
     const activeCount = await this.methodRepo.count({ where: { contractorId, isActive: true } });
     if (activeCount >= 5) throw new PayoutError('Maximum 5 active deposit methods allowed.',
       HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_DEPOSIT_METHOD_LIMIT_REACHED');
@@ -113,7 +113,10 @@ export class OAuthService {
       action: 'method.added', metadata: { methodId: method.id, methodType, oauthInitiated: true },
     });
 
-    return { depositMethodId: method.id, redirectUrl, provider: methodType };
+    return {
+      depositMethodId: method.id, redirectUrl, provider: methodType,
+      expiresAt: new Date(Date.now() + this.stateTtl * 1000).toISOString(),
+    };
   }
 
   // ─── Handle OAuth Callback ────────────────────────────────────
@@ -244,34 +247,96 @@ export class OAuthService {
     });
   }
 
-  // ─── Stub: Exchange code for tokens ───────────────────────────
+  // ─── Exchange authorization code for tokens ────────────────────
+  // Real call to the provider's token endpoint — no provider ever returns a
+  // successful response for a blank/placeholder client_id+secret, so this
+  // fails cleanly (ERR_OAUTH_TOKEN_EXCHANGE_FAILED) for any provider whose
+  // credentials aren't actually configured, rather than a silent fake success.
   private async exchangeCode(provider: string, code: string): Promise<TokenResult> {
-    // In production: POST to provider's token endpoint
-    this.logger.warn(`[DEV] Token exchange stubbed for ${provider}`);
+    const p = this.providerConfig[provider];
+    if (!p) throw new PayoutError('Unsupported OAuth provider.', HttpStatus.BAD_REQUEST, 'ERR_OAUTH_UNSUPPORTED');
+
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: p.redirectUri,
+    });
+    const res = await fetch(p.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: 'Basic ' + Buffer.from(`${p.clientId}:${p.clientSecret}`).toString('base64'),
+      },
+      body: body.toString(),
+    });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok || !data.access_token) {
+      this.logger.error(`[${provider}] Token exchange failed: ${res.status} ${JSON.stringify(data)}`);
+      throw new PayoutError('Unable to complete authorization with the provider.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_TOKEN_EXCHANGE_FAILED');
+    }
     return {
-      accessToken: `mock_access_${provider}_${Date.now()}`,
-      refreshToken: `mock_refresh_${provider}_${Date.now()}`,
-      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token ?? '',
+      expiresAt: new Date(Date.now() + (data.expires_in ?? 3600) * 1000),
     };
   }
 
-  // ─── Stub: Fetch profile ──────────────────────────────────────
+  // ─── Fetch the connected account's profile ─────────────────────
   private async fetchProfile(provider: string, accessToken: string): Promise<ProfileResult> {
-    this.logger.warn(`[DEV] Profile fetch stubbed for ${provider}`);
+    const p = this.providerConfig[provider];
+    if (!p) throw new PayoutError('Unsupported OAuth provider.', HttpStatus.BAD_REQUEST, 'ERR_OAUTH_UNSUPPORTED');
+
+    const res = await fetch(p.profileUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      this.logger.error(`[${provider}] Profile fetch failed: ${res.status} ${JSON.stringify(data)}`);
+      throw new PayoutError('Unable to retrieve your account details from the provider.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
+    }
+    // Field names vary by provider — try the shapes each documents rather
+    // than assuming one schema. Never fabricate a placeholder email if none
+    // of these are present; a missing email is a real integration problem
+    // that should surface as an error, not silently invented data.
+    const email = data.email ?? data.emails?.[0]?.value ?? data.primaryEmail ?? null;
+    if (!email) {
+      this.logger.error(`[${provider}] Profile response had no recognizable email field: ${JSON.stringify(data)}`);
+      throw new PayoutError('Unable to retrieve your account details from the provider.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
+    }
     return {
-      email: `contractor@${provider.toLowerCase()}.example.com`,
-      accountIdentifier: `mock_${provider}_${Date.now()}`,
-      displayName: 'Test Contractor',
+      email,
+      accountIdentifier: data.user_id ?? data.id ?? data.sub ?? email,
+      displayName: data.name ?? email,
     };
   }
 
-  // ─── Stub: Refresh token ──────────────────────────────────────
+  // ─── Refresh an expired access token ───────────────────────────
   private async refreshToken(methodType: string, refreshToken: string): Promise<TokenResult> {
-    this.logger.warn(`[DEV] Token refresh stubbed for ${methodType}`);
+    const p = this.providerConfig[methodType];
+    if (!p) throw new PayoutError('Unsupported OAuth provider.', HttpStatus.BAD_REQUEST, 'ERR_OAUTH_UNSUPPORTED');
+
+    const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken });
+    const res = await fetch(p.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: 'Basic ' + Buffer.from(`${p.clientId}:${p.clientSecret}`).toString('base64'),
+      },
+      body: body.toString(),
+    });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok || !data.access_token) {
+      this.logger.error(`[${methodType}] Token refresh failed: ${res.status} ${JSON.stringify(data)}`);
+      throw new PayoutError('Unable to refresh authorization with the provider.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_TOKEN_REFRESH_FAILED');
+    }
     return {
-      accessToken: `mock_refreshed_${methodType}_${Date.now()}`,
-      refreshToken: null as any,
-      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token ?? refreshToken,
+      expiresAt: new Date(Date.now() + (data.expires_in ?? 3600) * 1000),
     };
   }
 

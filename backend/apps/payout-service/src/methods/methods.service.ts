@@ -17,6 +17,7 @@ import { BankValidationService } from './bank-validation.service';
 import { BankEncryptionService } from './bank-encryption.service';
 import { UpdateMethodDto }     from './dto/update-method.dto';
 import { CryptoConnectionService } from '../crypto/crypto-connection.service';
+import { OAuthService } from '../oauth/oauth.service';
 
 @Injectable()
 export class MethodsService {
@@ -40,6 +41,7 @@ export class MethodsService {
     private readonly bankValidator: BankValidationService,
     private readonly bankEncryption: BankEncryptionService,
     private readonly cryptoConnectionService: CryptoConnectionService,
+    private readonly oauthService: OAuthService,
   ) {
     this.maxMethods = parseInt(this.config.get('MAX_DEPOSIT_METHODS', '5'), 10) || 5;
   }
@@ -138,6 +140,22 @@ export class MethodsService {
       };
     }
 
+    // PAYPAL/WISE/PAYONEER: real OAuth — delegate entirely to OAuthService,
+    // which creates the pending DepositMethod itself, stores OAuth state in
+    // Redis, and builds a real provider authorize URL from the configured
+    // client_id/redirect_uri/scopes. The block below (which used to build a
+    // fabricated, non-functional "authorize" URL with no client_id or
+    // redirect_uri — connecting an account was never actually possible)
+    // must never run for these three method types.
+    if (dto.methodType === 'PAYPAL' || dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
+      const result = await this.oauthService.initiateOAuth(contractorId, dto.methodType as MethodType);
+      return {
+        depositMethodId: result.depositMethodId,
+        verificationStatus: 'pending',
+        verification: { type: 'oauth', oauthUrl: result.redirectUrl, expiresAt: result.expiresAt },
+      };
+    }
+
     const method = this.methodRepo.create({
       contractorId,
       methodType: dto.methodType as MethodType,
@@ -175,15 +193,6 @@ export class MethodsService {
         break;
       case 'BANK_STRIPE':
         method.displayLabel = 'Stripe Bank (pending verification)';
-        break;
-      case 'PAYPAL':
-        if (dto.paypalEmail) { method.paypalEmail = dto.paypalEmail; method.displayLabel = 'PayPal (' + dto.paypalEmail + ')'; } else { method.displayLabel = 'PayPal (pending authorization)'; }
-        break;
-      case 'WISE':
-        method.displayLabel = 'Wise (pending authorization)';
-        break;
-      case 'PAYONEER':
-        method.displayLabel = 'Payoneer (pending authorization)';
         break;
     }
 
@@ -486,22 +495,9 @@ export class MethodsService {
         await this.verifyRepo.save(manualVerify);
         return { type: 'micro_deposit', message: 'Two small deposits will arrive in your account within 2 business days.', expiresAt: manualVerify.expiresAt!.toISOString(), maxAttempts: 3 };
 
-      case MethodType.PAYPAL:
-      case MethodType.WISE:
-      case MethodType.PAYONEER:
-        const oauthVerify = this.verifyRepo.create({
-          depositMethodId: method.id, contractorId: method.contractorId,
-          verificationType: 'oauth', status: VerificationStatus.PENDING,
-          oauthState: randomUUID(),
-          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-        });
-        await this.verifyRepo.save(oauthVerify);
-        const providerUrls: Record<string, string> = {
-          PAYPAL: 'https://www.paypal.com/connect',
-          WISE: 'https://wise.com/oauth/authorize',
-          PAYONEER: 'https://payouts.sandbox.payoneer.com/partners/api/v4/auth',
-        };
-        return { type: 'oauth', oauthUrl: `${providerUrls[method.methodType]}?state=${oauthVerify.oauthState}`, expiresAt: oauthVerify.expiresAt!.toISOString() };
+      // PAYPAL/WISE/PAYONEER no longer reach this method — addMethod()
+      // routes them to OAuthService.initiateOAuth() before createVerification()
+      // is ever called, since that's the real, credential-backed OAuth flow.
 
       default:
         return { type: 'none', message: 'No verification required.' };
@@ -537,8 +533,15 @@ export class MethodsService {
       cryptoCurrency: m.cryptoCurrency,
       walletAddressLast6: m.walletAddressLast6,
       conversionDisplay: m.conversionDisplay,
-      paypalEmail: m.paypalEmail, wiseAccountId: m.wiseAccountId,
-      payoneerPayeeId: m.payoneerPayeeId,
+      // paypalEmail/wiseAccountId/payoneerPayeeId predate the real OAuth
+      // wiring and are only ever set by the old fake dev-mode manual-entry
+      // path (since removed from the frontend) — the real OAuth callback
+      // (oauth.service.ts's handleCallback) only ever populates the generic
+      // accountEmail/accountIdentifier, uniformly across all three
+      // providers, so fall back to those.
+      paypalEmail: m.paypalEmail ?? (m.methodType === MethodType.PAYPAL ? m.accountEmail : null),
+      wiseAccountId: m.wiseAccountId ?? (m.methodType === MethodType.WISE ? (m.accountEmail ?? m.accountIdentifier) : null),
+      payoneerPayeeId: m.payoneerPayeeId ?? (m.methodType === MethodType.PAYONEER ? (m.accountEmail ?? m.accountIdentifier) : null),
     };
   }
 }

@@ -13,13 +13,15 @@ import { PayoutAuditLog } from '../entities/payout-audit-log.entity';
 import { PublishersModule }    from '../publishers/publishers.module';
 import { ProvidersModule }     from '../providers/providers.module';
 import { CryptoModule } from '../crypto/crypto.module';
+import { OAuthModule } from '../oauth/oauth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DepositMethod, DepositMethodVerification, PayoutSchedule, PayoutAuditLog,MagicLinkToken]),
     PublishersModule,
     ProvidersModule,
-    forwardRef(() => CryptoModule), 
+    forwardRef(() => CryptoModule),
+    OAuthModule,
   ],
   controllers: [MethodsController],
   providers: [MethodsService, BankValidationService, BankEncryptionService, MicroDepositService],

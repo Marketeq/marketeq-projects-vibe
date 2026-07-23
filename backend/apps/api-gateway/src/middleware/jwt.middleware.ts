@@ -55,6 +55,13 @@ const PUBLIC_PATTERNS = [
   /^\/v1\/homepage(?:\/.*)?$/,
   /^\/public\/talent(?:\/.*)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  // Stripe/Ramp call these directly — no Marketeq session exists to send.
+  // Authenticity is verified downstream via each provider's own signature
+  // check (constructWebhookEvent / HMAC), not gateway-level JWT auth.
+  // Without this, the gateway 401s before the request ever reaches
+  // payout-service's own @Public() route — a separate, gateway-level auth
+  // layer that a downstream @Public() decorator has no power over.
+  /^\/v1\/webhooks(?:\/.*)?$/,
 ]
 
 function isPublic(path: string): boolean {
