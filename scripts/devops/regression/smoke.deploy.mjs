@@ -3,7 +3,11 @@
 const frontendBase = (process.env.FRONTEND_BASE_URL ?? "https://staging-marketeq-projects.vercel.app").replace(/\/$/, "")
 const backendBase = (process.env.BACKEND_BASE_URL ?? "https://marketeq-backend.onrender.com").replace(/\/$/, "")
 const smokeEmail = process.env.SMOKE_USER_EMAIL ?? "deploy-smoke@marketeq.local"
-const smokePassword = process.env.SMOKE_USER_PASSWORD ?? "MarketeqSmoke1!"
+const smokePassword = process.env.SMOKE_USER_PASSWORD
+if (!smokePassword) {
+  console.error("SMOKE_USER_PASSWORD env var is required (SOP 3.1 — no hardcoded credentials)")
+  process.exit(1)
+}
 const smokeLabel = process.env.SMOKE_LABEL ?? "deploy-smoke"
 
 function sleep(ms) {
