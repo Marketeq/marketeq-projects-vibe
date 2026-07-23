@@ -225,6 +225,18 @@ export class UserService {
     return this.updateUser(id, { timezone });
   }
 
+  async updateCurrency(id: string, currency: string): Promise<User> {
+    return this.updateUser(id, { preferredCurrency: currency });
+  }
+
+  async getPreferredCurrency(id: string): Promise<string | null> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      select: ['id', 'preferredCurrency'],
+    });
+    return user?.preferredCurrency ?? null;
+  }
+
   async refreshTimezone(
     claims: { sub?: string; id?: string; email?: string },
     req: Request,

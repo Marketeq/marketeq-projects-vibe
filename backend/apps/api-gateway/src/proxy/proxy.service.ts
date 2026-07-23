@@ -71,6 +71,18 @@ export class ProxyService {
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
     }
 
+    // Downstream services (timezone-resolution.service.ts, geo.service.ts's
+    // currency detection) do their own IP-geolocation and need the real
+    // client IP — without this they only ever see the gateway's own
+    // request, which silently breaks that detection with no error anywhere.
+    // Preserve any existing x-forwarded-for chain (CDN/load balancer hops)
+    // and append this gateway's view of the client, same convention as
+    // every other reverse proxy.
+    const existingXff = req.headers['x-forwarded-for']
+    const xffChain = (Array.isArray(existingXff) ? existingXff.join(',') : existingXff) || ''
+    const clientIp = req.ip || req.socket?.remoteAddress || ''
+    headers['x-forwarded-for'] = [xffChain, clientIp].filter(Boolean).join(', ')
+
     // Always forward auth headers so downstream services can validate JWT
     const authHeader = req.headers.authorization as string | undefined
     const cookieToken = (req as any).cookies?.access_token as string | undefined
