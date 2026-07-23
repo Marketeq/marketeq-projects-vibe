@@ -312,18 +312,33 @@ PROMPT_END
                             exit 0
                         fi
 
+                        # Build request body as file (too large for command line)
+                        python3 -c "
+import json, sys
+prompt = json.loads(sys.argv[1])
+body = {'model': 'claude-sonnet-4-6', 'max_tokens': 8192, 'messages': [{'role': 'user', 'content': prompt}]}
+with open('api_request.json', 'w') as f:
+    json.dump(body, f)
+print('Request body written:', len(json.dumps(body)), 'chars')
+" "$PROMPT_JSON" 2>/dev/null || echo "Failed to build request body"
+
                         # Call Claude API
+                        echo "Calling Claude API..."
                         RESPONSE=$(curl -s -X POST \
                             -H "x-api-key: $ANTHROPIC_KEY" \
                             -H "anthropic-version: 2023-06-01" \
                             -H "Content-Type: application/json" \
-                            --max-time 120 \
-                            -d "{\"model\": \"claude-sonnet-4-6\", \"max_tokens\": 8192, \"messages\": [{\"role\": \"user\", \"content\": $PROMPT_JSON}]}" \
+                            --max-time 180 \
+                            -d @api_request.json \
                             "https://api.anthropic.com/v1/messages")
+                        echo "API call complete"
 
                         RESP_LEN=$(echo "$RESPONSE" | wc -c | tr -d ' ')
                         echo "API response length: $RESP_LEN chars"
-                        echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); print('Model:', r.get('model','?'), 'Stop:', r.get('stop_reason','?'))" 2>/dev/null || echo "Could not parse API response metadata"
+                        # Show first 500 chars of response for debugging
+                        echo "$RESPONSE" | head -c 500
+                        echo ""
+                        echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); print('Model:', r.get('model','?'), 'Stop:', r.get('stop_reason','?'), 'Usage:', r.get('usage',{}))" 2>/dev/null || echo "Could not parse API response metadata"
 
                         # Parse verdict using repo script
                         if [ -f "repo/.jenkins/scripts/parse_verdict.py" ]; then
