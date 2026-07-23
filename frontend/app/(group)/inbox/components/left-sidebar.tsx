@@ -172,6 +172,15 @@ const LeftSidebar = ({
   const token = getAccessToken()
 
   const router = useRouter()
+  const clearSelectionParam = useCallback(
+    (param: "threadId" | "participantId") => {
+      const params = new URLSearchParams(window.location.search)
+      params.delete(param)
+      const query = params.toString()
+      router.replace(query ? `/inbox?${query}` : "/inbox", { scroll: false })
+    },
+    [router]
+  )
   const CACHE_KEY = currentUserId ? `inbox_conversations_${currentUserId}` : ""
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -511,7 +520,7 @@ const LeftSidebar = ({
             }
             // Clear threadId from URL so refreshes don't re-trigger
             // auto-select or auto-untrash.
-            router.replace("/inbox", { scroll: false })
+            clearSelectionParam("threadId")
           }
         }
 
@@ -641,7 +650,7 @@ const LeftSidebar = ({
     return () => {
       cancelled = true
     }
-  }, [privateKey, token, conversations.length])
+  }, [privateKey, token, conversations.length, clearSelectionParam])
 
   // Handle ?participantId= independently of the thread-list fetch so it works
   // even when GET /v1/threads is unavailable.
@@ -650,11 +659,23 @@ const LeftSidebar = ({
   // Slow path: no local match → POST /v1/threads to create; backend is
   // idempotent and the DB unique index on 1:1 pairs prevents duplicates.
   // Ref guard covers React 18 StrictMode double-invoke and rapid clicks.
+  // Mirror the latest conversations in a ref so the participantId effect can
+  // read them WITHOUT depending on `conversations`. Sidebar enrichment mutates
+  // `conversations` many times right after load; if this effect listed it as a
+  // dependency, each mutation would re-run the effect, whose cleanup sets
+  // `cancelled = true` on the in-flight POST /v1/threads while the ref guard
+  // blocks the re-run from retrying — so a newly created thread was created on
+  // the backend but never selected (pane stuck on "Select a conversation").
+  const conversationsRef = useRef<Conversation[]>([])
+  useEffect(() => {
+    conversationsRef.current = conversations
+  }, [conversations])
+
   const createdForParticipantRef = useRef<string | null>(null)
   useEffect(() => {
     if (!initialParticipantId || !currentUserId || !token) return
     if (initialParticipantId === currentUserId) {
-      router.replace("/inbox", { scroll: false })
+      clearSelectionParam("participantId")
       return
     }
     if (createdForParticipantRef.current === initialParticipantId) return
@@ -662,7 +683,7 @@ const LeftSidebar = ({
     if (isLoading) return
     createdForParticipantRef.current = initialParticipantId
 
-    const local = conversations.find(
+    const local = conversationsRef.current.find(
       (c) =>
         !c.isGroup &&
         c.participantIds?.length === 2 &&
@@ -679,7 +700,7 @@ const LeftSidebar = ({
       } else {
         setSelectedConversation(local)
       }
-      router.replace("/inbox", { scroll: false })
+      clearSelectionParam("participantId")
       return
     }
 
@@ -698,7 +719,7 @@ const LeftSidebar = ({
 
         // setSelectedConversation must NOT be called inside a setConversations
         // updater — React calls updaters during render and would throw.
-        const existing = conversations.find((c) => c.id === thread.id)
+        const existing = conversationsRef.current.find((c) => c.id === thread.id)
         if (existing) {
           if (existing.isTrashed) {
             threadActions.untrash(existing.id).catch(() => {})
@@ -743,15 +764,26 @@ const LeftSidebar = ({
           )
           setSelectedConversation(placeholder)
         }
-        router.replace("/inbox", { scroll: false })
+        clearSelectionParam("participantId")
       } catch (err) {
         console.error("[LeftSidebar] participantId thread create failed:", err)
+        // Release the ref guard so a transient failure (e.g. cold-start 502)
+        // can be retried instead of permanently blocking this participant.
+        if (createdForParticipantRef.current === initialParticipantId) {
+          createdForParticipantRef.current = null
+        }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [currentUserId, token, initialParticipantId, isLoading, conversations])
+  }, [
+    currentUserId,
+    token,
+    initialParticipantId,
+    isLoading,
+    clearSelectionParam,
+  ])
 
   const skipAutoSelectRef = useRef(false)
   const [blockedSenderIds, setBlockedSenderIds] = useState<Set<string>>(

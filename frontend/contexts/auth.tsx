@@ -154,6 +154,8 @@ interface AuthContextType {
   authModalView: "sign-in" | "sign-up"
   openAuthModal: (view?: "sign-in" | "sign-up") => void
   closeAuthModal: () => void
+  pendingRedirect: string | null
+  setPendingRedirect: (url: string | null) => void
 }
 
 const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
@@ -166,6 +168,8 @@ const AuthContext: Context<AuthContextType> = createContext<AuthContextType>({
   authModalView: "sign-in",
   openAuthModal: () => {},
   closeAuthModal: () => {},
+  pendingRedirect: null,
+  setPendingRedirect: () => {},
 })
 
 const mergeUserAuthFields = (
@@ -324,6 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const auth = useProvideAuth()
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authModalView, setAuthModalView] = useState<"sign-in" | "sign-up">("sign-in")
+  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null)
 
   const openAuthModal = (view: "sign-in" | "sign-up" = "sign-in") => {
     setAuthModalView(view)
@@ -333,7 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const closeAuthModal = () => setAuthModalOpen(false)
 
   return (
-    <AuthContext.Provider value={{ ...auth, authModalOpen, authModalView, openAuthModal, closeAuthModal }}>
+    <AuthContext.Provider value={{ ...auth, authModalOpen, authModalView, openAuthModal, closeAuthModal, pendingRedirect, setPendingRedirect }}>
       {children}
     </AuthContext.Provider>
   )

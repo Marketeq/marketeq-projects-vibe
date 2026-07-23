@@ -332,7 +332,7 @@ async function fetchBackendListings(): Promise<MyListing[]> {
       updatedAt: p.updatedAt || p.createdAt,
     }))
   } catch (err) {
-    console.error("Failed to fetch backend listings:", err)
+    console.warn("Failed to fetch backend listings; using local fallback:", err)
     return []
   }
 }

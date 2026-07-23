@@ -57,7 +57,7 @@ type SignUpFormValues = z.infer<typeof signUpSchema>
 
 function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => void; onClose: () => void }) {
   const router = useRouter()
-  const { setUser, closeAuthModal } = useAuth()
+  const { setUser, closeAuthModal, pendingRedirect, setPendingRedirect } = useAuth()
   const { toast } = useToast()
   const [isVisible, toggleIsVisible] = useToggle(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -107,6 +107,10 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
           }
           closeAuthModal()
           onClose()
+          if (pendingRedirect) {
+            router.push(pendingRedirect)
+            setPendingRedirect(null)
+          }
           reset()
         } else if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           // 2FA required — redirect to full sign-in page
@@ -137,8 +141,8 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton />
-          <LinkedInLoginButton />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -249,7 +253,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
 function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => void; onClose: () => void }) {
   const router = useRouter()
-  const { setUser, closeAuthModal } = useAuth()
+  const { setUser, closeAuthModal, pendingRedirect, setPendingRedirect } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [showSecuritySettings, setShowSecuritySettings] = useState(false)
@@ -320,8 +324,8 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton />
-          <LinkedInLoginButton />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -402,6 +406,10 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
         <SecuritySettingsStepper
           onCloseModal={() => {
             setShowSecuritySettings(false)
+            if (pendingRedirect) {
+              router.push(pendingRedirect)
+              setPendingRedirect(null)
+            }
           }}
         />
       )}

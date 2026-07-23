@@ -9,15 +9,18 @@ import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
 import { PayoutRequest }   from '../entities/payout-request.entity';
 import { DepositMethod }   from '../entities/deposit-method.entity';
 import { MagicLinkToken }  from '../entities/magic-link-token.entity';
+import { PayoutSchedule }  from '../entities/payout-schedule.entity';
 import { CommonModule }    from '../common/common.module';
 import { MagicLinkModule } from '../magic-link/magic-link.module';
+import { KycModule }       from '../kyc/kyc.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PayoutRequest, DepositMethod, MagicLinkToken]),
+    TypeOrmModule.forFeature([PayoutRequest, DepositMethod, MagicLinkToken, PayoutSchedule]),
     BullModule.registerQueue({ name: 'payout-processing' }),
     CommonModule,
     MagicLinkModule,
+    KycModule,
   ],
   controllers: [PayoutController],
   providers: [PayoutService, WithdrawalRateLimitService],

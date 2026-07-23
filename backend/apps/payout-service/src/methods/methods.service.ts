@@ -2,7 +2,7 @@
 // PS-04 + PS-18 §7: Deposit method CRUD with split-aware deletion
 import { Injectable, Logger, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { ConfigService }       from '@nestjs/config';
 import { randomUUID, createHash } from 'crypto';
 
@@ -18,11 +18,13 @@ import { BankEncryptionService } from './bank-encryption.service';
 import { UpdateMethodDto }     from './dto/update-method.dto';
 import { CryptoConnectionService } from '../crypto/crypto-connection.service';
 
-const MAX_METHODS = 5;
-
 @Injectable()
 export class MethodsService {
   private readonly logger = new Logger(MethodsService.name);
+  // Doc07 Domain 10: method-count caps must come from server configuration,
+  // not a hardcoded constant — MAX_DEPOSIT_METHODS lets ops raise/lower the
+  // cap without a code deploy. 5 remains the default if unset.
+  private readonly maxMethods: number;
 
   constructor(
     @InjectRepository(DepositMethod)
@@ -38,7 +40,23 @@ export class MethodsService {
     private readonly bankValidator: BankValidationService,
     private readonly bankEncryption: BankEncryptionService,
     private readonly cryptoConnectionService: CryptoConnectionService,
-  ) {}
+  ) {
+    this.maxMethods = parseInt(this.config.get('MAX_DEPOSIT_METHODS', '5'), 10) || 5;
+  }
+
+  // ─── GET /v1/deposit-methods/config — SCR-20 ────────────────────
+  // Feature-flag state must come from server config, never a frontend build-time
+  // env var (a stale frontend build could otherwise show an option the backend
+  // will reject, or hide one the backend has since enabled).
+  getMethodTypeConfig() {
+    return {
+      featureFlags: {
+        debitCardEnabled: this.config.get('FEATURE_DEBIT_CARD_ENABLED', 'false') === 'true',
+        teqCoinEnabled: this.config.get('FEATURE_TEQ_COIN_ENABLED', 'false') === 'true',
+      },
+      maxMethods: this.maxMethods,
+    };
+  }
 
   // ─── GET /v1/deposit-methods ──────────────────────────────────
   async listMethods(contractorId: string) {
@@ -47,19 +65,36 @@ export class MethodsService {
       order: { isDefault: 'DESC', createdAt: 'ASC' },
     });
 
+    // AC-01.06: locked methods must surface their lock expiry in the list.
+    const lockedIds = methods
+      .filter(m => m.verificationStatus === VerificationStatus.LOCKED)
+      .map(m => m.id);
+    const lockedUntilByMethodId = new Map<string, Date>();
+    if (lockedIds.length) {
+      const verifications = await this.verifyRepo.find({
+        where: { depositMethodId: In(lockedIds) },
+        order: { createdAt: 'DESC' },
+      });
+      for (const v of verifications) {
+        if (v.depositMethodId && !lockedUntilByMethodId.has(v.depositMethodId) && v.lockedUntil) {
+          lockedUntilByMethodId.set(v.depositMethodId, v.lockedUntil);
+        }
+      }
+    }
+
     return {
-      methods: methods.map(m => this.toListItem(m)),
+      methods: methods.map(m => this.toListItem(m, lockedUntilByMethodId.get(m.id) ?? null)),
       totalCount: methods.length,
-      maxAllowed: MAX_METHODS,
-      canAddMore: methods.length < MAX_METHODS,
+      maxAllowed: this.maxMethods,
+      canAddMore: methods.length < this.maxMethods,
     };
   }
 
   // ─── POST /v1/deposit-methods ─────────────────────────────────
   async addMethod(contractorId: string, dto: AddMethodDto) {
     const count = await this.methodRepo.count({ where: { contractorId, isActive: true } });
-    if (count >= MAX_METHODS) {
-      throw new PayoutError(`You can have a maximum of ${MAX_METHODS} deposit methods.`,
+    if (count >= this.maxMethods) {
+      throw new PayoutError(`You can have a maximum of ${this.maxMethods} deposit methods.`,
         HttpStatus.BAD_REQUEST, 'ERR_DEPOSIT_METHOD_LIMIT_REACHED');
     }
 
@@ -184,6 +219,74 @@ export class MethodsService {
           HttpStatus.BAD_REQUEST, 'ERR_DEPOSIT_NICKNAME_TOO_LONG');
       }
       method.nickname = dto.nickname;
+    }
+
+    // US-59: full bank-detail edit. Only for BANK_MANUAL methods that
+    // haven't completed verification — once VERIFIED, silently changing the
+    // underlying account number without re-verifying it would let a
+    // compromised session redirect future payouts, so those must be
+    // removed and re-added instead (US-62's "up to 3 days" copy only
+    // applies to this path, since it always restarts micro-deposit
+    // verification below).
+    const bankFields: (keyof UpdateMethodDto)[] = [
+      'bankAccountName', 'bankAccountNumber', 'bankCountry', 'bankCurrency',
+      'bankRoutingNumber', 'bankIban', 'bankSwiftBic', 'bankIfscCode',
+      'bankBsbNumber', 'bankSortCode', 'bankCode', 'bankBranchCode',
+      'bankInstitutionNumber', 'bankTransitNumber', 'bankClabe',
+      'bankCnapsCode', 'bankBik', 'bankKorrespondentAccount', 'bankCpfCnpj',
+      'bankAgencia', 'bankConta',
+    ];
+    const isBankDetailEdit = bankFields.some((f) => dto[f] !== undefined);
+
+    if (isBankDetailEdit) {
+      if (method.methodType !== MethodType.BANK_MANUAL) {
+        throw new PayoutError('Bank details can only be edited for manually-added bank accounts.',
+          HttpStatus.BAD_REQUEST, 'ERR_DEPOSIT_METHOD_NOT_EDITABLE');
+      }
+      if (method.verificationStatus === VerificationStatus.VERIFIED) {
+        throw new PayoutError('A verified account cannot be edited — remove it and add a new one instead.',
+          HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_VERIFIED_LOCKED');
+      }
+
+      // US-63: BankValidationService throws PayoutError with the exact
+      // ERR_BANK_* code as its message — the frontend maps these to a
+      // friendly checklist rather than showing the raw code.
+      this.bankValidator.validate(dto);
+
+      const rawAccount = dto.bankAccountNumber ?? dto.bankIban ?? '';
+      if (rawAccount) {
+        const accountHash = createHash('sha256').update(rawAccount.replace(/\s/g, '').toLowerCase()).digest('hex');
+        const existingMethod = await this.methodRepo.findOne({
+          where: { contractorId, accountNumberHash: accountHash, isActive: true },
+        });
+        if (existingMethod && existingMethod.id !== method.id) {
+          throw new PayoutError('This account is already linked.',
+            HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_DUPLICATE');
+        }
+        method.accountNumberHash = accountHash;
+      }
+      method.bankAccountName = dto.bankAccountName ?? null;
+      method.bankAccountLast4 = this.bankEncryption.last4(dto.bankAccountNumber ?? dto.bankIban ?? '');
+      method.bankCountry = dto.bankCountry ?? null;
+      method.bankCurrency = dto.bankCurrency ?? null;
+      method.bankIbanLast4 = dto.bankIban ? dto.bankIban.slice(-4) : null;
+      method.displayLabel = this.bankValidator.generateDisplayLabel(dto);
+      method.verificationStatus = VerificationStatus.PENDING;
+
+      // Any changed account number must never inherit a verification that
+      // was issued for the old one — expire it and start fresh.
+      await this.verifyRepo.update(
+        { depositMethodId: method.id, status: VerificationStatus.PENDING },
+        { status: VerificationStatus.EXPIRED },
+      );
+      await this.methodRepo.save(method);
+      const verification = await this.createVerification(method, dto as unknown as AddMethodDto);
+      await this.auditService.log({
+        contractorId, actorType: 'contractor', actorId: contractorId,
+        action: 'method.bank_details_updated',
+        metadata: { methodId: method.id },
+      });
+      return { ...this.toDetailItem(method), verification };
     }
 
     if (dto.isDefault === true) {
@@ -416,13 +519,14 @@ export class MethodsService {
     }
   }
 
-  private toListItem(m: DepositMethod) {
+  private toListItem(m: DepositMethod, lockedUntil: Date | null = null) {
     return {
       id: m.id, methodType: m.methodType, displayLabel: m.displayLabel,
       nickname: m.nickname, isDefault: m.isDefault,
       verificationStatus: m.verificationStatus, reauthRequired: false,
       bankCountry: m.bankCountry, bankCurrency: m.bankCurrency,
       createdAt: m.createdAt.toISOString(),
+      lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
     };
   }
 

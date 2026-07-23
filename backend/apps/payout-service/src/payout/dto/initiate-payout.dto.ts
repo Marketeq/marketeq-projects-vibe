@@ -1,4 +1,4 @@
-import { IsString, IsIn, IsUUID, IsNotEmpty } from 'class-validator';
+import { IsString, IsIn, IsUUID, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 
 export class InitiatePayoutDto {
   @IsString() @IsNotEmpty()
@@ -12,6 +12,12 @@ export class InitiatePayoutDto {
 
   @IsUUID()
   idempotencyKey: string;
+
+  // Same bypass as ValidateAmountDto.ignoreReserve — must be resent at
+  // initiate() since that's the actual enforcement point; validateAmount()
+  // is only ever a preview.
+  @IsOptional() @IsBoolean()
+  ignoreReserve?: boolean;
 }
 
 export class InitiatePayoutResponseDto {

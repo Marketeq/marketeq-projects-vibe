@@ -10,6 +10,20 @@ import {
   SortProjectDto,
 } from '../../dto/query-project.dto';
 
+export type RecentQuestion = {
+  id?: string;
+  question: string;
+  answer: string | null;
+  askedByName?: string | null;
+  askedByUsername?: string | null;
+  askedAt?: string | null;
+  answeredByUserId?: string | null;
+  answeredByName?: string | null;
+  answeredByRole?: string | null;
+  assignedToUserId?: string | null;
+  hidden?: boolean;
+};
+
 export abstract class ProjectRepository {
   abstract create(
     data: Omit<Project, 'id' | 'createdAt' | 'deletedAt' | 'updatedAt'>,
@@ -48,6 +62,44 @@ export abstract class ProjectRepository {
     id: Project['id'],
     payload: DeepPartial<Project>,
   ): Promise<Project | null>;
+
+  abstract updatePublishedSnapshot(
+    id: Project['id'],
+    data: {
+      budget: number;
+      scope: unknown;
+      duration: string | null;
+      estimatedHours: number | null;
+    },
+  ): Promise<void>;
+
+  abstract getProjectMembers(id: Project['id']): Promise<
+    Array<{
+      userId: string;
+      projectRole: string;
+      status: string;
+      isLead: boolean;
+      leadLabel: string | null;
+    }>
+  >;
+
+  abstract upsertProjectMembers(
+    id: Project['id'],
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ): Promise<void>;
+
+  abstract getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]>;
+
+  abstract updateRecentQuestions(
+    id: Project['id'],
+    questions: RecentQuestion[],
+  ): Promise<void>;
 
   abstract softDelete(id: Project['id']): Promise<void>;
 }

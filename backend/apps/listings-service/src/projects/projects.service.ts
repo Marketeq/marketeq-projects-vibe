@@ -68,10 +68,12 @@ export class ProjectsService {
 
     return {
       ...this.shapeProject(item),
+      ownerId: item.userId ? String(item.userId) : null,
       similarProjects,
       relatedCategories: this.getRelatedCategories(item),
       relatedSkills: this.getRelatedSkills(item),
       team,
+      isTemporarilyUnavailable: team.length === 0,
       projectHistoryRatings,
     };
   }
@@ -87,6 +89,16 @@ export class ProjectsService {
       : row?.userId ? [row.userId] : [];
     if (!memberIds.length) return [];
 
+    const statusRows: Array<{ userId: string; status: string }> = await this.repo.manager.query(
+      `SELECT "userId"::text, "status" FROM listings.project_members WHERE "projectId" = $1`,
+      [project.id],
+    );
+    const inactiveIds = new Set(
+      statusRows.filter((r) => r.status === 'Inactive').map((r) => r.userId),
+    );
+    const visibleIds = memberIds.filter((id) => !inactiveIds.has(id));
+    if (!visibleIds.length) return [];
+
     const [users, skillRows, langRows] = await Promise.all([
       this.repo.manager.query<Array<{
         id: string; firstName: string; lastName: string; username: string | null;
@@ -94,15 +106,15 @@ export class ProjectsService {
       }>>(
         `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location
          FROM user_service.users WHERE id = ANY($1::uuid[])`,
-        [memberIds],
+        [visibleIds],
       ),
       this.repo.manager.query<Array<{ userId: string; name: string }>>(
         `SELECT "userId"::text, name FROM user_service.skills WHERE "userId" = ANY($1::uuid[])`,
-        [memberIds],
+        [visibleIds],
       ),
       this.repo.manager.query<Array<{ userId: string; name: string }>>(
         `SELECT "userId"::text, name FROM user_service.languages WHERE "userId" = ANY($1::uuid[])`,
-        [memberIds],
+        [visibleIds],
       ),
     ]);
 
@@ -410,6 +422,7 @@ export class ProjectsService {
       updatedAt: project.updatedAt,
       budget,
       priceMin: budget,
+      budgetUsdCents: budget != null ? Math.round(budget * 100) : null,
       estimatedHours: project.estimatedHours ?? null,
       duration: project.duration ?? null,
       mediaUrls: this.resolveMediaUrls(project.mediaUrls, project.categories ?? project.category),

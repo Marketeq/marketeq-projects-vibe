@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   mergeDashboardUserFields,
   resolveDashboardRoute,
@@ -12,12 +12,18 @@ import { UserAPI } from "@/service/http/user"
 import { LinkedInDefault } from "@blend-metrics/icons/social"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
-const LinkedInLogin = () => {
+const LinkedInLogin = ({
+  onSuccess,
+}: { onSuccess?: (user: User) => void } = {}) => {
   const hasLoggedInRef = useRef(false)
+  const popupRef = useRef<Window | null>(null)
+  const popupPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const router = useRouter()
-  const pathName = usePathname()
+  const redirectUrl = process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT || ""
 
   const { setUser } = useAuth()
   const { toast } = useToast()
@@ -29,11 +35,17 @@ const LinkedInLogin = () => {
     return popupWindowURL.searchParams.get("code")
   }, [])
 
+  const stopPopupPoll = useCallback(() => {
+    if (popupPollRef.current) {
+      clearInterval(popupPollRef.current)
+      popupPollRef.current = null
+    }
+  }, [])
+
   const handleLoginWithLinkedIn = () => {
     if (typeof window === "undefined") return
 
     const clientId = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID || ""
-    const redirectUrl = `${window.location.origin}${pathName}`
 
     const params = new URLSearchParams({
       response_type: "code",
@@ -45,19 +57,32 @@ const LinkedInLogin = () => {
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
 
-    window.open(
+    hasLoggedInRef.current = false
+    popupRef.current = window.open(
       authUrl,
       "Linkedin",
       "menubar=no,location=no,resizable=no,scrollbars=no,status=no,width=550,height=730"
     )
+
+    stopPopupPoll()
+    popupPollRef.current = setInterval(() => {
+      if (popupRef.current?.closed) {
+        stopPopupPoll()
+        if (!hasLoggedInRef.current) {
+          toast({
+            title: "LinkedIn sign-in was cancelled or failed. Please try again.",
+            variant: "destructive",
+          })
+        }
+      }
+    }, 500)
   }
 
   const handleLoginWithLinkedInApi = useCallback(
     (code: string) => {
       if (!hasLoggedInRef.current) {
         hasLoggedInRef.current = true
-
-        const redirectUrl = `${window?.location?.origin}${pathName}`
+        stopPopupPoll()
 
         setIsLoading(true)
 
@@ -86,23 +111,30 @@ const LinkedInLogin = () => {
               if (nextUser && typeof nextUser === "object") {
                 setUser(nextUser)
               }
-              router.push(resolveDashboardRoute(nextUser as any))
+              if (response.data.user?.accountLinked) {
+                toast({
+                  title: "Your LinkedIn account has been linked to your existing Marketeq account.",
+                })
+              }
+              if (onSuccess) {
+                onSuccess(nextUser as User)
+              } else {
+                router.push(resolveDashboardRoute(nextUser as any))
+              }
             }
           })
           .catch((error) => {
-            if (error?.response?.data?.errors?.message) {
-              toast({
-                title: error?.response?.data?.errors?.message,
-                variant: "destructive",
-              })
-            }
+            toast({
+              title: getOAuthErrorMessage(error),
+              variant: "destructive",
+            })
           })
           .finally(() => {
             setIsLoading(false)
           })
       }
     },
-    [pathName, router, setUser, toast]
+    [redirectUrl, router, setUser, toast, stopPopupPoll]
   )
 
   const handlePostMessage = useCallback(
@@ -126,8 +158,9 @@ const LinkedInLogin = () => {
 
     return () => {
       window.removeEventListener("message", handlePostMessage)
+      stopPopupPoll()
     }
-  }, [getCodeFromWindowURL, handlePostMessage])
+  }, [getCodeFromWindowURL, handlePostMessage, stopPopupPoll])
 
   return (
     <>

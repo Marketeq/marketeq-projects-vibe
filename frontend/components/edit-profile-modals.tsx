@@ -34,6 +34,7 @@ import { isAfter, isBefore } from "date-fns"
 import CurrencyInput from "react-currency-input-field"
 import {
   Controller,
+  DefaultValues,
   FormProvider,
   SubmitHandler,
   useForm,
@@ -483,6 +484,16 @@ const workExperienceFormSchema = z
 
 type WorkExperienceFormValues = z.infer<typeof workExperienceFormSchema>
 
+const workExperienceFormDefaultValues = {
+  currentlyWorkHere: false,
+  jobDescription: "",
+  jobTitle: "",
+  employer: "",
+  endDate: undefined,
+  startDate: undefined,
+  skills: [],
+} as DefaultValues<WorkExperienceFormValues>
+
 const months = [
   { name: "January", value: 1 },
   { name: "February", value: 2 },
@@ -698,6 +709,16 @@ const certificationsFormSchema = z
   )
 
 type CertificationsFormValues = z.infer<typeof certificationsFormSchema>
+
+const certificationsFormDefaultValues = {
+  credentialId: "",
+  credentialsUrl: "",
+  name: "",
+  canNotExpire: false,
+  issuedDate: undefined,
+  expirationDate: undefined,
+  skills: [],
+} as DefaultValues<CertificationsFormValues>
 
 // ============================================================
 // AboutMeDialog
@@ -2074,15 +2095,7 @@ export const WorkExperienceDialog = ({
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
     mode: "onChange",
-    defaultValues: {
-      currentlyWorkHere: false,
-      jobDescription: "",
-      jobTitle: "",
-      employer: "",
-      endDate: undefined,
-      startDate: undefined,
-      skills: [],
-    },
+    defaultValues: workExperienceFormDefaultValues,
   })
   const [serverError, setServerError] = useState<string | null>(null)
   const MAX_EXPERIENCE_ENTRIES = 30
@@ -2219,7 +2232,7 @@ export const WorkExperienceDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(workExperienceFormDefaultValues)
     }
   }, [open, editIndex])
 
@@ -2377,7 +2390,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.month"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Month"
                                 displayValue={(value: number) =>
@@ -2421,7 +2440,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.year"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Year"
                                 displayValue={(value: number) => value}
@@ -2867,7 +2892,7 @@ export const EducationDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(educationFormDefaultValues)
     }
   }, [open, editIndex])
 
@@ -4224,15 +4249,7 @@ export const CertificationsDialog = ({
   } = useForm<CertificationsFormValues>({
     resolver: zodResolver(certificationsFormSchema),
     mode: "onChange",
-    defaultValues: {
-      credentialId: "",
-      credentialsUrl: "",
-      name: "",
-      canNotExpire: false,
-      issuedDate: undefined,
-      expirationDate: undefined,
-      skills: [],
-    },
+    defaultValues: certificationsFormDefaultValues,
   })
   const [isShowing, setIsShowing] = useState(false)
   const [editingId, setEditingId] = useState<string | undefined>()
@@ -4274,7 +4291,7 @@ export const CertificationsDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(certificationsFormDefaultValues)
     }
   }, [open, editIndex, edit, reset])
 
@@ -4466,7 +4483,10 @@ export const CertificationsDialog = ({
                           }
                           placeholder="MM/DD/YYYY"
                           value={value}
-                          onValueChange={onChange}
+                          onValueChange={(v) => {
+                            onChange(v)
+                            trigger("expirationDate")
+                          }}
                         />
                       )}
                     />
@@ -4641,10 +4661,7 @@ export const CertificationsDialog = ({
                                 <ComboboxInput
                                   className="w-full"
                                   size="lg"
-                                  displayValue={(skill: {
-                                    id: number
-                                    name: string
-                                  }) => skill.name}
+                                  displayValue={() => query}
                                   onChange={(event) =>
                                     setQuery(event.target.value)
                                   }
@@ -4667,13 +4684,35 @@ export const CertificationsDialog = ({
                                           {skill.name}
                                         </ComboboxOption>
                                       ))
-                                    ) : (
-                                      <div className="px-3 py-2 text-sm font-light text-gray-500">
-                                        {query.trim()
-                                          ? "No matching skills found."
-                                          : "Start typing to search skills."}
-                                      </div>
-                                    )}
+                                    ) : (() => {
+                                      const q = query.trim()
+                                      const alreadySelected = (
+                                        value ?? []
+                                      ).some(
+                                        (s) =>
+                                          s.name.toLowerCase() ===
+                                          q.toLowerCase()
+                                      )
+                                      if (q && !alreadySelected) {
+                                        return (
+                                          <ComboboxOption
+                                            value={{
+                                              id: `custom-${q}`,
+                                              name: q,
+                                            }}
+                                          >
+                                            Add &ldquo;{q}&rdquo;
+                                          </ComboboxOption>
+                                        )
+                                      }
+                                      return (
+                                        <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                          {q
+                                            ? "No matching skills found."
+                                            : "Start typing to search skills."}
+                                        </div>
+                                      )
+                                    })()}
                                   </ScrollArea>
                                 </ComboboxOptions>
                               </ScaleOutIn>
@@ -4702,6 +4741,16 @@ export const CertificationsDialog = ({
                       Add Skills
                     </Button>
                   )}
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="skills"
+                    render={({ message }) => (
+                      <ErrorMessage className="mt-1.5" size="sm">
+                        {message}
+                      </ErrorMessage>
+                    )}
+                  />
 
                   <div className="mt-3 flex gap-3 flex-wrap">
                     {selected?.map((skill, index) => (

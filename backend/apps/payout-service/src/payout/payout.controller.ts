@@ -16,6 +16,14 @@ export class PayoutController {
     private readonly magicLinkService: MagicLinkService,
   ) {}
 
+  // US-30/31: pre-flight KYC/first-payout-hold check for the withdrawal screen
+  @UseGuards(JwtAuthGuard)
+  @Get('gate-check')
+  @HttpCode(200)
+  async gateCheck(@Request() req: any) {
+    return this.payoutService.checkGate(req.user.userId);
+  }
+
   // Step 1+2: Validate amount and get fee preview
   @UseGuards(JwtAuthGuard)
   @Post('validate-amount')
@@ -29,7 +37,7 @@ export class PayoutController {
   @Post('initiate')
   @HttpCode(200)
   async initiate(@Request() req: any, @Body() dto: InitiatePayoutDto) {
-    return this.payoutService.initiate(req.user.userId, dto);
+    return this.payoutService.initiate(req.user.userId, dto, req.user.email);
   }
 
   // PS-02 (legacy): Magic link verification via token only
@@ -50,7 +58,14 @@ export class PayoutController {
     if (!token || !payoutRequestId) {
       return { statusCode: 400, message: 'Missing token or id parameter.' };
     }
-    return this.magicLinkService.verifyEmailToken(token, payoutRequestId);
+    const result = await this.magicLinkService.verifyEmailToken(token, payoutRequestId);
+    // Bug fix: verifyEmailToken() only advances status to QUEUED — it has no
+    // queue access to actually schedule processing. Without this, a verified
+    // withdrawal would sit at QUEUED forever and never settle.
+    if (result.status === 'verified') {
+      await this.payoutService.enqueueForProcessing(payoutRequestId);
+    }
+    return result;
   }
 
   // PS-14 §7: Resend verification email (rate-limited: max 3 per payout)
@@ -70,5 +85,22 @@ export class PayoutController {
   @HttpCode(200)
   async cancel(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.payoutService.cancel(req.user.userId, id);
+  }
+
+  // US-27/AC-27.07: paginated payout history — declared after the literal
+  // 'verify'/'verify-email' routes above so ':id' below never shadows them.
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  @HttpCode(200)
+  async list(@Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('status') status?: string, @Query('search') search?: string) {
+    return this.payoutService.listPayouts(req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20, status, search);
+  }
+
+  // US-28: full detail for a single payout request
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  @HttpCode(200)
+  async detail(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.payoutService.getPayoutDetail(req.user.userId, id);
   }
 }

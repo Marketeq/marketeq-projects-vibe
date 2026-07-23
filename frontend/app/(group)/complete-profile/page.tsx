@@ -58,7 +58,13 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import Confetti from "react-confetti"
 import CurrencyInput from "react-currency-input-field"
-import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
+import {
+  Controller,
+  DefaultValues,
+  SubmitHandler,
+  useForm,
+  useWatch,
+} from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
 import { UserProfile } from "@/types/user"
@@ -2504,6 +2510,14 @@ const workExperienceFormSchema = z
 
 type WorkExperienceFormValues = z.infer<typeof workExperienceFormSchema>
 
+const workExperienceFormDefaultValues = {
+  currentlyWorkHere: false,
+  jobDescription: "",
+  jobTitle: "",
+  employer: "",
+  skills: [],
+} as DefaultValues<WorkExperienceFormValues>
+
 const months = [
   { name: "January", value: 1 },
   { name: "February", value: 2 },
@@ -2631,12 +2645,8 @@ const WorkExperienceDialog = ({
     reset,
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
-    defaultValues: {
-      currentlyWorkHere: false,
-      jobDescription: "",
-      jobTitle: "",
-      employer: "",
-    },
+    mode: "onChange",
+    defaultValues: workExperienceFormDefaultValues,
   })
   const [serverError, setServerError] = useState<string | null>(null)
   const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
@@ -2692,6 +2702,7 @@ const WorkExperienceDialog = ({
   }
 
   const skillsField = useWatch({ control, name: "skills" })
+  const jobDescriptionField = useWatch({ control, name: "jobDescription" })
   const currentlyWorkHereField = useWatch({
     control,
     name: "currentlyWorkHere",
@@ -2741,7 +2752,7 @@ const WorkExperienceDialog = ({
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
-                        reset()
+                        reset(workExperienceFormDefaultValues)
                         setState("action")
                       }}
                       className="bg-white"
@@ -2823,7 +2834,11 @@ const WorkExperienceDialog = ({
 
                   {state === "default" && !profileError && !profileLoading && (
                     <Button
-                      onClick={() => setState("action")}
+                      onClick={() => {
+                        setEditingIndex(undefined)
+                        reset(workExperienceFormDefaultValues)
+                        setState("action")
+                      }}
                       className="bg-white"
                       variant="outlined"
                       visual="gray"
@@ -2958,7 +2973,13 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="startDate.month"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Month"
                                       displayValue={(value: number) =>
@@ -3003,7 +3024,13 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="startDate.year"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Year"
                                       displayValue={(value: number) => value}
@@ -3069,7 +3096,10 @@ const WorkExperienceDialog = ({
                                   <Listbox
                                     key={`end-month-${currentlyWorkHereField}`}
                                     value={value}
-                                    onChange={onChange}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
                                   >
                                     <ListboxButton
                                       placeholder="Month"
@@ -3118,7 +3148,10 @@ const WorkExperienceDialog = ({
                                   <Listbox
                                     key={`end-year-${currentlyWorkHereField}`}
                                     value={value}
-                                    onChange={onChange}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
                                   >
                                     <ListboxButton
                                       placeholder="Year"
@@ -3204,13 +3237,24 @@ const WorkExperienceDialog = ({
                               name: "jobDescription",
                             })}
                           />
-                          <HookFormErrorMessage
-                            name="jobDescription"
-                            errors={errors}
-                            render={({ message }) => (
-                              <ErrorMessage size="sm">{message}</ErrorMessage>
-                            )}
-                          />
+                          <div className="flex items-start justify-between gap-x-2">
+                            <HookFormErrorMessage
+                              name="jobDescription"
+                              errors={errors}
+                              render={({ message }) => (
+                                <ErrorMessage size="sm">{message}</ErrorMessage>
+                              )}
+                            />
+                            <span
+                              className={cn(
+                                "ml-auto text-xs font-light text-gray-500",
+                                (jobDescriptionField?.length ?? 0) > 1000 &&
+                                  "text-error-600 font-medium"
+                              )}
+                            >
+                              {jobDescriptionField?.length ?? 0} / 1000
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -3573,6 +3617,13 @@ const educationFormSchema = z
 
 type EducationFormValues = z.infer<typeof educationFormSchema>
 
+const educationFormDefaultValues = {
+  currentlyAttending: false,
+  degree: "",
+  major: "",
+  schoolOrUniversity: "",
+} as EducationFormValues
+
 const EducationDialog = ({
   onFinished,
   onOpenedChange,
@@ -3611,15 +3662,12 @@ const EducationDialog = ({
     formState: { errors, isValid, isDirty },
     register,
     reset,
+    trigger,
     setValue: setFormValue,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
-    defaultValues: {
-      currentlyAttending: false,
-      degree: "",
-      major: "",
-      schoolOrUniversity: "",
-    },
+    mode: "onChange",
+    defaultValues: educationFormDefaultValues,
   })
   const [state, setState] = useState<"default" | "preview" | "action">(
     "default"
@@ -3734,7 +3782,6 @@ const EducationDialog = ({
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
-
   useEffect(() => {
     if (currentlyAttending) {
       setFormValue("endDate.month", undefined as any, {
@@ -3785,7 +3832,7 @@ const EducationDialog = ({
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
-                        reset()
+                        reset(educationFormDefaultValues)
                         setState("action")
                       }}
                       className="bg-white"
@@ -3854,7 +3901,11 @@ const EducationDialog = ({
 
                 {state === "default" && !profileError && !profileLoading && (
                   <Button
-                    onClick={() => setState("action")}
+                    onClick={() => {
+                      setEditingIndex(undefined)
+                      reset(educationFormDefaultValues)
+                      setState("action")
+                    }}
                     className="bg-white"
                     variant="outlined"
                     visual="gray"
@@ -4032,7 +4083,13 @@ const EducationDialog = ({
                               name="startDate.month"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  value={value}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) =>
                                       months.find((m) => m.value === value)
@@ -4068,7 +4125,13 @@ const EducationDialog = ({
                               name="startDate.year"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  value={value}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
                                     placeholder="Year"
@@ -4121,7 +4184,10 @@ const EducationDialog = ({
                                 <Listbox
                                   key={`edu-wiz-end-month-${currentlyAttending}`}
                                   value={value ?? null}
-                                  onChange={onChange}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
                                 >
                                   <ListboxButton
                                     displayValue={(value: number) =>
@@ -4161,7 +4227,10 @@ const EducationDialog = ({
                                 <Listbox
                                   key={`edu-wiz-end-year-${currentlyAttending}`}
                                   value={value ?? null}
-                                  onChange={onChange}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
                                 >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}

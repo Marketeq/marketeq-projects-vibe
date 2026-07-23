@@ -13,8 +13,14 @@ import { GoogleDefault } from "@blend-metrics/icons/social"
 import { useGoogleLogin } from "@react-oauth/google"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
-const GoogleLoginButtonInner = () => {
+const GoogleLoginButtonInner = ({
+  onSuccess,
+}: {
+  onSuccess?: (user: User) => void
+}) => {
   const router = useRouter()
 
   const { setUser } = useAuth()
@@ -53,23 +59,32 @@ const GoogleLoginButtonInner = () => {
             if (nextUser && typeof nextUser === "object") {
               setUser(nextUser)
             }
-            router.push(resolveDashboardRoute(nextUser as any))
+            if (response.data.user?.accountLinked) {
+              toast({
+                title: "Your Google account has been linked to your existing Marketeq account.",
+              })
+            }
+            if (onSuccess) {
+              onSuccess(nextUser as User)
+            } else {
+              router.push(resolveDashboardRoute(nextUser as any))
+            }
           }
         })
         .catch((error) => {
-          const msg =
-            error?.response?.data?.message ??
-            error?.response?.data?.errors?.message ??
-            error?.message ??
-            "Login failed"
           toast({
-            title: msg,
+            title: getOAuthErrorMessage(error),
             variant: "destructive",
           })
         })
         .finally(() => setIsLoading(false))
     },
-    onError: () => {},
+    onError: () => {
+      toast({
+        title: "Google sign-in was cancelled or failed. Please try again.",
+        variant: "destructive",
+      })
+    },
   })
 
   return (
@@ -97,7 +112,9 @@ const GoogleLoginButtonInner = () => {
   )
 }
 
-const GoogleLoginButton = () => {
+const GoogleLoginButton = ({
+  onSuccess,
+}: { onSuccess?: (user: User) => void } = {}) => {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
     return (
       <Button
@@ -113,7 +130,7 @@ const GoogleLoginButton = () => {
     )
   }
 
-  return <GoogleLoginButtonInner />
+  return <GoogleLoginButtonInner onSuccess={onSuccess} />
 }
 
 export default GoogleLoginButton

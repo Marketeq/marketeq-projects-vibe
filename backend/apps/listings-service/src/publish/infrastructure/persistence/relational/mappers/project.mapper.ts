@@ -32,6 +32,7 @@ export class ProjectMapper {
     project.deletedAt = raw.deletedAt;
     project.deliverables = raw.deliverables ?? null;
     project.mediaUrls = raw.mediaUrls ?? [];
+    project.teamMemberIds = raw.teamMemberIds ?? [];
     project.videoUrl = raw.videoUrl ?? null;
     project.faqs = raw.faqs ?? [];
     if (raw.media) {
@@ -69,6 +70,7 @@ export class ProjectMapper {
     projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.deliverables = project.deliverables ?? null;
     projectEntity.mediaUrls = project.mediaUrls ?? [];
+    projectEntity.teamMemberIds = project.teamMemberIds ?? [];
     projectEntity.videoUrl = project.videoUrl ?? undefined;
     projectEntity.faqs = project.faqs ?? [];
     projectEntity.status = project.status ?? undefined;

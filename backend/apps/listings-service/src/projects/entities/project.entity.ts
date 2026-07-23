@@ -76,6 +76,9 @@ export class Project {
   @Column('text', { array: true, default: [] })
   locations: string[];
 
+  @Column({ type: 'uuid', array: true, default: [] })
+  teamMemberIds: string[];
+
   @Column('text', { array: true, default: [] })
   mediaUrls: string[];
 
@@ -129,7 +132,19 @@ export class Project {
   faqs: { question: string; answer: string }[];
 
   @Column('jsonb', { default: [] })
-  recentQuestions: Array<{ question: string; answer: string | null }>;
+  recentQuestions: Array<{
+    id?: string;
+    question: string;
+    answer: string | null;
+    askedByName?: string | null;
+    askedByUsername?: string | null;
+    askedAt?: string | null;
+    answeredByUserId?: string | null;
+    answeredByName?: string | null;
+    answeredByRole?: string | null;
+    assignedToUserId?: string | null;
+    hidden?: boolean;
+  }>;
 
   @Column('jsonb', { default: [] })
   categorySelections: any[];

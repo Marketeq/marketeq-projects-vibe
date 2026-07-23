@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { EntityCondition } from '../utils/types/entity-condition.type';
 import { IPaginationOptions } from '../utils/types/pagination-options';
+import { hourlyRateForTask } from '../shared/utils/pricing';
 import { NullableType } from '../utils/types/nullable.type';
 import { ProjectRepository } from './infrastructure/persistence/project.repository';
 import { Project } from './interface/project';
@@ -38,6 +39,9 @@ import {
 } from './project-moderation.service';
 import { CloudflareStorageService } from './cloudflare-storage.service';
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import * as jwt from 'jsonwebtoken';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
@@ -49,6 +53,7 @@ import {
 import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types';
 import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
 import { FaqContext, FaqSuggestion } from './faq/faq.types';
+import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 
 @Injectable()
 export class PublishService {
@@ -62,10 +67,12 @@ export class PublishService {
     private readonly projectModerationService: ProjectModerationService,
     private readonly cloudflareStorageService: CloudflareStorageService,
     private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
     @Inject(DELIVERABLES_ADAPTER)
     private readonly deliverablesAdapter: DeliverablesAdapter,
     @Inject(FAQ_ADAPTER)
     private readonly faqAdapter: FaqAdapter,
+    private readonly userProfileClient: UserProfileClient,
   ) {}
 
   private faqContextFromProject(project: Project): FaqContext {
@@ -412,6 +419,7 @@ export class PublishService {
               experienceLevel: taskDto.experienceLevel,
               duration: taskDto.duration,
               estimatedHours: taskDto.estimatedHours,
+              assigneeUserId: taskDto.assigneeUserId ?? null,
               phaseId: phase.id,
             });
           }
@@ -461,6 +469,134 @@ export class PublishService {
     }
   }
 
+  private signInternalToken(): string {
+    const secret = this.configService.get<string>('JWT_SECRET') ?? '';
+    return jwt.sign({ sub: 'listings-service' }, secret, { expiresIn: '5m' });
+  }
+
+  // Median hourly rate (USD cents) from pricing-service for a role/location/
+  // experience. Returns 0 when pricing is unavailable or has no data.
+  private async getRateUsdCents(
+    role: string,
+    location: string | null,
+    experienceLevel: string | null,
+  ): Promise<number> {
+    const base = this.configService.get<string>('PRICING_SERVICE_URL');
+    if (!base || !role) return 0;
+    const EXP: Record<string, string> = {
+      student: 'junior',
+      junior: 'junior',
+      medior: 'mid',
+      mid: 'mid',
+      senior: 'senior',
+      guru: 'senior',
+    };
+    const experience = experienceLevel
+      ? (EXP[experienceLevel.toLowerCase()] ?? experienceLevel.toLowerCase())
+      : undefined;
+    try {
+      // Location is intentionally omitted: task locations are cities
+      // (e.g. "New York, NY") while pricing regions are broad ("United States"),
+      // so an ILIKE region match never hits. Per PS-04/§7.3, omitting location
+      // yields the platform average for the role + experience.
+      void location;
+      const res = await firstValueFrom(
+        this.httpService.get(`${base}/v1/rates`, {
+          params: { role, experience },
+          headers: { Authorization: `Bearer ${this.signInternalToken()}` },
+          timeout: 2000,
+        }),
+      );
+      const data = res.data as any;
+      if (data?.noData) return 0;
+      return Number(data?.hourlyRateMedianUsdCents) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private taskHours(task: Task): number {
+    const explicit = Number(task.estimatedHours);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const [rawVal, rawUnit] = String(task.duration ?? '')
+      .trim()
+      .split(/\s+/);
+    const value = Number(rawVal);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    const unit = (rawUnit ?? 'days').toLowerCase();
+    if (unit.startsWith('hour')) return value;
+    if (unit.startsWith('week')) return value * 40;
+    if (unit.startsWith('month')) return value * 160;
+    return value * 8;
+  }
+
+  private taskDurationDays(task: any): number {
+    const [rawVal, rawUnit] = String(task.duration ?? '')
+      .trim()
+      .split(/\s+/);
+    const value = Number(rawVal);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    const unit = (rawUnit ?? 'days').toLowerCase();
+    if (unit.startsWith('week')) return value * 7;
+    if (unit.startsWith('month')) return value * 30;
+    if (unit.startsWith('hour')) return Math.max(1, Math.ceil(value / 24));
+    return value;
+  }
+
+  private async calculateProjectBudgetUsdCents(phases: any[]): Promise<number> {
+    const tasks: any[] = [];
+    for (const phase of phases) {
+      for (const task of phase.task ?? []) tasks.push(task);
+    }
+
+    const assigneeIds = Array.from(
+      new Set(tasks.map((t) => t.assigneeUserId).filter(Boolean)),
+    );
+    const assignees = await this.userProfileClient.hydrateTeam(assigneeIds);
+    const rateByUserId = new Map<string, number>();
+    for (const m of assignees) {
+      if (m.hourlyRate && m.hourlyRate > 0) {
+        rateByUserId.set(m.userId, m.hourlyRate);
+      }
+    }
+
+    const costs = await Promise.all(
+      tasks.map(async (task) => {
+        const hours = this.taskHours(task);
+        if (hours <= 0) return 0;
+        const level = String(
+          task.experienceLevel || task.experience?.[0] || 'Medior',
+        ).toLowerCase();
+
+        const memberRate = task.assigneeUserId
+          ? rateByUserId.get(task.assigneeUserId)
+          : undefined;
+        if (memberRate) {
+          return Math.round(hours * memberRate * 100);
+        }
+
+        const location = task.location?.[0] ?? null;
+        const pricingCents = await this.getRateUsdCents(
+          task.role,
+          location,
+          task.experienceLevel ?? level,
+        );
+        const rateCents =
+          pricingCents > 0
+            ? pricingCents
+            : Math.round(
+                hourlyRateForTask({
+                  roleName: task.role,
+                  experienceLevel: task.experienceLevel ?? level,
+                  location: task.location,
+                }) * 100,
+              );
+        return Math.round(hours * rateCents);
+      }),
+    );
+    return costs.reduce((sum, c) => sum + c, 0);
+  }
+
   async getProjectDraft(userId: string, projectId: string): Promise<any> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
@@ -485,11 +621,96 @@ export class PublishService {
         }),
     );
 
+    const team = await this.userProfileClient.hydrateTeam(
+      project.teamMemberIds,
+    );
+    const projectMembers = await this.projectRepository.getProjectMembers(
+      project.id,
+    );
+    const leadUserId = projectMembers.find((m) => m.isLead)?.userId;
+    const teamWithLead = leadUserId
+      ? team.map((t: any) => ({
+          ...t,
+          isLead: String(t.userId ?? t.id ?? '') === String(leadUserId),
+        }))
+      : team;
+
+    const recentQuestions = await this.projectRepository.getRecentQuestions(
+      project.id,
+    );
+
     return {
       ...project,
       media: media ?? null,
       scope,
+      team: teamWithLead,
+      projectMembers,
+      recentQuestions,
+      budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
     };
+  }
+
+  async getProjectMembers(userId: string, projectId: string) {
+    await this.ensureProjectOwnership(projectId, userId);
+    return this.projectRepository.getProjectMembers(projectId);
+  }
+
+  async saveProjectMembers(
+    userId: string,
+    projectId: string,
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ) {
+    await this.ensureProjectOwnership(projectId, userId);
+    await this.projectRepository.upsertProjectMembers(projectId, members ?? []);
+    return this.projectRepository.getProjectMembers(projectId);
+  }
+
+  async getRecentQuestions(userId: string, projectId: string) {
+    await this.ensureProjectOwnership(projectId, userId);
+    return this.projectRepository.getRecentQuestions(projectId);
+  }
+
+  async saveRecentQuestions(
+    userId: string,
+    projectId: string,
+    questions: Array<{
+      id?: string;
+      question: string;
+      answer?: string | null;
+      askedByName?: string | null;
+      askedByUsername?: string | null;
+      askedAt?: string | null;
+      answeredByUserId?: string | null;
+      answeredByName?: string | null;
+      answeredByRole?: string | null;
+      assignedToUserId?: string | null;
+      hidden?: boolean;
+    }>,
+  ) {
+    await this.ensureProjectOwnership(projectId, userId);
+    const normalized = (questions ?? [])
+      .filter((q) => q && typeof q.question === 'string' && q.question.trim())
+      .map((q) => ({
+        id: q.id ?? undefined,
+        question: q.question,
+        answer: q.answer?.trim() ? q.answer : null,
+        askedByName: q.askedByName ?? null,
+        askedByUsername: q.askedByUsername ?? null,
+        askedAt: q.askedAt ?? null,
+        answeredByUserId: q.answer?.trim() ? (q.answeredByUserId ?? null) : null,
+        answeredByName: q.answer?.trim() ? (q.answeredByName ?? null) : null,
+        answeredByRole: q.answer?.trim() ? (q.answeredByRole ?? null) : null,
+        assignedToUserId: q.assignedToUserId ?? null,
+        hidden: !!q.hidden,
+      }));
+    await this.projectRepository.updateRecentQuestions(projectId, normalized);
+    return this.projectRepository.getRecentQuestions(projectId);
   }
 
   async updateProjectDraft(
@@ -537,6 +758,9 @@ export class PublishService {
     if (dto.projectType !== undefined) payload.projectType = dto.projectType;
     if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
     if (dto.faqs !== undefined) payload.faqs = dto.faqs;
+    if (dto.teamMemberIds !== undefined) {
+      payload.teamMemberIds = dto.teamMemberIds;
+    }
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -576,6 +800,7 @@ export class PublishService {
       ...project,
       media: media ?? null,
       scope,
+      budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
     };
   }
 
@@ -591,7 +816,7 @@ export class PublishService {
     userId: string,
     projectId: string,
     dto: UpsertProjectScopeDto,
-  ): Promise<{ scope: Phase[] }> {
+  ): Promise<{ scope: Phase[]; budgetUsdCents: number }> {
     await this.ensureProjectOwnership(projectId, userId);
 
     const existingPhases = await this.phaseRepository.findAll({
@@ -631,6 +856,7 @@ export class PublishService {
           experienceLevel: taskDto.experienceLevel,
           duration: taskDto.duration,
           estimatedHours: taskDto.estimatedHours,
+          assigneeUserId: taskDto.assigneeUserId ?? null,
           phaseId: phase.id,
         });
       }
@@ -664,12 +890,51 @@ export class PublishService {
       this.logger.warn(`Failed to derive deliverables for project ${projectId}: ${(err as Error).message}`);
     }
 
-    return { scope };
+    const budgetUsdCents = await this.calculateProjectBudgetUsdCents(scope);
+
+    let totalDays = 0;
+    for (const phase of scope) {
+      let phaseDays = 0;
+      for (const task of phase.task ?? []) {
+        phaseDays = Math.max(phaseDays, this.taskDurationDays(task));
+      }
+      totalDays += phaseDays;
+    }
+    const durationWeeks =
+      totalDays > 0 ? Math.max(1, Math.ceil(totalDays / 7)) : 0;
+
+    let totalHours = 0;
+    const scopeSnapshot = scope.map((phase, index) => ({
+      phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
+      order: phase.order ?? index,
+      tasks: (phase.task ?? []).map((task) => {
+        const hours = this.taskHours(task);
+        totalHours += hours;
+        return {
+          title: task.taskName,
+          roleName: task.role,
+          location: task.location ?? [],
+          experienceLevel:
+            task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
+          estimatedHours: hours,
+        };
+      }),
+    }));
+
+    await this.projectRepository.updatePublishedSnapshot(projectId, {
+      budget: budgetUsdCents / 100,
+      scope: scopeSnapshot,
+      duration: durationWeeks > 0 ? String(durationWeeks) : null,
+      estimatedHours: totalHours > 0 ? Math.round(totalHours) : null,
+    });
+
+    return { scope, budgetUsdCents };
   }
 
   async publishExistingProject(
     userId: string,
     projectId: string,
+    authToken?: string,
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
@@ -707,6 +972,7 @@ export class PublishService {
       const moderationResult = await this.projectModerationService.moderateProject(
         project.id!,
         moderationInput,
+        authToken,
       );
 
       return await this.applyModerationDecision(project.id!, moderationResult);

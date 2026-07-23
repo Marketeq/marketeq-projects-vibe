@@ -13,7 +13,12 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import options from "@/public/mock/options.json"
 import {
@@ -53,6 +58,7 @@ import {
   ArrowUpLeft,
   ChartBreakoutCircle,
   Check,
+  XCircle,
   CheckCircle,
   CheckCircleBroken,
   ChevronDown,
@@ -107,6 +113,16 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
+import {
+  AddRoleDialog,
+  countryFromLocation,
+  estimateScopeBudgetCents,
+  RolePicker,
+  type TeamMember,
+} from "@/components/scope-builder"
+import { TeamsAPI } from "@/service/http/teams"
+import { useInviteWindowStore } from "@/components/invite-window"
+import { getCurrentUser } from "@/utils/auth"
 import {
   Row,
   flexRender,
@@ -200,6 +216,9 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Progress,
   ScrollArea,
   ScrollBar,
@@ -236,8 +255,13 @@ declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    batchUpdateData?: (
+      rowIndex: number,
+      updates: Record<string, unknown>
+    ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
+    teamMembers?: TeamMember[]
   }
 }
 
@@ -485,6 +509,8 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
             experience: [experienceLevel],
             experienceLevel,
             duration: `${durationValue} ${durationType}`,
+            assigneeUserId:
+              row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
             phaseId: "temporary-required-string",
           }
         })
@@ -4893,6 +4919,8 @@ type PhaseRow = Prettify<
     role?: string
     location?: string
     experience?: string
+    assignedMember?: TeamMember | null
+    assigneeUserId?: string | null
   } & TaskFormValues
 >
 
@@ -5015,35 +5043,133 @@ const columns = [
     header: "Task Name",
   }),
   columnHelper.accessor("role", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
+    cell: ({ row: { index, original }, table }) => {
+      const value = original.role ?? ""
+      const teamMembers = table.options.meta?.teamMembers ?? []
+      const allRoles = table.options.meta?.roles ?? []
+      const member =
+        original.assignedMember ??
+        teamMembers.find((m) => m.id === original.assigneeUserId) ??
+        null
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      const [popoverOpen, setPopoverOpen] = useState(false)
+      // eslint-disable-next-line
+      const [addRoleOpen, setAddRoleOpen] = useState(false)
+
+      const handleSelectMember = (tm: TeamMember) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role: tm.role,
+          assignedMember: tm,
+          assigneeUserId: tm.id,
+          location: tm.location ?? "",
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleSelectVacantRole = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleAddRole = () => {
+        setPopoverOpen(false)
+        setAddRoleOpen(true)
+      }
+
+      const handleAddRoleDone = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+      }
+
+      const pickerPopover = (
+        <>
+          <PopoverContent className="w-[220px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+            <RolePicker
+              teamMembers={teamMembers}
+              roles={allRoles}
+              onSelectMember={handleSelectMember}
+              onSelectRole={handleSelectVacantRole}
+              onAddRole={handleAddRole}
+            />
+          </PopoverContent>
+          <AddRoleDialog
+            open={addRoleOpen}
+            onOpenChange={setAddRoleOpen}
+            roles={allRoles}
+            onDone={handleAddRoleDone}
+          />
+        </>
+      )
+
+      if (member) {
+        return (
+          <TableCell className="py-4 px-3">
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
+                  <Avatar className="size-6 shrink-0">
+                    {member.avatarUrl ? (
+                      <AvatarImage
+                        src={member.avatarUrl}
+                        alt={member.firstName}
+                      />
+                    ) : null}
+                    <AvatarFallback className="text-[10px]">
+                      {member.firstName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-medium text-gray-900 truncate leading-tight">
+                      {member.firstName}
+                      <span className="text-gray-400 font-normal ml-0.5">
+                        @{member.username}...
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-gray-500 truncate leading-tight">
+                      {member.role}
+                    </p>
+                  </div>
+                </button>
+              </PopoverTrigger>
+              {pickerPopover}
+            </Popover>
+          </TableCell>
+        )
+      }
 
       return (
-        <TableCell className="py-4 px-6">
-          <OwnCombobox
-            value={value}
-            onValueChange={setValue}
-            placeholder="Add Role"
-            options={table.options.meta?.roles}
-            triggerClassName="max-w-full"
-          />
+        <TableCell className="py-4 px-3">
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
+                  value ? "text-gray-600" : "text-gray-400"
+                )}
+              >
+                <span className="block truncate">{value || "Add Role"}</span>
+              </button>
+            </PopoverTrigger>
+            {pickerPopover}
+          </Popover>
         </TableCell>
       )
     },
-    header: "Role",
+    header: "Team Member",
   }),
   columnHelper.accessor("location", {
     cell: ({ getValue, row: { index }, column: { id }, table }) => {
       // eslint-disable-next-line
       const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: () => {
-          table.options.meta?.updateData(index, id, value)
-        },
+        defaultValue: countryFromLocation(getValue()),
+        onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
       return (
         <TableCell className="px-3 py-4">
@@ -5102,6 +5228,7 @@ interface PhaseTableProps {
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
+  teamMembers: TeamMember[]
 }
 
 const ROLES = [
@@ -5195,6 +5322,7 @@ const PhaseTable = ({
   rows,
   onRowsChange,
   openDurationDialog,
+  teamMembers,
 }: PhaseTableProps) => {
   const [data, setData] = useControllableState({
     value: rows,
@@ -5223,8 +5351,16 @@ const PhaseTable = ({
           })
         )
       },
+      batchUpdateData: (rowIndex, patch) => {
+        setData((prev) =>
+          prev.map((row, index) =>
+            index === rowIndex ? ({ ...row, ...patch } as PhaseRow) : row
+          )
+        )
+      },
       openDurationDialog,
       roles: ROLES,
+      teamMembers,
     },
   })
 
@@ -5367,8 +5503,12 @@ const ProjectScope = ({
 }: {
   setProgress?: (val: number) => void
 }) => {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
+  const handledCheckoutActionRef = useRef(false)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
@@ -5384,11 +5524,61 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = res?.data?.data ?? res?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        const mapped: TeamMember[] = roster.map((m: any) => {
+          const jobTitleList = Array.isArray(m.jobTitles)
+            ? m.jobTitles
+                .map((j: any) =>
+                  typeof j === "string" ? j : (j?.jobTitle ?? j?.headline ?? "")
+                )
+                .filter(Boolean)
+            : []
+          const jobTitle = m.recentJobTitle || jobTitleList[0] || ""
+          return {
+            id: m.userId || m.id,
+            firstName: m.firstName || m.username || "User",
+            username: m.username || "",
+            avatarUrl: m.avatarUrl || null,
+            role: jobTitle,
+            jobTitles: jobTitleList,
+            hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+            workSchedule: m.workSchedule ?? null,
+            customHoursPerWeek: m.customHoursPerWeek ?? null,
+            location: m.location ?? m.country ?? null,
+            experience: m.experience ?? m.experienceLevel ?? null,
+          }
+        })
+        if (!cancelled) setScopeTeam(mapped)
+      } catch {
+        /* roster fetch failed — picker shows empty state */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const {
     projectScopeMethods,
     isTaskSearchDialogOpen,
     setTaskSearchDialogOpen,
+    teamMemberIds,
+    pricingBudgetCents,
   } = useProjectScopeContext()
+  const projectTeam = useMemo(
+    () =>
+      teamMemberIds.length > 0
+        ? scopeTeam.filter((m) => teamMemberIds.includes(m.id))
+        : scopeTeam,
+    [scopeTeam, teamMemberIds]
+  )
   const { toggleValidation } = useStepContext()
 
   const [projectScopeState, setProjectScopeState] = projectScopeMethods
@@ -5401,6 +5591,64 @@ const ProjectScope = ({
     },
   })
   const success = projectScopeSchema.safeParse(phases)
+
+  // Budget + duration computed from the scope (same helper/rate-card as the
+  // inline my-listings view) — replaces the hardcoded sidebar figures.
+  const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
+    const scopePhases = Array.isArray(phases) ? phases : []
+    let totalDays = 0
+    for (const phase of scopePhases) {
+      const taskDays = (((phase as any)?.rows ?? []) as any[])
+        .map((row: any) => {
+          const dur = row?.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val
+        })
+        .filter((d: number) => d > 0)
+      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
+    }
+    let label = "—"
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const w = Math.max(1, Math.ceil(totalDays / 7))
+        label = `${w} Week${w !== 1 ? "s" : ""}`
+      } else {
+        const m = Math.max(1, Math.ceil(totalDays / 30))
+        label = `${m} Month${m !== 1 ? "s" : ""}`
+      }
+    }
+    const computedCents = estimateScopeBudgetCents(scopePhases)
+    return {
+      budgetTotalCents:
+        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      durationLabel: label,
+      durationDays: totalDays,
+    }
+  }, [phases, pricingBudgetCents])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: string) => {
+      if (cents <= 0) return "$0"
+      const total = cents / 100
+      const periodDays: Record<string, number> = {
+        week: 7,
+        "2-week": 14,
+        month: 30,
+        quarter: 90,
+        year: 365,
+      }
+      const daysPerPeriod = periodDays[period] ?? 7
+      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
+      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [durationDays]
+  )
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(success)
@@ -5435,6 +5683,26 @@ const ProjectScope = ({
     },
     [phases]
   )
+
+  useEffect(() => {
+    if (handledCheckoutActionRef.current) return
+    if (searchParams.get("checkoutAction") !== "add-task") return
+    if (phases.length < 1) return
+
+    handledCheckoutActionRef.current = true
+    setAccordionState((current) =>
+      current.includes("item-0") ? current : [...current, "item-0"]
+    )
+    handleOpenTaskDialog(0)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    nextSearchParams.delete("checkoutAction")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [handleOpenTaskDialog, pathname, phases.length, router, searchParams])
 
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
@@ -5983,7 +6251,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      $5,000
+                      {formatBudget(budgetTotalCents, "week")}
                     </span>
                     <span className="text-sm text-dark-blue-400">per</span>
                     <Badge visual="gray" className="rounded-[5px]">
@@ -6011,7 +6279,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      6 Months
+                      {durationLabel}
                     </span>
                   </div>
                 </div>
@@ -6156,6 +6424,7 @@ const ProjectScope = ({
                                 open: true,
                               })
                             }
+                            teamMembers={projectTeam}
                           />
                         </DisclosureContent>
                       </div>
@@ -6397,12 +6666,172 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   >
   isTaskSearchDialogOpen: boolean
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
+  teamMemberIds: string[]
+  setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  draftProjectId: string | null
+  pricingBudgetCents: number
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
 })
 
 const Team = () => {
+  const [members, setMembers] = React.useState<any[]>([])
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = (res as any)?.data?.data ?? (res as any)?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        if (!cancelled) setMembers(roster)
+      } catch {
+        /* no roster — render empty */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentUserId = getCurrentUser()?.id
+  const owner =
+    members.find((m: any) => m.role === "owner") ?? members[0] ?? null
+  const mapRole = (role?: string) =>
+    role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
+
+  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
+    useProjectScopeContext()
+  const inviteWindow = useInviteWindowStore()
+  const [addQuery, setAddQuery] = React.useState("")
+  const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
+    {}
+  )
+  const [wizardStatus, setWizardStatus] = React.useState<
+    Record<string, string>
+  >({})
+  const [wizardLeadLabel, setWizardLeadLabel] = React.useState("")
+  const [wizardLeadId, setWizardLeadId] = React.useState<string | null>(null)
+  const [wizardLeadSearch, setWizardLeadSearch] = React.useState("")
+  const { toast: wizardToast } = useToast()
+  const [wizardRemoveTarget, setWizardRemoveTarget] = React.useState<{
+    id: string
+    firstName: string
+  } | null>(null)
+  const confirmWizardRemove = (deactivate: boolean) => {
+    const t = wizardRemoveTarget
+    if (!t) return
+    if (deactivate) {
+      setWizardStatus((s) => ({ ...s, [t.id]: "Inactive" }))
+      wizardToast({
+        title: `${t.firstName} has been deactivated`,
+        variant: "success",
+      })
+    } else {
+      removeFromProject(t.id)
+      wizardToast({
+        title: `${t.firstName} has been removed`,
+        variant: "success",
+      })
+    }
+    setWizardRemoveTarget(null)
+  }
+
+  const inProject = (m: any) =>
+    m.role === "owner" || teamMemberIds.includes(String(m.userId || m.id))
+  const projectMembers = members.filter(inProject)
+  const addable = members.filter(
+    (m: any) =>
+      !inProject(m) &&
+      (m.firstName || m.username || "")
+        .toLowerCase()
+        .includes(addQuery.trim().toLowerCase())
+  )
+
+  const wizardHydratedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!draftProjectId || wizardHydratedRef.current) return
+    ;(async () => {
+      try {
+        const res = await ProjectAPI.GetProjectMembers(draftProjectId)
+        const pm = ((res as any)?.data ?? []) as any[]
+        if (Array.isArray(pm) && pm.length > 0) {
+          const roles: Record<string, string> = {}
+          const statuses: Record<string, string> = {}
+          let leadId: string | null = null
+          let leadLabel = ""
+          for (const m of pm) {
+            const uid = String(m.userId)
+            if (m.projectRole) roles[uid] = m.projectRole
+            if (m.status) statuses[uid] = m.status
+            if (m.isLead) {
+              leadId = uid
+              leadLabel = m.leadLabel || ""
+            }
+          }
+          setWizardRoles(roles)
+          setWizardStatus(statuses)
+          if (leadId) setWizardLeadId(leadId)
+          if (leadLabel) setWizardLeadLabel(leadLabel)
+        }
+      } catch {
+        /* no members yet */
+      }
+      wizardHydratedRef.current = true
+    })()
+  }, [draftProjectId])
+
+  React.useEffect(() => {
+    if (!draftProjectId || !wizardHydratedRef.current) return
+    const payload = projectMembers.map((m: any) => {
+      const id = String(m.userId || m.id)
+      const isOwner = m.role === "owner" || m.userId === currentUserId
+      const isLead = wizardLeadId ? id === wizardLeadId : isOwner
+      return {
+        userId: id,
+        projectRole: isOwner ? "Owner" : (wizardRoles[id] ?? "Contributor"),
+        status: wizardStatus[id] ?? "Active",
+        isLead,
+        leadLabel: isLead ? wizardLeadLabel || null : null,
+      }
+    })
+    if (payload.length === 0) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectMembers(draftProjectId, payload).catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardRoles, wizardStatus, wizardLeadId, wizardLeadLabel, teamMemberIds])
+
+  const persistTeam = (next: string[]) => {
+    setTeamMemberIds(next)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        teamMemberIds: next,
+      } as any).catch(() => {})
+    }
+  }
+  const addToProject = (userId: string) => {
+    persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
+    setAddQuery("")
+  }
+  const removeFromProject = (userId: string) => {
+    if (wizardLeadId === String(userId)) setWizardLeadId(null)
+    persistTeam(teamMemberIds.filter((id) => id !== String(userId)))
+    const [, setPhases] = projectScopeMethods
+    setPhases((prev) =>
+      prev.map((phase) => ({
+        ...phase,
+        rows: (phase.rows ?? []).map((row) =>
+          String(row.assigneeUserId ?? row.assignedMember?.id ?? "") ===
+          String(userId)
+            ? { ...row, assigneeUserId: null, assignedMember: null }
+            : row
+        ),
+      }))
+    )
+  }
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
@@ -6428,19 +6857,26 @@ const Team = () => {
             <div className="mt-3 flex items-center justify-between">
               <div className="flex items-center gap-x-3">
                 <Avatar size="md">
-                  <AvatarImage src="/man.jpg" alt="Chris" />
-                  <AvatarFallback>C</AvatarFallback>
+                  <AvatarImage
+                    src={owner?.avatarUrl || ""}
+                    alt={owner?.firstName || "Owner"}
+                  />
+                  <AvatarFallback>
+                    {(owner?.firstName || owner?.username || "?")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
                 <div>
                   <span className="text-sm font-bold text-dark-blue-400">
-                    Chris
+                    {owner?.firstName || owner?.username || "—"}
                   </span>
                   <span className="text-sm font-light text-gray-500">
                     {" "}
-                    @ux23isee
+                    @{owner?.username || ""}
                   </span>
                   <p className="text-xs font-light text-dark-blue-400">
-                    Full Stack Designer
+                    {owner ? "Project Owner" : ""}
                   </p>
                 </div>
               </div>
@@ -6457,17 +6893,119 @@ const Team = () => {
                 Assign Project Lead
               </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton
-                    className="w-full h-[44px]"
-                    placeholder="Add user from team"
-                  />
-                  <ListboxOptions>
-                    <ListboxOption value="Chris">Chris</ListboxOption>
-                    <ListboxOption value="Sarah">Sarah</ListboxOption>
-                    <ListboxOption value="Laura">Laura</ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                {wizardLeadId ? (
+                  (() => {
+                    const lead = members.find(
+                      (mm: any) => String(mm.userId || mm.id) === wizardLeadId
+                    )
+                    return lead ? (
+                      <div className="flex h-[44px] items-center justify-between rounded-lg border border-gray-200 px-3">
+                        <div className="flex items-center gap-x-2">
+                          <Avatar size="sm">
+                            <AvatarImage
+                              src={lead.avatarUrl || undefined}
+                              alt={lead.firstName}
+                            />
+                            <AvatarFallback>
+                              {(lead.firstName || "U").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {lead.firstName || lead.username || "User"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-sm font-semibold text-gray-700 hover:text-dark-blue-400 focus-visible:outline-none"
+                          onClick={() => setWizardLeadId(null)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null
+                  })()
+                ) : (
+                  <>
+                    <InputGroup>
+                      <Input
+                        className="h-[44px]"
+                        placeholder="Search team members"
+                        value={wizardLeadSearch}
+                        onChange={(e) => setWizardLeadSearch(e.target.value)}
+                      />
+                      <InputLeftElement>
+                        <SearchMd className="text-gray-500 h-4 w-4" />
+                      </InputLeftElement>
+                    </InputGroup>
+                    {wizardLeadSearch &&
+                      (() => {
+                        const q = wizardLeadSearch.trim().toLowerCase()
+                        const candidates = members.filter(
+                          (mm: any) =>
+                            !q ||
+                            (mm.firstName || "").toLowerCase().includes(q) ||
+                            (mm.username || "").toLowerCase().includes(q)
+                        )
+                        return (
+                          <div className="mt-1 max-h-[240px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-lg">
+                            {candidates.length > 0 ? (
+                              candidates.map((mm: any) => (
+                                <button
+                                  key={mm.userId || mm.id}
+                                  type="button"
+                                  className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50"
+                                  onClick={() => {
+                                    setWizardLeadId(String(mm.userId || mm.id))
+                                    setWizardLeadSearch("")
+                                  }}
+                                >
+                                  <Avatar size="sm">
+                                    <AvatarImage
+                                      src={mm.avatarUrl || undefined}
+                                      alt={mm.firstName}
+                                    />
+                                    <AvatarFallback>
+                                      {(
+                                        mm.firstName ||
+                                        mm.username ||
+                                        "U"
+                                      ).charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <span className="text-sm font-semibold text-dark-blue-400">
+                                      {mm.firstName || mm.username || "User"}
+                                    </span>
+                                    {mm.username && (
+                                      <span className="text-sm font-light text-gray-500">
+                                        {" "}
+                                        @{mm.username}
+                                      </span>
+                                    )}
+                                    {mm.userId === currentUserId && (
+                                      <span className="text-sm font-semibold text-dark-blue-400">
+                                        {" "}
+                                        (You)
+                                      </span>
+                                    )}
+                                    {mm.recentJobTitle && (
+                                      <p className="text-xs font-light text-dark-blue-400">
+                                        {mm.recentJobTitle}
+                                      </p>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                No matching members.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                  </>
+                )}
               </div>
             </div>
             <div>
@@ -6475,26 +7013,56 @@ const Team = () => {
                 Select label
               </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton
-                    className="w-full h-[44px]"
-                    placeholder="None selected"
-                  />
-                  <ListboxOptions>
-                    <ListboxOption value="Project Lead">
-                      Project Lead
-                    </ListboxOption>
-                    <ListboxOption value="Account Manager">
-                      Account Manager
-                    </ListboxOption>
-                    <ListboxOption value="Technical Lead">
-                      Technical Lead
-                    </ListboxOption>
-                    <ListboxOption value="Design Lead">
-                      Design Lead
-                    </ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
+                    >
+                      <span
+                        className={
+                          wizardLeadLabel
+                            ? "text-dark-blue-400"
+                            : "text-gray-500"
+                        }
+                      >
+                        {wizardLeadLabel || "None selected"}
+                      </span>
+                      <ChevronDown className="size-4 text-gray-500" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    style={{
+                      width: "var(--radix-dropdown-menu-trigger-width)",
+                    }}
+                  >
+                    {[
+                      "Account Manager",
+                      "Project Manager",
+                      "Client Relations Manager",
+                      "Team Manager",
+                    ].map((l) => (
+                      <DropdownMenuItem
+                        key={l}
+                        onClick={() => setWizardLeadLabel(l)}
+                      >
+                        {l}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Use Profile Job Title")}
+                    >
+                      Use Profile Job Title
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Create Custom Label")}
+                    >
+                      Create Custom Label
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -6505,7 +7073,11 @@ const Team = () => {
               <h2 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
                 Team Members
               </h2>
-              <Button variant="outlined" visual="gray">
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+              >
                 <Plus className="size-[15px]" />
                 Add Team Member
               </Button>
@@ -6513,7 +7085,7 @@ const Team = () => {
 
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-dark-blue-400">
-                All assignees (3)
+                All assignees ({projectMembers.length})
               </h3>
               <p className="mt-1 text-xs font-light text-dark-blue-400">
                 View and manage all users currently assigned to Project name
@@ -6521,16 +7093,51 @@ const Team = () => {
               </p>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 relative">
               <span className="text-sm font-semibold text-dark-blue-400">
                 Add team members to this project
               </span>
               <InputGroup className="mt-2">
-                <Input placeholder="Add users to this project" />
+                <Input
+                  placeholder="Add users to this project"
+                  value={addQuery}
+                  onChange={(e) => setAddQuery(e.target.value)}
+                />
                 <InputLeftElement>
                   <SearchMd className="text-gray-500 h-4 w-4" />
                 </InputLeftElement>
               </InputGroup>
+              {addQuery.trim().length > 0 && addable.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden max-h-[232px] overflow-y-auto">
+                  {addable.map((m: any) => (
+                    <button
+                      key={m.userId || m.id}
+                      type="button"
+                      className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50 transition duration-150"
+                      onClick={() => addToProject(m.userId || m.id)}
+                    >
+                      <Avatar className="size-6 shrink-0">
+                        {m.avatarUrl ? (
+                          <AvatarImage src={m.avatarUrl} alt={m.firstName} />
+                        ) : null}
+                        <AvatarFallback className="text-[10px]">
+                          {(m.firstName || m.username || "U")
+                            .charAt(0)
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-gray-900 truncate leading-tight">
+                          {m.firstName || m.username || "User"}
+                          <span className="text-gray-400 font-normal ml-0.5">
+                            @{m.username}
+                          </span>
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-6">
@@ -6550,45 +7157,22 @@ const Team = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[
-                    {
-                      name: "Chris",
-                      username: "ux23isee",
-                      role: "Owner",
-                      status: "Active",
-                      you: true,
-                      avatar: "/man.jpg",
-                    },
-                    {
-                      name: "Sarah",
-                      username: "ux23isee",
-                      role: "Manager",
-                      status: "Active",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Laura",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Active",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Tina",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Inactive",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Shelly",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Inactive",
-                      avatar: "/woman.jpg",
-                    },
-                  ].map((member, mi) => (
-                    <TableRow key={mi}>
+                  {projectMembers.map((m: any, mi: number) => {
+                    const id = String(m.userId || m.id || "")
+                    const isOwner =
+                      m.role === "owner" || m.userId === currentUserId
+                    const member = {
+                      name: m.firstName || m.username || "User",
+                      username: m.username || "",
+                      you: m.userId === currentUserId,
+                      avatar: m.avatarUrl || "",
+                    }
+                    const role = isOwner
+                      ? "Owner"
+                      : (wizardRoles[id] ?? mapRole(m.role))
+                    const status = wizardStatus[id] ?? "Active"
+                    return (
+                    <TableRow key={m.userId || mi}>
                       <TableCell className="py-4">
                         <div className="flex items-center gap-x-3">
                           <Avatar size="sm">
@@ -6621,32 +7205,75 @@ const Team = () => {
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
-                        <Listbox defaultValue={member.role}>
-                          <ListboxButton
-                            className="h-[36px] w-[140px] text-sm"
-                            placeholder="Select role"
-                          />
-                          <ListboxOptions>
-                            <ListboxOption value="Owner">Owner</ListboxOption>
-                            <ListboxOption value="Manager">
-                              Manager
-                            </ListboxOption>
-                            <ListboxOption value="Contributor">
-                              Contributor
-                            </ListboxOption>
-                          </ListboxOptions>
-                        </Listbox>
+                        {isOwner ? (
+                          <div className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                            Owner
+                            <ChevronDown className="size-4 opacity-50" />
+                          </div>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
+                              >
+                                {role}
+                                <ChevronDown className="size-4 text-gray-500" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="start"
+                              className="w-[288px]"
+                            >
+                              {["Manager", "Contributor", "Viewer"].map((r) => (
+                                <DropdownMenuItem
+                                  key={r}
+                                  className="flex flex-col items-start gap-0.5 py-2"
+                                  onClick={() =>
+                                    setWizardRoles((mr) => ({ ...mr, [id]: r }))
+                                  }
+                                >
+                                  <span className="flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+                                    {role === r ? (
+                                      <Check className="size-4 text-primary-500" />
+                                    ) : (
+                                      <span className="size-4" />
+                                    )}
+                                    {r}
+                                  </span>
+                                  <span className="pl-6 text-xs font-light text-gray-500">
+                                    This is where the role&apos;s permissions and
+                                    limitations are briefly explained.
+                                  </span>
+                                </DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-error-600 focus:text-error-600"
+                                onClick={() =>
+                                  setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                }
+                              >
+                                <XCircle className="size-4" />
+                                Remove from project
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                       <TableCell className="py-4">
                         <span
                           className={cn(
                             "text-sm font-semibold",
-                            member.status === "Active"
+                            status === "Active"
                               ? "text-success-500"
                               : "text-gray-500"
                           )}
                         >
-                          {member.status}
+                          {status}
                         </span>
                       </TableCell>
                       <TableCell className="py-4">
@@ -6656,14 +7283,52 @@ const Team = () => {
                               <MoreHorizontal className="size-4" />
                             </IconButton>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Remove</DropdownMenuItem>
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-[200px]"
+                          >
+                            <DropdownMenuItem>Manage User</DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Assign Team Lead
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Transfer Ownership
+                            </DropdownMenuItem>
+                            {status === "Inactive" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setWizardStatus((s) => ({
+                                    ...s,
+                                    [id]: "Active",
+                                  }))
+                                }
+                              >
+                                Activate User
+                              </DropdownMenuItem>
+                            )}
+                            {!isOwner && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-error-600 focus:text-error-600"
+                                  onClick={() =>
+                                    setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                  }
+                                >
+                                  <XCircle className="size-4" />
+                                  Remove from project
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -6673,11 +7338,74 @@ const Team = () => {
           <ProjectInfoTip showArrow />
         </div>
       </div>
+
+      <Dialog
+        open={!!wizardRemoveTarget}
+        onOpenChange={(o) => !o && setWizardRemoveTarget(null)}
+      >
+        <DialogContent className="max-w-[540px] p-0">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dark-blue-400">
+              Remove this user?
+            </h3>
+            <p className="mt-2 text-sm font-light text-gray-500">
+              <span className="font-semibold text-dark-blue-400">
+                {wizardRemoveTarget?.firstName}
+              </span>{" "}
+              will no longer have access to this project, including any tasks,
+              files, or chat threads previously assigned. This will not delete
+              any tasks, files, or comments.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 py-4 px-6">
+            <Button
+              type="button"
+              variant="link"
+              visual="gray"
+              onClick={() => setWizardRemoveTarget(null)}
+            >
+              <X className="size-[15px]" />
+              Cancel
+            </Button>
+            <div className="flex items-center gap-x-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                className="text-error-600"
+                onClick={() => confirmWizardRemove(true)}
+              >
+                Deactivate Instead
+              </Button>
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => confirmWizardRemove(false)}
+              >
+                Yes, Remove
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ScrollArea>
   )
 }
 
 type WizardFaq = { id: string; q: string; a: string }
+
+type RecentQuestion = {
+  id: string
+  question: string
+  answer: string | null
+  askedByName?: string | null
+  askedByUsername?: string | null
+  askedAt?: string | null
+  answeredByUserId?: string | null
+  answeredByName?: string | null
+  answeredByRole?: string | null
+  assignedToUserId?: string | null
+  hidden?: boolean
+}
 
 const SortableFaqItem = ({
   id,
@@ -6830,6 +7558,82 @@ const Questions = ({
   const [suggestions, setSuggestions] = useState<
     Array<{ question: string; answer: string; added?: boolean }>
   >([])
+
+  const [questions, setQuestions] = useState<RecentQuestion[]>([])
+  const [assignTeam, setAssignTeam] = useState<
+    Array<{ id: string; name: string }>
+  >([])
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const questionsHydrated = useRef(false)
+
+  useEffect(() => {
+    if (!draftProjectId) return
+    ProjectAPI.GetProjectDraft(draftProjectId)
+      .then((res) => {
+        const d = res?.data ?? {}
+        const rq = (d.recentQuestions ?? []).map(
+          (q: RecentQuestion, i: number) => ({
+            ...q,
+            id: q.id ?? `rq-${i}`,
+          })
+        )
+        setQuestions(rq)
+        const team = (d.team ?? []).map((t: any) => ({
+          id: String(t.userId ?? t.id ?? ""),
+          name:
+            [t.firstName, t.lastName].filter(Boolean).join(" ") ||
+            t.username ||
+            "Team Member",
+        }))
+        setAssignTeam(team.filter((t: { id: string }) => t.id))
+        questionsHydrated.current = true
+      })
+      .catch(() => {})
+  }, [draftProjectId])
+
+  useEffect(() => {
+    if (!questionsHydrated.current || !draftProjectId) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectQuestions(draftProjectId, questions).catch(() => {})
+    }, 600)
+    return () => clearTimeout(t)
+  }, [questions, draftProjectId])
+
+  const isAnswered = (q: RecentQuestion) => !!(q.answer && q.answer.trim())
+  const updateQuestion = (id: string, patch: Partial<RecentQuestion>) =>
+    setQuestions((qs) =>
+      qs.map((q) => (q.id === id ? { ...q, ...patch } : q))
+    )
+  const handleAnswerChange = (id: string, text: string) => {
+    const me = getCurrentUser() as
+      | {
+          id?: string
+          firstName?: string
+          lastName?: string
+          username?: string
+        }
+      | null
+    const hasText = !!text.trim()
+    updateQuestion(id, {
+      answer: text,
+      answeredByUserId: hasText ? (me?.id ? String(me.id) : null) : null,
+      answeredByName: hasText
+        ? [me?.firstName, me?.lastName].filter(Boolean).join(" ") ||
+          me?.username ||
+          "You"
+        : null,
+      answeredByRole: hasText ? "Project Lead" : null,
+    })
+  }
+  const answeredCount = questions.filter(isAnswered).length
+  const awaitingCount = questions.length - answeredCount
+  const visibleQuestions =
+    recentQTab === "awaiting"
+      ? questions.filter((q) => !isAnswered(q))
+      : recentQTab === "answered"
+        ? questions.filter(isAnswered)
+        : questions
 
   const remainingSlots = Math.max(0, 10 - faqs.length)
   const addedCount = suggestions.filter((s) => s.added).length
@@ -7198,250 +8002,218 @@ const Questions = ({
                 className="mt-4"
               >
                 <TabsList className="justify-start border-b border-gray-200 px-0 pt-0">
-                  <TabsTrigger value="all">All (8)</TabsTrigger>
-                  <TabsTrigger value="awaiting">
-                    Awaiting Response (5)
+                  <TabsTrigger value="all">
+                    All ({questions.length})
                   </TabsTrigger>
-                  <TabsTrigger value="answered">Answered (3)</TabsTrigger>
+                  <TabsTrigger value="awaiting">
+                    Awaiting Response ({awaitingCount})
+                  </TabsTrigger>
+                  <TabsTrigger value="answered">
+                    Answered ({answeredCount})
+                  </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="all">
-                  <div className="mt-4 space-y-3">
-                    {[
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                    ].map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-sm font-medium text-dark-blue-400">
-                            {item.question}
-                          </p>
-                          <IconButton
-                            variant="ghost"
-                            visual="gray"
-                            size="sm"
-                            className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-                          >
-                            <Edit03 className="size-4" />
-                          </IconButton>
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Asked by {item.asker}{" "}
-                          <span className="text-gray-400">
-                            @{item.username}
-                          </span>{" "}
-                          {item.time}
-                          <span className="ml-3 text-xs font-semibold text-success-500">
-                            {item.status}
-                          </span>
-                        </p>
-                      </div>
-                    ))}
+                {visibleQuestions.length === 0 ? (
+                  <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
+                    <h3 className="text-base font-semibold text-dark-blue-400">
+                      No Recent Questions
+                    </h3>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      You will see recent questions here once your project is
+                      live in the marketplace and visitors engage in chat with
+                      you and your team.
+                    </p>
                   </div>
-                </TabsContent>
-
-                <TabsContent value="awaiting">
+                ) : (
                   <div className="mt-4 space-y-3">
-                    {[0, 1, 2, 3, 4].map((idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-2 min-w-0">
-                            {idx === 0 && (
-                              <Check className="size-4 mt-0.5 shrink-0 text-gray-400" />
-                            )}
-                            <p className="text-sm font-medium text-dark-blue-400">
-                              How will you ensure we&apos;re aligned on progress
-                              and feedback throughout each stage?
-                            </p>
-                          </div>
-                          {idx !== 0 && (
-                            <IconButton
-                              variant="ghost"
-                              visual="gray"
-                              size="sm"
-                              className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-                            >
-                              <Edit03 className="size-4" />
-                            </IconButton>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Asked by Kevin{" "}
-                          <span className="text-gray-400">@usernamehere</span> 3
-                          weeks ago
-                          {idx !== 0 && (
-                            <span className="ml-3 text-xs font-semibold text-warning-500">
-                              Awaiting Response
-                            </span>
-                          )}
-                        </p>
-                        {idx === 0 && (
-                          <>
-                            <div className="mt-3 flex items-center gap-3">
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                size="sm"
-                              >
-                                Assign To Team Member
-                              </Button>
-                              <Button size="sm">Respond</Button>
-                            </div>
-                            <div className="mt-3 flex items-center gap-2">
-                              <Switch />
-                              <span className="text-xs text-gray-500">
-                                Hide this question
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="answered">
-                  <div className="mt-4 space-y-3">
-                    {[0, 1, 2].map((idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        {idx === 0 ? (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-2 min-w-0">
-                                <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                <p className="text-sm font-medium text-dark-blue-400">
-                                  How will you ensure we&apos;re aligned on
-                                  progress and feedback throughout each stage?
-                                </p>
-                              </div>
-                            </div>
-                            <p className="mt-2 ml-6 text-xs text-gray-500">
-                              Asked by Kevin{" "}
-                              <span className="text-gray-400">
-                                @usernamehere
-                              </span>{" "}
-                              3 weeks ago
-                            </p>
-                            <div className="mt-3 ml-6 flex items-start gap-2">
-                              <Avatar size="xs">
-                                <AvatarImage src="/man.jpg" alt="You" />
-                                <AvatarFallback>Y</AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-dark-blue-400">
-                                  You{" "}
-                                  <Badge
-                                    visual="primary"
-                                    className="ml-1 rounded-[4px] bg-primary-50 text-[10px]"
-                                  >
-                                    Project Lead
-                                  </Badge>
-                                </p>
-                                <Textarea
-                                  className="mt-2"
-                                  rows={3}
-                                  defaultValue="We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management."
-                                  maxLength={300}
+                    {visibleQuestions.map((q) => {
+                      const answered = isAnswered(q)
+                      const expanded = expandedId === q.id
+                      const responding = respondingId === q.id
+                      const showEditor = expanded && (answered || responding)
+                      const assignedName = q.assignedToUserId
+                        ? assignTeam.find(
+                            (t) => t.id === String(q.assignedToUserId)
+                          )?.name
+                        : null
+                      return (
+                        <div
+                          key={q.id}
+                          className="rounded-lg border border-gray-200 bg-white p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2 min-w-0">
+                              {expanded && (
+                                <Check
+                                  className={cn(
+                                    "size-4 mt-0.5 shrink-0",
+                                    answered
+                                      ? "text-success-500"
+                                      : "text-gray-400"
+                                  )}
                                 />
-                                <p className="mt-1 text-right text-xs text-gray-500">
-                                  250/300
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-3 ml-6 flex items-center gap-2">
-                              <Switch />
-                              <span className="text-xs text-gray-500">
-                                Hide this question
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
+                              )}
                               <p className="text-sm font-medium text-dark-blue-400">
-                                How will you ensure we&apos;re aligned on
-                                progress and feedback throughout each stage?
+                                {q.question}
                               </p>
+                            </div>
+                            {!expanded && (
                               <IconButton
                                 variant="ghost"
                                 visual="gray"
                                 size="sm"
                                 className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                                onClick={() => setExpandedId(q.id)}
                               >
                                 <Edit03 className="size-4" />
                               </IconButton>
-                            </div>
-                            <p className="mt-2 text-xs text-gray-500">
-                              Asked by Kevin{" "}
-                              <span className="text-gray-400">
-                                @usernamehere
-                              </span>{" "}
-                              3 weeks ago
-                              <span className="ml-3 text-xs font-semibold text-success-500">
-                                Answered
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "mt-2 text-xs text-gray-500",
+                              expanded && "ml-6"
+                            )}
+                          >
+                            Asked by {q.askedByName ?? "Someone"}{" "}
+                            <span className="text-gray-400">
+                              @{q.askedByUsername ?? "user"}
+                            </span>{" "}
+                            {q.askedAt ?? "recently"}
+                            {!expanded && (
+                              <span
+                                className={cn(
+                                  "ml-3 text-xs font-semibold",
+                                  answered
+                                    ? "text-success-500"
+                                    : "text-warning-500"
+                                )}
+                              >
+                                {answered ? "Answered" : "Awaiting Response"}
                               </span>
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                            )}
+                          </p>
+
+                          {showEditor && (
+                            <div className="mt-3 ml-6">
+                              <div className="flex items-center gap-2">
+                                <Avatar size="xs">
+                                  <AvatarImage src="/man.jpg" alt="" />
+                                  <AvatarFallback>
+                                    {(q.answeredByName ?? "You").slice(0, 1)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <p className="text-xs font-medium text-dark-blue-400">
+                                  {q.answeredByName ?? "You"}{" "}
+                                  <Badge
+                                    visual="primary"
+                                    className="ml-1 rounded-[4px] bg-primary-50 text-[10px]"
+                                  >
+                                    {q.answeredByRole ?? "Project Lead"}
+                                  </Badge>
+                                </p>
+                              </div>
+                              <Textarea
+                                className="mt-2"
+                                rows={3}
+                                maxLength={300}
+                                placeholder="Write your response..."
+                                value={q.answer ?? ""}
+                                onChange={(e) =>
+                                  handleAnswerChange(q.id, e.target.value)
+                                }
+                              />
+                              <p className="mt-1 text-right text-xs text-gray-500">
+                                {(q.answer ?? "").length}/300
+                              </p>
+                              <div className="mt-3 flex items-center gap-2">
+                                <Switch
+                                  checked={!!q.hidden}
+                                  onCheckedChange={(v) =>
+                                    updateQuestion(q.id, { hidden: !!v })
+                                  }
+                                />
+                                <span className="text-xs text-gray-500">
+                                  Hide this question
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {expanded && !showEditor && (
+                            <>
+                              <div className="mt-3 ml-6 flex items-center gap-3">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      size="sm"
+                                    >
+                                      {assignedName
+                                        ? `Assigned: ${assignedName}`
+                                        : "Assign To Team Member"}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="start"
+                                    className="min-w-[220px]"
+                                  >
+                                    {assignTeam.length === 0 ? (
+                                      <DropdownMenuItem disabled>
+                                        No team members
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      assignTeam.map((t) => (
+                                        <DropdownMenuItem
+                                          key={t.id}
+                                          onSelect={() =>
+                                            updateQuestion(q.id, {
+                                              assignedToUserId: t.id,
+                                            })
+                                          }
+                                        >
+                                          {t.name}
+                                        </DropdownMenuItem>
+                                      ))
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                  size="sm"
+                                  onClick={() => setRespondingId(q.id)}
+                                >
+                                  Respond
+                                </Button>
+                              </div>
+                              <div className="mt-3 ml-6 flex items-center gap-2">
+                                <Switch
+                                  checked={!!q.hidden}
+                                  onCheckedChange={(v) =>
+                                    updateQuestion(q.id, { hidden: !!v })
+                                  }
+                                />
+                                <span className="text-xs text-gray-500">
+                                  Hide this question
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                </TabsContent>
+                )}
               </Tabs>
 
-              <div className="mt-4 flex justify-center">
-                <Button variant="outlined" visual="gray" size="sm">
-                  View More
-                  <ChevronDown className="size-4" />
-                </Button>
-              </div>
+              {visibleQuestions.length > 5 && (
+                <div className="mt-4 flex justify-center">
+                  <Button variant="outlined" visual="gray" size="sm">
+                    View More
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </div>
+              )}
             </RadixTabs.Content>
           </RadixTabs.Root>
         </div>
@@ -7474,6 +8246,25 @@ function PublishProject({
   } = useStepper({
     steps,
   })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const handledCheckoutStepRef = useRef(false)
+
+  useEffect(() => {
+    if (handledCheckoutStepRef.current) return
+    if (searchParams.get("checkoutStep") !== "scope") return
+
+    handledCheckoutStepRef.current = true
+    setStep(2)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [pathname, router, searchParams, setStep])
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -7490,7 +8281,6 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
-  const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {
@@ -7521,6 +8311,8 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
   const [isPublishing, setIsPublishing] = useState(false)
 
   const handlePublish = async () => {
@@ -7615,6 +8407,12 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setTeamMemberIds(
+          Array.isArray(draft?.teamMemberIds)
+            ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
 
         const rawCategorySelections = Array.isArray(draft?.categorySelections)
           ? draft.categorySelections
@@ -7749,6 +8547,7 @@ function PublishProject({
                       id: String(task?.id ?? getId()),
                       task: task?.taskName ?? "",
                       role: task?.role ?? "",
+                      assigneeUserId: task?.assigneeUserId ?? null,
                       location: Array.isArray(task?.location)
                         ? (task.location[0] ?? "")
                         : "",
@@ -7853,7 +8652,14 @@ function PublishProject({
       if (serializedPayload === lastScopePayloadRef.current) return
 
       try {
-        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
+        const scopeRes = await ProjectAPI.ReplaceProjectScope(
+          draftProjectId,
+          payload
+        )
+        const nextBudget = Number((scopeRes as any)?.data?.budgetUsdCents)
+        if (Number.isFinite(nextBudget) && nextBudget > 0) {
+          setPricingBudgetCents(nextBudget)
+        }
         lastScopePayloadRef.current = serializedPayload
         setLastSavedAt(new Date())
       } catch (error) {
@@ -8075,6 +8881,10 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
     }),
     [
       projectScopeMethods,
@@ -8084,6 +8894,10 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
     ]
   )
   //  Validate the current step when Next is clicked
