@@ -42,6 +42,10 @@ import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { HireMeButton } from "@/components/hire-me-button"
 import { SaveTalentButton } from "@/components/save-talent-button"
 import {
+  ShowMoreLess,
+  ShowMoreLessRoot,
+} from "@/components/show-more-less"
+import {
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -233,7 +237,7 @@ const RightSidebar = ({
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">
       <div className="pb-5 flex flex-col items-center border-b border-gray-200">
-        <Avatar size="2xl" isOnline={isOnline(user?.id)}>
+        <Avatar size="3xl" isOnline={isOnline(user?.id)}>
           <AvatarImage src={avatarUrl || undefined} alt={fullName} />
           <AvatarFallback delayMs={0}>{initials}</AvatarFallback>
         </Avatar>
@@ -269,7 +273,7 @@ const RightSidebar = ({
         {availability && (
           <div className="flex items-center gap-x-2">
             <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
-              Availability
+              Current Availability
             </span>
             <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-bold">
               {availability}
@@ -295,11 +299,20 @@ const RightSidebar = ({
         <div className="mt-3 pb-5 border-b border-gray-200">
           <h3 className="font-bold text-sm text-dark-blue-400">Skills</h3>
           <div className="mt-3 flex flex-wrap gap-2">
-            {user.skills.map((s) => (
-              <Badge key={s.id} visual="gray">
-                {s.name}
-              </Badge>
-            ))}
+            <ShowMoreLessRoot>
+              <ShowMoreLess
+                max={9}
+                trigger={(extraChildrenCount) => (
+                  <Badge visual="gray">{extraChildrenCount} more...</Badge>
+                )}
+              >
+                {user.skills.map((s) => (
+                  <Badge key={s.id} visual="gray">
+                    {s.name}
+                  </Badge>
+                ))}
+              </ShowMoreLess>
+            </ShowMoreLessRoot>
           </div>
         </div>
       )}
