@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { AlertTriangle, Check, ChevronDown, Edit03 } from "@blend-metrics/icons"
+import { Check, ChevronDown, Edit03 } from "@blend-metrics/icons"
 import { getCurrentUser } from "@/utils/auth"
 import { cn } from "@/utils/functions"
 import { ProjectAPI } from "@/service/http/project"
@@ -21,6 +21,10 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 
 type RecentQuestion = {
@@ -36,6 +40,35 @@ type RecentQuestion = {
   assignedToUserId?: string | null
   hidden?: boolean
   moderationFailed?: boolean
+}
+
+function HideToggle({
+  hidden,
+  moderationFailed,
+  onToggle,
+}: {
+  hidden: boolean
+  moderationFailed?: boolean
+  onToggle: (value: boolean) => void
+}) {
+  if (moderationFailed) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Switch checked={hidden} disabled />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            This question can&apos;t be made visible because it didn&apos;t pass
+            content moderation.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  return <Switch checked={hidden} onCheckedChange={(v) => onToggle(!!v)} />
 }
 
 export function RecentQuestionsManager({ projectId }: { projectId: string }) {
@@ -208,36 +241,13 @@ export function RecentQuestionsManager({ projectId }: { projectId: string }) {
                     <span
                       className={cn(
                         "ml-3 text-xs font-semibold",
-                        q.moderationFailed
-                          ? "text-error-500"
-                          : answered
-                            ? "text-success-500"
-                            : "text-warning-500"
+                        answered ? "text-success-500" : "text-warning-500"
                       )}
                     >
-                      {q.moderationFailed
-                        ? "Blocked by moderation"
-                        : answered
-                          ? "Answered"
-                          : "Awaiting Response"}
+                      {answered ? "Answered" : "Awaiting Response"}
                     </span>
                   )}
                 </p>
-
-                {q.moderationFailed && (
-                  <div
-                    className={cn(
-                      "mt-2 flex items-start gap-1.5 rounded-md border border-error-200 bg-error-25 px-3 py-2",
-                      expanded && "ml-6"
-                    )}
-                  >
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-error-500" />
-                    <p className="text-xs text-error-600">
-                      This didn&apos;t pass content moderation, so it won&apos;t
-                      show publicly. Edit the text to publish it.
-                    </p>
-                  </div>
-                )}
 
                 {showEditor && (
                   <div className="ml-6 mt-3">
@@ -272,10 +282,11 @@ export function RecentQuestionsManager({ projectId }: { projectId: string }) {
                       {(q.answer ?? "").length}/300
                     </p>
                     <div className="mt-3 flex items-center gap-2">
-                      <Switch
-                        checked={!!q.hidden}
-                        onCheckedChange={(v) =>
-                          updateQuestion(q.id ?? "", { hidden: !!v })
+                      <HideToggle
+                        hidden={!!q.hidden}
+                        moderationFailed={q.moderationFailed}
+                        onToggle={(v) =>
+                          updateQuestion(q.id ?? "", { hidden: v })
                         }
                       />
                       <span className="text-xs text-gray-500">
@@ -325,10 +336,11 @@ export function RecentQuestionsManager({ projectId }: { projectId: string }) {
                       </Button>
                     </div>
                     <div className="ml-6 mt-3 flex items-center gap-2">
-                      <Switch
-                        checked={!!q.hidden}
-                        onCheckedChange={(v) =>
-                          updateQuestion(q.id ?? "", { hidden: !!v })
+                      <HideToggle
+                        hidden={!!q.hidden}
+                        moderationFailed={q.moderationFailed}
+                        onToggle={(v) =>
+                          updateQuestion(q.id ?? "", { hidden: v })
                         }
                       />
                       <span className="text-xs text-gray-500">
