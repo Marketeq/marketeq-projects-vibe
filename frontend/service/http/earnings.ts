@@ -27,6 +27,9 @@ export interface EarningsSummary {
   thisWeek: SummaryCard
   thisMonth: SummaryCard
   allTime: SummaryCard
+  // ES-06 EC-13: true when the talent's region currency couldn't be resolved
+  // and amounts above fell back to USD.
+  currencyFallback?: boolean
 }
 
 export interface FeeBreakdown {
@@ -80,6 +83,7 @@ export interface EarningsListResponse {
   manualTimeLabel: string
   data: EarningsRow[]
   appliedFilters: Record<string, string | null>
+  currencyFallback?: boolean
 }
 
 export interface EarningsQuery {
@@ -162,6 +166,7 @@ export interface EarningDetail {
   contract: { id: string; title: string; status: string } | null
   project: { id: string; name: string; clientHandle: string | null; clientName: string | null } | null
   feeSection: EarningDetailFeeSection
+  currencyFallback?: boolean
 }
 
 export async function getEarningDetail(id: string): Promise<EarningDetail> {
@@ -191,6 +196,10 @@ export interface BalanceResponse {
   // from lastUpdatedAt (which reflects the underlying ledger snapshot, not
   // the cache read that actually produced this response).
   cachedAt?: string
+  // ES-06 EC-13: true when the talent's region currency couldn't be resolved
+  // (no preference saved, or user-service unreachable) and this response
+  // fell back to USD — drives the Currency Settings prompt.
+  currencyFallback?: boolean
 }
 
 export async function getBalance(): Promise<BalanceResponse> {

@@ -59,6 +59,13 @@ export class User {
   @Column({ nullable: true })
   availability?: string;
 
+  // ES-06 region-based currency: explicit talent override set via Currency
+  // Settings. No reliable ISO region/country code exists elsewhere on this
+  // entity (`location` is freeform text), so this is the only resolvable
+  // signal — absence of it is what triggers the USD fallback path.
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  preferredCurrency?: string | null;
+
   @Column({ nullable: true })
   role?: string;
 

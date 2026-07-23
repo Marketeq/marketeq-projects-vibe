@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
 import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
+import { UserAPI } from "@/service/http/user"
 import { formatDistanceToNowStrict } from "date-fns"
 import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
@@ -194,6 +195,79 @@ function formatRelativeMinutes(iso: string, nowMs: number): string {
   if (mins < 60) return `Updated ${mins} min ago`
   const hrs = Math.floor(mins / 60)
   return `Updated ${hrs} hr${hrs === 1 ? "" : "s"} ago`
+}
+
+// ES-06: resolves a real currency symbol ("€", "₹", "$"...) from an ISO 4217
+// code instead of a hardcoded "$" — the balance display is now data-driven,
+// so a non-USD displayCurrency must render its own symbol, not USD's.
+const currencySymbolCache = new Map<string, string>()
+function currencySymbol(code: string): string {
+  const key = code || "USD"
+  const cached = currencySymbolCache.get(key)
+  if (cached) return cached
+  let symbol = key
+  try {
+    const part = new Intl.NumberFormat(undefined, { style: "currency", currency: key })
+      .formatToParts(0)
+      .find((p) => p.type === "currency")
+    if (part) symbol = part.value
+  } catch { /* unsupported/unknown code — fall back to the raw code itself */ }
+  currencySymbolCache.set(key, symbol)
+  return symbol
+}
+
+// ES-06 EC-13: entry point surfaced whenever an earnings/balance response
+// falls back to USD because no resolvable region currency exists yet.
+function CurrencySettingsPrompt({ onSaved }: { onSaved?: () => void }) {
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [selected, setSelected] = useState("USD")
+
+  const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "INR", "CAD", "AUD", "PHP", "PKR", "NGN", "BRL"]
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await UserAPI.updateCurrency(selected)
+      toast({ title: "Currency updated", description: `Your earnings will now display in ${selected}.` })
+      setOpen(false)
+      onSaved?.()
+    } catch {
+      toast({ title: "Couldn't update currency", description: "Please try again.", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs text-primary-600 underline mb-2"
+      >
+        Showing USD — set your currency in Currency Settings
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <select
+        className="text-xs border border-gray-200 rounded px-2 py-1"
+        value={selected}
+        onChange={(e) => setSelected(e.target.value)}
+      >
+        {COMMON_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <button disabled={saving} onClick={save} className="text-xs text-primary-600 font-medium disabled:opacity-50">
+        {saving ? "Saving..." : "Save"}
+      </button>
+      <button disabled={saving} onClick={() => setOpen(false)} className="text-xs text-gray-400">
+        Cancel
+      </button>
+    </div>
+  )
 }
 
 function BankLogo({ bankName, size = 48 }: { bankName: string; size?: number }) {
@@ -1287,7 +1361,10 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   const getMethodIcon = (m: any) => {
     const type = typeof m === 'string' ? m : m?.methodType
     if (type === 'PAYPAL') return <PaypalIcon className="size-5" />
-    if (type === 'CRYPTO') return <span className="size-5 text-gray-500 font-bold text-xs flex items-center">BTC</span>
+    // Real per-provider icon (Ramp/Transak/Coinbase/MetaMask/etc.), not a
+    // hardcoded "BTC" label shown regardless of the actual connected
+    // provider or currency.
+    if (type === 'CRYPTO') return <CryptoProviderIcon provider={typeof m === 'object' ? m?.cryptoProvider : ''} className="size-5 rounded" />
     const bankName = typeof m === 'object' ? (m?.nickname || '') : ''
     if (bankName) return <BankLogo bankName={bankName} size={28} />
     return <BankIcon className="size-5 text-gray-500" />
@@ -1521,7 +1598,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </TooltipProvider>
               </div>
               <p className="text-3xl font-bold text-dark-blue-400">
-                <span className="text-base align-top">$</span>{summary ? summary.today.amount : "—"}
+                <span className="text-base align-top">{currencySymbol(summary?.today.displayCurrency || "USD")}</span>{summary ? summary.today.amount : "—"}
               </p>
               <div className="flex items-center gap-1.5 mt-4">
                 {summary?.today.changeLabel && (
@@ -1561,7 +1638,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">$</span>{summary ? summary.thisWeek.amount : "—"}
+                    <span className="text-sm align-top">{currencySymbol(summary?.thisWeek.displayCurrency || "USD")}</span>{summary ? summary.thisWeek.amount : "—"}
                   </p>
                   {summary?.thisWeek.changeLabel && (
                     <>
@@ -1593,7 +1670,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">$</span>{summary ? summary.thisMonth.amount : "—"}
+                    <span className="text-sm align-top">{currencySymbol(summary?.thisMonth.displayCurrency || "USD")}</span>{summary ? summary.thisMonth.amount : "—"}
                   </p>
                   {summary?.thisMonth.changeLabel && (
                     <>
@@ -2438,6 +2515,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   /* Step 2d.1: Crypto — "Connect Your Wallet" provider list (AC-09.01) */
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-1">
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Connect Your Wallet</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
@@ -2999,7 +3077,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
             <>
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-3xl font-bold text-dark-blue-400">
-                  <span className="text-base align-top">$</span>{balance ? Math.floor(netDisplay).toLocaleString() : "..."}<span className="text-lg">.{balance ? netDisplay.toFixed(2).split(".")[1] : "00"}</span>
+                  <span className="text-base align-top">{currencySymbol(balance?.displayCurrency || "USD")}</span>{balance ? Math.floor(netDisplay).toLocaleString() : "..."}<span className="text-lg">.{balance ? netDisplay.toFixed(2).split(".")[1] : "00"}</span>
                   {/* US-08: never conditionally hidden, even though the balance
                       might look "off" from what the contractor expects. */}
                   {balance?.stale && (
@@ -3016,11 +3094,15 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                   )}
                 </p>
               </div>
-              {/* US-07: secondary local-currency amount, shown only when it actually
-                  differs from the display currency — the two are currently always
-                  forced to USD server-side (balance.controller.ts hardcodes both
-                  args), so this won't visibly trigger until that's resolved, but the
-                  frontend is now correctly wired to the real fields either way. */}
+              {/* ES-06 EC-13: currency is now resolved from the talent's saved
+                  preference (or USD fallback) rather than hardcoded — this
+                  prompt only shows when the backend actually reports a
+                  fallback (no preference saved / region service unreachable). */}
+              {balance?.currencyFallback && (
+                <CurrencySettingsPrompt onSaved={loadBalance} />
+              )}
+              {/* US-07: secondary local-currency amount, shown only when it
+                  actually differs from the display currency. */}
               {balance && balance.localCurrency !== balance.displayCurrency && (
                 <p className="text-xs text-gray-400 mb-2">{balance.availableBalanceLocal} {balance.localCurrency}</p>
               )}
@@ -4192,7 +4274,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 {viewMode === "monthly" && <TableCell className="text-sm text-gray-500">{row.totalHours ?? "—"}</TableCell>}
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">${viewMode === "weekly" ? (row.weeklyEarnings ? parseFloat(String(row.weeklyEarnings)).toFixed(2) : "—") : viewMode === "monthly" ? (row.totalEarnings ? parseFloat(String(row.totalEarnings)).toFixed(2) : "—") : (row.netAmountDisplay ?? row.netAmount)}</span>
+                    <span className="text-sm text-gray-500">{currencySymbol(row.displayCurrency || "USD")}{viewMode === "weekly" ? (row.weeklyEarnings ? parseFloat(String(row.weeklyEarnings)).toFixed(2) : "—") : viewMode === "monthly" ? (row.totalEarnings ? parseFloat(String(row.totalEarnings)).toFixed(2) : "—") : (row.netAmountDisplay ?? row.netAmount)}</span>
                     {row.status === "paid" && <Badge visual="success" size="sm">Paid</Badge>}
                     {row.status === "confirmed" && <Badge visual="primary" size="sm">Confirmed</Badge>}
                     {row.status === "failed" && <Badge visual="error" size="sm">Reversed</Badge>}
@@ -4233,15 +4315,15 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                     <div className="flex items-center gap-8 pl-4">
                       <div>
                         <p className="text-xs text-gray-400">Gross</p>
-                        <p className="text-sm font-medium text-dark-blue-400">${row.feeBreakdown.grossAmountDisplay}</p>
+                        <p className="text-sm font-medium text-dark-blue-400">{currencySymbol(row.feeBreakdown.displayCurrency || "USD")}{row.feeBreakdown.grossAmountDisplay}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-400">{row.feeBreakdown.feeLabel}</p>
-                        <p className="text-sm font-medium text-dark-blue-400">-${row.feeBreakdown.feeAmountDisplay}</p>
+                        <p className="text-sm font-medium text-dark-blue-400">-{currencySymbol(row.feeBreakdown.displayCurrency || "USD")}{row.feeBreakdown.feeAmountDisplay}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-400">You Receive</p>
-                        <p className="text-sm font-semibold text-dark-blue-400">${row.netAmountDisplay ?? row.netAmount}</p>
+                        <p className="text-sm font-semibold text-dark-blue-400">{currencySymbol(row.displayCurrency || "USD")}{row.netAmountDisplay ?? row.netAmount}</p>
                       </div>
                     </div>
                   </TableCell>

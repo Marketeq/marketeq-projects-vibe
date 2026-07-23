@@ -83,6 +83,10 @@ export const UserAPI = {
   me: () => AxiosRequest.get(`${USER_BASE}/user/me`),
   handleSkip: (data: { role: string }) =>
     AxiosRequest.patch(`${USER_BASE}/user/onboarding-dismissed`, data),
+  // ES-06: Currency Settings entry point — sets the region currency
+  // earnings-service falls back to USD without.
+  updateCurrency: (currency: string) =>
+    AxiosRequest.patch(`${USER_BASE}/user/currency`, { currency }),
 
   // List users
   listUsers: (limit = 50, offset = 0) =>
