@@ -295,15 +295,19 @@ ${API_SHAPES}
 ${LAYOUT_CHANGES}
 PROMPT_END
 
-                        # JSON-encode the prompt using the repo script
+                        # JSON-encode the prompt using the repo script or inline
                         if [ -f "repo/.jenkins/scripts/encode_prompt.py" ]; then
                             PROMPT_JSON=$(python3 repo/.jenkins/scripts/encode_prompt.py 2>/dev/null)
                         else
-                            PROMPT_JSON=$(python3 -c "import json; print(json.dumps(open('prompt.txt').read()[:180000]))" 2>/dev/null)
+                            python3 -c "import json,sys; f=sys.argv[1]; print(json.dumps(open(f).read()[:180000]))" prompt.txt > /tmp/prompt_encoded.txt 2>/dev/null
+                            PROMPT_JSON=$(cat /tmp/prompt_encoded.txt)
                         fi
 
-                        if [ -z "$PROMPT_JSON" ]; then
-                            echo "Failed to encode prompt"
+                        PROMPT_LEN=$(echo "$PROMPT_JSON" | wc -c | tr -d ' ')
+                        echo "Prompt JSON length: $PROMPT_LEN chars"
+
+                        if [ -z "$PROMPT_JSON" ] || [ "$PROMPT_LEN" -lt 100 ]; then
+                            echo "Failed to encode prompt (length=$PROMPT_LEN)"
                             echo '{"verdict":"ERROR","summary":"Failed to encode prompt","regressions":[]}' > verdict.json
                             exit 0
                         fi
@@ -316,6 +320,10 @@ PROMPT_END
                             --max-time 120 \
                             -d "{\"model\": \"claude-sonnet-4-6\", \"max_tokens\": 8192, \"messages\": [{\"role\": \"user\", \"content\": $PROMPT_JSON}]}" \
                             "https://api.anthropic.com/v1/messages")
+
+                        RESP_LEN=$(echo "$RESPONSE" | wc -c | tr -d ' ')
+                        echo "API response length: $RESP_LEN chars"
+                        echo "$RESPONSE" | python3 -c "import sys,json; r=json.load(sys.stdin); print('Model:', r.get('model','?'), 'Stop:', r.get('stop_reason','?'))" 2>/dev/null || echo "Could not parse API response metadata"
 
                         # Parse verdict using repo script
                         if [ -f "repo/.jenkins/scripts/parse_verdict.py" ]; then
@@ -338,8 +346,8 @@ except Exception as e:
                         fi
 
                         # Read verdict
-                        VERDICT=$(python3 -c "import json,sys; print(json.load(open('verdict.json')).get('verdict','ERROR'))" 2>/dev/null || echo "ERROR")
-                        REG_COUNT=$(python3 -c "import json,sys; print(len(json.load(open('verdict.json')).get('regressions',[])))" 2>/dev/null || echo "0")
+                        VERDICT=$(cat verdict.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','ERROR'))" 2>/dev/null || echo "ERROR")
+                        REG_COUNT=$(cat verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
 
                         echo "========================================"
                         echo "VERDICT: $VERDICT"
@@ -410,8 +418,8 @@ except Exception as e:
                 if (params.HEAD_SHA?.trim()) {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                         sh """
-                            VERDICT=\$(python3 -c "import json; f=open('verdict.json'); d=json.load(f); print(d.get('verdict','?'))" 2>/dev/null || echo "?")
-                            REG_COUNT=\$(python3 -c "import json; f=open('verdict.json'); d=json.load(f); print(len(d.get('regressions',[])))" 2>/dev/null || echo "0")
+                            VERDICT=\$(cat verdict.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','?'))" 2>/dev/null || echo "?")
+                            REG_COUNT=\$(cat verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
                             if [ "\$VERDICT" = "RISKY" ]; then
                                 DESC="Risky - \${REG_COUNT} regression(s) found"
                             else
@@ -430,7 +438,7 @@ except Exception as e:
                 if (params.HEAD_SHA?.trim()) {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                         sh """
-                            REG_COUNT=\$(python3 -c "import json; f=open('verdict.json'); d=json.load(f); print(len(d.get('regressions',[])))" 2>/dev/null || echo "?")
+                            REG_COUNT=\$(cat verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "?")
                             curl -sf -X POST -H "Authorization: token \$GH_TOKEN" -H "Content-Type: application/json" \
                                 -d "{\\"state\\":\\"failure\\",\\"context\\":\\"Jenkins / Deep Regression Check\\",\\"description\\":\\"BLOCKED - \${REG_COUNT} critical regression(s)\\",\\"target_url\\":\\"${BUILD_URL}\\"}" \
                                 "https://api.github.com/repos/${REPO}/statuses/${HEAD_SHA}" > /dev/null 2>&1 || true
