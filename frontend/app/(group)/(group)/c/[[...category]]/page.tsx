@@ -6780,7 +6780,6 @@ export default function Projects() {
                                   Find {currentName.toLowerCase()} talent to
                                   bring your projects to life.
                                 </p>
-                              </div>
                               <div className="flex flex-col gap-y-4">
                                 <Button
                                   asChild
@@ -7497,7 +7496,6 @@ export default function Projects() {
                                   Find {currentName.toLowerCase()} talent to
                                   bring your projects to life.
                                 </p>
-                              </div>
                               <div className="flex flex-col gap-y-4">
                                 <Button
                                   asChild
