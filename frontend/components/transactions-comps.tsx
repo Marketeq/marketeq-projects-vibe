@@ -197,6 +197,26 @@ function formatRelativeMinutes(iso: string, nowMs: number): string {
   return `Updated ${hrs} hr${hrs === 1 ? "" : "s"} ago`
 }
 
+// US-103/US-104: display-level earnings amounts render as whole numbers, no
+// decimals — the one carved-out exception is the fee-breakdown sections
+// (US-27's inline expand + the Entry Detail drawer), which keep 2 decimals
+// since those show the precise raw billing figures. This only rounds for
+// display; it never touches the underlying amount used in calculations.
+function formatWholeAmount(amount: string | number | null | undefined): string {
+  if (amount == null) return "—"
+  const n = typeof amount === "number" ? amount : parseFloat(amount)
+  if (!Number.isFinite(n)) return "—"
+  return Math.round(Math.abs(n)).toLocaleString("en-US")
+}
+// Every call site renders the currency symbol as its own styled span
+// (different font size/weight than the digits), so the "-" for a negative
+// amount (refunds/adjustments) has to be placed before that span, not baked
+// into formatWholeAmount's return value — "-$46", never "$-46".
+function amountSign(amount: string | number | null | undefined): string {
+  const n = typeof amount === "number" ? amount : parseFloat(amount ?? "")
+  return Number.isFinite(n) && n < 0 ? "-" : ""
+}
+
 // ES-06: resolves a real currency symbol ("€", "₹", "$"...) from an ISO 4217
 // code instead of a hardcoded "$" — the balance display is now data-driven,
 // so a non-USD displayCurrency must render its own symbol, not USD's.
@@ -709,12 +729,20 @@ interface StatCardProps {
   label: string
   sublabel?: string
   amount: string
+  // US-102: defaults to "$" since every existing caller besides the Earnings
+  // tab's own summary cards is genuinely USD-denominated payout-service data
+  // (field names like totalPaidOutUsd) — only that caller passes a resolved
+  // currencySymbol() for its region-currency amount.
+  symbol?: string
+  // Negative amounts (refunds/adjustments) render "-$X", not "$-X" — the
+  // sign has to sit before the symbol span, not get swallowed into `amount`.
+  negative?: boolean
   change?: { value: string; direction: "up" | "down"; label: string }
   extra?: React.ReactNode
   status?: string
 }
 
-const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardProps) => (
+const StatCard = ({ label, sublabel, amount, symbol = "$", negative, change, extra, status }: StatCardProps) => (
   <div className="flex-1 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] min-w-0">
     <div className="flex items-start justify-between gap-x-2">
       <div className="min-w-0">
@@ -725,7 +753,7 @@ const StatCard = ({ label, sublabel, amount, change, extra, status }: StatCardPr
       </div>
       <div className="text-right shrink-0">
         <p className="text-2xl font-bold text-dark-blue-400">
-          <span className="text-base font-normal align-middle opacity-50">$</span>
+          {negative && "-"}<span className="text-base font-normal align-middle opacity-50">{symbol}</span>
           {amount}
         </p>
         {status && (
@@ -777,6 +805,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // (the schedule doesn't precompute a future payout total), so only the date is shown.
   const [scheduleNextRunAt, setScheduleNextRunAt] = React.useState<string | null>(null)
   const [scheduleLoading, setScheduleLoading] = React.useState(true)
+  // US-100/US-101: previously a fetch failure here silently left
+  // scheduleNextRunAt at its initial null and only logged to console — a
+  // real load failure rendered identically to "No payout scheduled" (a
+  // legitimate empty state), with no way to retry.
+  const [scheduleError, setScheduleError] = React.useState(false)
   // Figma "Available for Withdrawal" tooltip claims this amount excludes the
   // reserve balance — it didn't (was showing raw availableBalanceDisplay) and
   // the copy hardcoded a literal "$150" regardless of the contractor's actual
@@ -786,10 +819,16 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // recently settled payout, not a static mock value.
   const [previousPayout, setPreviousPayout] = React.useState<{ amountUsd: string; methodLabel: string | null; settledAt: string } | null>(null)
   const [previousPayoutLoading, setPreviousPayoutLoading] = React.useState(true)
+  // US-100/US-101: same conflation risk as scheduleError above — a failed
+  // fetch previously rendered identically to "No previous payouts yet".
+  const [previousPayoutError, setPreviousPayoutError] = React.useState(false)
   // "Recent Activity" has no dedicated activity-feed endpoint in payout-service — this
   // derives real entries from the same payout history list rather than showing mock data.
   const [recentActivity, setRecentActivity] = React.useState<{ id: string; title: string; description: string; time: string; kind: 'scheduled' | 'sent' | 'processing' | 'failed' | 'cancelled' }[]>([])
   const [recentActivityLoading, setRecentActivityLoading] = React.useState(true)
+  // US-100/US-101: same conflation risk — a failed fetch previously rendered
+  // identically to a genuinely empty activity feed.
+  const [recentActivityError, setRecentActivityError] = React.useState(false)
 
   // Recent Earnings has no visible UI in the Overview tab anymore — this data
   // is still fetched/polled purely as the source for the US-92 reversal-toast
@@ -808,19 +847,22 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // exists in payout-service; see toActivityItem(). Also the source of the
   // US-93 persistent failure banner (failedPayout, derived further below).
   const loadRecentActivity = React.useCallback(async () => {
+    setRecentActivityError(false)
     try {
       const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
-      if (res.ok) {
-        const d = await res.json()
-        setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
-      }
-    } catch (e) { console.error('Failed to fetch recent activity', e) }
+      if (!res.ok) { setRecentActivityError(true); return }
+      const d = await res.json()
+      setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
+    } catch (e) { console.error('Failed to fetch recent activity', e); setRecentActivityError(true) }
     finally { setRecentActivityLoading(false) }
   }, [])
 
   // ── Deposit Methods state ──────────────────────────────────────
   const [methods, setMethods] = React.useState<any[]>([])
   const [methodsLoading, setMethodsLoading] = React.useState(true)
+  // US-100/US-101: same conflation risk — a failed fetch previously rendered
+  // identically to a genuinely empty deposit-methods list.
+  const [methodsError, setMethodsError] = React.useState(false)
   const [showAddMethod, setShowAddMethod] = React.useState(false)
   const [canAddMore, setCanAddMore] = React.useState(true)
   // SCR-20: feature-flag state fetched from the server (GET /deposit-methods/config),
@@ -975,14 +1017,16 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   }
 
   const fetchMethods = React.useCallback(async () => {
+    setMethodsLoading(true)
+    setMethodsError(false)
     try {
-      setMethodsLoading(true)
       const res = await payoutFetch(`/deposit-methods`)
       // AC-01.02/01.05/01.06: every saved method must remain visible regardless of
       // verification status — pending/locked methods are surfaced via a status badge,
       // not hidden. Only the withdrawal method-selector (US-14) restricts to verified.
-      if (res.ok) { const d = await res.json(); setMethods(d.methods ?? []); setCanAddMore(d.canAddMore ?? true) }
-    } catch (e) { console.error('Failed to fetch deposit methods', e) }
+      if (!res.ok) { setMethodsError(true); return }
+      const d = await res.json(); setMethods(d.methods ?? []); setCanAddMore(d.canAddMore ?? true)
+    } catch (e) { console.error('Failed to fetch deposit methods', e); setMethodsError(true) }
     finally { setMethodsLoading(false) }
   }, [])
 
@@ -1464,6 +1508,32 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     }
   }, [recentEarnings, toast, loadBalance, loadSummary])
 
+  // US-100/US-101: extracted to a callback (not an inline mount-effect IIFE)
+  // so the error state below has something to retry against.
+  const loadSchedule = React.useCallback(async () => {
+    setScheduleLoading(true)
+    setScheduleError(false)
+    try {
+      const res = await payoutFetch(`/payouts/schedule`)
+      if (!res.ok) { setScheduleError(true); return }
+      const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null); setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0)
+    } catch (e) { console.error('Failed to fetch payout schedule', e); setScheduleError(true) }
+    finally { setScheduleLoading(false) }
+  }, [])
+
+  const loadPreviousPayout = React.useCallback(async () => {
+    setPreviousPayoutLoading(true)
+    setPreviousPayoutError(false)
+    try {
+      const res = await payoutFetch(`/payouts?status=completed&page=1&pageSize=1`)
+      if (!res.ok) { setPreviousPayoutError(true); return }
+      const d = await res.json()
+      const latest = d.payouts?.[0]
+      setPreviousPayout(latest ? { amountUsd: latest.netAmountUsd ?? latest.amountUsd, methodLabel: latest.methodLabel, settledAt: latest.settledAt } : null)
+    } catch (e) { console.error('Failed to fetch previous payout', e); setPreviousPayoutError(true) }
+    finally { setPreviousPayoutLoading(false) }
+  }, [])
+
   useEffect(() => {
     loadSummary()
     loadBalance()
@@ -1487,26 +1557,10 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         setMethodGateBlocked(!d.allowed && d.blockedBy !== 'FIRST_PAYOUT_HOLD')
       } catch { setMethodGateBlocked(true) }
     })()
-    ;(async () => {
-      try {
-        const res = await payoutFetch(`/payouts/schedule`)
-        if (res.ok) { const d = await res.json(); setScheduleNextRunAt(d.nextRunAt ?? null); setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0) }
-      } catch (e) { console.error('Failed to fetch payout schedule', e) }
-      finally { setScheduleLoading(false) }
-    })()
-    ;(async () => {
-      try {
-        const res = await payoutFetch(`/payouts?status=completed&page=1&pageSize=1`)
-        if (res.ok) {
-          const d = await res.json()
-          const latest = d.payouts?.[0]
-          setPreviousPayout(latest ? { amountUsd: latest.netAmountUsd ?? latest.amountUsd, methodLabel: latest.methodLabel, settledAt: latest.settledAt } : null)
-        }
-      } catch (e) { console.error('Failed to fetch previous payout', e) }
-      finally { setPreviousPayoutLoading(false) }
-    })()
+    loadSchedule()
+    loadPreviousPayout()
     loadRecentActivity()
-  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity])
+  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity, loadSchedule, loadPreviousPayout])
 
   // US-93.01: the persistent failure banner must be able to appear live, not
   // only on page load — recentActivity (its data source) previously fetched
@@ -1544,7 +1598,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
               <span className="mr-2">&#x1F929;</span>
-              You&apos;ve earned <span className="font-semibold text-success-600">${balance ? parseFloat(balance.totalEarnedUsd).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) : "..."}</span> total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
+              You&apos;ve earned <span className="font-semibold text-success-600">{balance ? amountSign(balance.totalEarnedUsd) : ""}${balance ? formatWholeAmount(balance.totalEarnedUsd) : "..."}</span> total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
             </p>
             <IconButton
               size="sm"
@@ -1598,7 +1652,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </TooltipProvider>
               </div>
               <p className="text-3xl font-bold text-dark-blue-400">
-                <span className="text-base align-top">{currencySymbol(summary?.today.displayCurrency || "USD")}</span>{summary ? summary.today.amount : "—"}
+                {summary ? amountSign(summary.today.amount) : ""}<span className="text-base align-top">{currencySymbol(summary?.today.displayCurrency || "USD")}</span>{summary ? formatWholeAmount(summary.today.amount) : "—"}
               </p>
               <div className="flex items-center gap-1.5 mt-4">
                 {summary?.today.changeLabel && (
@@ -1638,7 +1692,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">{currencySymbol(summary?.thisWeek.displayCurrency || "USD")}</span>{summary ? summary.thisWeek.amount : "—"}
+                    {summary ? amountSign(summary.thisWeek.amount) : ""}<span className="text-sm align-top">{currencySymbol(summary?.thisWeek.displayCurrency || "USD")}</span>{summary ? formatWholeAmount(summary.thisWeek.amount) : "—"}
                   </p>
                   {summary?.thisWeek.changeLabel && (
                     <>
@@ -1670,7 +1724,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-2xl font-bold text-dark-blue-400">
-                    <span className="text-sm align-top">{currencySymbol(summary?.thisMonth.displayCurrency || "USD")}</span>{summary ? summary.thisMonth.amount : "—"}
+                    {summary ? amountSign(summary.thisMonth.amount) : ""}<span className="text-sm align-top">{currencySymbol(summary?.thisMonth.displayCurrency || "USD")}</span>{summary ? formatWholeAmount(summary.thisMonth.amount) : "—"}
                   </p>
                   {summary?.thisMonth.changeLabel && (
                     <>
@@ -1706,6 +1760,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
               <p className="text-sm font-medium text-gray-500 mb-1">Upcoming Payout</p>
               {scheduleLoading ? (
                 <div className="h-9 w-28 bg-gray-100 rounded animate-pulse" />
+              ) : scheduleError ? (
+                <div>
+                  <p className="text-sm text-red-600">Unavailable.</p>
+                  <button className="text-sm text-primary-600 underline mt-1" onClick={loadSchedule}>Retry</button>
+                </div>
               ) : scheduleNextRunAt ? (
                 <p className="text-3xl font-bold text-dark-blue-400">
                   <span className="text-base align-top">$</span>
@@ -1760,6 +1819,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
               </div>
               {methodsLoading ? (
                 <div className="h-10 bg-gray-100 rounded animate-pulse" />
+              ) : methodsError ? (
+                <div className="text-sm">
+                  <span className="text-red-600">Unavailable.</span>{" "}
+                  <button className="text-primary-600 underline" onClick={fetchMethods}>Retry</button>
+                </div>
               ) : defaultMethod ? (
                 <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
                   {getMethodIcon(defaultMethod)}
@@ -1780,6 +1844,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           <div className="flex items-center justify-between bg-gray-25 border-t border-gray-200 px-8 py-6">
             {previousPayoutLoading ? (
               <div className="h-9 w-full bg-gray-100 rounded animate-pulse" />
+            ) : previousPayoutError ? (
+              <div className="text-sm">
+                <span className="text-red-600">Previous payout unavailable.</span>{" "}
+                <button className="text-primary-600 underline" onClick={loadPreviousPayout}>Retry</button>
+              </div>
             ) : previousPayout ? (
               <>
                 <div>
@@ -1829,6 +1898,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           <div className="space-y-3">
             {methodsLoading ? (
               [...Array(2)].map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />)
+            ) : methodsError ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-red-600">We couldn't load your connected accounts.</p>
+                <button className="text-sm text-primary-600 underline mt-1" onClick={fetchMethods}>Retry</button>
+              </div>
             ) : methods.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-6">No connected accounts yet. Add one to receive payouts.</div>
             ) : methods.map((m) => {
@@ -3077,7 +3151,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
             <>
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-3xl font-bold text-dark-blue-400">
-                  <span className="text-base align-top">{currencySymbol(balance?.displayCurrency || "USD")}</span>{balance ? Math.floor(netDisplay).toLocaleString() : "..."}<span className="text-lg">.{balance ? netDisplay.toFixed(2).split(".")[1] : "00"}</span>
+                  <span className="text-base align-top">{currencySymbol(balance?.displayCurrency || "USD")}</span>{balance ? formatWholeAmount(netDisplay) : "..."}
                   {/* US-08: never conditionally hidden, even though the balance
                       might look "off" from what the contractor expects. */}
                   {balance?.stale && (
@@ -3152,6 +3226,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
           <div className="space-y-4">
             {recentActivityLoading ? (
               [...Array(4)].map((_, i) => <div key={i} className="h-9 bg-gray-100 rounded-lg animate-pulse" />)
+            ) : recentActivityError ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-red-600">We couldn't load your recent activity.</p>
+                <button className="text-sm text-primary-600 underline mt-1" onClick={loadRecentActivity}>Retry</button>
+              </div>
             ) : recentActivity.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">No activity yet</p>
             ) : recentActivity.map((item) => (
@@ -4070,19 +4149,25 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
       <div className="flex gap-x-4">
         <StatCard
           label="Today"
-          amount={earningsSummary?.today.amount ?? "—"}
+          amount={earningsSummary ? formatWholeAmount(earningsSummary.today.amount) : "—"}
+          symbol={currencySymbol(earningsSummary?.today.displayCurrency || "USD")}
+          negative={!!earningsSummary && amountSign(earningsSummary.today.amount) === "-"}
           extra={earningsSummary ? earningsSummary.today.hoursLabel + " Logged" : earningsSummaryError ? "Unavailable" : "Loading..."}
           change={earningsSummary?.today.changePercent != null ? { value: Math.abs(earningsSummary.today.changePercent) + "%", direction: earningsSummary.today.changeDirection === "up" ? "up" : "down", label: earningsSummary.today.changeLabel?.replace(/^[\d.]+%\s*/, "") ?? "" } : undefined}
         />
         <StatCard
           label="This Week"
-          amount={earningsSummary?.thisWeek.amount ?? "—"}
+          amount={earningsSummary ? formatWholeAmount(earningsSummary.thisWeek.amount) : "—"}
+          symbol={currencySymbol(earningsSummary?.thisWeek.displayCurrency || "USD")}
+          negative={!!earningsSummary && amountSign(earningsSummary.thisWeek.amount) === "-"}
           extra={earningsSummary ? earningsSummary.thisWeek.hoursLabel + " Logged" : earningsSummaryError ? "Unavailable" : "Loading..."}
           change={earningsSummary?.thisWeek.changePercent != null ? { value: Math.abs(earningsSummary.thisWeek.changePercent) + "%", direction: earningsSummary.thisWeek.changeDirection === "up" ? "up" : "down", label: earningsSummary.thisWeek.changeLabel?.replace(/^[\d.]+%\s*/, "") ?? "" } : undefined}
         />
         <StatCard
           label="This Month"
-          amount={earningsSummary?.thisMonth.amount ?? "—"}
+          amount={earningsSummary ? formatWholeAmount(earningsSummary.thisMonth.amount) : "—"}
+          symbol={currencySymbol(earningsSummary?.thisMonth.displayCurrency || "USD")}
+          negative={!!earningsSummary && amountSign(earningsSummary.thisMonth.amount) === "-"}
           extra={earningsSummary ? earningsSummary.thisMonth.hoursLabel + " Logged" : earningsSummaryError ? "Unavailable" : "Loading..."}
           change={earningsSummary?.thisMonth.changePercent != null ? { value: Math.abs(earningsSummary.thisMonth.changePercent) + "%", direction: earningsSummary.thisMonth.changeDirection === "up" ? "up" : "down", label: earningsSummary.thisMonth.changeLabel?.replace(/^[\d.]+%\s*/, "") ?? "" } : undefined}
         />
@@ -4274,7 +4359,12 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 {viewMode === "monthly" && <TableCell className="text-sm text-gray-500">{row.totalHours ?? "—"}</TableCell>}
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">{currencySymbol(row.displayCurrency || "USD")}{viewMode === "weekly" ? (row.weeklyEarnings ? parseFloat(String(row.weeklyEarnings)).toFixed(2) : "—") : viewMode === "monthly" ? (row.totalEarnings ? parseFloat(String(row.totalEarnings)).toFixed(2) : "—") : (row.netAmountDisplay ?? row.netAmount)}</span>
+                    {(() => {
+                      const rowAmount = viewMode === "weekly" ? row.weeklyEarnings : viewMode === "monthly" ? row.totalEarnings : (row.netAmountDisplay ?? row.netAmount)
+                      return (
+                        <span className="text-sm text-gray-500">{amountSign(rowAmount)}{currencySymbol(row.displayCurrency || "USD")}{formatWholeAmount(rowAmount)}</span>
+                      )
+                    })()}
                     {row.status === "paid" && <Badge visual="success" size="sm">Paid</Badge>}
                     {row.status === "confirmed" && <Badge visual="primary" size="sm">Confirmed</Badge>}
                     {row.status === "failed" && <Badge visual="error" size="sm">Reversed</Badge>}
@@ -4655,6 +4745,10 @@ export const PayoutsTab = () => {
   // as unavailable rather than an approximated/possibly-wrong client-computed guess.
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
+  // US-100/US-101: same conflation risk as balanceError below — a failed
+  // fetch previously left nextRunAt at null, rendering identically to "No
+  // schedule set" (a legitimate empty state) with no way to retry.
+  const [scheduleError, setScheduleError] = useState(false)
   const [defaultMethodLabel, setDefaultMethodLabel] = useState<string | null>(null)
   const [balance, setBalance] = useState<BalanceResponse | null>(null)
   const [completedCount, setCompletedCount] = useState<number | null>(null)
@@ -4668,18 +4762,21 @@ export const PayoutsTab = () => {
     getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
   }, [])
 
+  const loadPayoutsSchedule = React.useCallback(async () => {
+    setScheduleLoading(true)
+    setScheduleError(false)
+    try {
+      const res = await payoutFetch(`/payouts/schedule`)
+      if (!res.ok) { setScheduleError(true); return }
+      const d = await res.json()
+      setNextRunAt(d.nextRunAt ?? null)
+      setDefaultMethodLabel(d.primaryMethod?.displayLabel ?? null)
+    } catch (e) { console.error('Failed to fetch schedule', e); setScheduleError(true) }
+    finally { setScheduleLoading(false) }
+  }, [])
+
   useEffect(() => {
-    ;(async () => {
-      try {
-        const res = await payoutFetch(`/payouts/schedule`)
-        if (res.ok) {
-          const d = await res.json()
-          setNextRunAt(d.nextRunAt ?? null)
-          setDefaultMethodLabel(d.primaryMethod?.displayLabel ?? null)
-        }
-      } catch (e) { console.error('Failed to fetch schedule', e) }
-      finally { setScheduleLoading(false) }
-    })()
+    loadPayoutsSchedule()
     loadPayoutsBalance()
     ;(async () => {
       try {
@@ -4687,7 +4784,7 @@ export const PayoutsTab = () => {
         if (res.ok) { const d = await res.json(); setCompletedCount(d.totalCount ?? 0) }
       } catch (e) { console.error('Failed to fetch completed payout count', e) }
     })()
-  }, [loadPayoutsBalance])
+  }, [loadPayoutsBalance, loadPayoutsSchedule])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const hasActiveFilters = !!statusFilter
@@ -4730,9 +4827,11 @@ export const PayoutsTab = () => {
       <div className="flex gap-x-4">
         <StatCard
           label="Next Payout"
-          sublabel={scheduleLoading ? "Loading..." : nextRunAt ? new Date(nextRunAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }) : "No schedule set"}
+          sublabel={scheduleLoading ? "Loading..." : scheduleError ? "Unavailable" : nextRunAt ? new Date(nextRunAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }) : "No schedule set"}
           amount={scheduleLoading ? "-" : nextRunAt && balance ? parseFloat(balance.availableBalance).toFixed(2) : "-"}
-          extra={balanceError ? (
+          extra={scheduleError ? (
+            <button className="text-red-600 underline" onClick={loadPayoutsSchedule}>Unavailable — Retry</button>
+          ) : balanceError ? (
             <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
           ) : defaultMethodLabel ? `Bank: ${defaultMethodLabel}` : undefined}
         />
