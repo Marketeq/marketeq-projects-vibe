@@ -221,9 +221,12 @@ export class EarningsService {
     const feeRaw = parseFloat(row.feeAmount);
     const feePercent = grossRaw > 0 ? ((feeRaw / grossRaw) * 100).toFixed(1) : '0.0';
     const feeLabel = `Marketeq Service Fee (${feePercent}%)`;
+    // Display-only rounding — row.fxRateToUsd itself stays full-precision
+    // (8 decimals) for the actual gross/fee/net conversions above.
+    const fxRateDisplay = parseFloat(row.fxRateToUsd).toFixed(2);
     const fxPair = row.currency === 'USD'
-      ? `1 USD = ${row.fxRateToUsd} USD (rate locked at contract creation)`
-      : `1 ${row.currency} = ${row.fxRateToUsd} USD (rate locked at contract creation)`;
+      ? `1 USD = ${fxRateDisplay} USD (rate locked at contract creation)`
+      : `1 ${row.currency} = ${fxRateDisplay} USD (rate locked at contract creation)`;
 
     return {
       id: row.id, transactionId: row.transactionId, contractorId: row.contractorId,

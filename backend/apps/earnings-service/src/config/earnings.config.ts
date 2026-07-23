@@ -22,6 +22,9 @@ export default registerAs('earnings', () => ({
   fxApiUrl: process.env.FX_API_URL,
   fxCacheTtlSeconds: parseInt(process.env.FX_CACHE_TTL_SECONDS || '3600', 10),
 
+  // ES-06: user-service lookup for the talent's preferred display currency
+  userServiceUrl: process.env.USER_SERVICE_URL || 'http://localhost:3002',
+
   // Balance cache
   balanceCacheTtlSeconds:
     parseInt(process.env.BALANCE_CACHE_TTL_SECONDS || '300', 10),
