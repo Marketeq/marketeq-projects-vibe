@@ -24,6 +24,7 @@ import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private static readonly SUGGESTED_TTL_MS = 60 * 60 * 1000;
+  private static readonly SUGGESTED_CACHE_MAX = 500;
   private readonly suggestedQuestionsCache = new Map<
     string,
     { questions: string[]; expiresAt: number }
@@ -67,11 +68,28 @@ export class ProjectsService {
     });
 
     const result = questions.slice(0, 10);
-    this.suggestedQuestionsCache.set(projectId, {
-      questions: result,
-      expiresAt: Date.now() + ProjectsService.SUGGESTED_TTL_MS,
-    });
+    this.setSuggestedCache(projectId, result);
     return result;
+  }
+
+  private setSuggestedCache(projectId: string, questions: string[]): void {
+    const now = Date.now();
+    if (this.suggestedQuestionsCache.size >= ProjectsService.SUGGESTED_CACHE_MAX) {
+      for (const [key, value] of this.suggestedQuestionsCache) {
+        if (value.expiresAt <= now) this.suggestedQuestionsCache.delete(key);
+      }
+      while (
+        this.suggestedQuestionsCache.size >= ProjectsService.SUGGESTED_CACHE_MAX
+      ) {
+        const oldest = this.suggestedQuestionsCache.keys().next().value;
+        if (oldest === undefined) break;
+        this.suggestedQuestionsCache.delete(oldest);
+      }
+    }
+    this.suggestedQuestionsCache.set(projectId, {
+      questions,
+      expiresAt: now + ProjectsService.SUGGESTED_TTL_MS,
+    });
   }
 
   async findAll(status = ListingStatus.Published) {

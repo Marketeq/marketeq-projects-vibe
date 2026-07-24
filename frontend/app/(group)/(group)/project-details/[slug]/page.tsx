@@ -695,6 +695,47 @@ const toVideoThumb = (raw?: string | null): string => {
   return ""
 }
 
+const isDirectVideoFile = (raw?: string | null): boolean =>
+  !!raw && /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|#|$)/i.test(raw)
+
+const DEFAULT_SUGGESTED_QUESTIONS = [
+  "Can I see your portfolio?",
+  "What is your typical turnaround time?",
+  "Do you offer revisions?",
+  "How do we communicate during the project?",
+]
+
+const VideoThumb = ({
+  url,
+  alt,
+}: {
+  url?: string | null
+  alt: string
+}): JSX.Element | null => {
+  const yt = toVideoThumb(url)
+  if (yt) {
+    return (
+      <img
+        src={yt}
+        alt={alt}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+  if (isDirectVideoFile(url)) {
+    return (
+      <video
+        src={url ?? undefined}
+        muted
+        playsInline
+        preload="metadata"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+  return null
+}
+
 // Derive a readable name from an R2 media URL, whose filenames follow
 // "{OriginalName}_{timestamp}-{uuid}.{ext}". Falls back to the given value.
 const mediaName = (raw?: string | null, fallback = ""): string => {
@@ -850,7 +891,7 @@ export default function ProjectDetails({
   }, [pendingQuestion, openLiveChat])
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
-    []
+    DEFAULT_SUGGESTED_QUESTIONS
   )
   React.useEffect(() => {
     const pid = project?.id ? String(project.id) : ""
@@ -858,8 +899,9 @@ export default function ProjectDetails({
     let cancelled = false
     ProjectAPI.GetSuggestedQuestions(pid)
       .then((res) => {
-        if (!cancelled)
-          setSuggestedQuestions(Array.isArray(res?.data) ? res.data : [])
+        if (cancelled) return
+        const data = Array.isArray(res?.data) ? res.data : []
+        if (data.length) setSuggestedQuestions(data)
       })
       .catch(() => {})
     return () => {
@@ -1664,13 +1706,7 @@ export default function ProjectDetails({
                           >
                             {m.type === "video" ? (
                               <>
-                                {toVideoThumb(m.url) && (
-                                  <img
-                                    src={toVideoThumb(m.url)}
-                                    alt="Project video"
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                  />
-                                )}
+                                <VideoThumb url={m.url} alt="Project video" />
                                 <span className="absolute inset-0 flex items-center justify-center">
                                   <span
                                     className="flex items-center justify-center rounded-full bg-white/90 shadow"
@@ -1794,13 +1830,7 @@ export default function ProjectDetails({
                                 >
                                   {mm.type === "video" ? (
                                     <>
-                                      {toVideoThumb(mm.url) && (
-                                        <img
-                                          src={toVideoThumb(mm.url)}
-                                          alt="Video"
-                                          className="absolute inset-0 h-full w-full object-cover"
-                                        />
-                                      )}
+                                      <VideoThumb url={mm.url} alt="Video" />
                                       <span className="absolute inset-0 flex items-center justify-center">
                                         <span
                                           className="flex items-center justify-center rounded-full"

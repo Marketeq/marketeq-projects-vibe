@@ -282,7 +282,7 @@ export class ProjectModerationService {
           title: text.slice(0, 150),
           content: text,
           category: '',
-          subcategory: 'Backend',
+          subcategory: '',
           categories: [],
           tags: [],
         },
