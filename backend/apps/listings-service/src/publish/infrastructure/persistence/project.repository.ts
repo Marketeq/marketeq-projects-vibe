@@ -22,7 +22,6 @@ export type RecentQuestion = {
   answeredByRole?: string | null;
   assignedToUserId?: string | null;
   hidden?: boolean;
-  moderationFailed?: boolean;
 };
 
 export abstract class ProjectRepository {

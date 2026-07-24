@@ -9,9 +9,6 @@ import { Project } from './entities/project.entity';
 import { DELIVERABLES_ADAPTER } from '../project-sync/deliverables/deliverables.adapter';
 import { DeliverablesAdapterHeuristic } from '../project-sync/deliverables/deliverables.adapter.heuristic';
 import { DeliverablesAdapterHuggingFace } from '../project-sync/deliverables/deliverables.adapter.huggingface';
-import { FAQ_ADAPTER } from '../publish/faq/faq.adapter';
-import { FaqAdapterHeuristic } from '../publish/faq/faq.adapter.heuristic';
-import { FaqAdapterHuggingFace } from '../publish/faq/faq.adapter.huggingface';
 
 @Module({
   imports: [
@@ -40,9 +37,6 @@ import { FaqAdapterHuggingFace } from '../publish/faq/faq.adapter.huggingface';
     DeliverablesAdapterHeuristic,
     DeliverablesAdapterHuggingFace,
     { provide: DELIVERABLES_ADAPTER, useExisting: DeliverablesAdapterHuggingFace },
-    FaqAdapterHeuristic,
-    FaqAdapterHuggingFace,
-    { provide: FAQ_ADAPTER, useExisting: FaqAdapterHuggingFace },
   ],
   exports: [ProjectsService],
 })

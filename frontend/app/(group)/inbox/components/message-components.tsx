@@ -155,7 +155,7 @@ const toSafeHttpUrl = (value?: string | null): string | null => {
   }
 }
 
-export const MessageAttachmentView = ({
+const MessageAttachmentView = ({
   attachment,
 }: {
   attachment: {

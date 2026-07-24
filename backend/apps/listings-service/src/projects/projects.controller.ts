@@ -54,11 +54,6 @@ export class ProjectsController {
     return this.service.getQuestions(id);
   }
 
-  @Get(':id/suggested-questions')
-  getSuggestedQuestions(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getSuggestedQuestions(id);
-  }
-
   @Post(':id/questions')
   @UseGuards(JwtAuthGuard)
   addQuestion(

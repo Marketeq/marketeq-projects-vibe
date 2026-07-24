@@ -67,11 +67,6 @@ export class FaqAdapterHeuristic extends FaqAdapter {
     return out;
   }
 
-  async suggestQuestions(ctx: FaqContext): Promise<string[]> {
-    const faqs = await this.suggestFaqs(ctx);
-    return faqs.map((f) => f.question);
-  }
-
   async suggestAnswer(ctx: FaqContext, question: string): Promise<string> {
     const all = await this.suggestFaqs(ctx);
     const match = all.find(

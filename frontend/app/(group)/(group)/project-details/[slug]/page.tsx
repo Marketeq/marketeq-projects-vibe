@@ -14,9 +14,6 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
-import { InviteWindow, useInviteWindowStore } from "@/components/invite-window"
-import { LightboxVideoPlayer } from "./lightbox-video-player"
-import { countryOf } from "@/lib/geo"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -45,7 +42,6 @@ import {
   ShieldDollar,
   ShieldZap,
   ShoppingCart,
-  Play,
   Smile,
   Star,
   Stars02,
@@ -72,7 +68,6 @@ import {
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { ProjectAPI } from "@/service/http/project"
 import { ChatsContextProvider } from "@/components/chat"
-import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
@@ -323,20 +318,7 @@ const Chats = ({
 
   const [threadId, setThreadId] = React.useState<string | null>(null)
   const [messages, setMessages] = React.useState<
-    Array<{
-      id: string
-      senderId: string
-      content?: string | null
-      createdAt: string
-      messageType?: string
-      attachments?: Array<{
-        id: string
-        fileUrl: string
-        fileType: string
-        fileName?: string | null
-        fileSize?: number | null
-      }>
-    }>
+    Array<{ id: string; senderId: string; content?: string | null; createdAt: string }>
   >([])
   const chatBottomRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -502,22 +484,7 @@ const Chats = ({
                           mine ? "bg-primary-50" : "bg-gray-50"
                         )}
                       >
-                        {m.attachments?.[0] && (
-                          <MessageAttachmentView attachment={m.attachments[0]} />
-                        )}
-                        {m.messageType === "gif" && m.content ? (
-                          <img
-                            src={m.content}
-                            alt="GIF"
-                            className="rounded-md w-60 h-auto max-h-80"
-                          />
-                        ) : (
-                          m.content && (
-                            <p className="text-sm text-dark-blue-400">
-                              {m.content}
-                            </p>
-                          )
-                        )}
+                        <p className="text-sm text-dark-blue-400">{m.content}</p>
                         <p
                           className={cn(
                             "mt-1 text-xs text-gray-400",
@@ -686,106 +653,16 @@ const formatChatTime = (iso?: string) =>
       })
     : ""
 
-const toVideoThumb = (raw?: string | null): string => {
+const toEmbedUrl = (raw?: string | null): string => {
   if (!raw) return ""
-  const yt = raw.match(
+  const url = raw.trim()
+  const yt = url.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
   )
-  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
-  return ""
-}
-
-const isDirectVideoFile = (raw?: string | null): boolean =>
-  !!raw && /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|#|$)/i.test(raw)
-
-const DEFAULT_SUGGESTED_QUESTIONS = [
-  "Can I see your portfolio?",
-  "What is your typical turnaround time?",
-  "Do you offer revisions?",
-  "How do we communicate during the project?",
-]
-
-const VideoThumb = ({
-  url,
-  alt,
-}: {
-  url?: string | null
-  alt: string
-}): JSX.Element | null => {
-  const yt = toVideoThumb(url)
-  if (yt) {
-    return (
-      <img
-        src={yt}
-        alt={alt}
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    )
-  }
-  if (isDirectVideoFile(url)) {
-    return (
-      <video
-        src={url ?? undefined}
-        muted
-        playsInline
-        preload="metadata"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    )
-  }
-  return null
-}
-
-// Derive a readable name from an R2 media URL, whose filenames follow
-// "{OriginalName}_{timestamp}-{uuid}.{ext}". Falls back to the given value.
-const mediaName = (raw?: string | null, fallback = ""): string => {
-  if (!raw) return fallback
-  try {
-    const file = decodeURIComponent(raw.split("?")[0].split("/").pop() ?? "")
-    let base = file.replace(/\.[a-z0-9]+$/i, "")
-    base = base.replace(/_\d{13}.*$/, "")
-    base = base.replace(
-      /[-_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-      ""
-    )
-    const name = base.replace(/[-_]+/g, " ").trim()
-    return name || fallback
-  } catch {
-    return fallback
-  }
-}
-
-function LocationList({ locations }: { locations: string[] }) {
-  const [expanded, setExpanded] = React.useState(false)
-  const countries = React.useMemo(
-    () => Array.from(new Set(locations.map(countryOf).filter(Boolean))),
-    [locations]
-  )
-  const visible = expanded ? countries : countries.slice(0, 3)
-  const extra = countries.length - visible.length
-  return (
-    <div className="flex items-center gap-1 overflow-hidden">
-      {visible.map((c, i) => (
-        <NextLink
-          key={c}
-          href={`/talent?location=${encodeURIComponent(c)}`}
-          className="shrink-0 focus-visible:outline-none duration-300 transition hover:underline text-sm leading-6 font-semibold text-dark-blue-400"
-        >
-          {c}
-          {i < visible.length - 1 || extra > 0 ? "," : ""}
-        </NextLink>
-      ))}
-      {extra > 0 && (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="shrink-0 text-sm leading-6 font-semibold text-primary-500 hover:underline focus-visible:outline-none"
-        >
-          and {extra} more
-        </button>
-      )}
-    </div>
-  )
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
+  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  return url
 }
 
 const CarouselPreviousTrigger = () => {
@@ -845,12 +722,6 @@ export default function ProjectDetails({
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
   const [pendingQuestion, setPendingQuestion] = React.useState("")
-  const [askErrored, setAskErrored] = React.useState(false)
-  const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
-  const [askModalOpen, setAskModalOpen] = React.useState(false)
-  const [lightboxOpen, setLightboxOpen] = React.useState(false)
-  const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
-  const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const { isOnline } = useOnlineUsers()
 
   // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
@@ -863,51 +734,10 @@ export default function ProjectDetails({
     [project, isOnline]
   )
 
-  const mediaItems = React.useMemo(() => {
-    const items: { type: "video" | "image"; url: string }[] = []
-    const video =
-      ((project as any)?.videoUrl as string | undefined) ||
-      ((project as any)?.featuredVideo as string | undefined)
-    if (video) items.push({ type: "video", url: video })
-    const gallery =
-      ((project as any)?.mediaUrls as string[] | undefined)?.slice(1) ?? []
-    gallery.forEach((url) => items.push({ type: "image", url }))
-    return items
-  }, [project])
-
   const openLiveChat = React.useCallback((question?: string) => {
     if (question !== undefined) setPendingQuestion(question)
     setSelected("Live Chat")
   }, [])
-
-  const handleAsk = React.useCallback(() => {
-    if (pendingQuestion.trim()) {
-      setAskModalOpen(false)
-      openLiveChat()
-    } else {
-      setAskErrored(true)
-      setShowAskErrorMsg(true)
-    }
-  }, [pendingQuestion, openLiveChat])
-
-  const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
-    DEFAULT_SUGGESTED_QUESTIONS
-  )
-  React.useEffect(() => {
-    const pid = project?.id ? String(project.id) : ""
-    if (!pid) return
-    let cancelled = false
-    ProjectAPI.GetSuggestedQuestions(pid)
-      .then((res) => {
-        if (cancelled) return
-        const data = Array.isArray(res?.data) ? res.data : []
-        if (data.length) setSuggestedQuestions(data)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [project?.id])
 
   // Owner viewing their own listing shouldn't be able to ask questions on it
   // (Chris: "hide that for your own"). True in view-as-client preview, or when
@@ -1673,8 +1503,15 @@ export default function ProjectDetails({
               */}
               <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
-                  {mediaItems.length === 0
-                    ? Array.from({ length: 5 }).map((_, index) => (
+                  {(() => {
+                    const video =
+                      (project.videoUrl as string | undefined) ||
+                      (project.featuredVideo as string | undefined)
+                    const gallery =
+                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
+                      []
+                    if (!video && gallery.length === 0) {
+                      return Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
                           <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
                             <NextImage
@@ -1688,201 +1525,49 @@ export default function ProjectDetails({
                           </div>
                         </CarouselItem>
                       ))
-                    : mediaItems.map((m, i) => (
+                    }
+                    const items: React.ReactNode[] = []
+                    if (video) {
+                      items.push(
+                        <CarouselItem key="video" className="group basis-1/3">
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
+                            <iframe
+                              src={toEmbedUrl(video)}
+                              className="absolute inset-0 h-full w-full"
+                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                              allowFullScreen
+                              title="Project video"
+                            />
+                          </div>
+                        </CarouselItem>
+                      )
+                    }
+                    gallery.forEach((url, index) => {
+                      items.push(
                         <CarouselItem
-                          key={`${m.url}-${i}`}
+                          key={`${url}-${index}`}
                           className="group basis-1/3"
                         >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedMediaIndex(i)
-                              setLightboxOpen(true)
-                            }}
-                            className={cn(
-                              "relative block w-full border border-gray-200 h-[150.6px] overflow-hidden rounded-lg focus-visible:outline-none",
-                              m.type === "video" ? "bg-black" : "bg-gray-50"
-                            )}
-                          >
-                            {m.type === "video" ? (
-                              <>
-                                <VideoThumb url={m.url} alt="Project video" />
-                                <span className="absolute inset-0 flex items-center justify-center">
-                                  <span
-                                    className="flex items-center justify-center rounded-full bg-white/90 shadow"
-                                    style={{
-                                      width: 48,
-                                      height: 48,
-                                    }}
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      aria-hidden="true"
-                                      className="text-gray-800"
-                                      style={{
-                                        width: 29,
-                                        height: 29,
-                                        fill: "currentColor",
-                                        marginLeft: 2,
-                                      }}
-                                    >
-                                      <path d="M8 5v14l11-7z" />
-                                    </svg>
-                                  </span>
-                                </span>
-                              </>
-                            ) : (
-                              <NextImage
-                                className="object-cover"
-                                src={m.url}
-                                alt={`${project.title} — media ${i + 1}`}
-                                sizes="25vw"
-                                fill
-                              />
-                            )}
-                          </button>
+                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
+                            <NextImage
+                              className="object-cover"
+                              src={url}
+                              alt={`${project.title} — gallery image ${index + 1}`}
+                              sizes="25vw"
+                              fill
+                            />
+                            <div className="absolute inset-0 transition duration-300" />
+                          </div>
                         </CarouselItem>
-                      ))}
+                      )
+                    })
+                    return items
+                  })()}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
-
-              <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
-                <DialogContent
-                  className="p-0 bg-transparent border-0 shadow-none"
-                  style={{ maxWidth: 760, width: "100%" }}
-                >
-                  <DialogClose
-                    className="absolute z-10 flex items-center justify-center rounded-full bg-white text-gray-500 shadow-md transition-colors hover:bg-gray-900 hover:text-white focus-visible:outline-none"
-                    style={{ width: 32, height: 32, top: -16, right: -16 }}
-                  >
-                    <X style={{ width: 16, height: 16 }} />
-                  </DialogClose>
-                  {(() => {
-                    const m = mediaItems[selectedMediaIndex]
-                    if (!m) return null
-                    return (
-                      <>
-                        <div
-                          style={{
-                            position: "relative",
-                            width: "100%",
-                            aspectRatio: "16 / 9",
-                            maxHeight: "80vh",
-                            backgroundColor: "#fff",
-                            borderRadius: 8,
-                            overflow: "hidden",
-                          }}
-                        >
-                          {m.type === "video" ? (
-                            <LightboxVideoPlayer
-                              url={m.url}
-                              active={lightboxOpen}
-                            />
-                          ) : (
-                            <>
-                              <img
-                                src={m.url}
-                                alt={project.title}
-                                style={{
-                                  position: "absolute",
-                                  inset: 0,
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "contain",
-                                }}
-                              />
-                              <span
-                                className="absolute text-sm font-semibold text-white"
-                                style={{
-                                  left: 16,
-                                  bottom: 16,
-                                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
-                                }}
-                              >
-                                {mediaName(m.url, project.title)}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        {mediaItems.length > 1 && (
-                          <div
-                            className="flex gap-x-3 pt-4"
-                            style={{ overflowX: "auto" }}
-                          >
-                            {mediaItems.map((mm, i) => {
-                              const active = i === selectedMediaIndex
-                              return (
-                                <button
-                                  key={`lb-${mm.url}-${i}`}
-                                  type="button"
-                                  onClick={() => setSelectedMediaIndex(i)}
-                                  className={cn(
-                                    "relative shrink-0 overflow-hidden rounded-lg focus-visible:outline-none",
-                                    mm.type === "video" ? "bg-black" : "bg-gray-50"
-                                  )}
-                                  style={{
-                                    width: 84,
-                                    height: 60,
-                                  }}
-                                >
-                                  {mm.type === "video" ? (
-                                    <>
-                                      <VideoThumb url={mm.url} alt="Video" />
-                                      <span className="absolute inset-0 flex items-center justify-center">
-                                        <span
-                                          className="flex items-center justify-center rounded-full"
-                                          style={{
-                                            width: 22,
-                                            height: 22,
-                                            backgroundColor:
-                                              "rgba(255,255,255,0.45)",
-                                          }}
-                                        >
-                                          <svg
-                                            viewBox="0 0 24 24"
-                                            aria-hidden="true"
-                                            className="text-gray-800"
-                                            style={{
-                                              width: 10,
-                                              height: 10,
-                                              fill: "currentColor",
-                                              marginLeft: 1,
-                                            }}
-                                          >
-                                            <path d="M8 5v14l11-7z" />
-                                          </svg>
-                                        </span>
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <img
-                                      src={mm.url}
-                                      alt={`${project.title} — media ${i + 1}`}
-                                      className="absolute inset-0 h-full w-full object-cover"
-                                    />
-                                  )}
-                                  {active && (
-                                    <span
-                                      className="pointer-events-none absolute inset-0"
-                                      style={{
-                                        border: "2px solid #ffffff",
-                                        borderRadius: 8,
-                                      }}
-                                    />
-                                  )}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </>
-                    )
-                  })()}
-                </DialogContent>
-              </Dialog>
 
               <div className="mt-6">
                 <Tabs
@@ -2291,7 +1976,20 @@ export default function ProjectDetails({
                                         <MapPin className="size-[18px]" />{" "}
                                         Locations
                                       </h3>
-                                      <LocationList locations={allLocations} />
+                                      <div className="gap-1 flex items-center flex-wrap">
+                                        {allLocations.map((loc, i) => (
+                                          <NextLink
+                                            key={loc}
+                                            href={`/talent?location=${encodeURIComponent(loc)}`}
+                                            className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
+                                          >
+                                            {loc}
+                                            {i < allLocations.length - 1
+                                              ? ","
+                                              : ""}
+                                          </NextLink>
+                                        ))}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -2394,73 +2092,43 @@ export default function ProjectDetails({
 
                         {onlineTeam.length > 0 && (
                         <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                          {onlineTeam.length === 1 ? (
-                            <>
-                              <Avatar size="md">
-                                <AvatarImage
-                                  src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                                  alt={onlineTeam[0].firstName || "Team member"}
-                                />
-                                <AvatarFallback>
-                                  {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                                </AvatarFallback>
-                              </Avatar>
+                          <Avatar size="md">
+                            <AvatarImage
+                              src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                              alt={onlineTeam[0].firstName || "Team member"}
+                            />
+                            <AvatarFallback>
+                              {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
 
-                              <div className="flex flex-col items-start gap-y-2">
-                                <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                  {onlineTeam[0].firstName ||
-                                    onlineTeam[0].username}{" "}
-                                  {onlineTeam[0].username && (
-                                    <span className="text-xs leading-none text-extralight text-gray-500">
-                                      @{onlineTeam[0].username}
-                                    </span>
-                                  )}
-                                </span>
-
-                                <div className="flex items-center gap-x-1">
-                                  <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                  <span className="text-xs leading-none text-dark-blue-400">
-                                    Online
+                          <div className="flex flex-col items-start gap-y-2">
+                            <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                              {onlineTeam.length >= 2
+                                ? onlineTeam
+                                    .slice(0, 2)
+                                    .map((m: any) => m.firstName || m.username)
+                                    .join(", ")
+                                : onlineTeam[0].firstName ||
+                                  onlineTeam[0].username}
+                              {onlineTeam.length > 2
+                                ? ` +${onlineTeam.length - 2}`
+                                : ""}{" "}
+                              {onlineTeam.length < 2 &&
+                                onlineTeam[0].username && (
+                                  <span className="text-xs leading-none text-extralight text-gray-500">
+                                    @{onlineTeam[0].username}
                                   </span>
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex flex-col items-center gap-y-2">
-                              <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                Live Chat
+                                )}
+                            </span>
+
+                            <div className="flex items-center gap-x-1">
+                              <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                              <span className="text-xs leading-none text-dark-blue-400">
+                                Online
                               </span>
-
-                              <AvatarGroup size="sm" max={3} excess>
-                                {onlineTeam.map((m: any, i: number) => (
-                                  <Avatar
-                                    key={m.username ?? i}
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                    size="sm"
-                                  >
-                                    {m.avatarUrl ? (
-                                      <AvatarImage
-                                        src={m.avatarUrl}
-                                        alt={m.firstName}
-                                      />
-                                    ) : null}
-                                    <AvatarFallback>
-                                      {(m.firstName || "?")
-                                        .charAt(0)
-                                        .toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                ))}
-                              </AvatarGroup>
-
-                              <div className="flex items-center gap-x-1">
-                                <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                <span className="text-xs leading-none text-dark-blue-400">
-                                  {onlineTeam.length} team members online
-                                </span>
-                              </div>
                             </div>
-                          )}
+                          </div>
                         </div>
                         )}
 
@@ -2476,48 +2144,27 @@ export default function ProjectDetails({
 
                           <div className="mt-3 flex gap-x-2 items-center">
                             <Input
-                              className={cn(
-                                "flex-auto",
-                                showAskErrorMsg &&
-                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
-                              )}
+                              className="flex-auto"
                               placeholder="Type your question..."
                               value={pendingQuestion}
-                              onFocus={() => setShowAskErrorMsg(false)}
-                              onChange={(e) => {
-                                const v = e.target.value
-                                setPendingQuestion(v)
-                                if (v.trim()) {
-                                  setAskErrored(false)
-                                  setShowAskErrorMsg(false)
-                                }
-                              }}
+                              onChange={(e) => setPendingQuestion(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") handleAsk()
+                                if (e.key === "Enter") openLiveChat()
                               }}
                             />
                             <Button
                               className="text-xs leading-none"
                               size="lg"
-                              disabled={askErrored && !pendingQuestion.trim()}
-                              onClick={handleAsk}
+                              onClick={() => openLiveChat()}
                             >
                               Ask Question
                             </Button>
                           </div>
 
                           <div className="mt-2 flex items-center justify-between">
-                            <span
-                              className={cn(
-                                "text-xs leading-none",
-                                showAskErrorMsg
-                                  ? "font-medium text-error-500"
-                                  : "text-dark-blue-400"
-                              )}
-                            >
-                              {showAskErrorMsg
-                                ? "Please enter your question above"
-                                : "A team member will reach out to you as soon as possible."}
+                            <span className="text-xs text-dark-blue-400 leading-none">
+                              A team member will reach out to you as soon as
+                              possible.
                             </span>
 
                             <span className="text-xs text-dark-blue-400 leading-none">
@@ -2525,26 +2172,78 @@ export default function ProjectDetails({
                             </span>
                           </div>
 
-                          {suggestedQuestions.length > 0 && (
-                            <div className="mt-6 flex items-start gap-3 flex-wrap">
-                              {suggestedQuestions.map((q, idx) => (
-                                <Badge
-                                  key={`sq-${idx}`}
-                                  className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400 text-left"
-                                  size="lg"
-                                  visual="gray"
-                                  onClick={() => openLiveChat(q)}
-                                  style={{
-                                    maxWidth: "100%",
-                                    height: "auto",
-                                    whiteSpace: "normal",
-                                  }}
-                                >
-                                  {q}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
+                          <div className="mt-6 flex items-center gap-3 flex-wrap">
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your portfolio?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                            <Badge
+                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                              size="lg"
+                              visual="gray"
+                            >
+                              Can I see your work?
+                            </Badge>
+                          </div>
                         </div>
                         )}
 
@@ -2680,41 +2379,28 @@ export default function ProjectDetails({
                             </TabsContent>
 
                             <TabsContent value="Recently Asked Questions">
-                              {(() => {
-                                const visibleQuestions = (
-                                  (project.recentQuestions as Array<{
-                                    question: string
-                                    answer?: string | null
-                                    hidden?: boolean
-                                    moderationFailed?: boolean
-                                  }>) ?? []
-                                ).filter(
-                                  (q) =>
-                                    q &&
-                                    q.answer &&
-                                    !q.hidden &&
-                                    !q.moderationFailed
-                                )
-                                return visibleQuestions.length === 0 ? (
-                                  <div className="flex flex-col items-center justify-center py-10 text-center">
-                                    <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                      <HelpCircle className="size-5 text-gray-400" />
-                                    </div>
-                                    <h3 className="text-sm font-semibold text-dark-blue-400">
-                                      No questions yet
-                                    </h3>
-                                    <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                      When people ask questions on this listing,
-                                      they&apos;ll show up here.
-                                    </p>
+                              {!project.recentQuestions ||
+                              project.recentQuestions.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-10 text-center">
+                                  <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                    <HelpCircle className="size-5 text-gray-400" />
                                   </div>
-                                ) : (
-                                  <Accordion
-                                    type="single"
-                                    className="pt-6 space-y-[15px]"
-                                    defaultValue="rq-0"
-                                  >
-                                    {visibleQuestions.map((q, idx) => (
+                                  <h3 className="text-sm font-semibold text-dark-blue-400">
+                                    No questions yet
+                                  </h3>
+                                  <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                    When people ask questions on this listing,
+                                    they&apos;ll show up here.
+                                  </p>
+                                </div>
+                              ) : (
+                                <Accordion
+                                  type="single"
+                                  className="pt-6 space-y-[15px]"
+                                  defaultValue="rq-0"
+                                >
+                                  {(project.recentQuestions as string[]).map(
+                                    (q, idx) => (
                                       <AccordionItem
                                         key={`rq-${idx}`}
                                         className="rounded-lg bg-white border border-gray-300"
@@ -2722,18 +2408,15 @@ export default function ProjectDetails({
                                       >
                                         <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
                                           <span className="flex-auto text-left inline-block">
-                                            {q.question}
+                                            {q}
                                           </span>
                                           <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                         </AccordionTrigger>
-                                        <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
-                                          {q.answer}
-                                        </DisclosureContent>
                                       </AccordionItem>
-                                    ))}
-                                  </Accordion>
-                                )
-                              })()}
+                                    )
+                                  )}
+                                </Accordion>
+                              )}
                             </TabsContent>
                           </Tabs>
 
@@ -2747,62 +2430,13 @@ export default function ProjectDetails({
                                 <Button
                                   variant="outlined"
                                   visual="gray"
-                                  onClick={() => setAskModalOpen(true)}
+                                  onClick={() => openLiveChat()}
                                 >
                                   Ask a question
                                 </Button>
                               </div>
                             </div>
                           )}
-
-                          <Dialog
-                            open={askModalOpen}
-                            onOpenChange={setAskModalOpen}
-                          >
-                            <DialogContent className="max-w-[480px] p-6">
-                              <DialogTitle className="text-lg font-semibold text-dark-blue-400">
-                                Ask Question
-                              </DialogTitle>
-
-                              <div className="mt-5">
-                                <Label size="sm" className="text-dark-blue-400">
-                                  Type your question
-                                </Label>
-                                <Textarea
-                                  autoFocus
-                                  isInvalid={showAskErrorMsg}
-                                  className="mt-1.5"
-                                  placeholder="Enter a description..."
-                                  value={pendingQuestion}
-                                  onFocus={() => setShowAskErrorMsg(false)}
-                                  onChange={(e) => {
-                                    const v = e.target.value
-                                    setPendingQuestion(v)
-                                    if (v.trim()) {
-                                      setAskErrored(false)
-                                      setShowAskErrorMsg(false)
-                                    }
-                                  }}
-                                />
-                                {showAskErrorMsg && (
-                                  <span className="mt-1.5 block text-xs font-medium text-error-500">
-                                    Please enter your question
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="mt-6 flex items-center justify-between">
-                                <DialogClose asChild>
-                                  <Button variant="link" visual="gray">
-                                    Cancel
-                                  </Button>
-                                </DialogClose>
-                                <Button onClick={handleAsk}>
-                                  Submit Question
-                                </Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
                         </div>
                       </div>
 
@@ -5327,7 +4961,6 @@ export default function ProjectDetails({
               </div>
             </div>
 
-            <InviteWindow />
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
               {project.reportButtonEnabled !== false && (
                 <div className="inline-flex items-center gap-x-2">
@@ -5338,18 +4971,17 @@ export default function ProjectDetails({
                 </div>
               )}
 
-              <div className="inline-flex items-center gap-x-2">
-                <HelpCircle className="size-[15px] text-gray-500" />
-                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                  Help
-                </span>
-              </div>
+              {project.helpButtonEnabled !== false && (
+                <div className="inline-flex items-center gap-x-2">
+                  <HelpCircle className="size-[15px] text-gray-500" />
+                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                    Help
+                  </span>
+                </div>
+              )}
 
               {project.shareButtonEnabled !== false && (
-                <div
-                  className="inline-flex items-center gap-x-2 cursor-pointer"
-                  onClick={() => toggleInviteWindow(true)}
-                >
+                <div className="inline-flex items-center gap-x-2">
                   <Share06 className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
                     Share

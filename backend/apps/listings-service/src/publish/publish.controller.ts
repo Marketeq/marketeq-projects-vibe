@@ -238,7 +238,6 @@ export class PublishController {
         req.user.sub,
         projectId,
         body?.questions ?? [],
-        req.headers.authorization,
       );
     } catch (error) {
       console.log('err', error);

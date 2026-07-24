@@ -74,9 +74,8 @@ export class DeliverablesAdapterHeuristic extends DeliverablesAdapter {
         }
         if (items.length === 0) return null;
 
-        // Doc §4: fallback = task title + role, padded to 3 minimum — never
-        // the phase name; the number per phase is not fixed.
-        this.padToMinimum(items, phase.tasks);
+        // Pad to exactly 6
+        this.padToSix(items, phase.phaseName);
 
         return {
           phaseLabel: `Phase ${index + 1}`,
@@ -145,44 +144,27 @@ export class DeliverablesAdapterHeuristic extends DeliverablesAdapter {
     return sliceByRealWords(words, 3).join(' ');
   }
 
-  /**
-   * Pad the items array to a 3-item minimum (doc §4) using task-derived
-   * names — the task subject + an artifact suffix, never the phase name.
-   */
-  private padToMinimum(
-    items: string[],
-    tasks: ScopePhaseInput['tasks'],
-  ): void {
-    const MIN = 3;
-    const subjects = tasks
-      .map((t) => (typeof t?.title === 'string' ? t.title : ''))
-      .map((title) =>
-        title
-          .replace(DeliverablesAdapterHeuristic.STRIP_WORDS, '')
-          .replace(/[^a-zA-Z0-9\s&]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .replace(/\b\w/g, (c) => c.toUpperCase())
-          .replace(/\bAnd\b/g, '&')
-          .split(' ')
-          .filter((w) => w !== '&')
-          .slice(0, 2)
-          .join(' '),
-      )
-      .filter(Boolean);
-    if (subjects.length === 0) return;
+  /** Pad the items array to exactly 6 using phase-derived names */
+  private padToSix(items: string[], phaseName: string): void {
+    const cleanPhase = phaseName
+      .replace(/[^a-zA-Z0-9\s&]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/\bAnd\b/g, '&');
 
     let idx = 0;
-    while (items.length < MIN && idx <= 30) {
-      const subject = subjects[idx % subjects.length];
+    while (items.length < 6) {
       const suffix =
         DeliverablesAdapterHeuristic.FALLBACK_SUFFIXES[
-          Math.floor(idx / subjects.length) %
-            DeliverablesAdapterHeuristic.FALLBACK_SUFFIXES.length
+          idx % DeliverablesAdapterHeuristic.FALLBACK_SUFFIXES.length
         ];
-      const candidate = `${subject} ${suffix}`;
-      if (!items.includes(candidate)) items.push(candidate);
+      const candidate = `${cleanPhase} ${suffix}`;
+      if (!items.includes(candidate)) {
+        items.push(candidate);
+      }
       idx++;
+      if (idx > 20) break;
     }
   }
 }

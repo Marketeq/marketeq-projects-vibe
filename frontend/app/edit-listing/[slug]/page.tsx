@@ -7405,36 +7405,6 @@ type RecentQuestion = {
   answeredByRole?: string | null
   assignedToUserId?: string | null
   hidden?: boolean
-  moderationFailed?: boolean
-}
-
-function HideToggle({
-  hidden,
-  moderationFailed,
-  onToggle,
-}: {
-  hidden: boolean
-  moderationFailed?: boolean
-  onToggle: (value: boolean) => void
-}) {
-  if (moderationFailed) {
-    return (
-      <TooltipProvider delayDuration={0}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Switch checked={hidden} disabled />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            This question can&apos;t be made visible because it didn&apos;t pass
-            content moderation.
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
-  return <Switch checked={hidden} onCheckedChange={(v) => onToggle(!!v)} />
 }
 
 const SortableFaqItem = ({
@@ -7625,27 +7595,7 @@ const Questions = ({
   useEffect(() => {
     if (!questionsHydrated.current || !draftProjectId) return
     const t = setTimeout(() => {
-      ProjectAPI.SaveProjectQuestions(draftProjectId, questions)
-        .then((res) => {
-          const saved = res?.data
-          if (!Array.isArray(saved)) return
-          const byId = new Map(
-            saved.map((s: RecentQuestion, i: number) => [s.id ?? `rq-${i}`, s])
-          )
-          setQuestions((prev) => {
-            let changed = false
-            const next = prev.map((q) => {
-              const s = q.id ? byId.get(q.id) : undefined
-              if (s && !!s.moderationFailed !== !!q.moderationFailed) {
-                changed = true
-                return { ...q, moderationFailed: s.moderationFailed }
-              }
-              return q
-            })
-            return changed ? next : prev
-          })
-        })
-        .catch(() => {})
+      ProjectAPI.SaveProjectQuestions(draftProjectId, questions).catch(() => {})
     }, 600)
     return () => clearTimeout(t)
   }, [questions, draftProjectId])
@@ -8177,11 +8127,10 @@ const Questions = ({
                                 {(q.answer ?? "").length}/300
                               </p>
                               <div className="mt-3 flex items-center gap-2">
-                                <HideToggle
-                                  hidden={!!q.hidden}
-                                  moderationFailed={q.moderationFailed}
-                                  onToggle={(v) =>
-                                    updateQuestion(q.id, { hidden: v })
+                                <Switch
+                                  checked={!!q.hidden}
+                                  onCheckedChange={(v) =>
+                                    updateQuestion(q.id, { hidden: !!v })
                                   }
                                 />
                                 <span className="text-xs text-gray-500">
@@ -8238,11 +8187,10 @@ const Questions = ({
                                 </Button>
                               </div>
                               <div className="mt-3 ml-6 flex items-center gap-2">
-                                <HideToggle
-                                  hidden={!!q.hidden}
-                                  moderationFailed={q.moderationFailed}
-                                  onToggle={(v) =>
-                                    updateQuestion(q.id, { hidden: v })
+                                <Switch
+                                  checked={!!q.hidden}
+                                  onCheckedChange={(v) =>
+                                    updateQuestion(q.id, { hidden: !!v })
                                   }
                                 />
                                 <span className="text-xs text-gray-500">

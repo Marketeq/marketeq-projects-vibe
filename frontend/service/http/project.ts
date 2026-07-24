@@ -240,9 +240,4 @@ export const ProjectAPI = {
     if (skills.length) params.set("skills", skills.join(","))
     return AxiosRequest.get(`${LISTINGS_BASE}/v1/projects/recommended?${params}`)
   },
-  GetSuggestedQuestions: (projectId: string) => {
-    return AxiosRequest.get(
-      `${LISTINGS_BASE}/v1/projects/${projectId}/suggested-questions`
-    )
-  },
 }
