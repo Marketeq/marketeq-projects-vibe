@@ -144,6 +144,7 @@ export class Project {
     answeredByRole?: string | null;
     assignedToUserId?: string | null;
     hidden?: boolean;
+    moderationFailed?: boolean;
   }>;
 
   @Column('jsonb', { default: [] })
