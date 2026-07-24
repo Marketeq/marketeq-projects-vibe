@@ -4298,7 +4298,19 @@ export default function ProjectDetails() {
                                 )}
                               >
                                 <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow">
-                                  <Play className="size-5 text-gray-800 ml-0.5" />
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    className="text-gray-800"
+                                    style={{
+                                      width: 29,
+                                      height: 29,
+                                      fill: "currentColor",
+                                      marginLeft: 2,
+                                    }}
+                                  >
+                                    <path d="M8 5v14l11-7z" />
+                                  </svg>
                                 </div>
                               </div>
                               {videoHidden && (

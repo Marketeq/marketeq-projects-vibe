@@ -14,6 +14,8 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { InviteWindow, useInviteWindowStore } from "@/components/invite-window"
+import { LightboxVideoPlayer } from "./lightbox-video-player"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -42,6 +44,7 @@ import {
   ShieldDollar,
   ShieldZap,
   ShoppingCart,
+  Play,
   Smile,
   Star,
   Stars02,
@@ -682,16 +685,74 @@ const formatChatTime = (iso?: string) =>
       })
     : ""
 
-const toEmbedUrl = (raw?: string | null): string => {
+const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
-  const url = raw.trim()
-  const yt = url.match(
+  const yt = raw.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
   )
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
-  return url
+  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
+  return ""
+}
+
+// Derive a readable name from an R2 media URL, whose filenames follow
+// "{OriginalName}_{timestamp}-{uuid}.{ext}". Falls back to the given value.
+const mediaName = (raw?: string | null, fallback = ""): string => {
+  if (!raw) return fallback
+  try {
+    const file = decodeURIComponent(raw.split("?")[0].split("/").pop() ?? "")
+    let base = file.replace(/\.[a-z0-9]+$/i, "")
+    base = base.replace(/_\d{13}.*$/, "")
+    base = base.replace(
+      /[-_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      ""
+    )
+    const name = base.replace(/[-_]+/g, " ").trim()
+    return name || fallback
+  } catch {
+    return fallback
+  }
+}
+
+// Locations should read as countries (take the last comma segment), deduped.
+const countryOf = (loc: string): string => {
+  const parts = loc
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : loc.trim()
+}
+
+function LocationList({ locations }: { locations: string[] }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const countries = React.useMemo(
+    () => Array.from(new Set(locations.map(countryOf).filter(Boolean))),
+    [locations]
+  )
+  const visible = expanded ? countries : countries.slice(0, 3)
+  const extra = countries.length - visible.length
+  return (
+    <div className="flex items-center gap-1 overflow-hidden">
+      {visible.map((c, i) => (
+        <NextLink
+          key={c}
+          href={`/talent?location=${encodeURIComponent(c)}`}
+          className="shrink-0 focus-visible:outline-none duration-300 transition hover:underline text-sm leading-6 font-semibold text-dark-blue-400"
+        >
+          {c}
+          {i < visible.length - 1 || extra > 0 ? "," : ""}
+        </NextLink>
+      ))}
+      {extra > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="shrink-0 text-sm leading-6 font-semibold text-primary-500 hover:underline focus-visible:outline-none"
+        >
+          and {extra} more
+        </button>
+      )}
+    </div>
+  )
 }
 
 const CarouselPreviousTrigger = () => {
@@ -754,6 +815,9 @@ export default function ProjectDetails({
   const [askErrored, setAskErrored] = React.useState(false)
   const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
   const [askModalOpen, setAskModalOpen] = React.useState(false)
+  const [lightboxOpen, setLightboxOpen] = React.useState(false)
+  const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
+  const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const { isOnline } = useOnlineUsers()
 
   // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
@@ -765,6 +829,18 @@ export default function ProjectDetails({
       ),
     [project, isOnline]
   )
+
+  const mediaItems = React.useMemo(() => {
+    const items: { type: "video" | "image"; url: string }[] = []
+    const video =
+      ((project as any)?.videoUrl as string | undefined) ||
+      ((project as any)?.featuredVideo as string | undefined)
+    if (video) items.push({ type: "video", url: video })
+    const gallery =
+      ((project as any)?.mediaUrls as string[] | undefined)?.slice(1) ?? []
+    gallery.forEach((url) => items.push({ type: "image", url }))
+    return items
+  }, [project])
 
   const openLiveChat = React.useCallback((question?: string) => {
     if (question !== undefined) setPendingQuestion(question)
@@ -1563,15 +1639,8 @@ export default function ProjectDetails({
               */}
               <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
-                  {(() => {
-                    const video =
-                      (project.videoUrl as string | undefined) ||
-                      (project.featuredVideo as string | undefined)
-                    const gallery =
-                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
-                      []
-                    if (!video && gallery.length === 0) {
-                      return Array.from({ length: 5 }).map((_, index) => (
+                  {mediaItems.length === 0
+                    ? Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
                           <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
                             <NextImage
@@ -1585,49 +1654,213 @@ export default function ProjectDetails({
                           </div>
                         </CarouselItem>
                       ))
-                    }
-                    const items: React.ReactNode[] = []
-                    if (video) {
-                      items.push(
-                        <CarouselItem key="video" className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                            <iframe
-                              src={toEmbedUrl(video)}
-                              className="absolute inset-0 h-full w-full"
-                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                              allowFullScreen
-                              title="Project video"
-                            />
-                          </div>
-                        </CarouselItem>
-                      )
-                    }
-                    gallery.forEach((url, index) => {
-                      items.push(
+                    : mediaItems.map((m, i) => (
                         <CarouselItem
-                          key={`${url}-${index}`}
+                          key={`${m.url}-${i}`}
                           className="group basis-1/3"
                         >
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            <NextImage
-                              className="object-cover"
-                              src={url}
-                              alt={`${project.title} — gallery image ${index + 1}`}
-                              sizes="25vw"
-                              fill
-                            />
-                            <div className="absolute inset-0 transition duration-300" />
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMediaIndex(i)
+                              setLightboxOpen(true)
+                            }}
+                            className={cn(
+                              "relative block w-full border border-gray-200 h-[150.6px] overflow-hidden rounded-lg focus-visible:outline-none",
+                              m.type === "video" ? "bg-black" : "bg-gray-50"
+                            )}
+                          >
+                            {m.type === "video" ? (
+                              <>
+                                {toVideoThumb(m.url) && (
+                                  <img
+                                    src={toVideoThumb(m.url)}
+                                    alt="Project video"
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                  />
+                                )}
+                                <span className="absolute inset-0 flex items-center justify-center">
+                                  <span
+                                    className="flex items-center justify-center rounded-full bg-white/90 shadow"
+                                    style={{
+                                      width: 48,
+                                      height: 48,
+                                    }}
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      aria-hidden="true"
+                                      className="text-gray-800"
+                                      style={{
+                                        width: 29,
+                                        height: 29,
+                                        fill: "currentColor",
+                                        marginLeft: 2,
+                                      }}
+                                    >
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </span>
+                                </span>
+                              </>
+                            ) : (
+                              <NextImage
+                                className="object-cover"
+                                src={m.url}
+                                alt={`${project.title} — media ${i + 1}`}
+                                sizes="25vw"
+                                fill
+                              />
+                            )}
+                          </button>
                         </CarouselItem>
-                      )
-                    })
-                    return items
-                  })()}
+                      ))}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
+
+              <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+                <DialogContent
+                  className="p-0 bg-transparent border-0 shadow-none"
+                  style={{ maxWidth: 760, width: "100%" }}
+                >
+                  <DialogClose
+                    className="absolute z-10 flex items-center justify-center rounded-full bg-white text-gray-500 shadow-md transition-colors hover:bg-gray-900 hover:text-white focus-visible:outline-none"
+                    style={{ width: 32, height: 32, top: -16, right: -16 }}
+                  >
+                    <X style={{ width: 16, height: 16 }} />
+                  </DialogClose>
+                  {(() => {
+                    const m = mediaItems[selectedMediaIndex]
+                    if (!m) return null
+                    return (
+                      <>
+                        <div
+                          style={{
+                            position: "relative",
+                            width: "100%",
+                            aspectRatio: "16 / 9",
+                            maxHeight: "80vh",
+                            backgroundColor: "#fff",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {m.type === "video" ? (
+                            <LightboxVideoPlayer
+                              url={m.url}
+                              active={lightboxOpen}
+                            />
+                          ) : (
+                            <>
+                              <img
+                                src={m.url}
+                                alt={project.title}
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                }}
+                              />
+                              <span
+                                className="absolute text-sm font-semibold text-white"
+                                style={{
+                                  left: 16,
+                                  bottom: 16,
+                                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                                }}
+                              >
+                                {mediaName(m.url, project.title)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {mediaItems.length > 1 && (
+                          <div
+                            className="flex gap-x-3 pt-4"
+                            style={{ overflowX: "auto" }}
+                          >
+                            {mediaItems.map((mm, i) => {
+                              const active = i === selectedMediaIndex
+                              return (
+                                <button
+                                  key={`lb-${mm.url}-${i}`}
+                                  type="button"
+                                  onClick={() => setSelectedMediaIndex(i)}
+                                  className={cn(
+                                    "relative shrink-0 overflow-hidden rounded-lg focus-visible:outline-none",
+                                    mm.type === "video" ? "bg-black" : "bg-gray-50"
+                                  )}
+                                  style={{
+                                    width: 84,
+                                    height: 60,
+                                  }}
+                                >
+                                  {mm.type === "video" ? (
+                                    <>
+                                      {toVideoThumb(mm.url) && (
+                                        <img
+                                          src={toVideoThumb(mm.url)}
+                                          alt="Video"
+                                          className="absolute inset-0 h-full w-full object-cover"
+                                        />
+                                      )}
+                                      <span className="absolute inset-0 flex items-center justify-center">
+                                        <span
+                                          className="flex items-center justify-center rounded-full"
+                                          style={{
+                                            width: 22,
+                                            height: 22,
+                                            backgroundColor:
+                                              "rgba(255,255,255,0.45)",
+                                          }}
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                            className="text-gray-800"
+                                            style={{
+                                              width: 10,
+                                              height: 10,
+                                              fill: "currentColor",
+                                              marginLeft: 1,
+                                            }}
+                                          >
+                                            <path d="M8 5v14l11-7z" />
+                                          </svg>
+                                        </span>
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <img
+                                      src={mm.url}
+                                      alt={`${project.title} — media ${i + 1}`}
+                                      className="absolute inset-0 h-full w-full object-cover"
+                                    />
+                                  )}
+                                  {active && (
+                                    <span
+                                      className="pointer-events-none absolute inset-0"
+                                      style={{
+                                        border: "2px solid #ffffff",
+                                        borderRadius: 8,
+                                      }}
+                                    />
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </DialogContent>
+              </Dialog>
 
               <div className="mt-6">
                 <Tabs
@@ -2036,20 +2269,7 @@ export default function ProjectDetails({
                                         <MapPin className="size-[18px]" />{" "}
                                         Locations
                                       </h3>
-                                      <div className="gap-1 flex items-center flex-wrap">
-                                        {allLocations.map((loc, i) => (
-                                          <NextLink
-                                            key={loc}
-                                            href={`/talent?location=${encodeURIComponent(loc)}`}
-                                            className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                          >
-                                            {loc}
-                                            {i < allLocations.length - 1
-                                              ? ","
-                                              : ""}
-                                          </NextLink>
-                                        ))}
-                                      </div>
+                                      <LocationList locations={allLocations} />
                                     </div>
                                   )}
                                 </div>
@@ -2512,21 +2732,20 @@ export default function ProjectDetails({
                             open={askModalOpen}
                             onOpenChange={setAskModalOpen}
                           >
-                            <DialogContent className="max-w-[560px] p-6">
-                              <DialogTitle className="inline-flex items-center gap-x-2 text-base font-semibold text-dark-blue-400">
-                                <HelpCircle className="size-[18px] text-primary-500" />
-                                Have a specific question in mind?
+                            <DialogContent className="max-w-[480px] p-6">
+                              <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+                                Ask Question
                               </DialogTitle>
 
-                              <div className="mt-4 flex items-center gap-x-2">
-                                <Input
+                              <div className="mt-5">
+                                <Label size="sm" className="text-dark-blue-400">
+                                  Type your question
+                                </Label>
+                                <Textarea
                                   autoFocus
-                                  className={cn(
-                                    "flex-auto",
-                                    showAskErrorMsg &&
-                                      "border-error-300 focus:border-error-300 focus:ring-error-100"
-                                  )}
-                                  placeholder="Type your question..."
+                                  isInvalid={showAskErrorMsg}
+                                  className="mt-1.5"
+                                  placeholder="Enter a description..."
                                   value={pendingQuestion}
                                   onFocus={() => setShowAskErrorMsg(false)}
                                   onChange={(e) => {
@@ -2537,39 +2756,23 @@ export default function ProjectDetails({
                                       setShowAskErrorMsg(false)
                                     }
                                   }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleAsk()
-                                  }}
                                 />
-                                <Button
-                                  className="text-xs leading-none"
-                                  size="lg"
-                                  disabled={
-                                    askErrored && !pendingQuestion.trim()
-                                  }
-                                  onClick={handleAsk}
-                                >
-                                  Ask Question
-                                </Button>
+                                {showAskErrorMsg && (
+                                  <span className="mt-1.5 block text-xs font-medium text-error-500">
+                                    Please enter your question
+                                  </span>
+                                )}
                               </div>
 
-                              <div className="mt-2 flex items-center justify-between">
-                                <span
-                                  className={cn(
-                                    "text-xs leading-none",
-                                    showAskErrorMsg
-                                      ? "font-medium text-error-500"
-                                      : "text-dark-blue-400"
-                                  )}
-                                >
-                                  {showAskErrorMsg
-                                    ? "Please enter your question above"
-                                    : "A team member will reach out to you as soon as possible."}
-                                </span>
-
-                                <span className="text-xs text-dark-blue-400 leading-none">
-                                  Avg. response time: 20 mins
-                                </span>
+                              <div className="mt-6 flex items-center justify-between">
+                                <DialogClose asChild>
+                                  <Button variant="link" visual="gray">
+                                    Cancel
+                                  </Button>
+                                </DialogClose>
+                                <Button onClick={handleAsk}>
+                                  Submit Question
+                                </Button>
                               </div>
                             </DialogContent>
                           </Dialog>
@@ -5097,6 +5300,7 @@ export default function ProjectDetails({
               </div>
             </div>
 
+            <InviteWindow />
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
               {project.reportButtonEnabled !== false && (
                 <div className="inline-flex items-center gap-x-2">
@@ -5107,17 +5311,18 @@ export default function ProjectDetails({
                 </div>
               )}
 
-              {project.helpButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <HelpCircle className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Help
-                  </span>
-                </div>
-              )}
+              <div className="inline-flex items-center gap-x-2">
+                <HelpCircle className="size-[15px] text-gray-500" />
+                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                  Help
+                </span>
+              </div>
 
               {project.shareButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
+                <div
+                  className="inline-flex items-center gap-x-2 cursor-pointer"
+                  onClick={() => toggleInviteWindow(true)}
+                >
                   <Share06 className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
                     Share
