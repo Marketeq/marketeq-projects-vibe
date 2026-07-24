@@ -12,6 +12,7 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_KEY'), string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                     sh '''
+                        rm -f /tmp/verdict.json
                         curl -sf -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/Marketeq/marketeq-projects-vibe" > /dev/null
                         echo "PASS: GitHub API"
                         STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "x-api-key: $ANTHROPIC_KEY" -H "anthropic-version: 2023-06-01" -H "Content-Type: application/json" -d '{"model":"claude-sonnet-4-6","max_tokens":10,"messages":[{"role":"user","content":"ping"}]}' "https://api.anthropic.com/v1/messages")
@@ -386,15 +387,16 @@ except Exception as e:
 
                         // Build comment using repo script
                         def commentBody = sh(script: '''#!/bin/bash
+                            # Make verdict available in CWD for build_comment.py (older versions read verdict.json)
+                            cp /tmp/verdict.json verdict.json 2>/dev/null || true
+                            COMMENT=""
                             if [ -f "repo/.jenkins/scripts/build_comment.py" ]; then
-                                python3 repo/.jenkins/scripts/build_comment.py 2>/dev/null
-                            else
-                                echo "## Deep Regression Check"
-                                echo ""
-                                cat /tmp/verdict.json 2>/dev/null
-                                echo ""
-                                echo "<!-- deep-regression-check -->"
+                                COMMENT=$(python3 repo/.jenkins/scripts/build_comment.py 2>/dev/null || echo "")
                             fi
+                            if [ -z "$COMMENT" ]; then
+                                COMMENT="## Deep Regression Check\n\n$(cat /tmp/verdict.json 2>/dev/null || echo 'No verdict')\n\n<!-- deep-regression-check -->"
+                            fi
+                            echo "$COMMENT"
                         ''', returnStdout: true).trim()
 
                         writeFile file: 'regression_comment.json', text: groovy.json.JsonOutput.toJson([body: commentBody])
