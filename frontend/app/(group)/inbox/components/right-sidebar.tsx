@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useLayoutEffect, useRef, useState } from "react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { apiFetch } from "@/src/lib/api"
@@ -41,10 +41,6 @@ import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { HireMeButton } from "@/components/hire-me-button"
 import { SaveTalentButton } from "@/components/save-talent-button"
-import {
-  ShowMoreLess,
-  ShowMoreLessRoot,
-} from "@/components/show-more-less"
 import {
   Avatar,
   AvatarFallback,
@@ -151,7 +147,55 @@ const SaveButton = () => {
     </div>
   )
 }
+const SKILLS_MAX_ROWS = 5
 
+const SkillsRow = ({
+  skills,
+  username,
+}: {
+  skills: { id: string; name: string }[]
+  username: string
+}) => {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visibleCount, setVisibleCount] = useState(skills.length)
+
+  useLayoutEffect(() => {
+    setVisibleCount(skills.length)
+  }, [skills])
+
+  useLayoutEffect(() => {
+    const children = [...(ref.current?.children ?? [])] as HTMLElement[]
+    const rows = new Set(children.map((el) => el.offsetTop)).size
+
+    if (rows > SKILLS_MAX_ROWS) {
+      setVisibleCount((count) => Math.max(0, count - 1))
+    }
+  }, [visibleCount, skills])
+
+  const hiddenCount = skills.length - visibleCount
+
+  return (
+    <div ref={ref} className="mt-3 flex flex-wrap gap-2">
+      {skills.slice(0, visibleCount).map((skill) => (
+        <Badge key={skill.id} visual="gray">
+          {skill.name}
+        </Badge>
+      ))}
+
+      {hiddenCount > 0 && (
+        <Badge
+          asChild
+          visual="gray"
+          className="transition-colors duration-150 hover:bg-gray-200"
+        >
+          <a href={`/talent-profile?username=${encodeURIComponent(username) }#skills`}>
+            {hiddenCount} more...
+          </a>
+        </Badge>
+      )}
+    </div>
+  )
+}
 const RightSidebar = ({
   selectedConversation,
   jwtToken,
@@ -280,7 +324,7 @@ const RightSidebar = ({
             </span>
           </div>
         )}
-        {user?.clientSuccessRating && (
+        {/* {user?.clientSuccessRating && (
           <div className="flex items-center gap-x-2">
             <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
               <Star className="size-3 fill-dark-blue-400" />{" "}
@@ -292,28 +336,13 @@ const RightSidebar = ({
               </span>
             )}
           </div>
-        )}
+        )} */}
       </div>
 
       {user?.skills && user.skills.length > 0 && (
         <div className="mt-3 pb-5 border-b border-gray-200">
           <h3 className="font-bold text-sm text-dark-blue-400">Skills</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <ShowMoreLessRoot>
-              <ShowMoreLess
-                max={9}
-                trigger={(extraChildrenCount) => (
-                  <Badge visual="gray">{extraChildrenCount} more...</Badge>
-                )}
-              >
-                {user.skills.map((s) => (
-                  <Badge key={s.id} visual="gray">
-                    {s.name}
-                  </Badge>
-                ))}
-              </ShowMoreLess>
-            </ShowMoreLessRoot>
-          </div>
+          <SkillsRow skills={user.skills} username={username} />
         </div>
       )}
 

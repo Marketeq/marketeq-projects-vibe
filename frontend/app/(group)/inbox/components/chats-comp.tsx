@@ -1892,7 +1892,7 @@ export function Chats({
             <AvatarFallback>
               {selectedConversation?.isGroup
                 ? (selectedConversation?.group?.name?.[0] ?? "G")
-                : (receiverUser.username?.[0] ?? "")}
+                : (receiverUser.firstName?.[0] ?? "")}
             </AvatarFallback>
           </Avatar>
 
