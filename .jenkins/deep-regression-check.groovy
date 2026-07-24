@@ -64,7 +64,7 @@ pipeline {
                     if [ -z "$BASE_SHA" ]; then
                         echo "No base SHA available"
                         echo "{}" > ../analysis_context.json
-                        echo '{"verdict":"SKIP","summary":"No base to diff against","regressions":[]}' > ../verdict.json
+                        echo '{"verdict":"SKIP","summary":"No base to diff against","regressions":[]}' > /tmp/verdict.json
                         exit 0
                     fi
                     echo "$BASE_SHA" > ../base_sha.txt
@@ -75,7 +75,7 @@ pipeline {
 
                     if [ -z "$CHANGED" ]; then
                         echo "No changed files"
-                        echo '{"verdict":"SAFE","summary":"No files changed","regressions":[]}' > ../verdict.json
+                        echo '{"verdict":"SAFE","summary":"No files changed","regressions":[]}' > /tmp/verdict.json
                         exit 0
                     fi
 
@@ -168,13 +168,13 @@ pipeline {
                 script {
                     def available = readFile('anthropic_ok.txt').trim()
                     if (available == 'false') {
-                        writeFile file: 'verdict.json', text: '{"verdict":"SKIP","summary":"Anthropic API unavailable","regressions":[]}'
+                        writeFile file: '/tmp/verdict.json', text: '{"verdict":"SKIP","summary":"Anthropic API unavailable","regressions":[]}'
                         echo 'Anthropic API unavailable - skipping AI analysis'
                         return
                     }
                     // Check if we already have a verdict (e.g. no changes)
                     try {
-                        def existing = readFile('verdict.json').trim()
+                        def existing = sh(script: 'cat /tmp/verdict.json 2>/dev/null || echo ""', returnStdout: true).trim()
                         if (existing) {
                             echo "Verdict already set: ${existing.take(100)}"
                             return
@@ -295,32 +295,26 @@ ${API_SHAPES}
 ${LAYOUT_CHANGES}
 PROMPT_END
 
-                        # JSON-encode the prompt using the repo script or inline
-                        if [ -f "repo/.jenkins/scripts/encode_prompt.py" ]; then
-                            PROMPT_JSON=$(python3 repo/.jenkins/scripts/encode_prompt.py 2>/dev/null)
-                        else
-                            python3 -c "import json,sys; f=sys.argv[1]; print(json.dumps(open(f).read()[:180000]))" prompt.txt > /tmp/prompt_encoded.txt 2>/dev/null
-                            PROMPT_JSON=$(cat /tmp/prompt_encoded.txt)
-                        fi
+                        # Build API request body directly from prompt.txt (all file-based, no shell vars)
+                        python3 -c "
+import json
+with open('prompt.txt', 'r') as f:
+    content = f.read()
+if len(content) > 180000:
+    content = content[:180000] + chr(10) + chr(10) + '[TRUNCATED - analyze what is provided]'
+body = {'model': 'claude-sonnet-4-6', 'max_tokens': 8192, 'messages': [{'role': 'user', 'content': content}]}
+with open('api_request.json', 'w') as f:
+    json.dump(body, f)
+import os
+sz = os.path.getsize('api_request.json')
+print(f'Request body: {sz} bytes, prompt: {len(content)} chars')
+" 2>/dev/null
 
-                        PROMPT_LEN=$(echo "$PROMPT_JSON" | wc -c | tr -d ' ')
-                        echo "Prompt JSON length: $PROMPT_LEN chars"
-
-                        if [ -z "$PROMPT_JSON" ] || [ "$PROMPT_LEN" -lt 100 ]; then
-                            echo "Failed to encode prompt (length=$PROMPT_LEN)"
+                        if [ ! -f api_request.json ] || [ ! -s api_request.json ]; then
+                            echo "Failed to build API request body"
                             echo '{"verdict":"ERROR","summary":"Failed to encode prompt","regressions":[]}' > /tmp/verdict.json
                             exit 0
                         fi
-
-                        # Build request body as file (too large for command line)
-                        python3 -c "
-import json, sys
-prompt = json.loads(sys.argv[1])
-body = {'model': 'claude-sonnet-4-6', 'max_tokens': 8192, 'messages': [{'role': 'user', 'content': prompt}]}
-with open('api_request.json', 'w') as f:
-    json.dump(body, f)
-print('Request body written:', len(json.dumps(body)), 'chars')
-" "$PROMPT_JSON" 2>/dev/null || echo "Failed to build request body"
 
                         # Call Claude API
                         echo "Calling Claude API..."
@@ -437,6 +431,10 @@ except Exception as e:
                             REG_COUNT=\$(cat /tmp/verdict.json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('regressions',[])))" 2>/dev/null || echo "0")
                             if [ "\$VERDICT" = "RISKY" ]; then
                                 DESC="Risky - \${REG_COUNT} regression(s) found"
+                            elif [ "\$VERDICT" = "SKIP" ]; then
+                                DESC="Skipped"
+                            elif [ "\$VERDICT" = "ERROR" ]; then
+                                DESC="Error during analysis"
                             else
                                 DESC="Passed - no regressions"
                             fi
