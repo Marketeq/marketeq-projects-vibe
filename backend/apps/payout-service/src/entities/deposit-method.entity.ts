@@ -76,6 +76,13 @@ export class DepositMethod {
   @Column({ type: 'varchar', name: 'bank_routing_number', nullable: true })
   bankRoutingNumber: string | null;
 
+  // AES-256-GCM ciphertext (BankEncryptionService) — needed to send real
+  // Stripe ACH micro-deposits (PS-08) for BANK_MANUAL/US accounts, since
+  // accountNumberHash below is a one-way SHA-256 used only for duplicate
+  // detection and can never be reversed back into the account number.
+  @Column({ type: 'text', name: 'bank_account_number_encrypted', nullable: true })
+  bankAccountNumberEncrypted: string | null;
+
   @Column({ type: 'varchar', name: 'bank_iban_last4', nullable: true })
   bankIbanLast4: string | null;
 

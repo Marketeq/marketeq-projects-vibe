@@ -2,18 +2,12 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { Cron }                from '@nestjs/schedule';
-import { DepositMethod, MethodType, VerificationStatus } from '../entities/deposit-method.entity';
+import { DepositMethod, VerificationStatus } from '../entities/deposit-method.entity';
 import { DepositMethodVerification } from '../entities/deposit-method-verification.entity';
 import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { AuditService }       from '../audit/audit.service';
 import { PayoutError }        from '../common/errors/payout.error';
-
-function generateMicroDepositAmounts(): { amount1Cents: number; amount2Cents: number } {
-  const amount1 = Math.floor(Math.random() * 99) + 1;
-  let amount2: number;
-  do { amount2 = Math.floor(Math.random() * 99) + 1; } while (amount2 === amount1);
-  return { amount1Cents: amount1, amount2Cents: amount2 };
-}
+import { StripeProvider }     from '../providers/stripe.provider';
 
 @Injectable()
 export class MicroDepositService {
@@ -28,27 +22,8 @@ export class MicroDepositService {
     private readonly mlTokenRepo: Repository<MagicLinkToken>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly stripeProvider: StripeProvider,
   ) {}
-
-  // ─── Initiate for BANK_MANUAL ─────────────────────────────────
-  async initiateMicroDepositsManual(method: DepositMethod): Promise<void> {
-    const { amount1Cents, amount2Cents } = generateMicroDepositAmounts();
-    const expiresAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-
-    await this.verificationRepo.save({
-      depositMethodId: method.id,
-      contractorId: method.contractorId,
-      verificationType: 'micro_deposit',
-      amount1Cents, amount2Cents,
-      maxAttempts: 3, attemptCount: 0,
-      expiresAt,
-      status: VerificationStatus.PENDING,
-    } as any);
-
-    // In production: send two ACH credits via Stripe
-    // For dev: amounts are stored and contractor confirms manually
-    this.logger.log(`Micro-deposits initiated for method ${method.id} (expires: ${expiresAt.toISOString()})`);
-  }
 
   // ─── Dev: read micro-deposit amounts for auto-verify ──────────
   async getVerificationAmounts(contractorId: string, depositMethodId: string) {
@@ -58,24 +33,6 @@ export class MicroDepositService {
     });
     if (!v) return { amount1Cents: 0, amount2Cents: 0 };
     return { amount1Cents: v.amount1Cents, amount2Cents: v.amount2Cents };
-  }
-
-  // ─── Initiate for BANK_STRIPE fallback ────────────────────────
-  async initiateMicroDepositsStripe(method: DepositMethod, setupIntentId: string): Promise<void> {
-    const expiresAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-
-    await this.verificationRepo.save({
-      depositMethodId: method.id,
-      contractorId: method.contractorId,
-      verificationType: 'micro_deposit',
-      oauthState: setupIntentId,
-      amount1Cents: null, amount2Cents: null, // Stripe holds these
-      maxAttempts: 3, attemptCount: 0,
-      expiresAt,
-      status: VerificationStatus.PENDING,
-    } as any);
-
-    this.logger.log(`Stripe micro-deposits initiated for method ${method.id}`);
   }
 
   // ─── Confirm micro-deposit amounts ────────────────────────────
@@ -121,13 +78,14 @@ export class MicroDepositService {
     }
 
     // 5. Validate amounts
-    const method = await this.methodRepo.findOne({ where: { id: methodId } });
-
-    if (method?.methodType === MethodType.BANK_STRIPE && verification.oauthState) {
-      // Stripe path — delegate to Stripe (stubbed for dev)
+    // oauthState only ever holds a real Stripe SetupIntent id — set for
+    // BANK_STRIPE (non-instant FC accounts) and for BANK_MANUAL/US accounts
+    // once initiateManualMicroDeposits() sent real ACH credits (PS-08).
+    // Everything else (non-US BANK_MANUAL, or Stripe unconfigured in dev)
+    // never gets an oauthState and falls through to the local comparison.
+    if (verification.oauthState) {
       return this.confirmStripe(verification, dto);
     } else {
-      // Manual path — order-independent comparison
       return this.confirmManual(verification, dto, methodId);
     }
   }
@@ -151,19 +109,22 @@ export class MicroDepositService {
     }
   }
 
-  // ─── Stripe path — delegate validation ────────────────────────
+  // ─── Stripe path — real setupIntents.verifyMicrodeposits() ────
   private async confirmStripe(
     verification: DepositMethodVerification,
     dto: { amount1Cents: number; amount2Cents: number },
   ): Promise<{ verified: boolean; depositMethodId: string | null }> {
-    // In dev mode without Stripe: treat as manual with null amounts — auto-verify
-    if (!verification.amount1Cents && !verification.amount2Cents) {
+    try {
+      await this.stripeProvider.verifyMicrodepositAmounts(
+        verification.oauthState!, dto.amount1Cents, dto.amount2Cents,
+      );
       await this.applySuccess(verification);
       return { verified: true, depositMethodId: verification.depositMethodId };
+    } catch (err) {
+      if (err instanceof PayoutError) throw err; // e.g. ERR_STRIPE_NOT_CONFIGURED
+      await this.applyFailure(verification); // throws ERR_VERIFICATION_AMOUNTS_INCORRECT / LOCKED
+      return { verified: false, depositMethodId: verification.depositMethodId }; // unreachable
     }
-    // Production: would call stripe.setupIntents.verifyMicrodeposits()
-    await this.applyFailure(verification);
-    return { verified: false, depositMethodId: verification.depositMethodId };
   }
 
   // ─── Apply success ────────────────────────────────────────────

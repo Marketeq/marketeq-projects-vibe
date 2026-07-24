@@ -217,98 +217,118 @@ export class StripeProvider {
     return method;
   }
 
-  // ─── Micro-deposit initiation ─────────────────────────────────
-  private async initiateStripeMicroDeposits(method: DepositMethod, account: any) {
+  // ─── Micro-deposit initiation (shared: FC-linked and raw account/routing) ──
+  private async createMicrodepositSetupIntent(
+    method: DepositMethod,
+    usBankAccount: Record<string, any>,
+    accountHolderName?: string,
+  ): Promise<void> {
     const customerId = await this.getOrCreateCustomer(method.contractorId);
 
-    const setupIntent = await this.stripe.setupIntents.create({
-      payment_method_types: ['us_bank_account'],
-      customer: customerId,
-      payment_method_data: {
-        type: 'us_bank_account',
-        us_bank_account: { financial_connections_account: account.id },
-      },
-      mandate_data: {
-        customer_acceptance: {
-          type: 'online',
-          online: { ip_address: '0.0.0.0', user_agent: 'payout-service' },
+    let setupIntent: any;
+    try {
+      setupIntent = await this.stripe.setupIntents.create({
+        payment_method_types: ['us_bank_account'],
+        customer: customerId,
+        payment_method_data: {
+          type: 'us_bank_account',
+          ...(accountHolderName ? { billing_details: { name: accountHolderName } } : {}),
+          us_bank_account: usBankAccount,
         },
-      },
-    });
-
-    await this.stripe.setupIntents.verifyMicrodeposits(setupIntent.id, {
-      descriptor_code: 'MRKTEQ',
-    });
+        payment_method_options: {
+          us_bank_account: { verification_method: 'microdeposits' },
+        },
+        // mandate_data is only accepted alongside confirm:true — this call
+        // both attaches the payment method and confirms in one step, which is
+        // what actually makes Stripe queue and send the two real ACH credits.
+        // verify_microdeposits (POST .../verify_microdeposits) is a *separate*
+        // API, only for the later step where the contractor submits the
+        // amounts/descriptor they received — calling it here with a made-up
+        // code, before Stripe has told anyone a real code, doesn't trigger
+        // anything and just burns one of the account's 10 verification
+        // attempts against a guaranteed mismatch.
+        confirm: true,
+        mandate_data: {
+          customer_acceptance: {
+            type: 'online',
+            online: { ip_address: '0.0.0.0', user_agent: 'payout-service' },
+          },
+        },
+      });
+    } catch (err: any) {
+      // Stripe rejects plenty of legitimately-bad input at this call (invalid
+      // routing number, closed/invalid test account number, unsupported bank,
+      // etc.) — left unhandled this was surfacing as a raw 500 with Stripe's
+      // internal error text leaked straight to the client.
+      this.logger.warn(`Stripe ACH SetupIntent creation failed for method ${method.id}: ${err?.message}`);
+      throw new PayoutError(
+        'We could not set up micro-deposit verification for this bank account. Please double-check the account and routing numbers.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_ACH_SETUP_FAILED');
+    }
 
     await this.verifyRepo.save({
       depositMethodId: method.id,
       contractorId: method.contractorId,
       verificationType: 'micro_deposit',
       oauthState: setupIntent.id,
+      // amount1Cents/amount2Cents stay null — Stripe holds the real amounts
+      // and verifies them itself via verifyMicrodepositAmounts() below.
       maxAttempts: 3,
       expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       status: VerificationStatus.PENDING,
     } as any);
   }
 
-  // ─── Micro-deposit confirmation ───────────────────────────────
-  async confirmMicroDeposits(contractorId: string, methodId: string, amount1: number, amount2: number) {
-    const verification = await this.verifyRepo.findOne({
-      where: { depositMethodId: methodId, contractorId, status: VerificationStatus.PENDING } as any,
-    });
+  private async initiateStripeMicroDeposits(method: DepositMethod, account: any) {
+    await this.createMicrodepositSetupIntent(method, { financial_connections_account: account.id });
+  }
 
-    if (!verification) throw new PayoutError('No pending verification found.',
-      HttpStatus.NOT_FOUND, 'ERR_VERIFICATION_NOT_FOUND');
-
-    if (verification.lockedUntil && verification.lockedUntil > new Date()) {
-      throw new PayoutError('Too many failed attempts. Please try again later.',
-        HttpStatus.TOO_MANY_REQUESTS, 'ERR_VERIFICATION_LOCKED');
-    }
-
-    if (verification.expiresAt! < new Date()) {
-      throw new PayoutError('Verification window has expired. Please re-link your bank.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_VERIFICATION_EXPIRED');
-    }
-
+  // ─── PS-08: BANK_MANUAL/US real ACH micro-deposits ────────────
+  // Stripe's us_bank_account payment method type only exists for US
+  // accounts — there is no equivalent ACH micro-deposit mechanism for any
+  // other BANK_MANUAL region, so callers must gate on bankCountry === 'US'
+  // and fall back to the existing format-validation-only flow otherwise.
+  async initiateManualMicroDeposits(
+    method: DepositMethod, accountNumber: string, routingNumber: string, accountHolderName: string,
+  ): Promise<{ mode: 'stripe' | 'mock' }> {
     if (!this.stripe || !this.isRealStripeKey()) {
-      // Dev mode — check against stored amounts
-      if (verification.amount1Cents === amount1 && verification.amount2Cents === amount2) {
-        await this.methodRepo.update(methodId, { verificationStatus: VerificationStatus.VERIFIED });
-        await this.verifyRepo.update(verification.id, { status: VerificationStatus.VERIFIED as any, verifiedAt: new Date() });
-        return { verified: true };
-      }
-      // Fall through to failure handling below
-    } else {
-      try {
-        await this.stripe.setupIntents.verifyMicrodeposits(verification.oauthState, {
-          amounts: [amount1, amount2],
-        });
-        await this.methodRepo.update(methodId, { verificationStatus: VerificationStatus.VERIFIED });
-        await this.verifyRepo.update(verification.id, { status: VerificationStatus.VERIFIED as any, verifiedAt: new Date() });
-        return { verified: true };
-      } catch {
-        // Fall through to failure handling
-      }
+      const amount1 = Math.floor(Math.random() * 99) + 1;
+      let amount2: number;
+      do { amount2 = Math.floor(Math.random() * 99) + 1; } while (amount2 === amount1);
+
+      await this.verifyRepo.save({
+        depositMethodId: method.id,
+        contractorId: method.contractorId,
+        verificationType: 'micro_deposit',
+        amount1Cents: amount1, amount2Cents: amount2,
+        maxAttempts: 3,
+        expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+        status: VerificationStatus.PENDING,
+      } as any);
+
+      this.logger.warn(`[DEV] Micro-deposits mocked for method ${method.id} — no real Stripe call`);
+      return { mode: 'mock' };
     }
 
-    // Failed attempt
-    verification.attemptCount = (verification.attemptCount ?? 0) + 1;
+    await this.createMicrodepositSetupIntent(method, {
+      account_number: accountNumber,
+      routing_number: routingNumber,
+      account_holder_type: 'individual',
+    }, accountHolderName);
 
-    if (verification.attemptCount >= (verification.maxAttempts ?? 3)) {
-      await this.verifyRepo.update(verification.id, {
-        attemptCount: verification.attemptCount,
-        lockedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        status: VerificationStatus.LOCKED as any,
-      });
-      await this.methodRepo.update(methodId, { verificationStatus: VerificationStatus.LOCKED });
-      throw new PayoutError('Too many failed attempts. Try again in 24 hours.',
-        HttpStatus.TOO_MANY_REQUESTS, 'ERR_VERIFICATION_LOCKED');
+    return { mode: 'stripe' };
+  }
+
+  // ─── Micro-deposit confirmation (real Stripe path only) ───────
+  // Called from MicroDepositService.confirmStripe() for any verification
+  // whose oauthState is a real Stripe SetupIntent id (BANK_STRIPE non-instant
+  // or BANK_MANUAL/US) — throws on mismatch/failure, letting the caller's
+  // existing attempt-count/lockout logic handle it uniformly.
+  async verifyMicrodepositAmounts(setupIntentId: string, amount1: number, amount2: number): Promise<void> {
+    if (!this.stripe || !this.isRealStripeKey()) {
+      throw new PayoutError('Stripe not configured.', HttpStatus.SERVICE_UNAVAILABLE, 'ERR_STRIPE_NOT_CONFIGURED');
     }
-
-    await this.verifyRepo.update(verification.id, { attemptCount: verification.attemptCount });
-    const remaining = (verification.maxAttempts ?? 3) - verification.attemptCount;
-    throw new PayoutError(`Incorrect amounts. ${remaining} attempt(s) remaining.`,
-      HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_VERIFICATION_AMOUNTS_INCORRECT');
+    await this.stripe.setupIntents.verifyMicrodeposits(setupIntentId, { amounts: [amount1, amount2] });
   }
 
   // ─── Webhook event construction ───────────────────────────────
