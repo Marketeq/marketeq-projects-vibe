@@ -404,6 +404,15 @@ const toVideoThumb = (raw?: string | null): string => {
   return ""
 }
 
+// Locations should read as countries (take the last comma segment).
+const countryOf = (loc: string): string => {
+  const parts = loc
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : loc.trim()
+}
+
 const backendErrorMessage = (err: any): string => {
   const raw = err?.response?.data?.message
   if (Array.isArray(raw)) return raw.join(" ")
@@ -5544,7 +5553,9 @@ export default function ProjectDetails() {
                                   const allLocations = Array.from(
                                     new Set(
                                       members
-                                        .map((m) => toName(m.location))
+                                        .map((m) =>
+                                          countryOf(toName(m.location))
+                                        )
                                         .filter(Boolean)
                                     )
                                   )

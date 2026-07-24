@@ -62,6 +62,7 @@ export function LightboxVideoPlayer({
         config={{
           youtube: {
             playerVars: {
+              controls: 0,
               modestbranding: 1,
               rel: 0,
               iv_load_policy: 3,
