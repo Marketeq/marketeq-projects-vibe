@@ -692,23 +692,54 @@ export class PublishService {
       assignedToUserId?: string | null;
       hidden?: boolean;
     }>,
+    authToken?: string,
   ) {
     await this.ensureProjectOwnership(projectId, userId);
-    const normalized = (questions ?? [])
-      .filter((q) => q && typeof q.question === 'string' && q.question.trim())
-      .map((q) => ({
-        id: q.id ?? undefined,
-        question: q.question,
-        answer: q.answer?.trim() ? q.answer : null,
-        askedByName: q.askedByName ?? null,
-        askedByUsername: q.askedByUsername ?? null,
-        askedAt: q.askedAt ?? null,
-        answeredByUserId: q.answer?.trim() ? (q.answeredByUserId ?? null) : null,
-        answeredByName: q.answer?.trim() ? (q.answeredByName ?? null) : null,
-        answeredByRole: q.answer?.trim() ? (q.answeredByRole ?? null) : null,
-        assignedToUserId: q.assignedToUserId ?? null,
-        hidden: !!q.hidden,
-      }));
+    const existing = await this.projectRepository.getRecentQuestions(projectId);
+    const existingById = new Map(existing.map((q) => [q.id, q] as const));
+    const normalized = await Promise.all(
+      (questions ?? [])
+        .filter((q) => q && typeof q.question === 'string' && q.question.trim())
+        .map(async (q) => {
+          const answer = q.answer?.trim() ? q.answer : null;
+          const hidden = !!q.hidden;
+          const prev = q.id ? existingById.get(q.id) : undefined;
+          const questionChanged = !prev || prev.question !== q.question;
+          const answerChanged = !!answer && (!prev || prev.answer !== answer);
+          let moderationFailed = prev?.moderationFailed ?? false;
+          if (questionChanged || answerChanged) {
+            moderationFailed = false;
+            const qStatus = await this.projectModerationService.moderateText(
+              q.question,
+              projectId,
+              authToken,
+            );
+            if (qStatus !== 'approved') moderationFailed = true;
+            if (answer && !moderationFailed) {
+              const aStatus = await this.projectModerationService.moderateText(
+                answer,
+                projectId,
+                authToken,
+              );
+              if (aStatus !== 'approved') moderationFailed = true;
+            }
+          }
+          return {
+            id: q.id ?? undefined,
+            question: q.question,
+            answer,
+            askedByName: q.askedByName ?? null,
+            askedByUsername: q.askedByUsername ?? null,
+            askedAt: q.askedAt ?? null,
+            answeredByUserId: answer ? (q.answeredByUserId ?? null) : null,
+            answeredByName: answer ? (q.answeredByName ?? null) : null,
+            answeredByRole: answer ? (q.answeredByRole ?? null) : null,
+            assignedToUserId: q.assignedToUserId ?? null,
+            hidden,
+            moderationFailed,
+          };
+        }),
+    );
     await this.projectRepository.updateRecentQuestions(projectId, normalized);
     return this.projectRepository.getRecentQuestions(projectId);
   }

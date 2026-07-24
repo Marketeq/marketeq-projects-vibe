@@ -268,6 +268,40 @@ export class ProjectModerationService {
     }
   }
 
+  async moderateText(
+    text: string,
+    contentId: string,
+    authToken?: string,
+  ): Promise<'approved' | 'rejected' | 'pending_review'> {
+    if (!text?.trim()) return 'approved';
+    try {
+      const response = await this.httpService.axiosRef.post(
+        `${this.moderationBaseUrl}/api/moderate/content`,
+        {
+          contentId,
+          title: text.slice(0, 150),
+          content: text,
+          category: '',
+          subcategory: '',
+          categories: [],
+          tags: [],
+        },
+        this.authConfig(authToken),
+      );
+      const status = response?.data?.status;
+      return status === 'rejected' || status === 'pending_review'
+        ? status
+        : 'approved';
+    } catch (error) {
+      this.logger.warn(
+        `Text moderation unavailable for ${contentId}: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+      return 'approved';
+    }
+  }
+
   async moderateUploadedImage(
     projectId: string,
     file: Express.Multer.File,
