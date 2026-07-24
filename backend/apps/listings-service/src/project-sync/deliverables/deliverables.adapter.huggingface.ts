@@ -68,15 +68,13 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
         const items = await this.generate(prompt);
 
         if (items && items.length >= 3) {
-          // Pad to exactly 6 if model returned fewer
-          const padded = [...items];
-          while (padded.length < 6) {
-            padded.push(`${phase.phaseName} Deliverable ${padded.length + 1}`);
-          }
+          // Doc: the number of deliverables per phase is not fixed (min 3).
+          // Use the model's task-derived items as-is — never pad with the
+          // phase name.
           results.push({
             phaseLabel: `Phase ${i + 1}`,
             phaseName: phase.phaseName,
-            items: padded.slice(0, 6),
+            items: items.slice(0, 6),
           });
         } else {
           // LLM returned too few items — fall back for this phase.
