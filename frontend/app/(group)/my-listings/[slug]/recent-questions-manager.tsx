@@ -53,7 +53,7 @@ function HideToggle({
 }) {
   if (moderationFailed) {
     return (
-      <TooltipProvider>
+      <TooltipProvider delayDuration={0}>
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="inline-flex">
