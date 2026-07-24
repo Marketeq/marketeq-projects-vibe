@@ -16,6 +16,7 @@ import {
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { InviteWindow, useInviteWindowStore } from "@/components/invite-window"
 import { LightboxVideoPlayer } from "./lightbox-video-player"
+import { countryOf } from "@/lib/geo"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -711,15 +712,6 @@ const mediaName = (raw?: string | null, fallback = ""): string => {
   } catch {
     return fallback
   }
-}
-
-// Locations should read as countries (take the last comma segment), deduped.
-const countryOf = (loc: string): string => {
-  const parts = loc
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return parts.length ? parts[parts.length - 1] : loc.trim()
 }
 
 function LocationList({ locations }: { locations: string[] }) {

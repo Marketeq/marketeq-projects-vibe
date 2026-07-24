@@ -24,6 +24,8 @@ export class FaqAdapterHuggingFace extends FaqAdapter {
   private readonly logger = new Logger(FaqAdapterHuggingFace.name);
   private readonly model: string;
   private readonly apiKey: string | undefined;
+  private readonly groqApiKey: string | undefined;
+  private readonly groqModel: string;
   private readonly timeoutMs: number;
 
   constructor(
@@ -35,13 +37,16 @@ export class FaqAdapterHuggingFace extends FaqAdapter {
       configService.get<string>('HF_FAQ_MODEL') ||
       'meta-llama/Llama-3.1-8B-Instruct';
     this.apiKey = configService.get<string>('HUGGINGFACE_API_KEY');
+    this.groqApiKey = configService.get<string>('GROQ_API_KEY');
+    this.groqModel =
+      configService.get<string>('GROQ_MODEL') || 'llama-3.1-8b-instant';
     this.timeoutMs = Number(
       configService.get<string>('FAQ_HF_TIMEOUT_MS') ?? 10000,
     );
   }
 
   async suggestFaqs(ctx: FaqContext): Promise<FaqSuggestion[]> {
-    if (!this.apiKey) return this.heuristic.suggestFaqs(ctx);
+    if (!this.apiKey && !this.groqApiKey) return this.heuristic.suggestFaqs(ctx);
     try {
       const content = await this.generate(this.buildFaqsPrompt(ctx));
       const parsed = content ? this.parseFaqArray(content) : null;
@@ -58,7 +63,7 @@ export class FaqAdapterHuggingFace extends FaqAdapter {
   }
 
   async suggestAnswer(ctx: FaqContext, question: string): Promise<string> {
-    if (!this.apiKey) return this.heuristic.suggestAnswer(ctx, question);
+    if (!this.apiKey && !this.groqApiKey) return this.heuristic.suggestAnswer(ctx, question);
     try {
       const content = await this.generate(this.buildAnswerPrompt(ctx, question));
       const answer = content ? this.parseAnswer(content) : null;
@@ -74,7 +79,7 @@ export class FaqAdapterHuggingFace extends FaqAdapter {
   }
 
   async suggestQuestions(ctx: FaqContext): Promise<string[]> {
-    if (!this.apiKey) return this.heuristic.suggestQuestions(ctx);
+    if (!this.apiKey && !this.groqApiKey) return this.heuristic.suggestQuestions(ctx);
     try {
       const content = await this.generate(this.buildQuestionsPrompt(ctx));
       const parsed = content ? this.parseStringArray(content) : null;
@@ -175,28 +180,34 @@ Return ONLY the answer text — no quotes, no labels.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
+    const useGroq = !!this.groqApiKey;
+    const url = useGroq
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : 'https://router.huggingface.co/v1/chat/completions';
+    const apiKey = useGroq ? this.groqApiKey : this.apiKey;
+    const model = useGroq ? this.groqModel : this.model;
+
     try {
-      const res = await fetch(
-        `https://router.huggingface.co/v1/chat/completions`,
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${this.apiKey}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 1500,
-            temperature: 0.4,
-          }),
-          signal: controller.signal,
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
         },
-      );
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 1500,
+          temperature: 0.4,
+        }),
+        signal: controller.signal,
+      });
       clearTimeout(timer);
 
       if (!res.ok) {
-        this.logger.warn(`HF API returned ${res.status}: ${await res.text()}`);
+        this.logger.warn(
+          `${useGroq ? 'Groq' : 'HF'} API returned ${res.status}: ${await res.text()}`,
+        );
         return null;
       }
 

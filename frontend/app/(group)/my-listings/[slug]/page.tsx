@@ -139,6 +139,7 @@ import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
 import { MarketplaceFooter } from "@/components/marketplace-footer"
 import NextImage from "@/components/next-image"
+import { countryOf } from "@/lib/geo"
 import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
@@ -402,15 +403,6 @@ const toVideoThumb = (raw?: string | null): string => {
   )
   if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
   return ""
-}
-
-// Locations should read as countries (take the last comma segment).
-const countryOf = (loc: string): string => {
-  const parts = loc
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return parts.length ? parts[parts.length - 1] : loc.trim()
 }
 
 const backendErrorMessage = (err: any): string => {
