@@ -2504,14 +2504,19 @@ export default function ProjectDetails({
                           </div>
 
                           {suggestedQuestions.length > 0 && (
-                            <div className="mt-6 flex items-center gap-3 flex-wrap">
+                            <div className="mt-6 flex items-start gap-3 flex-wrap">
                               {suggestedQuestions.map((q, idx) => (
                                 <Badge
                                   key={`sq-${idx}`}
-                                  className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
+                                  className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400 text-left"
                                   size="lg"
                                   visual="gray"
                                   onClick={() => openLiveChat(q)}
+                                  style={{
+                                    maxWidth: "100%",
+                                    height: "auto",
+                                    whiteSpace: "normal",
+                                  }}
                                 >
                                   {q}
                                 </Badge>
