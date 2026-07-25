@@ -7,6 +7,7 @@ import { PassportModule } from '@nestjs/passport'
 import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
+import { ResumeUploadController } from './controllers/resume-upload.controller'
 import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
@@ -61,6 +62,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
   providers: [ProxyService, JwtStrategy],
   controllers: [
     TalentUploadController,
+    ResumeUploadController,
     UserAvatarUploadController,
     PublishMediaController,
     PublishRichTextImageController,
