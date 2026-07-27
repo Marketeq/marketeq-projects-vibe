@@ -3,7 +3,7 @@
 import json
 import sys
 
-data = json.load(open('verdict.json'))
+data = json.load(open('/tmp/verdict.json'))
 verdict = data.get('verdict', 'ERROR')
 summary = data.get('summary', '')
 regressions = data.get('regressions', [])

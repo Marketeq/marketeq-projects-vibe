@@ -121,6 +121,7 @@ def dispatchVibe(event) {
         def checks = [
             'Jenkins / SOP Check',
             'Jenkins / Deep Regression Check',
+            'Jenkins / Branch Freshness',
             'Jenkins / Secret Scan',
             'Jenkins / Login Gate',
             'Jenkins / Code Review'
@@ -164,6 +165,18 @@ def dispatchVibe(event) {
                     results['Jenkins / Deep Regression Check'] = 'success'
                 } catch (e) {
                     results['Jenkins / Deep Regression Check'] = 'failure'
+                }
+            },
+            'Branch Freshness': {
+                try {
+                    build job: 'branch-freshness', parameters: [
+                        string(name: 'PR_NUMBER', value: pr_number),
+                        string(name: 'BASE_REF', value: pr_base_ref),
+                        string(name: 'HEAD_SHA', value: pr_head_sha)
+                    ]
+                    results['Jenkins / Branch Freshness'] = 'success'
+                } catch (e) {
+                    results['Jenkins / Branch Freshness'] = 'failure'
                 }
             },
             'Secret Scan': {
