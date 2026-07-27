@@ -71,8 +71,8 @@ export class MethodsController {
 
   @Post('stripe/finalise')
   @HttpCode(200)
-  async stripeFinalize(@Request() req: any, @Body() body: { sessionId: string; linkedAccountId: string }) {
-    return this.stripeProvider.finaliseBankStripe(req.user.userId, body.sessionId, body.linkedAccountId);
+  async stripeFinalize(@Request() req: any, @Body() body: { sessionId: string }) {
+    return this.stripeProvider.finaliseBankStripe(req.user.userId, body.sessionId);
   }
 
   @Post('stripe/restart')
