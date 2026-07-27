@@ -182,17 +182,24 @@ const SkillsRow = ({
         </Badge>
       ))}
 
-      {hiddenCount > 0 && (
-        <Badge
-          asChild
-          visual="gray"
-          className="transition-colors duration-150 hover:bg-gray-200"
-        >
-          <a href={`/talent-profile?username=${encodeURIComponent(username) }#skills`}>
-            {hiddenCount} more...
-          </a>
-        </Badge>
-      )}
+      {hiddenCount > 0 &&
+        (username ? (
+          <Badge
+            asChild
+            visual="gray"
+            className="transition-colors duration-150 hover:bg-gray-200"
+          >
+            <a
+              href={`/talent-profile?username=${encodeURIComponent(username)}#skills`}
+            >
+              {hiddenCount} more...
+            </a>
+          </Badge>
+        ) : (
+          // username is "" for users without one — linking anyway would produce
+          // /talent-profile?username=#skills, so show the count without a link.
+          <Badge visual="gray">{hiddenCount} more...</Badge>
+        ))}
     </div>
   )
 }
@@ -324,19 +331,24 @@ const RightSidebar = ({
             </span>
           </div>
         )}
-        {/* {user?.clientSuccessRating && (
-          <div className="flex items-center gap-x-2">
-            <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
-              <Star className="size-3 fill-dark-blue-400" />{" "}
-              {user.clientSuccessRating}
-            </span>
-            {user.totalProjectsCompleted != null && (
-              <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
-                {user.totalProjectsCompleted} projects
+        {/* Only surfaced once there are enough completed projects for the
+            rating to mean anything — same threshold talent-profile uses, so a
+            talent with no history shows nothing here rather than a bare or
+            zeroed score. */}
+        {(user?.totalProjectsCompleted ?? 0) >= 2 &&
+          user?.clientSuccessRating != null && (
+            <div className="flex items-center gap-x-2">
+              <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
+                <Star className="size-3 fill-dark-blue-400" />{" "}
+                {user.clientSuccessRating}
               </span>
-            )}
-          </div>
-        )} */}
+              {user.totalProjectsCompleted != null && (
+                <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
+                  {user.totalProjectsCompleted} projects
+                </span>
+              )}
+            </div>
+          )}
       </div>
 
       {user?.skills && user.skills.length > 0 && (
