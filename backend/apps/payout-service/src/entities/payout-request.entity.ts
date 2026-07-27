@@ -54,10 +54,15 @@ export class PayoutRequest {
   currency: string;
 
   // --- Provider response ---
-  @Column({ name: 'provider_reference', nullable: true, type: 'varchar' })
+  // `text`, not `varchar`, to match the actual column (001_initial_schema.sql)
+  // and because Ramp payouts store a full widget URL (~200-300 chars) here.
+  @Column({ name: 'provider_reference', nullable: true, type: 'text' })
   providerReference: string | null;
 
-  @Column({ name: 'provider_status', nullable: true, type: 'varchar' })
+  // Raw, provider-specific status string (e.g. 'pending', 'awaiting_manual_completion',
+  // 'settled') — informational only. The payout's actual state machine runs on
+  // the `status` column (PayoutStatus) above; nothing should switch on this field.
+  @Column({ name: 'provider_status', nullable: true, type: 'text' })
   providerStatus: string | null;
 
   @Column({ name: 'provider_response', type: 'jsonb', nullable: true })

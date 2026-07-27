@@ -76,6 +76,13 @@ export class DepositMethod {
   @Column({ type: 'varchar', name: 'bank_routing_number', nullable: true })
   bankRoutingNumber: string | null;
 
+  // AES-256-GCM ciphertext (BankEncryptionService) — needed to send real
+  // Stripe ACH micro-deposits (PS-08) for BANK_MANUAL/US accounts, since
+  // accountNumberHash below is a one-way SHA-256 used only for duplicate
+  // detection and can never be reversed back into the account number.
+  @Column({ type: 'text', name: 'bank_account_number_encrypted', nullable: true })
+  bankAccountNumberEncrypted: string | null;
+
   @Column({ type: 'varchar', name: 'bank_iban_last4', nullable: true })
   bankIbanLast4: string | null;
 
@@ -85,11 +92,31 @@ export class DepositMethod {
   @Column({ type: 'varchar', name: 'bank_currency', nullable: true })
   bankCurrency: string | null;
 
+  // Financial Connections account id (fca_...) — verification/read access only.
   @Column({ type: 'varchar', name: 'stripe_account_id', nullable: true })
   stripeAccountId: string | null;
 
+  // external_account id (ba_...) attached to stripeConnectAccountId — the
+  // actual Connect payout destination, set once attachExternalAccountFromFC
+  // completes. Column predates Connect (001_initial_schema.sql) but was
+  // never written until now.
   @Column({ type: 'varchar', name: 'stripe_bank_account_id', nullable: true })
-  stripeBankAccountId: string | null;
+  stripeExternalAccountId: string | null;
+
+  // acct_... Connect custom account for this contractor (type: 'custom',
+  // capabilities: transfers — recipient-only, no Stripe-hosted dashboard).
+  @Column({ type: 'text', name: 'stripe_connect_account_id', nullable: true })
+  stripeConnectAccountId: string | null;
+
+  // Mirrors Stripe's account.payouts_enabled, kept in sync via account.updated
+  // webhook. A payout must not be attempted while this is false.
+  @Column({ type: 'boolean', name: 'connect_payouts_enabled', default: false })
+  connectPayoutsEnabled: boolean;
+
+  // Mirrors account.requirements.currently_due for surfacing "action needed"
+  // states to the contractor; not read by any payout-gating logic.
+  @Column({ type: 'jsonb', name: 'connect_requirements_due', nullable: true })
+  connectRequirementsDue: string[] | null;
 
   // -- PayPal fields --
   @Column({ type: 'varchar', name: 'paypal_email', nullable: true })

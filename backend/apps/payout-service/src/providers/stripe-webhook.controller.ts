@@ -46,6 +46,9 @@ export class StripeWebhookController {
       case 'payout.failed':
         await this.stripeProvider.handlePayoutFailed(event.data.object);
         break;
+      case 'account.updated':
+        await this.stripeProvider.handleAccountUpdated(event.data.object);
+        break;
       default:
         this.logger.log(`Stripe webhook: unhandled event type ${event.type}`);
     }
