@@ -161,4 +161,53 @@ export const UserAPI = {
     AxiosRequest.put(`${USER_BASE}/v1/industries/${industryId}`, data),
   removeIndustry: (industryId: string) =>
     AxiosRequest.del(`${USER_BASE}/v1/industries/${industryId}`),
+
+  // Resume
+  uploadResume: (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
+    return AxiosRequest.post(`${USER_BASE}/resume/upload`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000,
+    })
+  },
+  applyResume: (data: {
+    parseResultId?: string
+    skills?: { name: string; proficiency?: string }[]
+    education?: {
+      school: string
+      degree: string
+      fieldOfStudy?: string
+      startYear?: number
+      endYear?: number
+      currentlyStudying?: boolean
+    }[]
+    workExperience?: {
+      title: string
+      company: string
+      location?: string
+      startDate?: string
+      endDate?: string
+      isCurrentRole?: boolean
+      description?: string
+    }[]
+    certifications?: {
+      name: string
+      issuer?: string
+      issueDate?: string
+    }[]
+    replaceConflicts?: boolean
+    conflictResolutions?: {
+      entityType: "education" | "work" | "certification"
+      existingId: string
+      applyUpdate: boolean
+    }[]
+  }) => AxiosRequest.post(`${USER_BASE}/resume/apply`, data),
+  deleteResume: () => AxiosRequest.del(`${USER_BASE}/resume`),
+  getResumeStatus: () => AxiosRequest.get(`${USER_BASE}/resume/status`),
+  getPendingReview: () => AxiosRequest.get(`${USER_BASE}/resume/pending-review`),
+  getResumeViewUrl: () => AxiosRequest.get(`${USER_BASE}/resume/view`),
+  getResumeDownloadUrl: () => AxiosRequest.get(`${USER_BASE}/resume/download`),
+  undoResumeImport: (parseResultId: string) =>
+    AxiosRequest.post(`${USER_BASE}/resume/undo/${parseResultId}`, {}),
 }
