@@ -72,11 +72,17 @@ export class StripeProvider {
     }
 
     // Production: create real FC session
+    // return_url is documented as optional, "for webview integrations only"
+    // — the frontend here uses the standard Stripe.js browser flow
+    // (stripe.collectFinancialConnectionsAccounts()), not a native webview,
+    // so it's omitted unless a real https:// URL is configured. Stripe's API
+    // hard-rejects non-HTTPS values ("URLs must begin with https"), which
+    // broke local dev where STRIPE_FC_RETURN_URL defaults to localhost.
     const session = await this.stripe.financialConnections.sessions.create({
       account_holder: { type: 'customer', customer: await this.getOrCreateCustomer(contractorId) },
       permissions: ['payment_method', 'balances'],
       filters: { countries: ['US'] },
-      return_url: this.fcReturnUrl,
+      ...(this.fcReturnUrl.startsWith('https://') ? { return_url: this.fcReturnUrl } : {}),
     });
 
     await this.verifyRepo.save({
@@ -128,12 +134,58 @@ export class StripeProvider {
       return method;
     }
 
+    // The session created in initiateBankStripe is the only thing tying this
+    // finalise call back to a specific contractor — without checking it here,
+    // any authenticated caller could pass an arbitrary linkedAccountId
+    // (e.g. replayed from a different session/contractor) and have that bank
+    // account silently attached to their own contractorId.
+    const verification = await this.verifyRepo.findOne({
+      where: { contractorId, oauthState: sessionId, verificationType: 'stripe_fc' } as any,
+    });
+    if (!verification) {
+      throw new PayoutError('This session is invalid or does not belong to you.',
+        HttpStatus.FORBIDDEN, 'ERR_STRIPE_FC_SESSION_INVALID');
+    }
+    if (verification.expiresAt && verification.expiresAt < new Date()) {
+      throw new PayoutError('This session has expired. Please start over.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_FC_SESSION_EXPIRED');
+    }
+
     // Production: retrieve FC account from Stripe
-    const account = await this.stripe.financialConnections.accounts.retrieve(linkedAccountId);
+    let account: any;
+    try {
+      account = await this.stripe.financialConnections.accounts.retrieve(linkedAccountId);
+    } catch (err: any) {
+      this.logger.warn(`Stripe FC account retrieve failed for ${linkedAccountId}: ${err?.message}`);
+      throw new PayoutError('We could not find that bank account. Please try connecting again.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_FC_ACCOUNT_NOT_FOUND');
+    }
+
+    // Cross-check the account actually belongs to this contractor's own
+    // Stripe customer, not just any account ID the caller happened to send.
+    const expectedCustomerId = await this.getOrCreateCustomer(contractorId);
+    if (account.account_holder?.customer !== expectedCustomerId) {
+      this.logger.warn(`Stripe FC account ${linkedAccountId} customer mismatch for contractor ${contractorId}`);
+      throw new PayoutError('This bank account does not belong to your session.',
+        HttpStatus.FORBIDDEN, 'ERR_STRIPE_FC_ACCOUNT_OWNERSHIP_MISMATCH');
+    }
 
     if (account.status !== 'active') {
       throw new PayoutError('Bank account could not be verified. Please try again.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_FC_ACCOUNT_INACTIVE');
+    }
+
+    // Same duplicate check methods.service.ts already does for manually-
+    // entered banks (by accountNumberHash) — without this, re-running the FC
+    // flow on an already-linked account (e.g. double-click, browser back/
+    // retry) silently creates a second active row for the identical bank
+    // account instead of rejecting.
+    const existingMethod = await this.methodRepo.findOne({
+      where: { contractorId, stripeAccountId: account.id, isActive: true },
+    });
+    if (existingMethod) {
+      throw new PayoutError('This account is already linked.',
+        HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_DUPLICATE');
     }
 
     const isInstant = account.subcategory !== 'manually_entered';
@@ -297,9 +349,24 @@ export class StripeProvider {
   }
 
   // ─── Helpers ──────────────────────────────────────────────────
+  // No stripeCustomerId column exists on any payout-service entity, so
+  // instead of adding a migration for a single cached field, this looks
+  // the customer up by the contractorId tag we set at creation time
+  // (Stripe's Search API, not a local join) — idempotent across calls
+  // without new schema.
   private async getOrCreateCustomer(contractorId: string): Promise<string> {
-    // In production, fetch/create Stripe Customer via user-service
-    // For now, return a mock customer ID
-    return `cus_mock_${contractorId.slice(0, 8)}`;
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return `cus_mock_${contractorId.slice(0, 8)}`;
+    }
+
+    const existing = await this.stripe.customers.search({
+      query: `metadata['contractorId']:'${contractorId}'`,
+    });
+    if (existing.data.length > 0) return existing.data[0].id;
+
+    const customer = await this.stripe.customers.create({
+      metadata: { contractorId },
+    });
+    return customer.id;
   }
 }

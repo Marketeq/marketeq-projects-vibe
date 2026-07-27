@@ -32,6 +32,7 @@ import { TalentProfileModule } from './talent-profile/talent-profile.module';
 import { UserKeysModule } from './user-keys/user-keys.module';
 import { BlockedUsersModule } from './blocked-users/blocked-users.module';
 import { ReportsModule } from './reports/reports.module';
+import { ResumeModule } from './resume/resume.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -85,6 +86,7 @@ import { ReportsModule } from './reports/reports.module';
     UserKeysModule,
     BlockedUsersModule,
     ReportsModule,
+    ResumeModule,
   ],
   controllers: [HealthController],
   providers: [
