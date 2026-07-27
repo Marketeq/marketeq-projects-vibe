@@ -427,7 +427,38 @@ const TIME_OPTIONS = (() => {
   return out
 })()
 
-const timeLabel = (value: string) => value.replace(/^0(\d)/, "$1")
+const timeLabel = (value?: string) => (value ?? "").replace(/^0(\d)/, "$1")
+
+// Stored schedules come back in two shapes. PATCH /v1/users/:id normalises to
+// flat rows ({day, startTime, ...}) via UpdateUserDto's @Transform, but the
+// talent DTO also accepts — and types/talent.ts declares — the nested
+// {day, times: [...]} form. Reading only the flat form leaves every time field
+// undefined on a nested row, which reaches timeLabel() and throws. Accept both.
+type StoredAvailabilityEntry = Partial<AvailabilitySlot> & {
+  day?: string
+  times?: Array<Partial<AvailabilitySlot>> | null
+}
+
+const normaliseStoredSchedule = (
+  raw: unknown
+): Array<AvailabilitySlot & { day: string }> => {
+  if (!Array.isArray(raw)) return []
+  return (raw as StoredAvailabilityEntry[]).flatMap((entry) => {
+    const day = entry?.day
+    if (!day) return []
+    const slots = Array.isArray(entry.times) ? entry.times : [entry]
+    return slots
+      .filter((slot): slot is Partial<AvailabilitySlot> => Boolean(slot))
+      .map((slot) => ({
+        day,
+        startTime: slot.startTime ?? DEFAULT_SLOT.startTime,
+        startTimeDayPeriod:
+          slot.startTimeDayPeriod ?? DEFAULT_SLOT.startTimeDayPeriod,
+        endTime: slot.endTime ?? DEFAULT_SLOT.endTime,
+        endTimeDayPeriod: slot.endTimeDayPeriod ?? DEFAULT_SLOT.endTimeDayPeriod,
+      }))
+  })
+}
 
 const TimeSelect = ({
   value,
@@ -1941,11 +1972,8 @@ export const AvailabilityDialog = ({
 
   useEffect(() => {
     if (!open) return
-    const stored = (profile as { customAvailability?: AvailabilitySlot[] } | null)
-      ?.customAvailability as
-      | Array<AvailabilitySlot & { day?: string }>
-      | undefined
-    if (!Array.isArray(stored) || stored.length === 0) {
+    const stored = normaliseStoredSchedule(profile?.customAvailability)
+    if (stored.length === 0) {
       setSchedule(makeDefaultSchedule())
       return
     }
@@ -1953,10 +1981,9 @@ export const AvailabilityDialog = ({
       days.map((day) => [day, { enabled: false, slots: [] }])
     )
     for (const slot of stored) {
-      const day = slot?.day
-      if (!day || !next[day]) continue
-      next[day].enabled = true
-      next[day].slots.push({
+      if (!next[slot.day]) continue
+      next[slot.day].enabled = true
+      next[slot.day].slots.push({
         startTime: slot.startTime,
         startTimeDayPeriod: slot.startTimeDayPeriod,
         endTime: slot.endTime,
