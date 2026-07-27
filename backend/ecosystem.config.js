@@ -54,7 +54,7 @@ module.exports = {
     svc('earnings-service', 3026),
     svc('payout-service', 3022),
     svc('offer-service', 3025),
-    svc('resume-parsing-service', 3028),
+    svc('resume-parsing-service', 3033),
     {
       name: 'cms-service',
       script: 'npm',
