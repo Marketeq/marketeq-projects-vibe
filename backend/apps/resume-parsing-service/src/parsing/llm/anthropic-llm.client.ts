@@ -15,6 +15,7 @@ export class AnthropicLlmClient implements LlmClient {
   private readonly timeoutMs: number;
   private readonly maxAttempts: number;
   private client: any;
+  private sdk: any;
 
   constructor() {
     this.apiKey = process.env.ANTHROPIC_API_KEY || '';
@@ -32,9 +33,28 @@ export class AnthropicLlmClient implements LlmClient {
       }
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const Anthropic = require('@anthropic-ai/sdk');
-      this.client = new Anthropic({ apiKey: this.apiKey });
+      // Kept for the typed error classes (Anthropic.RateLimitError, etc.) used
+      // in singleCall — matching on those instead of on message text.
+      this.sdk = Anthropic;
+      // maxRetries: 0 — the SDK retries 408/409/429/5xx twice by default, which
+      // would nest inside the attempt loop below: 2 attempts x 3 SDK tries x
+      // MODEL_TIMEOUT_MS(45s) = 270s worst case, against a 120s
+      // DeadlineInterceptor and a 120s gateway proxy timeout. The interceptor
+      // would kill the request before the retries it paid for could finish.
+      // This loop owns retries, so the budget is maxAttempts x timeoutMs (90s
+      // by default) and fits inside the deadline.
+      this.client = new Anthropic({ apiKey: this.apiKey, maxRetries: 0 });
     }
     return this.client;
+  }
+
+  // 4xx other than 408/429 mean the request itself is wrong (bad key, bad
+  // model id, malformed body); replaying it unchanged just burns the deadline.
+  private isRetryable(err: unknown): boolean {
+    const status = (err as { status?: number } | null)?.status;
+    if (typeof status !== 'number') return true; // network/abort/unknown — worth a retry
+    if (status === 408 || status === 429) return true;
+    return status >= 500;
   }
 
   async call(input: LlmCallInput): Promise<LlmCallOutput> {
@@ -49,6 +69,12 @@ export class AnthropicLlmClient implements LlmClient {
         this.logger.warn(
           `Model call attempt ${attempt}/${this.maxAttempts} failed: ${lastError.message}`,
         );
+        if (!this.isRetryable(err)) {
+          this.logger.error(
+            `Model call failed with a non-retryable error; not retrying: ${lastError.message}`,
+          );
+          throw err;
+        }
         if (attempt < this.maxAttempts) {
           // Brief backoff before retry
           await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -108,14 +134,39 @@ export class AnthropicLlmClient implements LlmClient {
       if (err instanceof ParseException) throw err;
 
       const message = err instanceof Error ? err.message : String(err);
+
+      // Match the SDK's typed error classes rather than error-message text —
+      // message wording is not a stable contract, so a reworded SDK message
+      // would silently reclassify a 429 as a generic failure.
+      const sdk = this.sdk;
+      if (sdk) {
+        if (
+          err instanceof sdk.APIUserAbortError ||
+          err instanceof sdk.APIConnectionTimeoutError
+        ) {
+          throw ParseException.deadlineExceeded();
+        }
+        if (err instanceof sdk.RateLimitError) {
+          throw ParseException.serviceOverloaded();
+        }
+        if (err instanceof sdk.InternalServerError) {
+          // Covers 5xx, including 529 overloaded.
+          throw ParseException.modelUnavailable();
+        }
+        if (
+          err instanceof sdk.AuthenticationError ||
+          err instanceof sdk.PermissionDeniedError ||
+          err instanceof sdk.NotFoundError
+        ) {
+          // Misconfiguration (bad key, revoked access, unknown model id) —
+          // surfaced as unavailable, and isRetryable() stops the replay.
+          throw ParseException.modelUnavailable();
+        }
+      }
+
+      // The abort path can surface before the SDK module is resolved.
       if (message.includes('abort') || message.includes('timeout')) {
         throw ParseException.deadlineExceeded();
-      }
-      if (message.includes('rate_limit') || message.includes('429')) {
-        throw ParseException.serviceOverloaded();
-      }
-      if (message.includes('overloaded') || message.includes('529')) {
-        throw ParseException.modelUnavailable();
       }
       throw new Error(`Model call failed: ${message}`);
     }
