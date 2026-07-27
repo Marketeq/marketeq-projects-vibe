@@ -30,6 +30,7 @@ RUN npx nest build offer-service
 RUN npx nest build payout-service
 RUN npx nest build portfolio-service
 RUN npx nest build pricing-service
+RUN npx nest build resume-parsing-service
 RUN npx nest build search-service
 RUN npx nest build suggestions-service
 RUN npx nest build time-tracking-service

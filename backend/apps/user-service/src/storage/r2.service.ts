@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -62,6 +63,49 @@ export class R2Service {
       : undefined;
 
     return { key, url };
+  }
+
+  /**
+   * Upload an already-buffered object at a caller-chosen key.
+   *
+   * Unlike uploadAvatar, the caller owns the key and no public CacheControl
+   * is set — this backs private documents (resumes), which are served through
+   * short-lived presigned URLs via getReadUrl rather than the public CDN.
+   */
+  async uploadBuffer(
+    key: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to upload objects',
+      );
+    }
+
+    await this.getClient().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  /** Delete an object by key. Used when a stored document is superseded. */
+  async deleteObject(key: string): Promise<void> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to delete objects',
+      );
+    }
+
+    await this.getClient().send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+    );
   }
 
   /**
