@@ -373,11 +373,17 @@ export class StripeProvider {
 
     const connectAccountId = await this.getOrCreateConnectAccount(contractorId);
 
+    // customer belongs in params (alongside bank_account), not options —
+    // options is Stripe request config (stripeAccount/idempotencyKey/etc).
+    // The token must be created *as* the connected account (stripeAccount)
+    // so it's eligible to be attached as that account's external_account;
+    // creating it on the platform account produces a token
+    // createExternalAccount then rejects as belonging to the wrong account.
     let token: any;
     try {
       token = await this.stripe.tokens.create(
-        { bank_account: { payment_method: paymentMethod.id } },
-        { customer: setupIntent.customer },
+        { bank_account: { payment_method: paymentMethod.id }, customer: setupIntent.customer },
+        { stripeAccount: connectAccountId },
       );
     } catch (err: any) {
       this.logger.warn(`Stripe bank_account token creation failed for ${paymentMethod.id}: ${err?.message}`);
@@ -387,9 +393,10 @@ export class StripeProvider {
 
     let externalAccount: any;
     try {
-      externalAccount = await this.stripe.accounts.createExternalAccount(connectAccountId, {
-        external_account: token.id,
-      });
+      externalAccount = await this.stripe.accounts.createExternalAccount(
+        connectAccountId,
+        { external_account: token.id },
+      );
     } catch (err: any) {
       this.logger.warn(`Stripe external_account attach failed for account ${connectAccountId}: ${err?.message}`);
       throw new PayoutError('We could not attach your bank account for payouts. Please contact support.',

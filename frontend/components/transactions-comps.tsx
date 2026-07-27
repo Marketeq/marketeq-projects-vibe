@@ -899,7 +899,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // source distinguishes the Stripe-connect flow from the manual/micro-deposit
   // flow — Figma specs different copy for each ("securely linked"/"Connection
   // Failed" for Stripe vs "has been verified"/"Verification Failed" for manual).
-  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', source: 'stripe' | 'manual', attemptsLeft?: number, lockedUntil?: string} | null>(null)
+  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', source: 'stripe' | 'manual', attemptsLeft?: number, lockedUntil?: string, errorMessage?: string} | null>(null)
   const [microAmounts, setMicroAmounts] = React.useState({amount1:'', amount2:''})
 
   // ─── Crypto wallet (US-09) — provider/network/currency driven by the real
@@ -1127,7 +1127,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
         body: JSON.stringify({ sessionId }),
       })
       const method = await finalRes.json()
-      if (!finalRes.ok) throw new Error('Finalise failed')
+      // Backend distinguishes real failure reasons (e.g. "This account is
+      // already linked" for ERR_DEPOSIT_METHOD_DUPLICATE) from a generic
+      // connection problem — surface the actual message instead of masking
+      // every failure behind the same "temporary network issue" copy.
+      if (!finalRes.ok) throw new Error(method?.message || 'Finalise failed')
       setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
       setShowAddMethod(false)
       const displayLabel = method.displayLabel ?? `${bankName} ••••${method.bankAccountLast4 ?? '4242'}`
@@ -1137,7 +1141,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       fetchMethods()
     } catch (e) {
       setAddForm(f => ({...f, _stripeConnecting: false} as any))
-      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed', source: 'stripe' })
+      const errorMessage = e instanceof Error && e.message !== 'Finalise failed' ? e.message : undefined
+      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed', source: 'stripe', errorMessage })
       setShowAddMethod(false)
     }
   }
@@ -1896,7 +1901,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </Tooltip>
               </TooltipProvider>
             </div>
-            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => setShowAddMethod(true)} disabled={!canAddMore || methodGateBlocked}>
+            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => { setVerifyState(null); setShowAddMethod(true) }} disabled={!canAddMore || methodGateBlocked}>
               Add Deposit Method
             </Button>
           </div>
@@ -2047,7 +2052,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     <h4 className="text-base font-semibold text-dark-blue-400">{verifyState.source === 'stripe' ? 'Connection Failed' : 'Verification Failed'}</h4>
                     <p className="text-sm text-gray-500">
                       {verifyState.source === 'stripe'
-                        ? "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
+                        ? (verifyState.errorMessage || "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information.")
                         : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
                     </p>
                     <div className="flex flex-col gap-2">
@@ -2275,6 +2280,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           >
                             {(addForm as any)._stripeConnecting ? 'Connecting…' : 'Continue with Stripe'}
                           </Button>
+                          <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''} as any))}>Back to Deposit Methods</Button>
                         </div>
                       </>
                     ) : (
