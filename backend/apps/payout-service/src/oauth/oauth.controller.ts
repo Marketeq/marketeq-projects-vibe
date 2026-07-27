@@ -2,12 +2,18 @@ import { Controller, Get, Post, Query, Param, Res, UseGuards, Request, HttpCode,
 import { Response }      from 'express';
 import { OAuthService }  from './oauth.service';
 import { JwtAuthGuard }  from '../guards/jwt-auth.guard';
+import { Public }        from '../decorators/public.decorator';
 
 @Controller('v1/oauth')
 export class OAuthCallbackController {
   constructor(private readonly oauthSvc: OAuthService) {}
 
-  // Callback routes — no JWT required (redirected from provider)
+  // Callback routes — no JWT required (redirected from provider). The
+  // browser lands here straight from PayPal/Wise/Payoneer's redirect with
+  // no Marketeq auth header at all, so this must bypass the app-wide
+  // JwtAuthGuard (APP_GUARD in app.module.ts) — it was previously
+  // unreachable in practice since nothing here opted out of that guard.
+  @Public()
   @Get(':provider/callback')
   async callback(
     @Param('provider') provider: string,

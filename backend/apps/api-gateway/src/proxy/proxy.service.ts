@@ -69,6 +69,12 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // Stripe/Ramp webhook signature headers — downstream (payout-service)
+      // verifies authenticity via these, not JWT, so they must survive the
+      // proxy same as the raw body below (main.ts captures req.rawBody for
+      // these exact paths ahead of the global json() parser).
+      ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
+      ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
     }
 
     // Downstream services (timezone-resolution.service.ts, geo.service.ts's
@@ -106,11 +112,16 @@ export class ProxyService {
     const contentType = (req.headers['content-type'] as string) || ''
     const isMultipart = contentType.startsWith('multipart/')
 
+    // main.ts skips the json() parser and captures req.rawBody verbatim for
+    // /v1/webhooks/* — forward those exact bytes, not a re-parsed req.body,
+    // or Stripe's/Ramp's signature check fails on a byte mismatch.
+    const rawBody = (req as any).rawBody as Buffer | undefined
+
     const config: AxiosRequestConfig = {
       method: req.method as any,
       url,
       headers,
-      data: isMultipart ? req : req.body,
+      data: rawBody ?? (isMultipart ? req : req.body),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       // Query params are already included in the URL path from the proxy controller

@@ -61,6 +61,13 @@ export interface UserProfilePayload {
   location?: string
   timezone?: string
   availability?: string
+  customAvailability?: Array<{
+    day: string
+    startTime: string
+    startTimeDayPeriod: string
+    endTime: string
+    endTimeDayPeriod: string
+  }> | null
   role?: string | null
   rateMin?: number | null
   rateMax?: number | null

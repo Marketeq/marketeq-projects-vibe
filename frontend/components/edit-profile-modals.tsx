@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI } from "@/service/http/user"
+import { UserAPI, type UserProfilePayload } from "@/service/http/user"
 import { getIssuerNameFromUrl } from "@/src/lib/certification-brand"
 import { cn, hookFormHasError } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
@@ -389,6 +389,118 @@ const days = [
   "Saturday",
 ]
 
+// Custom availability schedule (per-day time slots). The backend accepts these
+// on PATCH /v1/users/:id as `customAvailability`; times are 12-hour HH:MM with a
+// separate AM/PM period, matching the slot shape the user-service validates.
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+type AvailabilitySlot = {
+  startTime: string
+  startTimeDayPeriod: string
+  endTime: string
+  endTimeDayPeriod: string
+}
+type DaySchedule = { enabled: boolean; slots: AvailabilitySlot[] }
+
+const DEFAULT_SLOT: AvailabilitySlot = {
+  startTime: "09:00",
+  startTimeDayPeriod: "AM",
+  endTime: "05:00",
+  endTimeDayPeriod: "PM",
+}
+
+const makeDefaultSchedule = (): Record<string, DaySchedule> =>
+  Object.fromEntries(
+    days.map((day) => [
+      day,
+      { enabled: WEEKDAYS.includes(day), slots: [{ ...DEFAULT_SLOT }] },
+    ])
+  )
+
+const TIME_OPTIONS = (() => {
+  const out: string[] = []
+  for (let hour = 1; hour <= 12; hour++) {
+    for (const minutes of ["00", "30"]) {
+      out.push(`${String(hour).padStart(2, "0")}:${minutes}`)
+    }
+  }
+  return out
+})()
+
+const timeLabel = (value?: string) => (value ?? "").replace(/^0(\d)/, "$1")
+
+// Stored schedules come back in two shapes. PATCH /v1/users/:id normalises to
+// flat rows ({day, startTime, ...}) via UpdateUserDto's @Transform, but the
+// talent DTO also accepts — and types/talent.ts declares — the nested
+// {day, times: [...]} form. Reading only the flat form leaves every time field
+// undefined on a nested row, which reaches timeLabel() and throws. Accept both.
+type StoredAvailabilityEntry = Partial<AvailabilitySlot> & {
+  day?: string
+  times?: Array<Partial<AvailabilitySlot>> | null
+}
+
+const normaliseStoredSchedule = (
+  raw: unknown
+): Array<AvailabilitySlot & { day: string }> => {
+  if (!Array.isArray(raw)) return []
+  return (raw as StoredAvailabilityEntry[]).flatMap((entry) => {
+    const day = entry?.day
+    if (!day) return []
+    const slots = Array.isArray(entry.times) ? entry.times : [entry]
+    return slots
+      .filter((slot): slot is Partial<AvailabilitySlot> => Boolean(slot))
+      .map((slot) => ({
+        day,
+        startTime: slot.startTime ?? DEFAULT_SLOT.startTime,
+        startTimeDayPeriod:
+          slot.startTimeDayPeriod ?? DEFAULT_SLOT.startTimeDayPeriod,
+        endTime: slot.endTime ?? DEFAULT_SLOT.endTime,
+        endTimeDayPeriod: slot.endTimeDayPeriod ?? DEFAULT_SLOT.endTimeDayPeriod,
+      }))
+  })
+}
+
+const TimeSelect = ({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) => (
+  <Listbox value={value} onChange={onChange} className="relative w-[72px]">
+    <ListboxButton className="h-9 px-2.5 text-sm" iconClassName="h-4 w-4">
+      {({ value }) => (
+        <span className="text-gray-black">{timeLabel(value as string)}</span>
+      )}
+    </ListboxButton>
+    <ListboxOptions className="w-[92px]">
+      {TIME_OPTIONS.map((time) => (
+        <ListboxOption key={time} value={time}>
+          {timeLabel(time)}
+        </ListboxOption>
+      ))}
+    </ListboxOptions>
+  </Listbox>
+)
+
+const PeriodSelect = ({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) => (
+  <Listbox value={value} onChange={onChange} className="relative w-[68px]">
+    <ListboxButton className="h-9 px-2.5 text-sm" iconClassName="h-4 w-4">
+      {({ value }) => <span className="text-gray-black">{value as string}</span>}
+    </ListboxButton>
+    <ListboxOptions>
+      <ListboxOption value="AM">AM</ListboxOption>
+      <ListboxOption value="PM">PM</ListboxOption>
+    </ListboxOptions>
+  </Listbox>
+)
+
 const workExperienceFormSchema = z
   .object({
     employer: z
@@ -684,12 +796,13 @@ const certificationsFormSchema = z
   })
   .refine(
     (data) => {
-      const today = new Date()
-      today.setHours(23, 59, 59, 999)
-      return data.issuedDate.getTime() <= today.getTime()
+      const max = new Date()
+      max.setHours(23, 59, 59, 999)
+      max.setDate(max.getDate() + 90)
+      return data.issuedDate.getTime() <= max.getTime()
     },
     {
-      message: "Issue date cannot be in the future.",
+      message: "Issue date cannot be more than 90 days in the future.",
       path: ["issuedDate"],
     }
   )
@@ -1847,24 +1960,98 @@ export const AvailabilityDialog = ({
     },
   })
 
+  const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(
+    makeDefaultSchedule
+  )
+
   useEffect(() => {
     if (open && profile?.availability) {
       reset({ availability: profile.availability })
     }
   }, [open, profile?.availability, reset])
 
+  useEffect(() => {
+    if (!open) return
+    const stored = normaliseStoredSchedule(profile?.customAvailability)
+    if (stored.length === 0) {
+      setSchedule(makeDefaultSchedule())
+      return
+    }
+    const next: Record<string, DaySchedule> = Object.fromEntries(
+      days.map((day) => [day, { enabled: false, slots: [] }])
+    )
+    for (const slot of stored) {
+      if (!next[slot.day]) continue
+      next[slot.day].enabled = true
+      next[slot.day].slots.push({
+        startTime: slot.startTime,
+        startTimeDayPeriod: slot.startTimeDayPeriod,
+        endTime: slot.endTime,
+        endTimeDayPeriod: slot.endTimeDayPeriod,
+      })
+    }
+    for (const day of days) {
+      if (next[day].slots.length === 0) next[day].slots = [{ ...DEFAULT_SLOT }]
+    }
+    setSchedule(next)
+  }, [open, profile?.id])
+
+  const toggleDay = (day: string) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: { ...prev[day], enabled: !prev[day].enabled },
+    }))
+  const updateSlot = (
+    day: string,
+    index: number,
+    patch: Partial<AvailabilitySlot>
+  ) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        slots: prev[day].slots.map((slot, i) =>
+          i === index ? { ...slot, ...patch } : slot
+        ),
+      },
+    }))
+  const addSlot = (day: string) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: { ...prev[day], slots: [...prev[day].slots, { ...DEFAULT_SLOT }] },
+    }))
+  const removeSlot = (day: string, index: number) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        slots: prev[day].slots.filter((_, i) => i !== index),
+      },
+    }))
+
   const onSubmit: SubmitHandler<AvailabilityFormValues> = async (values) => {
     setOpen(false)
-    if (userId) {
-      UserAPI.updateProfile(userId, { availability: values.availability })
-        .then(() => onSaved?.())
-        .catch(() => {})
-    }
+    if (!userId) return
+    const payload: UserProfilePayload = { availability: values.availability }
+    payload.customAvailability =
+      values.availability === "Custom"
+        ? days.flatMap((day) =>
+            schedule[day].enabled
+              ? schedule[day].slots.map((slot) => ({ day, ...slot }))
+              : []
+          )
+        : null
+    UserAPI.updateProfile(userId, payload)
+      .then(() => onSaved?.())
+      .catch(() => {})
   }
   const availability = useWatch({ control, name: "availability" })
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+      <DialogContent
+        className="max-w-[700px] rounded-[12px] p-0"
+        style={{ maxHeight: "calc(100vh - 40px)" }}
+      >
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="border-b border-gray-200 pt-6 px-6">
             <div className="flex items-start gap-x-2">
@@ -1888,7 +2075,6 @@ export const AvailabilityDialog = ({
             </div>
 
             <div className="mt-8">
-              <div className="pb-[50px]">
                 <div className="space-y-1.5">
                   <Label size="sm" htmlFor="availability">
                     What&apos;s your availability?
@@ -1924,66 +2110,115 @@ export const AvailabilityDialog = ({
                 </div>
 
                 {availability === "Custom" && (
-                  <div className="mt-6">
-                    {days.map((day) => (
-                      <article
-                        className="py-3 border-b last:border-b-0 flex items-center justify-between"
-                        key={day}
-                      >
-                        <div className="pt-2.5 inline-flex gap-x-2">
-                          <Switch
-                            id={day}
-                            defaultChecked={[
-                              "Monday",
-                              "Tuesday",
-                              "Wednesday",
-                              "Thursday",
-                              "Friday",
-                            ].includes(day)}
-                          />
-                          <Label
-                            htmlFor={day}
-                            className="text-gray-700"
-                            size="sm"
-                          >
-                            {day}
-                          </Label>
-                        </div>
+                  <ScrollArea
+                    type="auto"
+                    className="mt-6"
+                    viewportStyle={{ maxHeight: "calc(100vh - 400px)" }}
+                    scrollBar={<ScrollBar className="p-1 w-4" />}
+                  >
+                    {days.map((day) => {
+                      const daySchedule = schedule[day]
+                      return (
+                        <article
+                          className="py-3 border-b last:border-b-0 space-y-3"
+                          key={day}
+                        >
+                          {daySchedule.slots.map((slot, index) => (
+                            <div
+                              className="flex items-center justify-between"
+                              key={index}
+                            >
+                              <div className="inline-flex items-center gap-x-2 w-[130px]">
+                                {index === 0 && (
+                                  <>
+                                    <Switch
+                                      id={day}
+                                      checked={daySchedule.enabled}
+                                      onCheckedChange={() => toggleDay(day)}
+                                    />
+                                    <Label
+                                      htmlFor={day}
+                                      className="text-gray-700"
+                                      size="sm"
+                                    >
+                                      {day}
+                                    </Label>
+                                  </>
+                                )}
+                              </div>
 
-                        <div className="inline-flex items-center gap-x-3">
-                          <InputGroup>
-                            <Input
-                              className="[field-sizing:content] flex-auto text-xs leading-6"
-                              defaultValue="9:00"
-                            />
-                            <InputRightAddon>AM</InputRightAddon>
-                          </InputGroup>
+                              <div
+                                className={cn(
+                                  "inline-flex items-center gap-x-3",
+                                  !daySchedule.enabled &&
+                                    "opacity-50 pointer-events-none"
+                                )}
+                              >
+                                <TimeSelect
+                                  value={slot.startTime}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, { startTime: value })
+                                  }
+                                />
+                                <PeriodSelect
+                                  value={slot.startTimeDayPeriod}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, {
+                                      startTimeDayPeriod: value,
+                                    })
+                                  }
+                                />
 
-                          <span className="inline-block text-base leading-8 font-semibold text-gray-400">
-                            to
-                          </span>
+                                <span className="inline-block text-base leading-8 font-semibold text-gray-400">
+                                  to
+                                </span>
 
-                          <InputGroup>
-                            <Input
-                              className="[field-sizing:content] flex-auto text-xs leading-6"
-                              defaultValue="5:00"
-                            />
-                            <InputRightAddon>PM</InputRightAddon>
-                          </InputGroup>
+                                <TimeSelect
+                                  value={slot.endTime}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, { endTime: value })
+                                  }
+                                />
+                                <PeriodSelect
+                                  value={slot.endTimeDayPeriod}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, {
+                                      endTimeDayPeriod: value,
+                                    })
+                                  }
+                                />
 
-                          <IconButton
-                            size="lg"
-                            visual="gray"
-                            variant="outlined"
-                          >
-                            <Plus className="size-[15px]" />
-                          </IconButton>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                                {index === 0 ? (
+                                  <IconButton
+                                    type="button"
+                                    size="lg"
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() => addSlot(day)}
+                                  >
+                                    <Plus className="size-[15px]" />
+                                  </IconButton>
+                                ) : index === daySchedule.slots.length - 1 ? (
+                                  <IconButton
+                                    type="button"
+                                    size="lg"
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() => removeSlot(day, index)}
+                                  >
+                                    <Trash03 className="size-[15px] text-error-500" />
+                                  </IconButton>
+                                ) : (
+                                  <span className="size-9 shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </article>
+                      )
+                    })}
+                  </ScrollArea>
                 )}
-              </div>
             </div>
           </div>
 

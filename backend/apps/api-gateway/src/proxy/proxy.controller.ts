@@ -250,6 +250,12 @@ export class ProxyController {
       prefix = 'earnings'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
+    } else if (prefix === 'v1' && segments[1] === 'webhooks') {
+      // /v1/webhooks/stripe and /v1/webhooks/ramp both live in payout-service.
+      // Without this branch these silently fell through to the 'v1' default
+      // (transaction-service) instead of payout-service — external providers
+      // hitting the public webhook URL would never reach the real handler.
+      prefix = 'payouts'
     } else if (prefix === 'v1' && segments[1] === 'offers') {
       prefix = 'offers'
     } else if (prefix === 'v1' && segments[1] === 'counter-offers') {
