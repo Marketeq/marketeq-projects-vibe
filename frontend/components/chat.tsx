@@ -25,7 +25,7 @@ import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import {
   Avatar,
-  AvatarFallbackIcon,
+  AvatarFallback,
   AvatarImage,
   Badge,
   Button,
@@ -211,7 +211,17 @@ export const UserDetail = ({
               "User"
             }
           />
-          <AvatarFallbackIcon />
+          <AvatarFallback>
+            {conversation.isGroup
+              ? (conversation.group?.name?.[0] ?? "G").toUpperCase()
+              : (
+                  conversation.participantName ||
+                  conversation.participantUsername ||
+                  "Unknown"
+                )
+                  .charAt(0)
+                  .toUpperCase()}
+          </AvatarFallback>
         </Avatar>
         <div
           onClick={(e) => e.stopPropagation()}

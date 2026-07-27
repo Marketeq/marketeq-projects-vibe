@@ -2037,15 +2037,15 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         ? "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
                         : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
                     </p>
-                    <div className="flex gap-2 items-center justify-between">
-                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
+                    <div className="flex flex-col gap-2">
                       <Button
-                        variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />}
+                        variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<RefreshCcw01 className="size-4" />}
                         onClick={() => {
                           if (verifyState.source === 'stripe') { const bankName = verifyState.bankName; setVerifyState(null); handleConnectStripe(bankName) }
                           else setVerifyState(s => s ? {...s, step: 'amounts'} : null)
                         }}
                       >Retry</Button>
+                      <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</Button>
                     </div>
                   </div>
                 )}
@@ -2117,9 +2117,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     <p className="text-sm text-gray-500">
                       {oauthResult.errorMessage ?? `We were unable to link your ${oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'} account. You may have canceled the login or encountered a connection issue.`}
                     </p>
-                    <div className="flex gap-2 items-center justify-between">
-                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => setOauthResult(null)}>Back to Deposit Methods</button>
-                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { const provider = oauthResult.provider; setOauthResult(null); handleConnectOAuth(provider) }}>Retry</Button>
+                    <div className="flex flex-col gap-2">
+                      <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { const provider = oauthResult.provider; setOauthResult(null); handleConnectOAuth(provider) }}>Retry</Button>
+                      <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setOauthResult(null)}>Back to Deposit Methods</Button>
                     </div>
                   </div>
                 )}

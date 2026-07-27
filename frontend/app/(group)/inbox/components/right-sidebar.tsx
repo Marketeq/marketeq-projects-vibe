@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useLayoutEffect, useRef, useState } from "react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { apiFetch } from "@/src/lib/api"
@@ -147,7 +147,62 @@ const SaveButton = () => {
     </div>
   )
 }
+const SKILLS_MAX_ROWS = 5
 
+const SkillsRow = ({
+  skills,
+  username,
+}: {
+  skills: { id: string; name: string }[]
+  username: string
+}) => {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visibleCount, setVisibleCount] = useState(skills.length)
+
+  useLayoutEffect(() => {
+    setVisibleCount(skills.length)
+  }, [skills])
+
+  useLayoutEffect(() => {
+    const children = [...(ref.current?.children ?? [])] as HTMLElement[]
+    const rows = new Set(children.map((el) => el.offsetTop)).size
+
+    if (rows > SKILLS_MAX_ROWS) {
+      setVisibleCount((count) => Math.max(0, count - 1))
+    }
+  }, [visibleCount, skills])
+
+  const hiddenCount = skills.length - visibleCount
+
+  return (
+    <div ref={ref} className="mt-3 flex flex-wrap gap-2">
+      {skills.slice(0, visibleCount).map((skill) => (
+        <Badge key={skill.id} visual="gray">
+          {skill.name}
+        </Badge>
+      ))}
+
+      {hiddenCount > 0 &&
+        (username ? (
+          <Badge
+            asChild
+            visual="gray"
+            className="transition-colors duration-150 hover:bg-gray-200"
+          >
+            <a
+              href={`/talent-profile?username=${encodeURIComponent(username)}#skills`}
+            >
+              {hiddenCount} more...
+            </a>
+          </Badge>
+        ) : (
+          // username is "" for users without one — linking anyway would produce
+          // /talent-profile?username=#skills, so show the count without a link.
+          <Badge visual="gray">{hiddenCount} more...</Badge>
+        ))}
+    </div>
+  )
+}
 const RightSidebar = ({
   selectedConversation,
   jwtToken,
@@ -233,7 +288,7 @@ const RightSidebar = ({
   return (
     <div className="w-[300px] bg-white flex flex-col shrink-0 pt-10 pb-6 px-5 border-l border-gray-200">
       <div className="pb-5 flex flex-col items-center border-b border-gray-200">
-        <Avatar size="2xl" isOnline={isOnline(user?.id)}>
+        <Avatar size="3xl" isOnline={isOnline(user?.id)}>
           <AvatarImage src={avatarUrl || undefined} alt={fullName} />
           <AvatarFallback delayMs={0}>{initials}</AvatarFallback>
         </Avatar>
@@ -269,38 +324,37 @@ const RightSidebar = ({
         {availability && (
           <div className="flex items-center gap-x-2">
             <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
-              Availability
+              Current Availability
             </span>
             <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-bold">
               {availability}
             </span>
           </div>
         )}
-        {user?.clientSuccessRating && (
-          <div className="flex items-center gap-x-2">
-            <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
-              <Star className="size-3 fill-dark-blue-400" />{" "}
-              {user.clientSuccessRating}
-            </span>
-            {user.totalProjectsCompleted != null && (
-              <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
-                {user.totalProjectsCompleted} projects
+        {/* Only surfaced once there are enough completed projects for the
+            rating to mean anything — same threshold talent-profile uses, so a
+            talent with no history shows nothing here rather than a bare or
+            zeroed score. */}
+        {(user?.totalProjectsCompleted ?? 0) >= 2 &&
+          user?.clientSuccessRating != null && (
+            <div className="flex items-center gap-x-2">
+              <span className="inline-flex text-dark-blue-400 items-center text-xs leading-[14.52px] font-medium gap-x-1 py-1 px-2 bg-primary-50 rounded">
+                <Star className="size-3 fill-dark-blue-400" />{" "}
+                {user.clientSuccessRating}
               </span>
-            )}
-          </div>
-        )}
+              {user.totalProjectsCompleted != null && (
+                <span className="text-[13px] leading-[15.73px] text-[#122A4B] font-light">
+                  {user.totalProjectsCompleted} projects
+                </span>
+              )}
+            </div>
+          )}
       </div>
 
       {user?.skills && user.skills.length > 0 && (
         <div className="mt-3 pb-5 border-b border-gray-200">
           <h3 className="font-bold text-sm text-dark-blue-400">Skills</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {user.skills.map((s) => (
-              <Badge key={s.id} visual="gray">
-                {s.name}
-              </Badge>
-            ))}
-          </div>
+          <SkillsRow skills={user.skills} username={username} />
         </div>
       )}
 

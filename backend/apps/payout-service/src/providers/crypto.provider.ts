@@ -56,19 +56,54 @@ export class CryptoPayoutProvider {
     }
   }
 
-  // ─── PS-11 §2: Ramp Network Payouts API ─────────────────────
+  // ─── PS-11 §2: Ramp Network payout ──────────────────────────
+  // Ramp Network has no self-serve, publicly documented server-to-server
+  // "send crypto to this address" API (confirmed against their real docs:
+  // docs.rampnetwork.com's REST API v3 reference only covers quotes/asset
+  // listings, never transaction execution — a real payout endpoint would
+  // require a partner agreement via partner@ramp.network). The only real,
+  // documented mechanism for directing crypto to a specific address is
+  // their hosted on-ramp widget with a pre-filled `userAddress` — which
+  // requires a human to complete a checkout (enter a payment method,
+  // confirm) in a browser. That's fundamentally incompatible with this
+  // executor's automated, webhook-driven completion model — there is no
+  // way to "call an API and get money moving" the way the other bridge
+  // providers work.
+  //
+  // Rather than fabricate a fake providerTxId that implies an automated
+  // transfer is in flight (the previous behavior), this builds the real,
+  // verified widget URL a human (ops, or eventually the contractor) must
+  // open and complete, and reports the payout as awaiting that manual
+  // step — an honest reflection of what Ramp actually requires, not a
+  // false "pending" that looks identical to a real in-flight transfer.
   private async initiateRampPayout(
     address: string, network: string, currency: string, amountUsd: number,
   ): Promise<{ providerTxId: string; status: string }> {
-    const apiKey = this.config.get('RAMP_API_KEY');
-    const apiBase = this.config.get('RAMP_API_BASE', 'https://api.demo.ramp.network');
-    if (!apiKey) {
-      this.logger.warn('RAMP_API_KEY not configured — using stub');
+    const hostApiKey = this.config.get('RAMP_API_KEY');
+    const widgetBase = this.config.get('RAMP_WIDGET_BASE', 'https://app.demo.ramp.network');
+    if (!hostApiKey) {
+      this.logger.warn('RAMP_API_KEY not configured — cannot build a Ramp widget URL');
+      throw new PayoutError('Ramp Network is not configured for payouts.',
+        HttpStatus.SERVICE_UNAVAILABLE, 'ERR_RAMP_NOT_CONFIGURED');
     }
-    // Stub — production calls Ramp Payouts API
-    const providerTxId = `ramp_${crypto.randomUUID().slice(0, 8)}`;
-    this.logger.log(`[STUB] Ramp payout initiated: ${providerTxId}`);
-    return { providerTxId, status: 'pending' };
+
+    const params = new URLSearchParams({
+      hostApiKey,
+      hostAppName: 'Marketeq',
+      hostLogoUrl: 'https://marketeqdigital.com/logo.png',
+      userAddress: address,
+      fiatCurrency: 'USD',
+      fiatValue: amountUsd.toFixed(2),
+      defaultFlow: 'ONRAMP',
+    });
+    const widgetUrl = `${widgetBase}/?${params.toString()}`;
+
+    this.logger.log(`Ramp payout requires manual completion — widget URL: ${widgetUrl}`);
+    // providerTxId doubles as the actionable reference here (stored as
+    // providerReference on the payout request) since there is no real
+    // transaction ID until a human completes the widget and Ramp's own
+    // webhook (RELEASE_CREATED) fires with one.
+    return { providerTxId: widgetUrl, status: 'awaiting_manual_completion' };
   }
 
   // ─── PS-11 §3: Transak API ─────────────────────────────────
