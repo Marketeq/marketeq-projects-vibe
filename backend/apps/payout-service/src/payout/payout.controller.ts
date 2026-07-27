@@ -8,6 +8,7 @@ import { MagicLinkService }    from '../magic-link/magic-link.service';
 import { JwtAuthGuard }        from '../guards/jwt-auth.guard';
 import { ValidateAmountDto }   from './dto/validate-amount.dto';
 import { InitiatePayoutDto }   from './dto/initiate-payout.dto';
+import { Public }              from '../decorators/public.decorator';
 
 @Controller('v1/payouts')
 export class PayoutController {
@@ -40,7 +41,12 @@ export class PayoutController {
     return this.payoutService.initiate(req.user.userId, dto, req.user.email);
   }
 
-  // PS-02 (legacy): Magic link verification via token only
+  // PS-02 (legacy): Magic link verification via token only. Must bypass the
+  // app-wide JwtAuthGuard (APP_GUARD in app.module.ts) — a contractor
+  // clicking this link is explicitly not logged in (AC-18.05/18.06: "works
+  // fully logged out, on any device"), so there is no Marketeq auth header
+  // to send. The token itself is the credential.
+  @Public()
   @Get('verify')
   @HttpCode(200)
   async verify(@Query('token') token: string) {
@@ -49,6 +55,7 @@ export class PayoutController {
 
   // PS-14 §5: Magic link verification via token + payoutRequestId
   // NO auth header required — token IS the authentication for this step
+  @Public()
   @Get('verify-email')
   @HttpCode(200)
   async verifyEmail(

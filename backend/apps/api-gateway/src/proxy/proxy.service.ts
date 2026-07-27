@@ -69,7 +69,25 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // Stripe/Ramp webhook signature headers — downstream (payout-service)
+      // verifies authenticity via these, not JWT, so they must survive the
+      // proxy same as the raw body below (main.ts captures req.rawBody for
+      // these exact paths ahead of the global json() parser).
+      ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
+      ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
     }
+
+    // Downstream services (timezone-resolution.service.ts, geo.service.ts's
+    // currency detection) do their own IP-geolocation and need the real
+    // client IP — without this they only ever see the gateway's own
+    // request, which silently breaks that detection with no error anywhere.
+    // Preserve any existing x-forwarded-for chain (CDN/load balancer hops)
+    // and append this gateway's view of the client, same convention as
+    // every other reverse proxy.
+    const existingXff = req.headers['x-forwarded-for']
+    const xffChain = (Array.isArray(existingXff) ? existingXff.join(',') : existingXff) || ''
+    const clientIp = req.ip || req.socket?.remoteAddress || ''
+    headers['x-forwarded-for'] = [xffChain, clientIp].filter(Boolean).join(', ')
 
     // Always forward auth headers so downstream services can validate JWT
     const authHeader = req.headers.authorization as string | undefined
@@ -94,11 +112,16 @@ export class ProxyService {
     const contentType = (req.headers['content-type'] as string) || ''
     const isMultipart = contentType.startsWith('multipart/')
 
+    // main.ts skips the json() parser and captures req.rawBody verbatim for
+    // /v1/webhooks/* — forward those exact bytes, not a re-parsed req.body,
+    // or Stripe's/Ramp's signature check fails on a byte mismatch.
+    const rawBody = (req as any).rawBody as Buffer | undefined
+
     const config: AxiosRequestConfig = {
       method: req.method as any,
       url,
       headers,
-      data: isMultipart ? req : req.body,
+      data: rawBody ?? (isMultipart ? req : req.body),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       // Query params are already included in the URL path from the proxy controller
