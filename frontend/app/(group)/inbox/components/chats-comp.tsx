@@ -1892,7 +1892,13 @@ export function Chats({
             <AvatarFallback>
               {selectedConversation?.isGroup
                 ? (selectedConversation?.group?.name?.[0] ?? "G")
-                : (receiverUser.username?.[0] ?? "")}
+                : (
+                    receiverUser.firstName?.trim() ||
+                    receiverUser.username ||
+                    "U"
+                  )
+                    .charAt(0)
+                    .toUpperCase()}
             </AvatarFallback>
           </Avatar>
 
