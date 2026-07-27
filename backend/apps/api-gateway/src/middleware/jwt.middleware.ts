@@ -61,7 +61,9 @@ const PUBLIC_PATTERNS = [
   // Without this, the gateway 401s before the request ever reaches
   // payout-service's own @Public() route — a separate, gateway-level auth
   // layer that a downstream @Public() decorator has no power over.
-  /^\/v1\/webhooks(?:\/.*)?$/,
+  // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
+  // route under this namespace does not silently make it unauthenticated.
+  /^\/v1\/webhooks\/(?:stripe|ramp)$/,
 ]
 
 function isPublic(path: string): boolean {

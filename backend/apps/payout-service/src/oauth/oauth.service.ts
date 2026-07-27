@@ -88,6 +88,16 @@ export class OAuthService {
     return `${p.authUrl}?${params.toString()}`;
   }
 
+  // Brand-cased provider names for user-facing labels. MethodType values are
+  // uppercase enum keys ('PAYPAL'), so interpolating them directly renders
+  // "PAYPAL (pending authorization)" on the deposit-method card. Mirrors the
+  // same mapping in pause-status.service.ts.
+  private static readonly PROVIDER_LABELS: Record<string, string> = {
+    PAYPAL: 'PayPal',
+    WISE: 'Wise',
+    PAYONEER: 'Payoneer',
+  };
+
   // ─── Initiate OAuth (create method + store state) ─────────────
   async initiateOAuth(contractorId: string, methodType: MethodType): Promise<{ depositMethodId: string; redirectUrl: string; provider: string; expiresAt: string }> {
     const activeCount = await this.methodRepo.count({ where: { contractorId, isActive: true } });
@@ -103,7 +113,7 @@ export class OAuthService {
       contractorId, methodType,
       verificationStatus: VerificationStatus.PENDING,
       isActive: true, isDefault: false,
-      displayLabel: `${methodType} (pending authorization)`,
+      displayLabel: `${OAuthService.PROVIDER_LABELS[methodType] ?? methodType} (pending authorization)`,
     });
 
     const redirectUrl = this.buildAuthUrl(methodType, nonce);

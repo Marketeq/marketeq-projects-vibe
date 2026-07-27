@@ -22,12 +22,21 @@ async function bootstrap() {
   // signed. Capture the raw body here and skip json() entirely for these
   // paths; proxy.service.ts forwards req.rawBody untouched instead of the
   // (nonexistent, for this branch) parsed req.body.
+  const isWebhookPath = (req: Request) =>
+    req.originalUrl.startsWith('/v1/webhooks') || req.originalUrl.startsWith('/api/v1/webhooks')
+
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.originalUrl.startsWith('/v1/webhooks') || req.originalUrl.startsWith('/api/v1/webhooks')) {
+    if (isWebhookPath(req)) {
       const chunks: Buffer[] = []
       req.on('data', (chunk: Buffer) => chunks.push(chunk))
       req.on('end', () => {
         ;(req as any).rawBody = Buffer.concat(chunks)
+        // body-parser skips any request already flagged as parsed. Without
+        // this, a webhook posted as application/x-www-form-urlencoded would
+        // reach urlencoded() below, which then tries to read a stream this
+        // middleware has already drained — the body arrives empty and the
+        // provider signature check fails with no useful error.
+        ;(req as any)._body = true
         next()
       })
       return
@@ -36,7 +45,10 @@ async function bootstrap() {
     // via POST /api/screenshots/confirm. Reverting to 1 MB would break the DTT pipeline.
     json({ limit: '10mb' })(req, res, next)
   })
-  app.use(urlencoded({ limit: '10mb', extended: true }))
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (isWebhookPath(req)) return next()
+    urlencoded({ limit: '10mb', extended: true })(req, res, next)
+  })
   app.use(cookieParser())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
   app.useGlobalFilters(new GlobalExceptionFilter())
