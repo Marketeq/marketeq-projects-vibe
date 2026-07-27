@@ -78,12 +78,29 @@ contractor-facing language is published.
   **Account ownership** Marketeq Inc. (or the applicable legal entity).
                         Not the contractor.
 
-  **Sub-accounts per    None. Contractor balances are tracked as a ledger
-  contractor**          entry in the earnings-service database --- not as
-                        separate Stripe accounts or sub-accounts.
+  **Sub-accounts per    None for custody --- contractor balances are tracked
+  contractor**          as a ledger entry in the earnings-service database,
+                        not as a segregated Stripe sub-account holding
+                        exactly that contractor's funds. A contractor DOES
+                        get a Stripe Connect custom account (acct_...), but
+                        that account is a payout *destination*, not a
+                        custody sub-account --- it holds no balance between
+                        payouts and is never credited until a payout is
+                        actually initiated (see 2.2).
 
-  **Stripe product      Stripe Balance (standard). Not Stripe Treasury,
-  used**                not Stripe Connect separate accounts.
+  **Stripe product      Stripe Balance (standard) for holding earnings
+  used**                pre-payout, revised from Stripe Balance-only.
+                        Payout *execution* now routes through per-contractor
+                        Stripe Connect custom accounts (type: custom,
+                        capabilities: transfers only, no Stripe-hosted
+                        dashboard) so payouts land on a bank account Stripe
+                        has verified via Financial Connections and attached
+                        as that account's external_account --- not a raw,
+                        unverified bank/routing pair. Still not Stripe
+                        Treasury. This is a custody-model revision from the
+                        prior "not Stripe Connect" position and needs the
+                        legal review this document already requires before
+                        any contractor-facing language changes.
 
   **FDIC insurance**    Stripe holds customer funds in FDIC-insured
                         accounts with partner banks. Coverage applies per

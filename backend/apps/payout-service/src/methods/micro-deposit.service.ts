@@ -116,7 +116,7 @@ export class MicroDepositService {
   ): Promise<{ verified: boolean; depositMethodId: string | null }> {
     try {
       await this.stripeProvider.verifyMicrodepositAmounts(
-        verification.oauthState!, dto.amount1Cents, dto.amount2Cents,
+        verification.oauthState!, dto.amount1Cents, dto.amount2Cents, verification.depositMethodId!,
       );
       await this.applySuccess(verification);
       return { verified: true, depositMethodId: verification.depositMethodId };

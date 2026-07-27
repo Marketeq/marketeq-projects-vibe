@@ -34,6 +34,20 @@ account. For banks that do not support the OAuth login path, Stripe
 falls back to its own micro-deposit verification flow --- not Plaid, not
 any third-party outside Stripe.
 
+**Revision --- verification is no longer the end of the flow.** Financial
+Connections previously only produced a read-access FC account reference
+(fca_...) with no path to actually moving payout money. It's now scoped
+through a payout SetupIntent (`flow_directions: ['outbound']`) instead of
+a standalone FC session, so the resulting bank payment method can be
+tokenized and attached as the `external_account` on the contractor's
+Stripe Connect custom account (see PS-20 §2.1) --- that attachment is
+what makes the bank account an actual payout destination. The
+contractor-facing flow is unchanged (same hosted bank-login modal); what
+changed is the Stripe.js calls behind it
+(`collectBankAccountForSetup`/`confirmUsBankAccountSetup` instead of
+`collectFinancialConnectionsAccounts`) and what payout-service does with
+the result server-side.
+
   ---------------------------------------------------------------------------
   **Path**        **How it works**          **Settlement after **When used**
                                             verification**     

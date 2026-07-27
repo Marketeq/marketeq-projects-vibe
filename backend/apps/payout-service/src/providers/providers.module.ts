@@ -9,9 +9,14 @@ import { CryptoPayoutProvider } from './crypto.provider';
 import { TeqCoinProvider }    from './teq-coin.provider';
 import { DepositMethod }      from '../entities/deposit-method.entity';
 import { DepositMethodVerification } from '../entities/deposit-method-verification.entity';
+import { PayoutRequest }      from '../entities/payout-request.entity';
+import { PublishersModule }   from '../publishers/publishers.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DepositMethod, DepositMethodVerification])],
+  imports: [
+    TypeOrmModule.forFeature([DepositMethod, DepositMethodVerification, PayoutRequest]),
+    PublishersModule,
+  ],
   controllers: [StripeWebhookController],
   providers: [StripeProvider, PaypalProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],
   exports: [StripeProvider, PaypalProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],

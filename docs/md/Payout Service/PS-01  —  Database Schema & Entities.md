@@ -306,9 +306,22 @@ PS-01 --- Database Schema & Entities
 | bank                                                                  |
 |                                                                       |
 | stripe_account_id TEXT, \-- Stripe Financial Connections account ID   |
-| (BANK_STRIPE)                                                         |
+| (BANK_STRIPE) --- read/verification access only                       |
 |                                                                       |
-| stripe_bank_account_id TEXT, \-- Stripe bank account object ID        |
+| stripe_bank_account_id TEXT, \-- Stripe external_account (ba_...) id  |
+| attached to stripe_connect_account_id below --- the actual Connect    |
+| payout destination (migration 005)                                   |
+|                                                                       |
+| stripe_connect_account_id TEXT, \-- Stripe Connect custom account     |
+| (acct_...) for this contractor; type: custom, capabilities: transfers |
+| only, no Stripe-hosted dashboard (migration 005)                     |
+|                                                                       |
+| connect_payouts_enabled BOOLEAN NOT NULL DEFAULT false, \-- mirrors   |
+| Stripe account.payouts_enabled via account.updated webhook (migration |
+| 005)                                                                  |
+|                                                                       |
+| connect_requirements_due JSONB, \-- mirrors                          |
+| account.requirements.currently_due (migration 005)                   |
 |                                                                       |
 | \-- PayPal fields                                                     |
 |                                                                       |

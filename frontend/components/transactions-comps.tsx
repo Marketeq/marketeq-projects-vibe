@@ -8,6 +8,7 @@ import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
 import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { UserAPI } from "@/service/http/user"
+import { useAuth } from "@/contexts/auth"
 import { formatDistanceToNowStrict } from "date-fns"
 import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
@@ -788,6 +789,7 @@ const StatCard = ({ label, sublabel, amount, symbol = "$", negative, change, ext
 export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void; onOpenHelp?: () => void }) => {
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
   const [showBanner, setShowBanner] = useState(true)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
   // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
@@ -1098,20 +1100,31 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       if (!initRes.ok) throw new Error('Failed to start Stripe session')
       const { sessionId, clientSecret, mode } = initData
 
-      let linkedAccountId = ''
       if (mode !== 'mock') {
         const stripe = await getStripeJs()
         if (!stripe) throw new Error('Stripe.js failed to load')
-        const result = await stripe.collectFinancialConnectionsAccounts({ clientSecret })
-        if (result.error) throw new Error(result.error.message)
-        linkedAccountId = result.financialConnectionsSession?.accounts?.[0]?.id ?? ''
-        if (!linkedAccountId) throw new Error('No bank account was selected')
+        // Payout-scoped SetupIntent (flow_directions: ['outbound']) now backs
+        // this session instead of a standalone FC session — collectBankAccountForSetup
+        // + confirmUsBankAccountSetup is the Stripe.js pair for that, replacing
+        // collectFinancialConnectionsAccounts(). The account the backend links
+        // is derived server-side from this confirmed SetupIntent, not sent by the client.
+        const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || undefined
+        const collectResult = await stripe.collectBankAccountForSetup({
+          clientSecret,
+          params: {
+            payment_method_type: 'us_bank_account',
+            payment_method_data: { billing_details: { name, email: user?.email } },
+          },
+        })
+        if (collectResult.error) throw new Error(collectResult.error.message)
+        const confirmResult = await stripe.confirmUsBankAccountSetup(clientSecret)
+        if (confirmResult.error) throw new Error(confirmResult.error.message)
       }
 
       const finalRes = await payoutFetch(`/deposit-methods/stripe/finalise`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, linkedAccountId }),
+        body: JSON.stringify({ sessionId }),
       })
       const method = await finalRes.json()
       if (!finalRes.ok) throw new Error('Finalise failed')
