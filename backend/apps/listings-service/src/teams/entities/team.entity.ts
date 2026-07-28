@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('teams_v2')
+@Entity('teams')
 export class Team {
   @PrimaryGeneratedColumn('uuid')
   id: string;
