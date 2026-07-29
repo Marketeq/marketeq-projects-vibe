@@ -392,11 +392,6 @@ const PortfolioCards = ({
   )
 }
 import NextLink from "@/components/next-link"
-import {
-  ReadMoreLess,
-  ReadMoreLessComp,
-  ReadMoreLessRoot,
-} from "@/components/read-more-less"
 import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   ShowMoreLess,
@@ -671,6 +666,62 @@ function LineClampText({
         </Button>
       )}
     </>
+  )
+}
+
+// 2-line clamp for work-experience descriptions. Clamps inline (line-clamp
+// utilities are purged from the baked CSS) and shows Read More / View Less only
+// when the text ACTUALLY overflows 2 lines — measured via ResizeObserver so it's
+// accurate and stays correct on resize (not a flaky measure-on-mount, and not a
+// char-count guess that mis-fires on text that fits within 2 lines).
+function ClampedDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [overflowing, setOverflowing] = useState(false)
+  const ref = useRef<HTMLParagraphElement>(null)
+
+  useEffect(() => {
+    // Only measure while collapsed (clamp applied); when expanded there's no
+    // clamp, so keep the last "overflowing" value to preserve View Less.
+    if (expanded) return
+    const el = ref.current
+    if (!el) return
+    const measure = () =>
+      setOverflowing(el.scrollHeight > el.clientHeight + 1)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [text, expanded])
+
+  return (
+    <div className="mt-3">
+      <p
+        ref={ref}
+        className="text-sm font-extralight text-gray-700 break-words leading-relaxed"
+        style={
+          expanded
+            ? undefined
+            : {
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                overflowWrap: "anywhere",
+              }
+        }
+      >
+        {text}
+      </p>
+      {overflowing && (
+        <button
+          type="button"
+          className="mt-1 text-sm font-semibold text-gray-700 hover:text-gray-900 focus-visible:outline-none"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "View Less" : "...Read More"}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -2751,35 +2802,9 @@ function Default() {
                                                 </div>
 
                                                 {exp.description && (
-                                                  <ReadMoreLessRoot>
-                                                    <ReadMoreLessComp
-                                                      max={52}
-                                                      text={exp.description}
-                                                    >
-                                                      {({
-                                                        readMore,
-                                                        text,
-                                                        toggle,
-                                                      }) => (
-                                                        <>
-                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
-                                                            {text}{" "}
-                                                            <Button
-                                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                              size="sm"
-                                                              variant="link"
-                                                              visual="gray"
-                                                              onClick={toggle}
-                                                            >
-                                                              {readMore
-                                                                ? null
-                                                                : "...Read More"}
-                                                            </Button>
-                                                          </p>
-                                                        </>
-                                                      )}
-                                                    </ReadMoreLessComp>
-                                                  </ReadMoreLessRoot>
+                                                  <ClampedDescription
+                                                    text={exp.description}
+                                                  />
                                                 )}
                                                 {Array.isArray(exp.skills) && exp.skills.length > 0 && (
                                                   <div className="mt-3 flex flex-wrap gap-2">
