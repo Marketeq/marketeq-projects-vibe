@@ -9,7 +9,7 @@ import { AuditService }       from '../audit/audit.service';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
 import { PayoutError }        from '../common/errors/payout.error';
 
-interface TokenResult { accessToken: string; refreshToken: string; expiresAt: Date; }
+interface TokenResult { accessToken: string; refreshToken: string; expiresAt: Date; idToken?: string; }
 interface ProfileResult { email: string; accountIdentifier: string; displayName: string; }
 
 @Injectable()
@@ -45,8 +45,19 @@ export class OAuthService {
 
     this.providerConfig = {
       PAYPAL: {
+        // Both /signin/authorize and /connect were tested — identical token
+        // response shape either way (scope,access_token,token_type,
+        // expires_in,refresh_token,nonce,state — never an id_token), so this
+        // is one product under two front doors, not two distinct flows.
+        // PS-09 §10.1's documented endpoint pair, kept as-is:
         authUrl: `${ppBase}/signin/authorize`,
         tokenUrl: `${ppApi}/v1/oauth2/token`,
+        // Reproducibly 400s ("Unable to fetch details to serve the request")
+        // for real user-consent tokens while working fine with a
+        // client_credentials token against the same endpoint — a PayPal
+        // sandbox-side limitation on this app's Log-in-with-PayPal identity
+        // feature, not something fixable from this code. See the response-
+        // keys diagnostic log in exchangeCode() below.
         profileUrl: `${ppApi}/v1/identity/oauth2/userinfo?schema=paypalv1.1`,
         clientId: this.config.get('PAYPAL_CLIENT_ID', ''),
         clientSecret: this.config.get('PAYPAL_CLIENT_SECRET', ''),
@@ -104,17 +115,24 @@ export class OAuthService {
     if (activeCount >= 5) throw new PayoutError('Maximum 5 active deposit methods allowed.',
       HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_DEPOSIT_METHOD_LIMIT_REACHED');
 
-    const nonce = crypto.randomUUID();
-    await this.redis.set(`state:${nonce}`,
-      JSON.stringify({ contractorId, methodType }),
-      'EX', this.stateTtl);
-
     const method = await this.methodRepo.save({
       contractorId, methodType,
       verificationStatus: VerificationStatus.PENDING,
       isActive: true, isDefault: false,
       displayLabel: `${OAuthService.PROVIDER_LABELS[methodType] ?? methodType} (pending authorization)`,
     });
+
+    const nonce = crypto.randomUUID();
+    // Storing methodId here (not just contractorId/methodType) lets the
+    // callback target this exact row deterministically — without it, two
+    // pending attempts for the same contractor+provider (e.g. a retried
+    // connect after a first attempt failed) are indistinguishable, and the
+    // callback's "most recently created pending row" guess can attach a
+    // completed OAuth grant to the wrong row, leaving the one just
+    // authorized stuck pending forever.
+    await this.redis.set(`state:${nonce}`,
+      JSON.stringify({ contractorId, methodType, methodId: method.id }),
+      'EX', this.stateTtl);
 
     const redirectUrl = this.buildAuthUrl(methodType, nonce);
 
@@ -132,13 +150,14 @@ export class OAuthService {
   // ─── Handle OAuth Callback ────────────────────────────────────
   async handleCallback(provider: string, code: string, state: string): Promise<{ methodId: string; success: boolean }> {
     // 1. Validate state — check Redis first, then DB
-    let contractorId: string, methodType: string, existingMethodId: string | undefined;
+    let contractorId: string, methodType: string, existingMethodId: string | undefined, isReauth = false;
     const raw = await this.redis.get(`state:${state}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       contractorId = parsed.contractorId;
       methodType = parsed.methodType;
       existingMethodId = parsed.methodId;
+      isReauth = !!parsed.isReauth;
       await this.redis.del(`state:${state}`);
     } else {
       // Fallback: check deposit_method_verification table
@@ -155,46 +174,81 @@ export class OAuthService {
       existingMethodId = verifyRow[0].method_id;
     }
 
-    // 2. Exchange code for tokens (stubbed for dev — real impl calls provider)
-    const tokens = await this.exchangeCode(provider, code);
+    // Steps 2-3 can fail after initiateOAuth already created the pending
+    // deposit_methods row (bad code, provider outage, identity-lookup
+    // rejection). Without cleanup that row sits forever as an orphaned
+    // "pending" entry — still counting against the 5-method cap and
+    // blocking a legitimate retry — mirroring the same fix already applied
+    // to the bank-verification path in methods.service.ts.
+    try {
+      // 2. Exchange code for tokens
+      const tokens = await this.exchangeCode(provider, code);
 
-    // 3. Fetch profile (stubbed for dev)
-    const profile = await this.fetchProfile(provider, tokens.accessToken);
+      // 3. Fetch profile — prefer decoding the id_token PayPal returns for any
+      // openid-scoped grant (no extra network call, sidesteps the sandbox
+      // userinfo 400); fall back to the userinfo call for providers/grants
+      // that don't return one (WISE, PAYONEER, or PayPal without an id_token).
+      const profile = (tokens.idToken && this.decodeIdToken(tokens.idToken))
+        || await this.fetchProfile(provider, tokens.accessToken);
 
-    // 4. Encrypt tokens
-    const encAccess = this.encrypt(tokens.accessToken);
-    const encRefresh = this.encrypt(tokens.refreshToken);
+      // 4. Encrypt tokens
+      const encAccess = this.encrypt(tokens.accessToken);
+      const encRefresh = this.encrypt(tokens.refreshToken);
 
-    // 5. Find method — either existing (reauth) or pending new
-    const method = existingMethodId
-      ? await this.methodRepo.findOne({ where: { id: existingMethodId, contractorId } })
-      : await this.methodRepo.findOne({
-          where: { contractorId, methodType: methodType as MethodType, verificationStatus: VerificationStatus.PENDING },
-          order: { createdAt: 'DESC' },
-        });
+      // 5. Find method — methodId is always present now (initiateOAuth
+      // stores its own row's id, not just contractorId+methodType), so this
+      // never has to guess among multiple pending rows for the same
+      // contractor+provider.
+      const method = existingMethodId
+        ? await this.methodRepo.findOne({ where: { id: existingMethodId, contractorId } })
+        : await this.methodRepo.findOne({
+            where: { contractorId, methodType: methodType as MethodType, verificationStatus: VerificationStatus.PENDING },
+            order: { createdAt: 'DESC' },
+          });
 
-    if (!method) throw new PayoutError('No pending method found.',
-      HttpStatus.NOT_FOUND, 'ERR_DEPOSIT_METHOD_NOT_FOUND');
+      if (!method) throw new PayoutError('No pending method found.',
+        HttpStatus.NOT_FOUND, 'ERR_DEPOSIT_METHOD_NOT_FOUND');
 
-    // 6. Update method
-    await this.methodRepo.update(method.id, {
-      oauthAccessToken: encAccess,
-      oauthRefreshToken: encRefresh,
-      oauthTokenExpiresAt: tokens.expiresAt,
-      accountEmail: profile.email,
-      accountIdentifier: profile.accountIdentifier,
-      verificationStatus: VerificationStatus.VERIFIED,
-      displayLabel: `${provider} (${profile.email})`,
-      reauthRequired: false,
-    } as any);
+      // Same account already linked (e.g. a contractor re-connecting the
+      // same PayPal email as an existing method, or a duplicate reauth) —
+      // mirrors the ERR_DEPOSIT_METHOD_DUPLICATE check already used for
+      // bank accounts in methods.service.ts, which the frontend already
+      // maps to "This account is already linked."
+      const existingWithEmail = await this.methodRepo.findOne({
+        where: { contractorId, methodType: methodType as MethodType, accountEmail: profile.email, isActive: true },
+      });
+      if (existingWithEmail && existingWithEmail.id !== method.id) {
+        throw new PayoutError('This account is already linked.',
+          HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_DUPLICATE');
+      }
 
-    await this.auditService.log({
-      contractorId, actorType: 'contractor', actorId: contractorId,
-      action: existingMethodId ? 'method.reauthorized' : 'method.verified',
-      metadata: { methodId: method.id, provider, email: profile.email },
-    });
+      // 6. Update method
+      await this.methodRepo.update(method.id, {
+        oauthAccessToken: encAccess,
+        oauthRefreshToken: encRefresh,
+        oauthTokenExpiresAt: tokens.expiresAt,
+        accountEmail: profile.email,
+        accountIdentifier: profile.accountIdentifier,
+        verificationStatus: VerificationStatus.VERIFIED,
+        displayLabel: `${provider} (${profile.email})`,
+        reauthRequired: false,
+      } as any);
 
-    return { methodId: method.id, success: true };
+      await this.auditService.log({
+        contractorId, actorType: 'contractor', actorId: contractorId,
+        action: isReauth ? 'method.reauthorized' : 'method.verified',
+        metadata: { methodId: method.id, provider, email: profile.email },
+      });
+
+      return { methodId: method.id, success: true };
+    } catch (err) {
+      // Only clean up on a fresh connect — a reauth failure must never
+      // delete the contractor's existing, previously-working method.
+      if (!isReauth && existingMethodId) {
+        await this.methodRepo.delete({ id: existingMethodId, verificationStatus: VerificationStatus.PENDING } as any);
+      }
+      throw err;
+    }
   }
 
   // ─── Reauthorize existing method ──────────────────────────────
@@ -210,7 +264,7 @@ export class OAuthService {
 
     const nonce = crypto.randomUUID();
     await this.redis.set(`state:${nonce}`,
-      JSON.stringify({ contractorId, methodType: method.methodType, methodId }),
+      JSON.stringify({ contractorId, methodType: method.methodType, methodId, isReauth: true }),
       'EX', this.stateTtl);
 
     return { redirectUrl: this.buildAuthUrl(method.methodType, nonce) };
@@ -285,11 +339,37 @@ export class OAuthService {
       throw new PayoutError('Unable to complete authorization with the provider.',
         HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_TOKEN_EXCHANGE_FAILED');
     }
+    this.logger.warn(`[${provider}] token exchange response keys: ${Object.keys(data).join(',')}`);
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token ?? '',
       expiresAt: new Date(Date.now() + (data.expires_in ?? 3600) * 1000),
+      idToken: data.id_token,
     };
+  }
+
+  // Decodes the id_token PayPal returns alongside the access token for any
+  // `openid`-scoped grant, without a separate network call. Added because
+  // PayPal's sandbox /v1/identity/oauth2/userinfo endpoint reliably 400s
+  // ("Unable to fetch details to serve the request") for real user-consent
+  // tokens minted through "Log in with PayPal" — a long-standing, widely
+  // reported PayPal sandbox quirk, not something fixable on our side. The
+  // id_token is a JWT signed by PayPal and delivered directly over the
+  // server-to-server TLS token exchange, so decoding its payload without a
+  // second signature-verification round trip is safe here.
+  private decodeIdToken(idToken: string): ProfileResult | null {
+    try {
+      const payloadB64 = idToken.split('.')[1];
+      const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+      if (!payload.email) return null;
+      return {
+        email: payload.email,
+        accountIdentifier: payload.payer_id ?? payload.sub ?? payload.email,
+        displayName: payload.name ?? payload.email,
+      };
+    } catch {
+      return null;
+    }
   }
 
   // ─── Fetch the connected account's profile ─────────────────────

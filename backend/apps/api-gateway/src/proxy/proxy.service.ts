@@ -128,6 +128,12 @@ export class ProxyService {
       // Do NOT also set params here — that would duplicate them
       validateStatus: () => true,
       responseType: 'stream',
+      // Without this, axios' default maxRedirects (21) silently follows any
+      // 3xx a downstream service returns (e.g. the OAuth callback's redirect
+      // to the frontend) server-side, fetches the final page itself, and
+      // streams THAT back with a 200 — the browser never sees the redirect
+      // at all. Relay 3xx + Location as-is and let the browser navigate.
+      maxRedirects: 0,
     }
 
     try {
