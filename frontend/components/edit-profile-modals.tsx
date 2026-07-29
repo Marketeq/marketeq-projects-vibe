@@ -280,6 +280,12 @@ const JOB_TITLE_WORDS = [
   "avp",
 ]
 
+// Capitalize the first letter of each word, preserving numbers, punctuation and
+// existing casing (so "3M", "AT&T", "eBay" stay intact).
+function capitalizeCompanyName(value?: string): string {
+  return (value ?? "").replace(/(^|\s)([a-z])/g, (_m, lead, ch) => lead + ch.toUpperCase())
+}
+
 function formatJobTitle(raw: string): string {
   let title = raw.trim()
   if (!title) return title
@@ -2573,6 +2579,12 @@ export const WorkExperienceDialog = ({
                       id="employer"
                       placeholder="Acme Inc."
                       {...register("employer")}
+                      onBlur={(e) => {
+                        setValue(
+                          "employer",
+                          capitalizeCompanyName(e.target.value)
+                        )
+                      }}
                       isInvalid={hookFormHasError({
                         errors,
                         name: "employer",
