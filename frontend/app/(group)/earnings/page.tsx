@@ -19,6 +19,8 @@ import {
   type EarningsFilters,
   HelpSupportDialog,
   OverviewTab,
+  PAYOUT_STATUS_LABELS,
+  type PayoutDepositStatus,
   PayoutScheduleDialog,
   PayoutsTab,
 } from "@/components/transactions-comps"
@@ -47,6 +49,7 @@ export default function TransactionsPage() {
   // only via navigating away to /time-tracking.
   const [showLogTime, setShowLogTime] = useState(false)
   const [activeContracts, setActiveContracts] = useState<Array<{ id: string; title: string }>>([])
+  const [depositStatus, setDepositStatus] = useState<PayoutDepositStatus | null>(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -207,13 +210,12 @@ export default function TransactionsPage() {
                         visual="gray"
                         size="sm"
                         leftIcon={<Lightbulb01 className="size-4" />}
-                        onClick={() =>
-                          toast({
-                            title: "Deposit Status",
-                            description:
-                              "Deposits typically arrive within 2-3 business days.",
-                          })
-                        }
+                        onClick={() => {
+                          const description = depositStatus?.status
+                            ? `Your $${depositStatus.amountUsd} payout is currently ${(PAYOUT_STATUS_LABELS[depositStatus.status] ?? depositStatus.status).toLowerCase()}.${depositStatus.estimatedArrivalAt ? ` Estimated arrival: ${new Date(depositStatus.estimatedArrivalAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.` : ""}`
+                            : "No payout is currently in progress. Once initiated, deposits typically take 1-3 business days to arrive."
+                          toast({ title: "Deposit Status", description })
+                        }}
                       >
                         Where Is My Deposit?
                       </Button>
@@ -285,7 +287,7 @@ export default function TransactionsPage() {
               </TabsContent>
 
               <TabsContent value="payouts" className="mt-5">
-                <PayoutsTab key={overviewRefreshKey} />
+                <PayoutsTab key={overviewRefreshKey} onDepositStatusChange={setDepositStatus} />
               </TabsContent>
             </Tabs>
           </div>

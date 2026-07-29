@@ -446,8 +446,111 @@ export class PayoutService {
     return { status: 'cancelled' };
   }
 
+  // ─── Figma "Total Payouts This Month" stat card ────────────────
+  // Sums completed payouts by completedAt within the current calendar month
+  // (UTC), plus the prior month for the "+X% from last month" comparison —
+  // mirrors the pattern earnings-service uses for its own summary cards.
+  async getMonthlySummary(contractorId: string) {
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+
+    const sumBetween = async (from: Date, to: Date) => {
+      const row = await this.payoutRepo.createQueryBuilder('p')
+        .select('COALESCE(SUM(p.netAmountUsd), 0)', 'total')
+        .where('p.contractorId = :contractorId', { contractorId })
+        .andWhere('p.status = :status', { status: PayoutStatus.COMPLETED })
+        .andWhere('p.completedAt >= :from', { from })
+        .andWhere('p.completedAt < :to', { to })
+        .getRawOne();
+      return parseFloat(row?.total ?? '0');
+    };
+
+    const thisMonthTotal = await sumBetween(monthStart, now);
+    const lastMonthTotal = await sumBetween(lastMonthStart, monthStart);
+
+    let changePercent: number | null = null;
+    if (lastMonthTotal > 0) {
+      changePercent = Math.round(((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 1000) / 10;
+    }
+
+    // Figma "Lifetime Payouts" card's "Since <date>" sublabel — the earliest
+    // completed payout, i.e. the start of this contractor's real payout history.
+    const sinceRow = await this.payoutRepo.createQueryBuilder('p')
+      .select('MIN(p.completedAt)', 'since')
+      .where('p.contractorId = :contractorId', { contractorId })
+      .andWhere('p.status = :status', { status: PayoutStatus.COMPLETED })
+      .getRawOne();
+
+    // Figma "Next Payout" card's blue status label (e.g. "Processing...") —
+    // reflects whatever payout request is actually in flight right now, not a
+    // fabricated value. Null when nothing has been initiated for the next cycle yet.
+    const NON_TERMINAL = [
+      PayoutStatus.PENDING_VERIFICATION, PayoutStatus.AWAITING_EDD,
+      PayoutStatus.QUEUED, PayoutStatus.PROCESSING,
+    ];
+    const inFlight = await this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId })
+      .andWhere('p.status IN (:...statuses)', { statuses: NON_TERMINAL })
+      .orderBy('p.createdAt', 'DESC')
+      .getOne();
+
+    return {
+      thisMonthTotalUsd: thisMonthTotal.toFixed(2),
+      lastMonthTotalUsd: lastMonthTotal.toFixed(2),
+      changePercent,
+      changeDirection: changePercent === null ? 'unchanged' : changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'unchanged',
+      sinceDate: sinceRow?.since ? new Date(sinceRow.since).toISOString() : null,
+      nextPayoutStatus: inFlight?.status ?? null,
+      // "Where Is My Deposit?" toast (Payouts page header) — real ETA for
+      // whatever payout is actually in flight, instead of a static disclaimer.
+      nextPayoutEstimatedArrival: inFlight ? this.estimateArrival(inFlight) : null,
+      nextPayoutAmountUsd: inFlight ? parseFloat(inFlight.netAmountUsd).toFixed(2) : null,
+    };
+  }
+
+  // Figma "All Time" date-range filter — resolves against p.createdAt (the
+  // "Initiated on" column), same field the table itself is sorted by.
+  private resolvePayoutDateRange(dateRange?: string): { from: Date | null; to: Date | null } {
+    if (!dateRange || dateRange === 'all_time') return { from: null, to: null };
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    switch (dateRange) {
+      case 'today':
+        return { from: todayStart, to: null };
+      case 'yesterday': {
+        const y = new Date(todayStart); y.setUTCDate(y.getUTCDate() - 1);
+        return { from: y, to: todayStart };
+      }
+      case 'this_week': {
+        const s = new Date(todayStart); s.setUTCDate(s.getUTCDate() - ((s.getUTCDay() + 6) % 7));
+        return { from: s, to: null };
+      }
+      case 'last_week': {
+        const s = new Date(todayStart); s.setUTCDate(s.getUTCDate() - ((s.getUTCDay() + 6) % 7));
+        const lastStart = new Date(s); lastStart.setUTCDate(lastStart.getUTCDate() - 7);
+        return { from: lastStart, to: s };
+      }
+      case 'this_month':
+        return { from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), to: null };
+      case 'last_month': {
+        const lastStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        const thisStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        return { from: lastStart, to: thisStart };
+      }
+      case 'this_year':
+        return { from: new Date(Date.UTC(now.getUTCFullYear(), 0, 1)), to: null };
+      default:
+        return { from: null, to: null };
+    }
+  }
+
   // ─── US-27: GET /v1/payouts — paginated history list ──────────
-  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string, search?: string) {
+  async listPayouts(
+    contractorId: string, page: number, pageSize: number, status?: string, search?: string,
+    dateRange?: string, depositMethodId?: string,
+  ) {
     const clampedSize = Math.min(Math.max(pageSize, 1), 50);
     const clampedPage = Math.max(page, 1);
 
@@ -460,6 +563,13 @@ export class PayoutService {
     if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
       qb.andWhere('p.status = :status', { status });
     }
+
+    const { from, to } = this.resolvePayoutDateRange(dateRange);
+    if (from) qb.andWhere('p.createdAt >= :from', { from });
+    if (to) qb.andWhere('p.createdAt < :to', { to });
+
+    // Figma "All Accounts" filter — restrict to a single deposit method.
+    if (depositMethodId) qb.andWhere('p.depositMethodId = :depositMethodId', { depositMethodId });
 
     // Figma "Find transactions" search on the Payouts tab — matches against
     // the external account label (e.g. "Chase Bank"), same field toHistoryItem
@@ -512,6 +622,42 @@ export class PayoutService {
     };
   }
 
+  // Rail-typical settlement windows, in business days, used only to project
+  // an "Est. Arrival" for payouts still in flight — never shown once a payout
+  // reaches a terminal state (completed/failed/cancelled use their real timestamp
+  // or nothing, per AC-28.04's "never fabricate data" rule).
+  private static readonly ARRIVAL_BUSINESS_DAYS: Partial<Record<MethodType, number>> = {
+    [MethodType.CRYPTO]: 0,
+    [MethodType.TEQ_COIN]: 0,
+    [MethodType.MARKETEQ_DEBIT_CARD]: 1,
+    [MethodType.BANK_STRIPE]: 2,
+    [MethodType.PAYPAL]: 1,
+    [MethodType.WISE]: 2,
+    [MethodType.PAYONEER]: 2,
+    [MethodType.BANK_MANUAL]: 3,
+  };
+
+  private addBusinessDays(from: Date, days: number): Date {
+    const d = new Date(from);
+    let remaining = days;
+    while (remaining > 0) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      const dow = d.getUTCDay();
+      if (dow !== 0 && dow !== 6) remaining--;
+    }
+    return d;
+  }
+
+  private estimateArrival(r: PayoutRequest): string | null {
+    const TERMINAL = new Set([PayoutStatus.COMPLETED, PayoutStatus.FAILED, PayoutStatus.CANCELLED]);
+    if (TERMINAL.has(r.status)) return null;
+    const methodType = r.depositMethod?.methodType;
+    if (!methodType) return null;
+    const days = PayoutService.ARRIVAL_BUSINESS_DAYS[methodType] ?? 3;
+    const from = r.processingAt ?? r.queuedAt ?? r.createdAt;
+    return this.addBusinessDays(from, days).toISOString();
+  }
+
   private toHistoryItem(r: PayoutRequest) {
     return {
       id: r.id,
@@ -531,6 +677,7 @@ export class PayoutService {
       methodLabel: r.depositMethod?.displayLabel ?? r.depositMethod?.nickname ?? null,
       createdAt: r.createdAt.toISOString(),
       settledAt: r.completedAt?.toISOString() ?? null,
+      estimatedArrivalAt: this.estimateArrival(r),
     };
   }
 

@@ -99,8 +99,24 @@ export class PayoutController {
   @UseGuards(JwtAuthGuard)
   @Get()
   @HttpCode(200)
-  async list(@Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('status') status?: string, @Query('search') search?: string) {
-    return this.payoutService.listPayouts(req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20, status, search);
+  async list(
+    @Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string, @Query('search') search?: string,
+    @Query('dateRange') dateRange?: string, @Query('depositMethodId') depositMethodId?: string,
+  ) {
+    return this.payoutService.listPayouts(
+      req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20,
+      status, search, dateRange, depositMethodId,
+    );
+  }
+
+  // Figma "Total Payouts This Month" stat card — declared before ':id' below
+  // so the literal 'summary' segment is never swallowed by the :id param route.
+  @UseGuards(JwtAuthGuard)
+  @Get('summary')
+  @HttpCode(200)
+  async summary(@Request() req: any) {
+    return this.payoutService.getMonthlySummary(req.user.userId);
   }
 
   // US-28: full detail for a single payout request

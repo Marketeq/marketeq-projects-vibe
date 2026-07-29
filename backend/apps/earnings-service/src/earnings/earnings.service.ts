@@ -37,10 +37,11 @@ export class EarningsService {
       qb.andWhere('ec.entryType = :et', { et: dbType });
     }
     if (q.status === 'failed') qb.andWhere('ec.status = :rev', { rev: 'reversed' });
+    if (q.status === 'paid') qb.andWhere('ec.status = :pd', { pd: 'paid' });
     if (q.search && q.search.length >= 2) {
       const term = `%${q.search.toLowerCase()}%`;
       qb.leftJoin(ContractLabelCache,'clcs','clcs.contractId = ec.contractId')
-        .andWhere('(LOWER(clcs.projectName) LIKE :t OR LOWER(clcs.clientDisplayName) LIKE :t)',{ t: term });
+        .andWhere('(LOWER(clcs.projectName) LIKE :t OR LOWER(clcs.clientDisplayName) LIKE :t OR LOWER(ec.taskName) LIKE :t)',{ t: term });
     } else if (q.search && q.search.length < 2) {
       throw new BadRequestException('Search term must be at least 2 characters');
     }
@@ -76,6 +77,14 @@ export class EarningsService {
         rawQb.andWhere('ec.entry_type = :et', { et: dbType });
       }
       if (q.status === 'failed') rawQb.andWhere('ec.status = :rev', { rev: 'reversed' });
+      if (q.status === 'paid') rawQb.andWhere('ec.status = :pd', { pd: 'paid' });
+      if (q.search && q.search.length >= 2) {
+        const term = `%${q.search.toLowerCase()}%`;
+        rawQb.leftJoin(ContractLabelCache,'clcs','clcs.contract_id = ec.contract_id')
+          .andWhere('(LOWER(clcs.project_name) LIKE :t OR LOWER(clcs.client_display_name) LIKE :t OR LOWER(ec.task_name) LIKE :t)',{ t: term });
+      } else if (q.search && q.search.length < 2) {
+        throw new BadRequestException('Search term must be at least 2 characters');
+      }
       rawQb.groupBy(truncFn).addGroupBy('ec.contract_id').addGroupBy('ec.status').addGroupBy('ec.entry_type')
         .orderBy('period', 'DESC')
         .offset((page-1)*limit).limit(limit);
@@ -84,11 +93,23 @@ export class EarningsService {
 
       // Count distinct groups
       const countQb = this.earningsRepo.createQueryBuilder('ec')
-        .select(`COUNT(DISTINCT (${truncFn}, ec.contract_id))`, 'cnt')
+        .select(`COUNT(DISTINCT (${truncFn}, ec.contract_id, ec.status, ec.entry_type))`, 'cnt')
         .where('ec.contractor_id = :cid', { cid: contractorId });
       if (startDate) countQb.andWhere('ec.work_start_at >= :s', { s: startDate });
       if (endDate) countQb.andWhere('ec.work_start_at <= :e', { e: endDate + 'T23:59:59Z' });
       if (q.status !== 'failed') countQb.andWhere('ec.status != :rev', { rev: 'reversed' });
+      if (q.status === 'failed') countQb.andWhere('ec.status = :rev', { rev: 'reversed' });
+      if (q.status === 'paid') countQb.andWhere('ec.status = :pd', { pd: 'paid' });
+      if (q.projectId) countQb.andWhere('ec.project_id = :pid', { pid: q.projectId });
+      if (q.entryType) {
+        const dbType = q.entryType === 'automated' ? 'screenshot' : 'manual';
+        countQb.andWhere('ec.entry_type = :et', { et: dbType });
+      }
+      if (q.search && q.search.length >= 2) {
+        const term = `%${q.search.toLowerCase()}%`;
+        countQb.leftJoin(ContractLabelCache,'clcs','clcs.contract_id = ec.contract_id')
+          .andWhere('(LOWER(clcs.project_name) LIKE :t OR LOWER(clcs.client_display_name) LIKE :t OR LOWER(ec.task_name) LIKE :t)',{ t: term });
+      }
       const countResult = await countQb.getRawOne();
       const total = parseInt(countResult?.cnt ?? '0', 10);
 
@@ -102,7 +123,7 @@ export class EarningsService {
         const net = parseFloat(r.totalNet ?? '0');
         const periodStart = new Date(r.periodStart);
         return {
-          id: `${r.period}-${r.contractId}`,
+          id: `${r.period}-${r.contractId}-${r.status}-${r.entryType}`,
           date: null,
           weekRange: view === 'weekly' ? this.fmtWeek(periodStart) : null,
           month: view === 'monthly' ? this.fmtMonth(periodStart) : null,
@@ -279,7 +300,7 @@ export class EarningsService {
       .select('COALESCE(SUM(CAST(ec.netAmountUsd AS numeric)), 0)', 'ytd')
       .addSelect('MAX(ec.createdAt)', 'lastEarning')
       .where('ec.contractorId = :uid', { uid: userId })
-      .andWhere('ec.status = :s', { s: 'confirmed' })
+      .andWhere('ec.status != :rev', { rev: 'reversed' })
       .andWhere('ec.workStartAt >= :from', { from })
       .andWhere('ec.workStartAt <= :to', { to })
       .getRawOne();
@@ -328,7 +349,7 @@ export class EarningsService {
     const feeRow = await this.earningsRepo.createQueryBuilder('ec')
       .select('ec.grossAmount', 'gross').addSelect('ec.feeAmount', 'fee')
       .where('ec.contractorId = :id', { id: contractorId })
-      .andWhere('ec.status = :s', { s: 'confirmed' })
+      .andWhere('ec.status != :rev', { rev: 'reversed' })
       .orderBy('ec.workStartAt', 'DESC').limit(1).getRawOne();
     return feeRow && parseFloat(feeRow.gross) > 0
       ? ((parseFloat(feeRow.fee) / parseFloat(feeRow.gross)) * 100).toFixed(1) : '20.0';
@@ -364,7 +385,7 @@ export class EarningsService {
       .select('COALESCE(SUM(ec.netAmountUsd),0)','totalUsd')
       .addSelect('COALESCE(SUM(ec.durationMinutes),0)','durationMinutes')
       .where('ec.contractorId = :cid',{cid:contractorId})
-      .andWhere('ec.status = :status',{status:'confirmed'});
+      .andWhere('ec.status != :rev',{rev:'reversed'});
     if (from) qb.andWhere('ec.workStartAt >= :from',{from});
     if (to) qb.andWhere('ec.workStartAt < :to',{to});
     const r = await qb.getRawOne();
