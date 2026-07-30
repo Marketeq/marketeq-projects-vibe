@@ -96,16 +96,13 @@ export const ShowMoreLessComp = ({
   const validChildren = getValidChildren(children)
   const extra = validChildren.length > max
   const { isShowing } = useShowMoreLessRootContext()
-  const isFirst = useFirstMountState({
-    shouldUpdate: () => isShowing,
-  })
 
   return (
     <>
       {extra
-        ? isFirst
-          ? validChildren.slice(0, max)
-          : validChildren
+        ? isShowing
+          ? validChildren
+          : validChildren.slice(0, max)
         : validChildren}
     </>
   )

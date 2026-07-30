@@ -1007,6 +1007,40 @@ function formatJobTitle(value: string): string {
     .join(" ")
 }
 
+// Capitalize the first letter of each word, preserving numbers, punctuation and
+// existing casing (so "3M", "AT&T", "eBay" stay intact). A word that already
+// contains an uppercase letter is left alone — otherwise deliberate brand casing
+// like "eBay"/"iPhone" would be flattened to "EBay"/"IPhone".
+function capitalizeCompanyName(value?: string): string {
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+}
+
+// Real elapsed duration between two {month(1-12), year} points, LinkedIn-style
+// ("5 yrs 2 mos", "1 yr", "3 mos"). Inclusive of both endpoints.
+function formatExperienceDuration(
+  start?: { month?: number; year?: number },
+  end?: { month?: number; year?: number },
+  currentlyWorkHere?: boolean
+): string {
+  if (!start?.month || !start?.year) return ""
+  const now = new Date()
+  const endYear = currentlyWorkHere ? now.getFullYear() : end?.year
+  const endMonth = currentlyWorkHere ? now.getMonth() + 1 : end?.month
+  if (!endYear || !endMonth) return ""
+  let totalMonths = (endYear - start.year) * 12 + (endMonth - start.month) + 1
+  if (totalMonths < 1) totalMonths = 1
+  const yrs = Math.floor(totalMonths / 12)
+  const mos = totalMonths % 12
+  const parts: string[] = []
+  if (yrs > 0) parts.push(`${yrs} yr${yrs > 1 ? "s" : ""}`)
+  if (mos > 0) parts.push(`${mos} mo${mos > 1 ? "s" : ""}`)
+  return parts.join(" ")
+}
+
 const moreInfoFormSchema = z
   .object({
     jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
@@ -2082,7 +2116,7 @@ const SkillsDialog = ({
       if (!res.ok) return
       const data = await res.json()
       const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
+      setFilteredSkills(entries.map((e) => ({ id: e.id ?? e.label, name: e.label })))
     } catch {}
   }, [])
 
@@ -2310,7 +2344,10 @@ const SkillsDialog = ({
               >
                 <div className="mt-3 flex gap-3 flex-wrap pr-1">
                   {skills?.map((skill) => (
-                    <Badge key={skill.id} visual="primary">
+                    <Badge
+                      key={`${skill.id}-${skill.name}`}
+                      visual="primary"
+                    >
                       {skill.name}
                       <button
                         type="button"
@@ -2318,7 +2355,7 @@ const SkillsDialog = ({
                         onClick={() => {
                           setValue(
                             "skills",
-                            skills.filter((s) => s.id !== skill.id)
+                            skills.filter((s) => s.name !== skill.name)
                           )
                           trigger()
                         }}
@@ -2584,7 +2621,7 @@ const WorkExperienceDialog = ({
       if (!res.ok) return
       const data = await res.json()
       const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
+      setFilteredSkills(entries.map((e) => ({ id: e.id ?? e.label, name: e.label })))
     } catch {}
   }, [])
 
@@ -2915,6 +2952,12 @@ const WorkExperienceDialog = ({
                             id="employer"
                             placeholder="Acme Inc."
                             {...register("employer")}
+                            onBlur={(e) => {
+                              setValue(
+                                "employer",
+                                capitalizeCompanyName(e.target.value)
+                              )
+                            }}
                             isInvalid={hookFormHasError({
                               errors,
                               name: "employer",
@@ -3348,7 +3391,10 @@ const WorkExperienceDialog = ({
 
                       <div className="mt-3 flex gap-3 flex-wrap">
                         {skillsField?.map((skill) => (
-                          <Badge key={skill.id} visual="primary">
+                          <Badge
+                            key={`${skill.id}-${skill.name}`}
+                            visual="primary"
+                          >
                             {skill.name}
                             <button
                               type="button"
@@ -3356,7 +3402,9 @@ const WorkExperienceDialog = ({
                               onClick={() => {
                                 setValue(
                                   "skills",
-                                  skillsField.filter((s) => s.id !== skill.id)
+                                  skillsField.filter(
+                                    (s) => s.name !== skill.name
+                                  )
                                 )
                                 trigger("skills")
                               }}
@@ -5054,7 +5102,7 @@ const WorkExperienceCard = ({
 
           <div className="inline-flex items-center gap-x-2">
             <IconButton
-              className="text-gray-400"
+              className="text-gray-400 rounded-full"
               size="md"
               visual="gray"
               variant="ghost"
@@ -5067,7 +5115,7 @@ const WorkExperienceCard = ({
             <Dialog>
               <DialogTrigger asChild>
                 <IconButton
-                  className="text-gray-400"
+                  className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                   size="md"
                   visual="gray"
                   variant="ghost"
@@ -5106,7 +5154,7 @@ const WorkExperienceCard = ({
         </div>
         <div className="mt-1.5">
           <span className="text-[13px] leading-none text-dark-blue-400">
-            {employer}
+            {capitalizeCompanyName(employer)}
           </span>
         </div>
         <div className="mt-1.5 items-center flex gap-x-1.5">
@@ -5122,10 +5170,18 @@ const WorkExperienceCard = ({
               </>
             )}
           </span>
-          <span className="inline-block shrink-0 size-1 rounded-full bg-gray-300" />
-          <span className="text-[12px] leading-none font-semibold text-dark-blue-400">
-            5 yrs 2 mos
-          </span>
+          {formatExperienceDuration(startDate, endDate, currentlyWorkHere) && (
+            <>
+              <span className="inline-block shrink-0 size-1 rounded-full bg-gray-300" />
+              <span className="text-[12px] leading-none font-semibold text-dark-blue-400">
+                {formatExperienceDuration(
+                  startDate,
+                  endDate,
+                  currentlyWorkHere
+                )}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="mt-3 min-w-0 overflow-hidden">
@@ -5136,7 +5192,11 @@ const WorkExperienceCard = ({
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {skills?.map((skill) => (
-            <Badge key={skill.id} visual="gray" className="max-w-full break-all">
+            <Badge
+              key={`${skill.id}-${skill.name}`}
+              visual="gray"
+              className="max-w-full break-all"
+            >
               {skill.name}
             </Badge>
           ))}
@@ -5238,7 +5298,7 @@ const EducationCard = ({
 
           <div className="inline-flex items-center gap-x-2">
             <IconButton
-              className="text-gray-400"
+              className="text-gray-400 rounded-full"
               size="md"
               visual="gray"
               variant="ghost"
@@ -5251,7 +5311,7 @@ const EducationCard = ({
             <Dialog>
               <DialogTrigger asChild>
                 <IconButton
-                  className="text-gray-400"
+                  className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                   size="md"
                   visual="gray"
                   variant="ghost"

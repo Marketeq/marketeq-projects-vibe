@@ -13,6 +13,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
+import { resolve4, resolveMx } from 'dns/promises';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -99,6 +100,11 @@ type RateLimitBucket = {
 
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
+  // Hard ceiling on the signup-time domain check. Node's resolver retries
+  // internally and can stall for many seconds, and this sits in the
+  // synchronous registration path.
+  private static readonly DNS_LOOKUP_TIMEOUT_MS = 3000;
+
   private readonly logger = new Logger(AuthService.name);
   private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
   private readonly passwordResetRateLimits = new Map<string, RateLimitBucket>();
@@ -161,6 +167,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -215,6 +222,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -274,6 +282,78 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { available: !existingUser };
+  }
+
+  // Format validation (@IsEmail) only checks shape, not whether the domain
+  // can actually receive mail — catches typos like "gmial.con" or made-up
+  // domains at sign-up time instead of a verification email silently
+  // going nowhere.
+  //
+  // Deliberately FAILS OPEN. Only a definitive NXDOMAIN/ENODATA on both the
+  // MX and the A record rejects a signup; a resolver timeout, SERVFAIL or
+  // network blip lets it through. A fail-closed check would turn one flaky
+  // resolver into a total signup outage that blames the user's address —
+  // catching a typo is never worth that trade.
+  private async assertValidEmailDomain(email: string): Promise<void> {
+    const domain = email.split('@')[1];
+    if (!domain) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    // NXDOMAIN / ENODATA are the only answers that definitively mean "this
+    // domain cannot receive mail". Anything else — timeout, SERVFAIL,
+    // EAI_AGAIN, refused — is inconclusive and must NOT reject the signup.
+    const isDefinitiveMiss = (err: unknown) => {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      return code === 'ENOTFOUND' || code === 'ENODATA';
+    };
+
+    const lookup = async (
+      fn: (host: string) => Promise<unknown[]>,
+      kind: string,
+    ): Promise<'found' | 'missing' | 'inconclusive'> => {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        const records = await Promise.race([
+          fn(domain),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  Object.assign(new Error(`${kind} lookup timed out`), {
+                    code: 'ETIMEOUT',
+                  }),
+                ),
+              AuthService.DNS_LOOKUP_TIMEOUT_MS,
+            );
+          }),
+        ]);
+        return Array.isArray(records) && records.length > 0
+          ? 'found'
+          : 'missing';
+      } catch (error) {
+        if (isDefinitiveMiss(error)) return 'missing';
+        this.logger.warn(
+          `${kind} lookup for "${domain}" was inconclusive (${
+            (error as NodeJS.ErrnoException)?.code ?? error
+          }) — allowing signup rather than blocking on DNS`,
+        );
+        return 'inconclusive';
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const mx = await lookup(resolveMx, 'MX');
+    if (mx !== 'missing') return;
+
+    // A domain with no MX record is NOT necessarily undeliverable: RFC 5321
+    // §5.1 falls back to the A/AAAA record (implicit MX), which plenty of
+    // small self-hosted domains rely on. Only reject once both are absent.
+    const a = await lookup(resolve4, 'A');
+    if (a !== 'missing') return;
+
+    throw new BadRequestException("Email domain can't receive mail");
   }
 
   private throwDuplicateEmailIfNeeded(error: unknown): never | void {
