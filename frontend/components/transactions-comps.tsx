@@ -1236,6 +1236,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     ERR_OAUTH_STATE_INVALID: 'That connection link expired before it was completed. Please try connecting again.',
     ERR_DEPOSIT_METHOD_NOT_FOUND: 'We could not find the connection request. Please try again.',
     ERR_OAUTH_UNSUPPORTED: 'This provider is not currently supported.',
+    ERR_DEPOSIT_METHOD_DUPLICATE: 'This account is already linked to your profile.',
   }
   // Figma: a dedicated "X Connected" / "Couldn't Connect to X" screen, not
   // just a toast — the toast alone gave no confirmation of *which* account
