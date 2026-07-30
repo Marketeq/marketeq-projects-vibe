@@ -13,6 +13,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
+import { resolveMx } from 'dns/promises';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -161,6 +162,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -215,6 +217,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -274,6 +277,29 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { available: !existingUser };
+  }
+
+  // Format validation (@IsEmail) only checks shape, not whether the domain
+  // can actually receive mail — catches typos like "gmial.con" or made-up
+  // domains at sign-up time instead of a verification email silently
+  // going nowhere.
+  private async assertValidEmailDomain(email: string): Promise<void> {
+    const domain = email.split('@')[1];
+    if (!domain) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    try {
+      const records = await resolveMx(domain);
+      if (!records || records.length === 0) {
+        throw new BadRequestException("Email can't receive mail");
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException("Email can't receive mail");
+    }
   }
 
   private throwDuplicateEmailIfNeeded(error: unknown): never | void {
