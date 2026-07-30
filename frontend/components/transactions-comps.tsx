@@ -4250,6 +4250,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const [dateRange, setDateRange] = React.useState("this_month")
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
+  const [dateSortOrder, setDateSortOrder] = React.useState<"asc" | "desc">("desc")
 
   // US-27 Fee Breakdown Expander: per-row chevron toggle. feeBreakdown is only
   // meaningful for single-entry (daily view) rows — weekly/monthly rows are
@@ -4299,12 +4300,12 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const loadEarnings = React.useCallback(() => {
     setEarningsLoading(true)
     setEarningsError(false)
-    const q: any = { view: viewMode, dateRange, page: currentPage, limit: 10, sortBy: "workStartAt", sortOrder: "desc" }
+    const q: any = { view: viewMode, dateRange, page: currentPage, limit: 10, sortBy: "workStartAt", sortOrder: dateSortOrder }
     if (entryType) q.entryType = entryType
     if (statusFilter) q.status = statusFilter
     if (searchQuery.length >= 2) q.search = searchQuery
     getEarnings(q).then(setEarningsResult).catch((e) => { console.error(e); setEarningsError(true) }).finally(() => setEarningsLoading(false))
-  }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery])
+  }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery, dateSortOrder])
 
   useEffect(() => { loadEarnings() }, [loadEarnings])
 
@@ -4463,9 +4464,16 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="cursor-pointer">
+              <TableHead
+                className="cursor-pointer select-none"
+                onClick={() => { setDateSortOrder((o) => (o === "desc" ? "asc" : "desc")); setCurrentPage(1) }}
+              >
                 {viewMode === "weekly" ? "Week Range" : viewMode === "monthly" ? "Month" : "Date"}{" "}
-                <ArrowDown className="size-3 inline ml-1" />
+                {dateSortOrder === "desc" ? (
+                  <ArrowDown className="size-3 inline ml-1" />
+                ) : (
+                  <ArrowUp className="size-3 inline ml-1" />
+                )}
               </TableHead>
               <TableHead>Project</TableHead>
               {viewMode === "daily" && <TableHead>Task</TableHead>}
@@ -4542,7 +4550,12 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.task?.name ?? "—"}</TableCell>}
                 {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.startTime ?? "—"}</TableCell>}
                 {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.endTime ?? "—"}</TableCell>}
-                {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.durationLabel}</TableCell>}
+                {viewMode === "daily" && (
+                  <TableCell className="text-sm text-gray-500">
+                    <div>{row.durationLabel}</div>
+                    {row.entryType === "manual" && <Badge visual="warning" size="sm" className="mt-1">Manual</Badge>}
+                  </TableCell>
+                )}
                 {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.weeklyHours ?? "—"}</TableCell>}
                 {viewMode === "monthly" && <TableCell className="text-sm text-gray-500">{row.totalHours ?? "—"}</TableCell>}
                 <TableCell>
@@ -4570,7 +4583,6 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 )}
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
-                    {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <IconButton size="sm" variant="ghost" visual="gray">
@@ -4851,6 +4863,9 @@ const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | nul
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-dark-blue-400">Payout Details</DialogTitle>
         </DialogHeader>
+        <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => onOpenChange(false)}>
+          <X className="size-4" />
+        </IconButton>
         {detailError ? (
           <div className="text-center py-8">
             <p className="text-sm text-gray-500">{detailError}</p>
@@ -5234,9 +5249,6 @@ export const PayoutsTab = ({ onDepositStatusChange }: { onDepositStatusChange?: 
                       {/* AC-27.06: visually distinguish scheduled from manual payouts */}
                       {row.trigger === "scheduled" && <Badge visual="gray" size="sm">Scheduled</Badge>}
                     </div>
-                    {row.status === "failed" && row.failureReason && (
-                      <p className="text-xs text-red-500 mt-1">{row.failureReason}</p>
-                    )}
                   </TableCell>
                   <TableCell className="text-sm text-gray-500">{formatPayoutDate(row.createdAt)}</TableCell>
                   <TableCell className="text-sm text-gray-500">
