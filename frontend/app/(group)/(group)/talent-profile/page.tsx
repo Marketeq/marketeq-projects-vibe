@@ -21,7 +21,10 @@ import { getComputedStyle } from "@/utils/dom-utils"
 import { capitalize, cn, toPxIfNumber } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
 import {
+  AlertCircle,
+  AlertTriangle,
   ArrowRight,
+  Download01,
   Briefcase,
   Check,
   CheckCircle,
@@ -51,6 +54,7 @@ import {
   Star,
   Trash03,
   Upload,
+  Upload01,
   User,
   X,
   XCircle,
@@ -73,6 +77,7 @@ import {
   SkillsDialog,
   WorkExperienceDialog,
 } from "@/components/edit-profile-modals"
+import { StatusDialog } from "@/app/(group)/complete-profile/page"
 import { HireMeButton } from "@/components/hire-me-button"
 import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
@@ -419,6 +424,8 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
@@ -698,6 +705,203 @@ function Default() {
   const usernameParam = searchParams.get("username")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false)
+  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const [resumeFile, setResumeFile] = useState<File | null>(null)
+  const [resumeUploadedDate, setResumeUploadedDate] = useState<Date | null>(null)
+  const [resumeStatus, setResumeStatus] = useState<
+    "idle" | "dragging" | "uploading" | "summary" | "uploaded" | "failed" | "size-limit" | "unsupported" | "not_a_resume" | "nothing_found"
+  >("idle")
+  const [resumeLoadingMessage, setResumeLoadingMessage] = useState("Reading your resume...")
+
+  type ResumeSummaryData = {
+    skills: { count: number; items: { name: string }[] }
+    education: { count: number; items: { institution: string; degree: string; fieldOfStudy?: string }[] }
+    workExperience: { count: number; items: { title: string; company: string; startDate?: string; endDate?: string }[] }
+    certifications: { count: number; items: { name: string; issuingBody?: string }[] }
+  }
+  const [resumeSummary, setResumeSummary] = useState<ResumeSummaryData | null>(null)
+  const [resumeSummaryScrolled, setResumeSummaryScrolled] = useState(false)
+  const [resumeSkillsExpanded, setResumeSkillsExpanded] = useState(false)
+  const [resumeDeleteConfirmOpen, setResumeDeleteConfirmOpen] = useState(false)
+
+  type ResumeConflict = {
+    type: "work" | "education" | "certification"
+    existingId: string
+    existing: { label: string; detail: string }
+    incoming: { label: string; detail: string }
+  }
+  const [resumeConflicts, setResumeConflicts] = useState<ResumeConflict[]>([])
+  const [resumeConflictOpen, setResumeConflictOpen] = useState(false)
+  const [resumeConflictChecked, setResumeConflictChecked] = useState<Record<string, boolean>>({})
+  const [resumeProgress, setResumeProgress] = useState(0)
+  const [resumeUploadedSize, setResumeUploadedSize] = useState(0)
+  const [resumeParseResultId, setResumeParseResultId] = useState<string | null>(null)
+
+  const RESUME_MAX_SIZE = 5 * 1024 * 1024 // 5MB
+  const RESUME_ACCEPTED_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]
+  const RESUME_ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx"]
+
+  const [resumeParsedData, setResumeParsedData] = useState<{
+    parseResultId?: string
+    skills?: { name: string; proficiency?: string }[]
+    education?: { school: string; degree: string; fieldOfStudy?: string; startYear?: number; endYear?: number }[]
+    workExperience?: { title: string; company: string; location?: string; startDate?: string; endDate?: string; isCurrentRole?: boolean; description?: string }[]
+    certifications?: { name: string; issuer?: string; issueDate?: string }[]
+  } | null>(null)
+
+  const processResumeFile = useCallback(async (file: File) => {
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
+    if (
+      !RESUME_ACCEPTED_TYPES.includes(file.type) &&
+      !RESUME_ACCEPTED_EXTENSIONS.includes(ext)
+    ) {
+      setResumeFile(file)
+      setResumeStatus("unsupported")
+      return
+    }
+    if (file.size > RESUME_MAX_SIZE) {
+      setResumeFile(file)
+      setResumeStatus("size-limit")
+      return
+    }
+
+    setResumeFile(file)
+    setResumeStatus("uploading")
+    setResumeLoadingMessage("Reading your resume...")
+    setResumeProgress(0)
+    setResumeUploadedSize(0)
+
+    try {
+      const res = await UserAPI.uploadResume(file)
+      const data = res.data
+      setResumeProgress(100)
+      setResumeUploadedSize(file.size)
+      setResumeParseResultId(data.parseResultId || null)
+
+      // Handle classification gate results
+      if (data.status === "not_a_resume") {
+        setResumeStatus("not_a_resume")
+        return
+      }
+      if (data.status === "nothing_found") {
+        setResumeStatus("nothing_found")
+        setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
+        return
+      }
+
+      // Build parsed data for apply call
+      const additions = data.additions || {}
+      const skills = (additions.skills?.items || []).map((s: any) => ({ name: s.name }))
+      const education = (additions.education?.items || []).map((e: any) => ({
+        school: e.institution || "",
+        degree: e.degree || "",
+        fieldOfStudy: e.fieldOfStudy || "",
+      }))
+      const workExperience = (additions.workExperience?.items || []).map((w: any) => ({
+        title: w.title || "",
+        company: w.company || "",
+        startDate: w.startDate,
+        endDate: w.endDate,
+        description: w.description || "",
+      }))
+      const certifications = (additions.certifications?.items || []).map((c: any) => ({
+        name: c.name || "",
+        issuer: c.issuingBody || "",
+      }))
+      const industries = (additions.industries?.items || []).map((i: any) => ({ name: i.name || "" }))
+
+      setResumeParsedData({
+        parseResultId: data.parseResultId,
+        skills,
+        education,
+        workExperience,
+        certifications,
+      })
+
+      // Set summary for display
+      setResumeSummary(additions)
+
+      // Apply additions immediately (per docs: additive is applied on arrival)
+      try {
+        setResumeLoadingMessage("Updating your profile...")
+        // Show category-specific messages as we apply
+        if (skills.length > 0) setResumeLoadingMessage(`Adding ${skills.length} skill${skills.length !== 1 ? "s" : ""} to your profile...`)
+        await UserAPI.applyResume({
+          parseResultId: data.parseResultId,
+          skills,
+          education,
+          workExperience,
+          certifications,
+          industries,
+        })
+        if (workExperience.length > 0) setResumeLoadingMessage(`Added ${workExperience.length} work experience${workExperience.length !== 1 ? "s" : ""}...`)
+        // Refresh profile to reflect applied data
+        if (profile?.id) {
+          setResumeLoadingMessage("Finishing up...")
+          const profileRes = await UserAPI.getProfile(profile.id)
+          if (profileRes.data) setProfile(profileRes.data)
+        }
+      } catch (applyErr) {
+        console.error("Failed to auto-apply resume additions:", applyErr)
+      }
+
+      setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
+      setResumeSkillsExpanded(false)
+      setResumeSummaryScrolled(false)
+
+      // Per docs §5.3: if conflicts exist, show ConflictDialog FIRST, then Summary
+      if (data.conflicts?.length > 0) {
+        setResumeConflicts(data.conflicts)
+        const checked: Record<string, boolean> = {}
+        data.conflicts.forEach((c: any) => { checked[c.existingId] = true })
+        setResumeConflictChecked(checked)
+        setResumeStatus("uploaded")
+        setResumeConflictOpen(true)
+      } else {
+        // No conflicts — show summary dialog directly
+        setResumeStatus("summary")
+      }
+    } catch (err) {
+      console.error("Resume upload failed:", err)
+      setResumeStatus("failed")
+    }
+  }, [profile?.id])
+
+  const resetResume = useCallback(() => {
+    setResumeFile(null)
+    setResumeStatus("idle")
+    setResumeProgress(0)
+    setResumeUploadedSize(0)
+    setResumeUploadedDate(null)
+    setResumeParsedData(null)
+    setResumeParseResultId(null)
+    setResumeConflicts([])
+    setResumeConflictChecked({})
+    if (resumeInputRef.current) resumeInputRef.current.value = ""
+  }, [])
+
+  const handleResumeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (file) processResumeFile(file)
+    },
+    [processResumeFile]
+  )
+
+  const handleResumeDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      setResumeStatus("idle")
+      const file = e.dataTransfer.files?.[0]
+      if (file) processResumeFile(file)
+    },
+    [processResumeFile]
+  )
 
   // Use auth user data immediately for hero while full profile loads
   useEffect(() => {
@@ -1012,16 +1216,24 @@ function Default() {
     }
   }, [])
 
-  // Scroll direction detection for language section visibility
+  // Scroll direction detection for language section visibility (client view only)
+  const isClientViewRef = useRef(false)
+  useEffect(() => {
+    isClientViewRef.current = !(isEditMode && isOwnProfile)
+    if (!isClientViewRef.current) {
+      setShowLanguageSection(true)
+    }
+  }, [isEditMode, isOwnProfile])
+
   useEffect(() => {
     const handleScroll = () => {
+      if (!isClientViewRef.current) return
+
       const currentScrollY = window.scrollY
 
       if (currentScrollY > lastScrollYRef.current && currentScrollY > 100) {
-        // Scrolling down and past 100px
         setShowLanguageSection(false)
       } else if (currentScrollY < lastScrollYRef.current) {
-        // Scrolling up
         setShowLanguageSection(true)
       }
 
@@ -2205,7 +2417,7 @@ function Default() {
 
                       {!isClientView && (
                       <TabsContent value="Featured Clients">
-                        <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                        <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
                           <div className="flex items-start justify-between gap-x-4">
                             <div className="flex-auto min-w-0">
                               <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
@@ -4535,16 +4747,19 @@ function Default() {
               <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
                 <div
                   className={cn(
-                    "top-[145px] sticky bg-white rounded-lg z-10 transition duration-300 before:content-[''] before:absolute before:w-full before:top-[-32px] before:h-[40px] before:bg-gray-50",
-                    isCardStuck &&
+                    "rounded-lg z-10 transition duration-300",
+                    isClientView ? "bg-white" : showLanguagesBox ? "bg-transparent" : "space-y-6 bg-transparent",
+                    isClientView &&
+                      "top-[145px] sticky before:content-[''] before:absolute before:w-full before:top-[-32px] before:h-[40px] before:bg-gray-50",
+                    isClientView && isCardStuck &&
                       "shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]"
                   )}
                   ref={cardRef}
                 >
                   <div
                     className={cn(
-                      "p-6 rounded-t-lg relative bg-white border border-gray-200",
-                      !showLanguagesBox && "rounded-b-lg"
+                      "p-6 relative bg-white border border-gray-200",
+                      showLanguagesBox ? "rounded-t-lg" : "rounded-lg"
                     )}
                   >
                     <div className="flex items-center gap-x-1 justify-center">
@@ -4607,11 +4822,13 @@ function Default() {
 
                   {showLanguagesBox && (
                   <div
-                    className={`border-x rounded-b-lg border-b bg-white border-gray-200 transition-all duration-300 overflow-hidden ${
+                    className={cn(
+                      "bg-white border-gray-200 transition-all duration-300 overflow-hidden",
+                      "border-x rounded-b-lg border-b",
                       showLanguageSection
                         ? "p-6 max-h-[300px] opacity-100"
                         : "p-0 max-h-0 opacity-0"
-                    }`}
+                    )}
                   >
                     {showLanguageSection && (
                       <>
@@ -4693,8 +4910,236 @@ function Default() {
                   )}
                 </div>
 
+                {!isClientView && (
+                <div className="rounded-lg border border-gray-200 bg-white">
+                  <div className="p-6">
+                    <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+                      Resume
+                    </h1>
+                    <p className="mt-1.5 text-xs font-light text-gray-600 leading-relaxed">
+                      Add your resume to complete your profile faster.
+                    </p>
+
+                    <input
+                      ref={resumeInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx"
+                      className="hidden"
+                      onChange={handleResumeChange}
+                    />
+
+                    {/* Error states: failed, size-limit, unsupported, not_a_resume, nothing_found */}
+                    {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found") && (
+                      <div className="mt-4 rounded-lg border border-error-200 bg-error-25 p-6 flex flex-col items-center">
+                        <div className="size-10 rounded-full bg-error-50 inline-flex items-center justify-center">
+                          <AlertTriangle className="size-5 text-error-500" />
+                        </div>
+
+                        <p className="mt-3 text-xs font-medium text-error-600 text-center leading-relaxed">
+                          {resumeStatus === "failed" && (
+                            <>
+                              Upload failed, please try again
+                              <br />
+                              <span className="font-normal">{resumeFile?.name}</span>
+                            </>
+                          )}
+                          {resumeStatus === "size-limit" &&
+                            "Uploaded file exceeds the size limit of 5MB. Please select a different file."}
+                          {resumeStatus === "unsupported" &&
+                            "Unsupported file type. Only PDF, DOC, and DOCX files are accepted."}
+                          {resumeStatus === "not_a_resume" &&
+                            "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format."}
+                          {resumeStatus === "nothing_found" &&
+                            "We couldn't pull any details out of this file. Please try uploading a different resume."}
+                        </p>
+
+                        <button
+                          type="button"
+                          className="mt-3 text-sm font-bold text-error-500 underline decoration-error-500/30 hover:decoration-error-500"
+                          onClick={resetResume}
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Uploading state */}
+                    {resumeStatus === "uploading" && (
+                      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-x-3">
+                        <div className="size-10 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                          <FileText className="size-5 text-primary-500" />
+                        </div>
+                        <div className="flex-auto min-w-0">
+                          <p className="text-xs font-medium text-dark-blue-400 truncate">
+                            {resumeFile?.name}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {resumeUploadedSize >= 1024 * 1024
+                              ? `${(resumeUploadedSize / (1024 * 1024)).toFixed(1)} MB`
+                              : `${Math.round(resumeUploadedSize / 1024)} KB`}
+                            {" \u2013 "}
+                            {resumeProgress}% uploaded
+                          </p>
+                        </div>
+                        <svg className="size-8 shrink-0 -rotate-90" viewBox="0 0 36 36">
+                          <circle cx="18" cy="18" r="15" fill="none" stroke="#E5E7EB" strokeWidth="3" />
+                          <circle
+                            cx="18" cy="18" r="15" fill="none"
+                            stroke="#3B82F6" strokeWidth="3"
+                            strokeDasharray={`${(resumeProgress / 100) * 94.25} 94.25`}
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </div>
+                    )}
+
+                    {/* Uploaded (success) state */}
+                    {resumeStatus === "uploaded" && (
+                      <>
+                        <div className="mt-4 group/resume rounded-lg border-2 border-primary-200 bg-white p-3 flex items-center gap-x-3">
+                          <div className="size-10 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                            <FileText className="size-5 text-primary-500" />
+                          </div>
+
+                          {/* Default: file name + date */}
+                          <div className="flex-auto min-w-0 group-hover/resume:hidden">
+                            <p className="text-xs font-bold text-dark-blue-400 truncate">
+                              {resumeFile?.name}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Added on{" "}
+                              {(() => {
+                                if (!resumeUploadedDate) return ""
+                                const m = resumeUploadedDate.toLocaleString("en-US", { month: "long" })
+                                const d = resumeUploadedDate.getDate()
+                                const y = resumeUploadedDate.getFullYear()
+                                const sfx = ["th","st","nd","rd"]
+                                const v = d % 100
+                                const ord = sfx[(v - 20) % 10] || sfx[v] || sfx[0]
+                                return `${m} ${d}${ord}, ${y}`
+                              })()}
+                            </p>
+                          </div>
+
+                          {/* Hover: action icons */}
+                          <div className="hidden group-hover/resume:flex items-center gap-x-2 ml-auto">
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="size-10 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-50 transition-colors"
+                                    onClick={() => {
+                                      if (!resumeFile) return
+                                      const url = URL.createObjectURL(resumeFile)
+                                      const a = document.createElement("a")
+                                      a.href = url
+                                      a.download = resumeFile.name
+                                      a.click()
+                                      URL.revokeObjectURL(url)
+                                    }}
+                                  >
+                                    <Download01 className="size-5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
+                                  Download
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="size-10 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-50 transition-colors"
+                                    onClick={() => resumeInputRef.current?.click()}
+                                  >
+                                    <RefreshCw className="size-5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
+                                  Replace
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="size-10 rounded-full inline-flex items-center justify-center text-error-500 hover:bg-error-50 transition-colors"
+                                    onClick={() => setResumeDeleteConfirmOpen(true)}
+                                  >
+                                    <Trash03 className="size-5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
+                                  Delete
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+
+                        <p className="mt-3 text-[11px] text-gray-500 leading-relaxed">
+                          Your resume will remain private and will not be shared with any third parties.
+                        </p>
+                        <p className="mt-1 text-[11px] text-gray-500 leading-relaxed">
+                          See our{" "}
+                          <a href="/privacy-policy" className="text-primary-500 underline font-medium">
+                            Privacy Policy
+                          </a>{" "}
+                          for details.
+                        </p>
+                      </>
+                    )}
+
+                    {/* Default & dragging states */}
+                    {(resumeStatus === "idle" || resumeStatus === "dragging") && (
+                      <div
+                        className={cn(
+                          "mt-4 rounded-lg border-2 border-dashed p-6 flex flex-col items-center transition-colors",
+                          resumeStatus === "dragging"
+                            ? "border-primary-500 bg-primary-25"
+                            : "border-gray-200"
+                        )}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          setResumeStatus("dragging")
+                        }}
+                        onDragLeave={() => setResumeStatus("idle")}
+                        onDrop={handleResumeDrop}
+                      >
+                        <div className="size-10 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                          <FileText className="size-5 text-primary-500" />
+                        </div>
+
+                        <Button
+                          className="mt-3"
+                          size="md"
+                          onClick={() => resumeInputRef.current?.click()}
+                        >
+                          <Upload01 className="size-4" />
+                          Upload Resume
+                        </Button>
+
+                        <p className="mt-2 text-xs text-gray-500">
+                          or drag and drop
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-gray-500">
+                          PDF, DOC, DOCX (max 5MB)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                )}
+
                 {(similarProfiles.length > 0 || !isClientView) && (
-                <div className="space-y-6 mt-6">
+                <div className="space-y-6">
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
@@ -4805,7 +5250,7 @@ function Default() {
                               className="mt-3 w-full"
                               variant="outlined"
                               visual="gray"
-                              onClick={() => router.push("/complete-profile")}
+                              onClick={() => setShowCompleteProfile(true)}
                             >
                               Complete My Profile
                             </Button>
@@ -5123,6 +5568,360 @@ function Default() {
           </Dialog>
         </>
       )}
+      {/* Resume uploading dialog */}
+      <Dialog open={resumeStatus === "uploading"}>
+        <DialogContent
+          className="max-w-[480px] rounded-[12px] p-8"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogTitle className="sr-only">Updating profile from resume</DialogTitle>
+          <DialogDescription className="sr-only">Processing your resume</DialogDescription>
+          <div className="flex flex-col items-center text-center">
+            {/* File icon with glowing circle */}
+            <div className="relative size-20 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-primary-50" />
+              <div className="absolute inset-[-6px] rounded-full bg-primary-50/40" />
+              <FileText className="relative size-8 text-primary-500" />
+            </div>
+
+            {/* Animated dots */}
+            <div className="mt-6 flex items-center gap-x-2">
+              {[
+                { size: 8, opacity: 0.5 },
+                { size: 10, opacity: 0.8 },
+                { size: 10, opacity: 1 },
+                { size: 8, opacity: 0.3 },
+              ].map((dot, i) => (
+                <div
+                  key={i}
+                  className="rounded-full bg-primary-500 animate-pulse"
+                  style={{
+                    width: dot.size,
+                    height: dot.size,
+                    opacity: dot.opacity,
+                    animationDelay: `${i * 200}ms`,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Status text — live progress message */}
+            <p className="mt-4 text-sm text-gray-500">
+              {resumeLoadingMessage}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resume upload summary dialog */}
+      <Dialog open={resumeStatus === "summary"}>
+        <DialogContent
+          className="max-w-[620px] max-h-[80vh] rounded-[12px] p-0 flex flex-col"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogTitle className="sr-only">Resume Upload Complete</DialogTitle>
+          <DialogDescription className="sr-only">Summary of changes from resume</DialogDescription>
+          <div className={cn("px-8 pt-8 pb-4 shrink-0 transition-[border-color] duration-200 border-b", resumeSummaryScrolled ? "border-gray-200" : "border-transparent")}>
+            <h2 className="text-xl font-bold text-dark-blue-400">
+              Resume Upload Complete
+            </h2>
+            <p className="mt-1 text-sm text-gray-600">
+              {resumeSummary && (resumeSummary.skills.count + resumeSummary.workExperience.count + resumeSummary.education.count + resumeSummary.certifications.count) > 0
+                ? "We updated your profile with your information from your resume."
+                : "Your resume was uploaded successfully. No new profile data was found to add."}
+            </p>
+          </div>
+
+          <div
+            className="px-8 pb-4 overflow-y-auto flex-1 min-h-0"
+            onScroll={(e) => setResumeSummaryScrolled(e.currentTarget.scrollTop > 0)}
+          >
+            <div className="rounded-lg border border-gray-200 p-6">
+              {resumeSummary && (
+                <>
+                  {/* Skills */}
+                  {resumeSummary.skills.count > 0 && (
+                    <>
+                      <span className="inline-block rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                        Added {resumeSummary.skills.count} skill{resumeSummary.skills.count !== 1 ? "s" : ""}
+                      </span>
+                      <div className="mt-4 grid grid-cols-3 gap-y-4">
+                        {(resumeSkillsExpanded ? resumeSummary.skills.items : resumeSummary.skills.items.slice(0, 8)).map((skill, i) => (
+                          <div key={i} className="flex items-center gap-x-2">
+                            <Check className="size-4 text-green-500 shrink-0" />
+                            <span className="text-sm text-dark-blue-400">{skill.name}</span>
+                          </div>
+                        ))}
+                        {!resumeSkillsExpanded && resumeSummary.skills.items.length > 8 && (
+                          <button
+                            type="button"
+                            className="flex items-center text-left"
+                            onClick={() => setResumeSkillsExpanded(true)}
+                          >
+                            <span className="text-sm font-bold text-dark-blue-400 hover:underline">
+                              + {resumeSummary.skills.items.length - 8} more...
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Education */}
+                  {resumeSummary.education.count > 0 && (
+                    <>
+                      <span className="inline-block mt-6 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                        Added {resumeSummary.education.count} education{resumeSummary.education.count !== 1 ? "s" : ""}
+                      </span>
+                      <div className="mt-4 space-y-5">
+                        {resumeSummary.education.items.map((edu, i) => (
+                          <div key={i} className="flex items-start gap-x-2">
+                            <Check className="size-4 text-green-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-dark-blue-400">{edu.institution}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {edu.degree}{edu.fieldOfStudy ? <><span className="mx-1">&middot;</span><span className="font-bold text-dark-blue-400">{edu.fieldOfStudy}</span></> : null}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Work Experience */}
+                  {resumeSummary.workExperience.count > 0 && (
+                    <>
+                      <span className="inline-block mt-6 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                        Added {resumeSummary.workExperience.count} work experience{resumeSummary.workExperience.count !== 1 ? "s" : ""}
+                      </span>
+                      <div className="mt-4 space-y-5">
+                        {resumeSummary.workExperience.items.map((work, i) => (
+                          <div key={i} className="flex items-start gap-x-2">
+                            <Check className="size-4 text-green-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-dark-blue-400">{work.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {work.company}{work.startDate ? <><span className="mx-1">&middot;</span><span className="font-bold text-dark-blue-400">{work.startDate}{work.endDate ? ` - ${work.endDate}` : " - Present"}</span></> : null}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Certifications */}
+                  {resumeSummary.certifications.count > 0 && (
+                    <>
+                      <span className="inline-block mt-6 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                        Added {resumeSummary.certifications.count} certification{resumeSummary.certifications.count !== 1 ? "s" : ""}
+                      </span>
+                      <div className="mt-4 space-y-5">
+                        {resumeSummary.certifications.items.map((cert, i) => (
+                          <div key={i} className="flex items-start gap-x-2">
+                            <Check className="size-4 text-green-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-dark-blue-400">{cert.name}</p>
+                              {cert.issuingBody && <p className="text-xs text-gray-500 mt-0.5">{cert.issuingBody}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Empty state: no additions */}
+              {resumeSummary && (resumeSummary.skills.count + resumeSummary.workExperience.count + resumeSummary.education.count + resumeSummary.certifications.count) === 0 && (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No changes were made to your profile.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 shrink-0">
+            <Button
+              variant="outlined"
+              visual="gray"
+              className="gap-x-2"
+              onClick={async () => {
+                if (resumeParseResultId) {
+                  try {
+                    await UserAPI.undoResumeImport(resumeParseResultId)
+                    if (profile?.id) {
+                      const res = await UserAPI.getProfile(profile.id)
+                      if (res.data) setProfile(res.data)
+                    }
+                  } catch (err) {
+                    console.error("Failed to undo resume import:", err)
+                  }
+                }
+                resetResume()
+                setResumeSummary(null)
+                setResumeParseResultId(null)
+              }}
+            >
+              <RefreshCw className="size-4" />
+              Undo Changes
+            </Button>
+            <Button
+              onClick={() => {
+                // Per docs: "Looks good!" commits nothing — additions were applied on arrival
+                setResumeStatus("uploaded")
+                setResumeSummary(null)
+              }}
+            >
+              Looks good!
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete resume confirmation dialog */}
+      <Dialog open={resumeDeleteConfirmOpen} onOpenChange={setResumeDeleteConfirmOpen}>
+        <DialogContent className="max-w-[400px] rounded-xl p-0">
+          <DialogTitle className="sr-only">Delete Resume</DialogTitle>
+          <DialogDescription className="sr-only">Confirm resume deletion</DialogDescription>
+          <div className="px-6 pt-6 pb-5">
+            <h2 className="text-lg font-semibold text-dark-blue-400">Delete Resume?</h2>
+            <p className="mt-2 text-sm text-gray-500">
+              Your resume will be removed. This cannot be undone.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <button
+              type="button"
+              className="flex items-center gap-x-1.5 text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => setResumeDeleteConfirmOpen(false)}
+            >
+              <X className="size-4" />
+              Cancel
+            </button>
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={async () => {
+                try {
+                  await UserAPI.deleteResume()
+                } catch (err) {
+                  console.error("Failed to delete resume:", err)
+                }
+                resetResume()
+                setResumeDeleteConfirmOpen(false)
+              }}
+            >
+              Yes, Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Update current information conflict dialog */}
+      <Dialog open={resumeConflictOpen} onOpenChange={setResumeConflictOpen}>
+        <DialogContent className="max-w-[620px] max-h-[80vh] rounded-[12px] p-0 flex flex-col">
+          <DialogTitle className="sr-only">Update Current Information</DialogTitle>
+          <DialogDescription className="sr-only">Choose which entries to update with resume data</DialogDescription>
+          <div className="px-8 pt-8 pb-4 shrink-0">
+            <h2 className="text-xl font-bold text-dark-blue-400">
+              Update Current Information?
+            </h2>
+            <p className="mt-1 text-sm text-gray-600">
+              We found work history and education entries that already exist in your profile. You can keep your current information or replace it with information from your resume.
+            </p>
+          </div>
+
+          <div className="px-8 pb-4 overflow-y-auto flex-1 min-h-0">
+            <div className="space-y-4">
+              {resumeConflicts.map((conflict) => (
+                <label
+                  key={conflict.existingId}
+                  className="flex items-start gap-x-3 rounded-lg border border-gray-200 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
+                    checked={resumeConflictChecked[conflict.existingId] ?? true}
+                    onChange={(e) => {
+                      setResumeConflictChecked((prev) => ({
+                        ...prev,
+                        [conflict.existingId]: e.target.checked,
+                      }))
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 mb-2">
+                      {conflict.type === "work" ? "Work History" : conflict.type === "education" ? "Education" : "Certification"}
+                    </span>
+                    <div className="grid grid-cols-2 gap-x-4">
+                      <div>
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Current</p>
+                        <p className="text-sm font-bold text-dark-blue-400">{conflict.existing.label}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{conflict.existing.detail}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">From Resume</p>
+                        <p className="text-sm font-bold text-dark-blue-400">{conflict.incoming.label}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{conflict.incoming.detail}</p>
+                      </div>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between px-8 py-5 border-t border-gray-200 shrink-0">
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={() => {
+                setResumeConflictOpen(false)
+                // Show summary dialog as receipt after declining conflicts
+                setResumeStatus("summary")
+              }}
+            >
+              Keep Existing
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  const conflictResolutions = resumeConflicts.map((c) => ({
+                    entityType: c.type as "education" | "work" | "certification",
+                    existingId: c.existingId,
+                    applyUpdate: resumeConflictChecked[c.existingId] ?? true,
+                  }))
+                  await UserAPI.applyResume({
+                    parseResultId: resumeParseResultId || undefined,
+                    conflictResolutions,
+                  })
+                  if (profile?.id) {
+                    const res = await UserAPI.getProfile(profile.id)
+                    if (res.data) setProfile(res.data)
+                  }
+                } catch (err) {
+                  console.error("Failed to apply conflict resolutions:", err)
+                } finally {
+                  setResumeConflictOpen(false)
+                  // Show summary dialog as receipt after conflict resolution
+                  setResumeStatus("summary")
+                }
+              }}
+            >
+              Yes, Update
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <StatusDialog
+        open={showCompleteProfile}
+        onOpenChange={setShowCompleteProfile}
+      />
     </>
   )
 }

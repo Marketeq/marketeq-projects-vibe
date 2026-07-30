@@ -17,6 +17,8 @@ import { BankValidationService } from './bank-validation.service';
 import { BankEncryptionService } from './bank-encryption.service';
 import { UpdateMethodDto }     from './dto/update-method.dto';
 import { CryptoConnectionService } from '../crypto/crypto-connection.service';
+import { OAuthService } from '../oauth/oauth.service';
+import { StripeProvider } from '../providers/stripe.provider';
 
 @Injectable()
 export class MethodsService {
@@ -40,6 +42,8 @@ export class MethodsService {
     private readonly bankValidator: BankValidationService,
     private readonly bankEncryption: BankEncryptionService,
     private readonly cryptoConnectionService: CryptoConnectionService,
+    private readonly oauthService: OAuthService,
+    private readonly stripeProvider: StripeProvider,
   ) {
     this.maxMethods = parseInt(this.config.get('MAX_DEPOSIT_METHODS', '5'), 10) || 5;
   }
@@ -138,6 +142,22 @@ export class MethodsService {
       };
     }
 
+    // PAYPAL/WISE/PAYONEER: real OAuth — delegate entirely to OAuthService,
+    // which creates the pending DepositMethod itself, stores OAuth state in
+    // Redis, and builds a real provider authorize URL from the configured
+    // client_id/redirect_uri/scopes. The block below (which used to build a
+    // fabricated, non-functional "authorize" URL with no client_id or
+    // redirect_uri — connecting an account was never actually possible)
+    // must never run for these three method types.
+    if (dto.methodType === 'PAYPAL' || dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
+      const result = await this.oauthService.initiateOAuth(contractorId, dto.methodType as MethodType);
+      return {
+        depositMethodId: result.depositMethodId,
+        verificationStatus: 'pending',
+        verification: { type: 'oauth', oauthUrl: result.redirectUrl, expiresAt: result.expiresAt },
+      };
+    }
+
     const method = this.methodRepo.create({
       contractorId,
       methodType: dto.methodType as MethodType,
@@ -166,8 +186,16 @@ export class MethodsService {
           }
           method.accountNumberHash = accountHash;
         }
+        // Needed to actually send real Stripe ACH micro-deposits (PS-08) —
+        // accountNumberHash above is one-way and can never be reversed back
+        // into the account number. Only bankAccountNumber (not IBAN) maps to
+        // Stripe's us_bank_account type, so IBAN-only regions store nothing here.
+        if (dto.bankAccountNumber) {
+          method.bankAccountNumberEncrypted = this.bankEncryption.encrypt(dto.bankAccountNumber);
+        }
         method.bankAccountName = dto.bankAccountName ?? null;
         method.bankAccountLast4 = this.bankEncryption.last4(dto.bankAccountNumber ?? dto.bankIban ?? '');
+        method.bankRoutingNumber = dto.bankRoutingNumber ?? null;
         method.bankCountry = dto.bankCountry ?? null;
         method.bankCurrency = dto.bankCurrency ?? null;
         method.bankIbanLast4 = dto.bankIban ? dto.bankIban.slice(-4) : null;
@@ -176,20 +204,23 @@ export class MethodsService {
       case 'BANK_STRIPE':
         method.displayLabel = 'Stripe Bank (pending verification)';
         break;
-      case 'PAYPAL':
-        if (dto.paypalEmail) { method.paypalEmail = dto.paypalEmail; method.displayLabel = 'PayPal (' + dto.paypalEmail + ')'; } else { method.displayLabel = 'PayPal (pending authorization)'; }
-        break;
-      case 'WISE':
-        method.displayLabel = 'Wise (pending authorization)';
-        break;
-      case 'PAYONEER':
-        method.displayLabel = 'Payoneer (pending authorization)';
-        break;
     }
 
     if (dto.nickname) method.nickname = dto.nickname;
     await this.methodRepo.save(method);
-    const verification = await this.createVerification(method, dto);
+    let verification: Awaited<ReturnType<typeof this.createVerification>>;
+    try {
+      verification = await this.createVerification(method, dto);
+    } catch (err) {
+      // createVerification (e.g. the real Stripe ACH send for BANK_MANUAL/US)
+      // can fail after the method row above is already saved — an invalid
+      // account/routing number Stripe itself rejects, network error, etc.
+      // Without this cleanup the failed method sits forever as an orphaned
+      // "pending" row that still counts against the 5-method cap and blocks
+      // a legitimate retry with corrected details.
+      await this.methodRepo.delete(method.id);
+      throw err;
+    }
     await this.auditService.log({
       contractorId, actorType: 'contractor', actorId: contractorId,
       action: 'method.added',
@@ -265,8 +296,12 @@ export class MethodsService {
         }
         method.accountNumberHash = accountHash;
       }
+      if (dto.bankAccountNumber) {
+        method.bankAccountNumberEncrypted = this.bankEncryption.encrypt(dto.bankAccountNumber);
+      }
       method.bankAccountName = dto.bankAccountName ?? null;
       method.bankAccountLast4 = this.bankEncryption.last4(dto.bankAccountNumber ?? dto.bankIban ?? '');
+      method.bankRoutingNumber = dto.bankRoutingNumber ?? null;
       method.bankCountry = dto.bankCountry ?? null;
       method.bankCurrency = dto.bankCurrency ?? null;
       method.bankIbanLast4 = dto.bankIban ? dto.bankIban.slice(-4) : null;
@@ -474,34 +509,42 @@ export class MethodsService {
         await this.verifyRepo.save(stripeVerify);
         return { type: 'stripe_fc', oauthUrl: `https://connect.stripe.com/oauth/authorize?state=${randomUUID()}`, expiresAt: stripeVerify.expiresAt!.toISOString() };
 
-      case MethodType.BANK_MANUAL:
+      case MethodType.BANK_MANUAL: {
+        const expiresAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+
+        // PS-08: real Stripe ACH micro-deposits only exist for US accounts
+        // (Stripe's us_bank_account payment method type is US-only) — every
+        // other BANK_MANUAL region falls back to the format-validation-only
+        // local flow below, since there is no ACH-equivalent mechanism for them.
+        if (method.bankCountry === 'US' && dto.bankAccountNumber && dto.bankRoutingNumber) {
+          const result = await this.stripeProvider.initiateManualMicroDeposits(
+            method, dto.bankAccountNumber, dto.bankRoutingNumber,
+            dto.bankAccountName || method.nickname || 'Account Holder',
+          );
+          return {
+            type: 'micro_deposit',
+            message: result.mode === 'stripe'
+              ? 'Two small deposits will arrive in your account within 1-2 business days.'
+              : 'Two small deposits will arrive in your account within 2 business days.',
+            expiresAt: expiresAt.toISOString(), maxAttempts: 3,
+          };
+        }
+
         const amount1 = Math.floor(Math.random() * 99) + 1;
         const amount2 = Math.floor(Math.random() * 99) + 1;
         const manualVerify = this.verifyRepo.create({
           depositMethodId: method.id, contractorId: method.contractorId,
           verificationType: 'micro_deposit', status: VerificationStatus.PENDING,
           amount1Cents: amount1, amount2Cents: amount2,
-          maxAttempts: 3, expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+          maxAttempts: 3, expiresAt,
         });
         await this.verifyRepo.save(manualVerify);
         return { type: 'micro_deposit', message: 'Two small deposits will arrive in your account within 2 business days.', expiresAt: manualVerify.expiresAt!.toISOString(), maxAttempts: 3 };
+      }
 
-      case MethodType.PAYPAL:
-      case MethodType.WISE:
-      case MethodType.PAYONEER:
-        const oauthVerify = this.verifyRepo.create({
-          depositMethodId: method.id, contractorId: method.contractorId,
-          verificationType: 'oauth', status: VerificationStatus.PENDING,
-          oauthState: randomUUID(),
-          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-        });
-        await this.verifyRepo.save(oauthVerify);
-        const providerUrls: Record<string, string> = {
-          PAYPAL: 'https://www.paypal.com/connect',
-          WISE: 'https://wise.com/oauth/authorize',
-          PAYONEER: 'https://payouts.sandbox.payoneer.com/partners/api/v4/auth',
-        };
-        return { type: 'oauth', oauthUrl: `${providerUrls[method.methodType]}?state=${oauthVerify.oauthState}`, expiresAt: oauthVerify.expiresAt!.toISOString() };
+      // PAYPAL/WISE/PAYONEER no longer reach this method — addMethod()
+      // routes them to OAuthService.initiateOAuth() before createVerification()
+      // is ever called, since that's the real, credential-backed OAuth flow.
 
       default:
         return { type: 'none', message: 'No verification required.' };
@@ -537,8 +580,15 @@ export class MethodsService {
       cryptoCurrency: m.cryptoCurrency,
       walletAddressLast6: m.walletAddressLast6,
       conversionDisplay: m.conversionDisplay,
-      paypalEmail: m.paypalEmail, wiseAccountId: m.wiseAccountId,
-      payoneerPayeeId: m.payoneerPayeeId,
+      // paypalEmail/wiseAccountId/payoneerPayeeId predate the real OAuth
+      // wiring and are only ever set by the old fake dev-mode manual-entry
+      // path (since removed from the frontend) — the real OAuth callback
+      // (oauth.service.ts's handleCallback) only ever populates the generic
+      // accountEmail/accountIdentifier, uniformly across all three
+      // providers, so fall back to those.
+      paypalEmail: m.paypalEmail ?? (m.methodType === MethodType.PAYPAL ? m.accountEmail : null),
+      wiseAccountId: m.wiseAccountId ?? (m.methodType === MethodType.WISE ? (m.accountEmail ?? m.accountIdentifier) : null),
+      payoneerPayeeId: m.payoneerPayeeId ?? (m.methodType === MethodType.PAYONEER ? (m.accountEmail ?? m.accountIdentifier) : null),
     };
   }
 }

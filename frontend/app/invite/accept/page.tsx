@@ -87,6 +87,14 @@ export default function AcceptInvitationPage() {
 
     if (hasAttemptedAccept.current) return
 
+    const authToken = Cookies.get("access_token")
+    if (!authToken) {
+      setStatus("signin")
+      setMessage("Sign in with the invited account to accept this invitation.")
+      router.push(`/sign-in?redirect=${encodeURIComponent(redirectTarget)}`)
+      return
+    }
+
     hasAttemptedAccept.current = true
     InvitationsAPI.acceptInvitation(inviteToken)
       .then((response) => {
@@ -139,15 +147,6 @@ export default function AcceptInvitationPage() {
         }, 2000)
       })
       .catch((error) => {
-        if (error?.response?.status === 401) {
-          setStatus("signin")
-          setMessage(
-            "Sign in with the invited account to accept this invitation."
-          )
-          router.push(`/sign-in?redirect=${encodeURIComponent(redirectTarget)}`)
-          return
-        }
-
         const rawMessage =
           error?.response?.data?.message ||
           error.message ||

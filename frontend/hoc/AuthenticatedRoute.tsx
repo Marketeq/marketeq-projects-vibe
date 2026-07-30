@@ -24,10 +24,20 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     }
 
     const targetRoute = resolveDashboardRoute(user)
-    const isOnboardingRoute = pathname?.includes("onboarding")
+    const isOnboardingRoute = pathname?.startsWith("/onboarding")
 
     if (targetRoute.includes("onboarding")) {
-      if (pathname !== targetRoute) {
+      // A generic "/onboarding" target means no role has been committed to
+      // the backend yet — the role picker and either role's onboarding form
+      // are all valid pages at this stage. Only a role-specific target
+      // (set once the onboarding form itself submits) should force an exact
+      // route match, so a talent user who wanders onto /onboarding/client
+      // still gets bounced to /onboarding/talent.
+      const isGenericFallback = targetRoute === "/onboarding"
+      const shouldRedirect = isGenericFallback
+        ? !isOnboardingRoute
+        : pathname !== targetRoute
+      if (shouldRedirect) {
         router.push(targetRoute)
         return
       }

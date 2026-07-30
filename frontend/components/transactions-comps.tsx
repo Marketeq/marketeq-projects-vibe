@@ -8,6 +8,7 @@ import { cn } from "@/utils/functions"
 import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
 import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { UserAPI } from "@/service/http/user"
+import { useAuth } from "@/contexts/auth"
 import { formatDistanceToNowStrict } from "date-fns"
 import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
@@ -18,9 +19,11 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  BankNote02,
   BarChartSquare02,
   Briefcase,
   Calendar,
+  CalendarCheck02,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -39,9 +42,11 @@ import {
   RefreshCcw01,
   Search,
   Settings02,
+  SlashCircle01,
   Trash01,
   UserCircle,
   X,
+  XCircle,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
 import NextImage from "@/components/next-image"
@@ -783,12 +788,28 @@ const StatCard = ({ label, sublabel, amount, symbol = "$", negative, change, ext
   </div>
 )
 
+// Figma promo-banner carousel — static placeholder copy only. None of these
+// offers exist as real features in this codebase yet (no Marketeq Visa Card
+// product, no cashback program, no referral program, no TurboTax
+// integration); this is UI shell for when those features ship, not live data.
+const PROMO_BANNERS: { id: string; emoji: string; content: React.ReactNode }[] = [
+  { id: "visa-card", emoji: "💳", content: <>Get faster payouts and cashback with your <span className="font-semibold text-success-600">Marketeq Visa Card</span>. Activate today!</> },
+  { id: "cashback", emoji: "☕", content: <>Earn <span className="font-semibold text-success-600">5% Cashback on Starbucks</span> purchases with your Marketeq Card.</> },
+  { id: "referral", emoji: "🎉", content: <><span className="font-semibold text-success-600">Refer 2 more friends</span> to unlock a $15 gift card.</> },
+  { id: "turbotax", emoji: "🧾", content: <><span className="font-semibold text-success-600">Get 15% off</span> TurboTax for freelancers, ends this month!</> },
+]
+
 // ─── Overview Tab ───────────────────────────────────────────────────────
 
 export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }: { onNavigateTab?: (tab: string) => void; onEditPayoutSchedule?: () => void; onOpenHelp?: () => void }) => {
   const router = useRouter()
   const { toast } = useToast()
-  const [showBanner, setShowBanner] = useState(true)
+  const { user } = useAuth()
+  // Figma's promo-banner carousel (Visa Card, cashback, referral, TurboTax) —
+  // no backing features exist yet for any of these (no card product, cashback
+  // program, referral program, or TurboTax integration in this codebase), so
+  // this is UI shell only: static placeholder copy, not wired to any real
+  // offer/eligibility data. Swap in real content once those features exist.
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
   // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
   // This Month/All Time) in one response, not four independent requests as the
@@ -844,8 +865,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   }, [])
 
   // Sourced from real payout history — no dedicated activity-feed endpoint
-  // exists in payout-service; see toActivityItem(). Also the source of the
-  // US-93 persistent failure banner (failedPayout, derived further below).
+  // exists in payout-service; see toActivityItem().
   const loadRecentActivity = React.useCallback(async () => {
     setRecentActivityError(false)
     try {
@@ -855,6 +875,22 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
     } catch (e) { console.error('Failed to fetch recent activity', e); setRecentActivityError(true) }
     finally { setRecentActivityLoading(false) }
+  }, [])
+
+  // US-93 persistent failure banner — queried directly by status rather than
+  // derived from the 8-item recentActivity feed above. A failed withdrawal
+  // older than the 8 most-recent payouts (e.g. several cancelled test payouts
+  // pushed it out) was silently never surfacing even though it was real and
+  // still unresolved.
+  const [failedPayout, setFailedPayout] = React.useState<{ id: string; title: string } | null>(null)
+  const loadFailedPayout = React.useCallback(async () => {
+    try {
+      const res = await payoutFetch(`/payouts?status=failed&page=1&pageSize=1`)
+      if (!res.ok) return
+      const d = await res.json()
+      const latest = (d.payouts ?? [])[0]
+      setFailedPayout(latest ? toActivityItem(latest) : null)
+    } catch (e) { console.error('Failed to fetch failed-payout banner state', e) }
   }, [])
 
   // ── Deposit Methods state ──────────────────────────────────────
@@ -897,7 +933,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
   // source distinguishes the Stripe-connect flow from the manual/micro-deposit
   // flow — Figma specs different copy for each ("securely linked"/"Connection
   // Failed" for Stripe vs "has been verified"/"Verification Failed" for manual).
-  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', source: 'stripe' | 'manual', attemptsLeft?: number, lockedUntil?: string} | null>(null)
+  const [verifyState, setVerifyState] = React.useState<{methodId:string, displayLabel:string, bankName:string, step:'instructions'|'amounts'|'verifying'|'success'|'failed'|'locked'|'expired', source: 'stripe' | 'manual', attemptsLeft?: number, lockedUntil?: string, errorMessage?: string} | null>(null)
   const [microAmounts, setMicroAmounts] = React.useState({amount1:'', amount2:''})
 
   // ─── Crypto wallet (US-09) — provider/network/currency driven by the real
@@ -1098,23 +1134,54 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       if (!initRes.ok) throw new Error('Failed to start Stripe session')
       const { sessionId, clientSecret, mode } = initData
 
-      let linkedAccountId = ''
       if (mode !== 'mock') {
         const stripe = await getStripeJs()
         if (!stripe) throw new Error('Stripe.js failed to load')
-        const result = await stripe.collectFinancialConnectionsAccounts({ clientSecret })
-        if (result.error) throw new Error(result.error.message)
-        linkedAccountId = result.financialConnectionsSession?.accounts?.[0]?.id ?? ''
-        if (!linkedAccountId) throw new Error('No bank account was selected')
+        // Payout-scoped SetupIntent (flow_directions: ['outbound']) now backs
+        // this session instead of a standalone FC session — collectBankAccountForSetup
+        // + confirmUsBankAccountSetup is the Stripe.js pair for that, replacing
+        // collectFinancialConnectionsAccounts(). The account the backend links
+        // is derived server-side from this confirmed SetupIntent, not sent by the client.
+        // Stripe requires billing_details.name — it can't be undefined. Falls
+        // back to the email's local part, then a generic label, since
+        // user.firstName/lastName may not have loaded yet this early in the
+        // flow (this now fires on the very first click, with no intermediate
+        // screens giving useAuth() time to populate).
+        const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ')
+          || user?.email?.split('@')[0]
+          || 'Marketeq Contractor'
+        const collectResult = await stripe.collectBankAccountForSetup({
+          clientSecret,
+          params: {
+            payment_method_type: 'us_bank_account',
+            payment_method_data: { billing_details: { name, email: user?.email } },
+          },
+        })
+        if (collectResult.error) throw new Error(collectResult.error.message)
+        // collectBankAccountForSetup resolves without .error even when the
+        // contractor closes/cancels Stripe's modal without picking a bank —
+        // it just leaves the SetupIntent with no payment method attached.
+        // Calling confirmUsBankAccountSetup anyway surfaces Stripe's raw
+        // internal error ("SetupIntent does not have a payment method...");
+        // catch it here with a message that actually explains what happened.
+        if (!collectResult.setupIntent?.payment_method) {
+          throw new Error('No bank account was selected. Please try again.')
+        }
+        const confirmResult = await stripe.confirmUsBankAccountSetup(clientSecret)
+        if (confirmResult.error) throw new Error(confirmResult.error.message)
       }
 
       const finalRes = await payoutFetch(`/deposit-methods/stripe/finalise`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, linkedAccountId }),
+        body: JSON.stringify({ sessionId }),
       })
       const method = await finalRes.json()
-      if (!finalRes.ok) throw new Error('Finalise failed')
+      // Backend distinguishes real failure reasons (e.g. "This account is
+      // already linked" for ERR_DEPOSIT_METHOD_DUPLICATE) from a generic
+      // connection problem — surface the actual message instead of masking
+      // every failure behind the same "temporary network issue" copy.
+      if (!finalRes.ok) throw new Error(method?.message || 'Finalise failed')
       setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: '', _stripeConnecting: false, _stripeUser: '', _stripePass: '', _bankSearch: ''} as any))
       setShowAddMethod(false)
       const displayLabel = method.displayLabel ?? `${bankName} ••••${method.bankAccountLast4 ?? '4242'}`
@@ -1124,7 +1191,8 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
       fetchMethods()
     } catch (e) {
       setAddForm(f => ({...f, _stripeConnecting: false} as any))
-      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed', source: 'stripe' })
+      const errorMessage = e instanceof Error && e.message !== 'Finalise failed' ? e.message : undefined
+      setVerifyState({ methodId: '', displayLabel: '', bankName, step: 'failed', source: 'stripe', errorMessage })
       setShowAddMethod(false)
     }
   }
@@ -1560,51 +1628,96 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     loadSchedule()
     loadPreviousPayout()
     loadRecentActivity()
-  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity, loadSchedule, loadPreviousPayout])
+    loadFailedPayout()
+  }, [fetchMethods, loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity, loadSchedule, loadPreviousPayout, loadFailedPayout])
 
   // US-93.01: the persistent failure banner must be able to appear live, not
   // only on page load — recentActivity (its data source) previously fetched
   // once on mount only, same "no Ably" polling-fallback pattern as balance
   // and recentEarnings above.
   React.useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) loadRecentActivity() }, 60_000)
+    const id = setInterval(() => {
+      if (!document.hidden) { loadRecentActivity(); loadFailedPayout() }
+    }, 60_000)
     return () => clearInterval(id)
-  }, [loadRecentActivity])
+  }, [loadRecentActivity, loadFailedPayout])
 
-  // US-93: persistent failure banner — recentActivity is already sourced from
-  // real payout history (GET /v1/payouts, most-recent-first), so the first
-  // 'failed' item there is a genuine failed withdrawal, not a fabricated one.
-  const failedPayout = React.useMemo(() => recentActivity.find((a) => a.kind === "failed") ?? null, [recentActivity])
+  // Congrats + promo banners share one carousel slot, picked at random exactly
+  // once per page load — not re-randomized on every poll/re-render, and once
+  // dismissed it stays gone for the rest of the session. Persisted to
+  // sessionStorage (not component state) because switching Overview/Earnings/
+  // Payouts tabs unmounts this component entirely (Radix TabsContent doesn't
+  // keep inactive panels mounted) — plain useState was silently resetting on
+  // every tab switch, which isn't "dismissed for the session" at all.
+  const readSS = (key: string) => (typeof window === "undefined" ? null : window.sessionStorage.getItem(key))
+  const writeSS = (key: string, value: string) => { if (typeof window !== "undefined") window.sessionStorage.setItem(key, value) }
+  const [failedBannerDismissed, setFailedBannerDismissedState] = React.useState(() => readSS("overview_failed_banner_dismissed") === "1")
+  const setFailedBannerDismissed = (v: boolean) => { setFailedBannerDismissedState(v); writeSS("overview_failed_banner_dismissed", v ? "1" : "0") }
+  const carouselBanners = [
+    ...(balance && parseFloat(balance.totalEarnedUsd) > 0 ? [{
+      id: "congrats",
+      emoji: "\u{1F929}",
+      content: (
+        <>You&apos;ve earned <span className="font-semibold text-success-600">{amountSign(balance.totalEarnedUsd)}${formatWholeAmount(balance.totalEarnedUsd)}</span> total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged</>
+      ),
+    }] : []),
+    ...PROMO_BANNERS,
+  ]
+  const [selectedBannerId, setSelectedBannerIdState] = React.useState<string | null>(() => readSS("overview_banner_id"))
+  const [bannerPicked, setBannerPicked] = React.useState(() => readSS("overview_banner_id") !== null)
+  const [bannerDismissed, setBannerDismissedState] = React.useState(() => readSS("overview_banner_dismissed") === "1")
+  const setBannerDismissed = (v: boolean) => { setBannerDismissedState(v); writeSS("overview_banner_dismissed", v ? "1" : "0") }
+  React.useEffect(() => {
+    // Wait for the balance fetch to resolve (success or error) before picking,
+    // so "congrats" gets a fair chance to be in the draw instead of the pick
+    // always happening before it's known to be eligible.
+    if (bannerPicked || (!balance && !balanceError)) return
+    const pick = carouselBanners[Math.floor(Math.random() * carouselBanners.length)].id
+    setSelectedBannerIdState(pick)
+    writeSS("overview_banner_id", pick)
+    setBannerPicked(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bannerPicked, balance, balanceError])
+  const currentBanner = bannerDismissed ? null : carouselBanners.find((b) => b.id === selectedBannerId) ?? null
 
   return (
     <div className="flex gap-6">
       {/* Main Content */}
       <div className="flex-1 space-y-5 min-w-0">
-        {/* US-93: persistent until the contractor navigates to it — no dismiss button. */}
-        {failedPayout && (
+        {/* Dismissible for the session — closing it doesn't resolve the
+            underlying failed withdrawal, just stops repeating the nudge
+            once the contractor has seen it. */}
+        {failedPayout && !failedBannerDismissed && (
           <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
             <p className="text-sm text-red-700">
               <span className="mr-2">⚠️</span>
               A withdrawal could not be completed — {failedPayout.title}.
             </p>
-            <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
-              View Details
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="link" visual="gray" size="sm" onClick={() => onNavigateTab?.("payouts")}>
+                View Details
+              </Button>
+              <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setFailedBannerDismissed(true)}>
+                <X className="size-4" />
+              </IconButton>
+            </div>
           </div>
         )}
 
-        {/* Congratulations Banner — hidden until there's actually something to celebrate */}
-        {showBanner && balance && parseFloat(balance.totalEarnedUsd) > 0 && (
+        {/* Congrats + promo banners share one carousel slot, randomly picked
+            (see carouselBanners/selectedBannerId above) — one at a time,
+            not stacked, and not always leading with the same one. */}
+        {currentBanner && (
           <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
             <p className="text-sm text-dark-blue-400">
-              <span className="mr-2">&#x1F929;</span>
-              You&apos;ve earned <span className="font-semibold text-success-600">{balance ? amountSign(balance.totalEarnedUsd) : ""}${balance ? formatWholeAmount(balance.totalEarnedUsd) : "..."}</span> total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
+              <span className="mr-2">{currentBanner.emoji}</span>
+              {currentBanner.content}
             </p>
             <IconButton
               size="sm"
               variant="ghost"
               visual="gray"
-              onClick={() => setShowBanner(false)}
+              onClick={() => setBannerDismissed(true)}
             >
               <X className="size-4" />
             </IconButton>
@@ -1883,7 +1996,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 </Tooltip>
               </TooltipProvider>
             </div>
-            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => setShowAddMethod(true)} disabled={!canAddMore || methodGateBlocked}>
+            <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-4" />} onClick={() => { setVerifyState(null); setShowAddMethod(true) }} disabled={!canAddMore || methodGateBlocked}>
               Add Deposit Method
             </Button>
           </div>
@@ -2025,7 +2138,11 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       </div>
                     </div>
                     <Button variant="light" visual="primary" size="sm" className="w-full" onClick={async () => { await handleSetDefault(verifyState.methodId); setVerifyState(null) }}>Set As Default Deposit Method</Button>
-                    <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</Button>
+                    {/* showAddMethod is already false by this point (handleConnectStripe
+                        closes it before showing this screen) — just nulling verifyState
+                        landed on the dashboard instead of the deposit-method picker, so
+                        this reopens it explicitly. */}
+                    <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => { setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'PICK'})); fetchMethods() }}>Back to Deposit Methods</Button>
                   </div>
                 )}
                 {verifyState.step === 'failed' && (
@@ -2034,18 +2151,20 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     <h4 className="text-base font-semibold text-dark-blue-400">{verifyState.source === 'stripe' ? 'Connection Failed' : 'Verification Failed'}</h4>
                     <p className="text-sm text-gray-500">
                       {verifyState.source === 'stripe'
-                        ? "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
+                        ? (verifyState.errorMessage || "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information.")
                         : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
                     </p>
-                    <div className="flex gap-2 items-center justify-between">
-                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => { setVerifyState(null); fetchMethods() }}>Back to Deposit Methods</button>
+                    <div className="flex flex-col gap-2">
                       <Button
-                        variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />}
+                        variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<RefreshCcw01 className="size-4" />}
                         onClick={() => {
                           if (verifyState.source === 'stripe') { const bankName = verifyState.bankName; setVerifyState(null); handleConnectStripe(bankName) }
                           else setVerifyState(s => s ? {...s, step: 'amounts'} : null)
                         }}
                       >Retry</Button>
+                      {/* Same fix as the success screen above — reopen the picker
+                          instead of just closing everything. */}
+                      <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => { setVerifyState(null); setShowAddMethod(true); setAddForm(f => ({...f, methodType: 'PICK'})); fetchMethods() }}>Back to Deposit Methods</Button>
                     </div>
                   </div>
                 )}
@@ -2117,9 +2236,9 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     <p className="text-sm text-gray-500">
                       {oauthResult.errorMessage ?? `We were unable to link your ${oauthResult.provider === 'PAYPAL' ? 'PayPal' : oauthResult.provider === 'WISE' ? 'Wise' : 'Payoneer'} account. You may have canceled the login or encountered a connection issue.`}
                     </p>
-                    <div className="flex gap-2 items-center justify-between">
-                      <button className="text-sm text-gray-500 hover:text-gray-700" onClick={() => setOauthResult(null)}>Back to Deposit Methods</button>
-                      <Button variant="outlined" visual="gray" size="sm" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { const provider = oauthResult.provider; setOauthResult(null); handleConnectOAuth(provider) }}>Retry</Button>
+                    <div className="flex flex-col gap-2">
+                      <Button variant="outlined" visual="gray" size="sm" className="w-full" leftIcon={<RefreshCcw01 className="size-4" />} onClick={() => { const provider = oauthResult.provider; setOauthResult(null); handleConnectOAuth(provider) }}>Retry</Button>
+                      <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setOauthResult(null)}>Back to Deposit Methods</Button>
                     </div>
                   </div>
                 )}
@@ -2156,8 +2275,17 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                         { type: 'MARKETEQ_DEBIT_CARD', label: 'Marketeq Debit Card', sub: ['Instant transfer', 'No processing fee'], icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 22" className="w-5 h-3"><path fill="#306CFE" d="M33.073 21.724c-1.368 0-2.578-.714-3.905-1.587a5.045 5.045 0 0 0-5.479-.048c-1.344.794-2.672 1.667-4.229 1.667h-.49a4.826 4.826 0 0 1-3.138-1.199 4.864 4.864 0 0 1-1.605-2.96l-.024-.683a5.057 5.057 0 0 1 .633-2.382l1.897-3.334 1.186 2.088-1.344 2.286a2.747 2.747 0 0 0 1.017 3.715c.412.239.879.364 1.354.366h.561c2.032-.04 3.336-2.382 6.886-2.382 3.415 0 4.743 2.421 6.64 2.421a2.364 2.364 0 0 0 2.109-1.158 2.388 2.388 0 0 0 .017-2.414L28.117 3.697a2.749 2.749 0 0 0-2.372-1.37 2.734 2.734 0 0 0-2.371 1.37l-2.846 4.93-1.186-2.08 2.198-3.874a4.818 4.818 0 0 1 1.76-1.776 4.79 4.79 0 0 1 6.58 1.776l7.043 12.391a4.467 4.467 0 0 1-1.638 6.066 4.42 4.42 0 0 1-2.211.594Z"/><path fill="#306CFE" d="M22.939 15.469c-.134-.318-7.186-12.702-7.233-12.773A4.816 4.816 0 0 0 13.946.92a4.791 4.791 0 0 0-6.58 1.776L.607 14.532A4.819 4.819 0 0 0 .655 19.3 4.792 4.792 0 0 0 2.4 21.038c.722.417 1.54.637 2.373.638h.498c1.581 0 2.885-.865 4.23-1.667a5.15 5.15 0 0 1 3.952-.58 6.173 6.173 0 0 1-.553-2.206 7.263 7.263 0 0 0-4.396.96c-6.031 3.51-7.114-.857-6.134-2.659L9.12 3.617a2.749 2.749 0 0 1 2.372-1.37 2.734 2.734 0 0 1 2.372 1.37l4.743 8.311.727 1.286c1.415 2.524 1.898 3.112 1.898 3.85.027.169.027.34 0 .508a12.14 12.14 0 0 1 2.039-1.08 4.435 4.435 0 0 0-.332-1.023Z" opacity="0.5"/></svg> },
                       // AC-02.10: Marketeq Debit Card must not appear while FEATURE_DEBIT_CARD_ENABLED is off (default MVP state).
                       // TEQ Coin has no entry above at all, satisfying AC-02.09 by omission.
-                      ].filter(opt => opt.type !== 'MARKETEQ_DEBIT_CARD' || debitCardEnabled).map(opt => (
-                        <Card key={opt.type} className="items-center gap-3 px-4 py-3 rounded-lg cursor-pointer" onClick={() => setAddForm(f => ({...f, methodType: opt.type}))}>
+                      ].filter(opt => opt.type !== 'MARKETEQ_DEBIT_CARD' || debitCardEnabled).map(opt => {
+                        // BANK_CONNECT skips our own redundant bank-logo picker (Stripe
+                        // re-asks for the institution inside its own hosted modal
+                        // regardless of what's picked here) but still shows a one-step
+                        // consent/disclosure screen before handing off to Stripe —
+                        // see the 'BANK_CONNECT_CONFIRM' branch below.
+                        const onSelect = opt.type === 'BANK_CONNECT'
+                          ? () => setAddForm(f => ({...f, methodType: 'BANK_CONNECT_CONFIRM'} as any))
+                          : () => setAddForm(f => ({...f, methodType: opt.type}))
+                        return (
+                        <Card key={opt.type} className="items-center gap-3 px-4 py-3 rounded-lg cursor-pointer" onClick={onSelect}>
                           <div className="size-9 rounded-full border border-gray-200 bg-white flex items-center justify-center shrink-0">
                             {opt.icon}
                           </div>
@@ -2166,13 +2294,66 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                             <p className="text-xs text-gray-500">{opt.sub[0]}</p>
                             <p className="text-xs text-gray-500">{opt.sub[1]}</p>
                           </div>
-                          <Button variant="outlined" visual="gray" size="sm" onClick={e => { e.stopPropagation(); setAddForm(f => ({...f, methodType: opt.type})) }}>Setup</Button>
+                          <Button variant="outlined" visual="gray" size="sm" onClick={e => { e.stopPropagation(); onSelect() }}>Setup</Button>
                         </Card>
-                      ))}
+                        )
+                      })}
                     </div>
                     </ScrollArea>
                   </>
-                ) : addForm.methodType === 'BANK_CONNECT' ? (
+                ) : addForm.methodType === 'BANK_CONNECT_CONFIRM' ? (
+                  // Consent/disclosure step kept from the old flow (Stripe.js requires
+                  // nothing here — this is purely so the contractor sees the "your
+                  // credentials are never shared with Marketeq" disclosure before we
+                  // hand off to Stripe's hosted modal, matching the consent step every
+                  // other provider — PayPal/Wise/Payoneer — already has).
+                  <div className="p-6 relative">
+                    <div className="absolute top-4 right-4">
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => { setShowAddMethod(false); setAddForm(f => ({...f, methodType: 'PICK'})); }}><X className="size-4" /></IconButton>
+                    </div>
+                    <div className="py-10 text-center space-y-5">
+                      <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center">
+                        <BankIcon className="size-6 text-primary-600" />
+                      </div>
+                      <p className="text-sm text-gray-500 px-4">
+                        You'll be securely connected to your bank through Stripe. Your banking credentials are never shared with Marketeq.
+                      </p>
+                      <Button
+                        variant="outlined" visual="gray" size="sm" className="w-full py-3 text-base gap-x-3 active:ring-4 active:ring-gray-100"
+                        leftIcon={<StripeDefault />}
+                        disabled={!!(addForm as any)._stripeConnecting}
+                        onClick={() => handleConnectStripe('')}
+                      >
+                        {(addForm as any)._stripeConnecting ? 'Connecting…' : 'Continue with Stripe'}
+                      </Button>
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-gray-200" />
+                        <span className="text-xs text-gray-400">or</span>
+                        <div className="h-px flex-1 bg-gray-200" />
+                      </div>
+                      {/* Was previously reachable only via the now-disabled bank-grid
+                          page's "Add my bank account manually" link — that was the
+                          sole entry point into BANK_MANUAL, so it has to live
+                          somewhere reachable now that page is gone. Styled to match
+                          "Continue with Stripe" so both options read as equally valid. */}
+                      <Button
+                        variant="outlined" visual="gray" size="sm" className="w-full py-3 text-base gap-x-3 active:ring-4 active:ring-gray-100"
+                        leftIcon={<BankIcon className="size-5" />}
+                        onClick={() => setAddForm(f => ({...f, methodType: 'BANK_MANUAL', bankAccountName: '', bankAccountNumber: '', bankAccountNumberConfirm: '', bankRoutingNumber: '', bankSortCode: '', bankIfscCode: '', bankBsbNumber: '', bankInstitutionNumber: '', bankTransitNumber: '', bankCountry: 'US', bankCurrency: 'USD', nickname: '', accountType: 'CHECKING', bankConsent: false, _selectedBank: '', _stripeConnecting: false} as any))}
+                      >
+                        Add my bank account manually
+                      </Button>
+                      <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Back to Deposit Methods</Button>
+                    </div>
+                  </div>
+                ) : false && addForm.methodType === 'BANK_CONNECT' ? (
+                  // Disabled, not deleted: this screen (our own bank-logo grid) was
+                  // purely redundant — Stripe's own hosted Financial Connections modal
+                  // re-asks for the institution regardless of what's picked here.
+                  // Selecting "Direct Deposit to U.S. Bank" now goes to the
+                  // 'BANK_CONNECT_CONFIRM' consent screen above instead. The two "back
+                  // to bank connect" links elsewhere were repointed to 'PICK'
+                  // accordingly. Flip `false &&` back on to re-enable.
                   /* Step 2: Connect your bank account — bank picker grid */
                   <div className="p-6">
                     {!(addForm as any)._selectedBank && <>
@@ -2262,6 +2443,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                           >
                             {(addForm as any)._stripeConnecting ? 'Connecting…' : 'Continue with Stripe'}
                           </Button>
+                          <Button variant="link" visual="gray" size="sm" className="w-full" leftIcon={<ChevronLeft className="size-4" />} onClick={() => setAddForm(f => ({...f, methodType: 'PICK', _selectedBank: ''} as any))}>Back to Deposit Methods</Button>
                         </div>
                       </>
                     ) : (
@@ -2342,7 +2524,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                     return (
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}><ChevronLeft className="size-4" /></IconButton>
+                      <IconButton size="sm" variant="ghost" visual="gray" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}><ChevronLeft className="size-4" /></IconButton>
                       <h3 className="text-base font-semibold text-dark-blue-400">Add your bank account manually</h3>
                       <IconButton size="sm" variant="ghost" visual="gray" className="ml-auto" onClick={() => setShowAddMethod(false)}><X className="size-4" /></IconButton>
                     </div>
@@ -2536,7 +2718,7 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                       </label>
                     </div>
                     <div className="flex gap-2 mt-5">
-                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, methodType: 'BANK_CONNECT'}))}>Cancel</Button>
+                      <Button variant="outlined" visual="gray" size="sm" className="flex-1" onClick={() => setAddForm(f => ({...f, methodType: 'PICK'}))}>Cancel</Button>
                       <Button
                         variant="filled" visual="primary" size="sm" className="flex-1"
                         onClick={handleAddMethod}
@@ -3998,11 +4180,14 @@ function toActivityItem(p: { id: string; status: string; amountUsd: string; meth
 }
 
 const ACTIVITY_ICON: Record<string, { icon: React.ReactNode; iconBg: string }> = {
-  scheduled: { icon: <Calendar className="size-4 text-primary-500" />, iconBg: "bg-primary-50" },
-  sent: { icon: <ArrowUp className="size-4 text-success-500" />, iconBg: "bg-success-50" },
+  // Figma "Recent Activity": calendar-check for scheduled, banknote for a
+  // completed/sent payout, clock for still-processing, circle-x for a
+  // definite failure, slash-circle for a cancellation (distinct from failed).
+  scheduled: { icon: <CalendarCheck02 className="size-4 text-primary-500" />, iconBg: "bg-primary-50" },
+  sent: { icon: <BankNote02 className="size-4 text-success-500" />, iconBg: "bg-success-50" },
   processing: { icon: <Clock className="size-4 text-gray-500" />, iconBg: "bg-gray-100" },
-  failed: { icon: <X className="size-4 text-error-500" />, iconBg: "bg-error-50" },
-  cancelled: { icon: <X className="size-4 text-gray-500" />, iconBg: "bg-gray-100" },
+  failed: { icon: <XCircle className="size-4 text-error-500" />, iconBg: "bg-error-50" },
+  cancelled: { icon: <SlashCircle01 className="size-4 text-gray-500" />, iconBg: "bg-gray-100" },
 }
 
 // ─── Earnings Tab ───────────────────────────────────────────────────────
@@ -4064,6 +4249,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const [dateRange, setDateRange] = React.useState("this_month")
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
+  const [dateSortOrder, setDateSortOrder] = React.useState<"asc" | "desc">("desc")
 
   // US-27 Fee Breakdown Expander: per-row chevron toggle. feeBreakdown is only
   // meaningful for single-entry (daily view) rows — weekly/monthly rows are
@@ -4113,12 +4299,12 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
   const loadEarnings = React.useCallback(() => {
     setEarningsLoading(true)
     setEarningsError(false)
-    const q: any = { view: viewMode, dateRange, page: currentPage, limit: 10, sortBy: "workStartAt", sortOrder: "desc" }
+    const q: any = { view: viewMode, dateRange, page: currentPage, limit: 10, sortBy: "workStartAt", sortOrder: dateSortOrder }
     if (entryType) q.entryType = entryType
     if (statusFilter) q.status = statusFilter
     if (searchQuery.length >= 2) q.search = searchQuery
     getEarnings(q).then(setEarningsResult).catch((e) => { console.error(e); setEarningsError(true) }).finally(() => setEarningsLoading(false))
-  }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery])
+  }, [viewMode, dateRange, currentPage, entryType, statusFilter, searchQuery, dateSortOrder])
 
   useEffect(() => { loadEarnings() }, [loadEarnings])
 
@@ -4128,12 +4314,14 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
     ...(dateRange !== "this_month" ? [{ key: "dateRange", label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange, onRemove: () => { setDateRange("this_month"); setCurrentPage(1) } }] : []),
     ...(entryType ? [{ key: "entryType", label: entryType === "manual" ? "Manual" : "Automated", onRemove: () => { setEntryType(""); setCurrentPage(1) } }] : []),
     ...(statusFilter ? [{ key: "statusFilter", label: statusFilter === "paid" ? "Paid" : "Reversed", onRemove: () => { setStatusFilter(""); setCurrentPage(1) } }] : []),
+    ...(searchQuery.length >= 2 ? [{ key: "search", label: `"${searchQuery}"`, onRemove: () => { setSearchQuery(""); setCurrentPage(1) } }] : []),
   ]
   const hasActiveFilters = activeFilterChips.length > 0
   const clearAllFilters = React.useCallback(() => {
     setDateRange("this_month")
     setEntryType("")
     setStatusFilter("")
+    setSearchQuery("")
     setCurrentPage(1)
   }, [])
 
@@ -4275,9 +4463,16 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="cursor-pointer">
+              <TableHead
+                className="cursor-pointer select-none"
+                onClick={() => { setDateSortOrder((o) => (o === "desc" ? "asc" : "desc")); setCurrentPage(1) }}
+              >
                 {viewMode === "weekly" ? "Week Range" : viewMode === "monthly" ? "Month" : "Date"}{" "}
-                <ArrowDown className="size-3 inline ml-1" />
+                {dateSortOrder === "desc" ? (
+                  <ArrowDown className="size-3 inline ml-1" />
+                ) : (
+                  <ArrowUp className="size-3 inline ml-1" />
+                )}
               </TableHead>
               <TableHead>Project</TableHead>
               {viewMode === "daily" && <TableHead>Task</TableHead>}
@@ -4354,7 +4549,12 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.task?.name ?? "—"}</TableCell>}
                 {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.startTime ?? "—"}</TableCell>}
                 {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.endTime ?? "—"}</TableCell>}
-                {viewMode === "daily" && <TableCell className="text-sm text-gray-500">{row.durationLabel}</TableCell>}
+                {viewMode === "daily" && (
+                  <TableCell className="text-sm text-gray-500">
+                    <div>{row.durationLabel}</div>
+                    {row.entryType === "manual" && <Badge visual="warning" size="sm" className="mt-1">Manual</Badge>}
+                  </TableCell>
+                )}
                 {viewMode === "weekly" && <TableCell className="text-sm text-gray-500">{row.weeklyHours ?? "—"}</TableCell>}
                 {viewMode === "monthly" && <TableCell className="text-sm text-gray-500">{row.totalHours ?? "—"}</TableCell>}
                 <TableCell>
@@ -4382,7 +4582,6 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
                 )}
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
-                    {row.entryType === "manual" && <Badge visual="warning" size="sm">Manual</Badge>}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <IconButton size="sm" variant="ghost" visual="gray">
@@ -4592,7 +4791,7 @@ export const EarningsTab = ({ onFiltersChange }: { onFiltersChange?: (filters: E
 // ─── Payouts Tab ────────────────────────────────────────────────────────
 
 // AC-27.04: exact status → label mapping. Never invent alternate labels.
-const PAYOUT_STATUS_LABELS: Record<string, string> = {
+export const PAYOUT_STATUS_LABELS: Record<string, string> = {
   pending_verification: "Awaiting Confirmation",
   awaiting_edd: "Awaiting Review",
   queued: "Processing",
@@ -4616,7 +4815,7 @@ interface PayoutHistoryItem {
   id: string; amountUsd: string; feeUsd: string; netAmountUsd: string; currency: string
   status: string; trigger: string; failureReason: string | null
   methodType: string | null; methodLabel: string | null
-  createdAt: string; settledAt: string | null
+  createdAt: string; settledAt: string | null; estimatedArrivalAt: string | null
 }
 
 // US-28: read-only detail dialog — no retry/cancel actions at MVP (AC-28.06).
@@ -4663,6 +4862,9 @@ const PayoutDetailDialog = ({ payoutId, onOpenChange }: { payoutId: string | nul
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-dark-blue-400">Payout Details</DialogTitle>
         </DialogHeader>
+        <IconButton size="sm" variant="ghost" visual="gray" className="absolute top-4 right-4" onClick={() => onOpenChange(false)}>
+          <X className="size-4" />
+        </IconButton>
         {detailError ? (
           <div className="text-center py-8">
             <p className="text-sm text-gray-500">{detailError}</p>
@@ -4725,12 +4927,24 @@ const PAYOUT_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "cancelled", label: "Cancelled" },
 ]
 
-export const PayoutsTab = () => {
+export interface PayoutDepositStatus {
+  status: string | null
+  estimatedArrivalAt: string | null
+  amountUsd: string | null
+}
+
+export const PayoutsTab = ({ onDepositStatusChange }: { onDepositStatusChange?: (status: PayoutDepositStatus) => void } = {}) => {
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   // SCR-16: real, server-side status filter — replaces the previously cosmetic
   // "All Statuses"/"All Accounts" selectors that had no effect on the fetch.
   const [statusFilter, setStatusFilter] = useState("")
+  // Figma "All Time" / "All Accounts" — now real, server-side filters (see
+  // resolvePayoutDateRange/depositMethodId in payout.service.ts) instead of
+  // the previously-removed inert selectors.
+  const [dateRange, setDateRange] = useState("all_time")
+  const [depositMethodId, setDepositMethodId] = useState("")
+  const [accountOptions, setAccountOptions] = useState<DepositMethodOption[]>([])
   const pageSize = 10
 
   const [payouts, setPayouts] = useState<PayoutHistoryItem[]>([])
@@ -4740,9 +4954,28 @@ export const PayoutsTab = () => {
   const [detailId, setDetailId] = useState<string | null>(null)
 
   // Stat cards — sourced from real data, not the Figma mock's static "$832.00 /
-  // Tuesday, Aug 20th / Chase Bank ...4553" etc. "Total Payouts This Month" has no
-  // backend aggregate (payout-service exposes no date-range totals endpoint) — shown
-  // as unavailable rather than an approximated/possibly-wrong client-computed guess.
+  // Tuesday, Aug 20th / Chase Bank ...4553" etc.
+  const [monthlySummary, setMonthlySummary] = useState<{ thisMonthTotalUsd: string; changePercent: number | null; changeDirection: 'up' | 'down' | 'unchanged'; sinceDate: string | null; nextPayoutStatus: string | null; nextPayoutEstimatedArrival: string | null; nextPayoutAmountUsd: string | null } | null>(null)
+  const [monthlySummaryError, setMonthlySummaryError] = useState(false)
+  const loadMonthlySummary = React.useCallback(() => {
+    setMonthlySummaryError(false)
+    payoutFetch(`/payouts/summary`)
+      .then(async (res) => { if (!res.ok) throw new Error('failed'); return res.json() })
+      .then(setMonthlySummary)
+      .catch((e) => { console.error('Failed to fetch monthly payout summary', e); setMonthlySummaryError(true) })
+  }, [])
+
+  // Surfaces the real in-flight payout's status/ETA to the page header's
+  // "Where Is My Deposit?" trigger — replaces a static "2-3 business days" toast.
+  useEffect(() => {
+    if (!monthlySummary) return
+    onDepositStatusChange?.({
+      status: monthlySummary.nextPayoutStatus,
+      estimatedArrivalAt: monthlySummary.nextPayoutEstimatedArrival,
+      amountUsd: monthlySummary.nextPayoutAmountUsd,
+    })
+  }, [monthlySummary, onDepositStatusChange])
+
   const [nextRunAt, setNextRunAt] = useState<string | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
   // US-100/US-101: same conflation risk as balanceError below — a failed
@@ -4778,16 +5011,23 @@ export const PayoutsTab = () => {
   useEffect(() => {
     loadPayoutsSchedule()
     loadPayoutsBalance()
+    loadMonthlySummary()
     ;(async () => {
       try {
         const res = await payoutFetch(`/payouts?status=completed&page=1&pageSize=1`)
         if (res.ok) { const d = await res.json(); setCompletedCount(d.totalCount ?? 0) }
       } catch (e) { console.error('Failed to fetch completed payout count', e) }
     })()
-  }, [loadPayoutsBalance, loadPayoutsSchedule])
+    ;(async () => {
+      try {
+        const res = await payoutFetch(`/deposit-methods`)
+        if (res.ok) { const d = await res.json(); setAccountOptions(d.methods ?? []) }
+      } catch (e) { console.error('Failed to fetch deposit methods for account filter', e) }
+    })()
+  }, [loadPayoutsBalance, loadPayoutsSchedule, loadMonthlySummary])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const hasActiveFilters = !!statusFilter
+  const hasActiveFilters = !!statusFilter || searchQuery.length >= 2 || dateRange !== "all_time" || !!depositMethodId
 
   const loadPayouts = React.useCallback(async (silent = false) => {
     if (!silent) { setLoading(true); setLoadError("") }
@@ -4795,6 +5035,8 @@ export const PayoutsTab = () => {
       const qs = new URLSearchParams({ page: String(currentPage), pageSize: String(pageSize) })
       if (statusFilter) qs.set('status', statusFilter)
       if (searchQuery.trim().length >= 2) qs.set('search', searchQuery.trim())
+      if (dateRange !== "all_time") qs.set('dateRange', dateRange)
+      if (depositMethodId) qs.set('depositMethodId', depositMethodId)
       const res = await payoutFetch(`/payouts?${qs.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.message ?? "Failed to load")
@@ -4806,7 +5048,7 @@ export const PayoutsTab = () => {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [currentPage, statusFilter, searchQuery])
+  }, [currentPage, statusFilter, searchQuery, dateRange, depositMethodId])
 
   useEffect(() => { loadPayouts() }, [loadPayouts])
 
@@ -4829,31 +5071,70 @@ export const PayoutsTab = () => {
           label="Next Payout"
           sublabel={scheduleLoading ? "Loading..." : scheduleError ? "Unavailable" : nextRunAt ? new Date(nextRunAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }) : "No schedule set"}
           amount={scheduleLoading ? "-" : nextRunAt && balance ? parseFloat(balance.availableBalance).toFixed(2) : "-"}
+          status={monthlySummary?.nextPayoutStatus ? `${PAYOUT_STATUS_LABELS[monthlySummary.nextPayoutStatus] ?? monthlySummary.nextPayoutStatus}...` : undefined}
           extra={scheduleError ? (
             <button className="text-red-600 underline" onClick={loadPayoutsSchedule}>Unavailable — Retry</button>
           ) : balanceError ? (
             <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
-          ) : defaultMethodLabel ? `Bank: ${defaultMethodLabel}` : undefined}
+          ) : defaultMethodLabel ? (
+            <span className="inline-flex items-center gap-1.5"><BankIcon className="size-3.5 text-gray-400" />{defaultMethodLabel}</span>
+          ) : undefined}
         />
-        {/* No date-range payout aggregate exists on payout-service - showing "Unavailable"
-            rather than a client-computed guess that could silently be wrong. */}
         <StatCard
           label="Total Payouts This Month"
-          amount="-"
-          extra="Not available yet"
+          sublabel={`Payouts in ${new Date().toLocaleDateString("en-US", { month: "long" })}`}
+          amount={monthlySummary ? parseFloat(monthlySummary.thisMonthTotalUsd).toFixed(2) : "-"}
+          change={
+            monthlySummaryError ? undefined :
+            monthlySummary?.changePercent != null && monthlySummary.changeDirection !== 'unchanged'
+              ? { value: `${Math.abs(monthlySummary.changePercent)}%`, direction: monthlySummary.changeDirection, label: 'from last month' }
+              : undefined
+          }
+          extra={monthlySummaryError ? (
+            <button className="text-red-600 underline" onClick={loadMonthlySummary}>Unavailable — Retry</button>
+          ) : undefined}
         />
         <StatCard
           label="Lifetime Payouts"
           amount={balance ? parseFloat(balance.totalPaidOutUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
           extra={balanceError ? (
             <button className="text-red-600 underline" onClick={loadPayoutsBalance}>Unavailable — Retry</button>
-          ) : completedCount != null ? `${completedCount} completed payout${completedCount === 1 ? "" : "s"}` : undefined}
+          ) : completedCount != null ? (
+            <>
+              {completedCount} completed payout{completedCount === 1 ? "" : "s"}
+              {monthlySummary?.sinceDate && ` · Since ${new Date(monthlySummary.sinceDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+            </>
+          ) : undefined}
         />
       </div>
 
-      {/* Filters Row — Status is real (server-side, wired to the fetch); Account/Date
-          removed rather than shipped as inert selectors with a single fake option. */}
+      {/* Filters Row — Status, Date Range, and Account are all real, server-side
+          filters wired to the fetch (see payout.service.ts listPayouts). */}
       <div className="flex items-center gap-3 flex-wrap">
+        <Select value={dateRange} onValueChange={(v) => { setDateRange(v); setCurrentPage(1) }}>
+          <SelectTrigger className="h-9 w-auto min-w-[110px]">
+            <Calendar className="size-4 mr-1" />
+            <SelectValue placeholder="All Time" />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(EARNINGS_DATE_RANGE_LABELS).filter(([v]) => v !== "yesterday" && v !== "last_week").map(([v, label]) => (
+              <SelectItem key={v} value={v}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={depositMethodId || "all-accounts"} onValueChange={(v) => { setDepositMethodId(v === "all-accounts" ? "" : v); setCurrentPage(1) }}>
+          <SelectTrigger className="h-9 w-auto min-w-[150px]">
+            <SelectValue placeholder="All Accounts" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all-accounts">All Accounts</SelectItem>
+            {accountOptions.map(m => (
+              <SelectItem key={m.id} value={m.id}>{m.nickname || m.displayLabel || m.methodType}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Select value={statusFilter || "all-statuses"} onValueChange={(v) => { setStatusFilter(v === "all-statuses" ? "" : v); setCurrentPage(1) }}>
           <SelectTrigger className="h-9 w-auto min-w-[160px]">
             <SelectValue placeholder="All Statuses" />
@@ -4868,11 +5149,31 @@ export const PayoutsTab = () => {
 
         {hasActiveFilters && (
           <>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-              {PAYOUT_STATUS_FILTER_OPTIONS.find(o => o.value === statusFilter)?.label ?? statusFilter}
-              <button onClick={() => { setStatusFilter(""); setCurrentPage(1) }} className="hover:text-gray-900"><X className="size-3" /></button>
-            </div>
-            <Button variant="link" size="sm" onClick={() => { setStatusFilter(""); setCurrentPage(1) }}>Clear All</Button>
+            {dateRange !== "all_time" && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                {EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange}
+                <button onClick={() => { setDateRange("all_time"); setCurrentPage(1) }} className="hover:text-gray-900"><X className="size-3" /></button>
+              </div>
+            )}
+            {depositMethodId && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                {accountOptions.find(m => m.id === depositMethodId)?.nickname || accountOptions.find(m => m.id === depositMethodId)?.displayLabel || "Account"}
+                <button onClick={() => { setDepositMethodId(""); setCurrentPage(1) }} className="hover:text-gray-900"><X className="size-3" /></button>
+              </div>
+            )}
+            {statusFilter && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                {PAYOUT_STATUS_FILTER_OPTIONS.find(o => o.value === statusFilter)?.label ?? statusFilter}
+                <button onClick={() => { setStatusFilter(""); setCurrentPage(1) }} className="hover:text-gray-900"><X className="size-3" /></button>
+              </div>
+            )}
+            {searchQuery.length >= 2 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                {`"${searchQuery}"`}
+                <button onClick={() => { setSearchQuery(""); setCurrentPage(1) }} className="hover:text-gray-900"><X className="size-3" /></button>
+              </div>
+            )}
+            <Button variant="link" size="sm" onClick={() => { setStatusFilter(""); setSearchQuery(""); setDateRange("all_time"); setDepositMethodId(""); setCurrentPage(1) }}>Clear All</Button>
           </>
         )}
 
@@ -4899,7 +5200,7 @@ export const PayoutsTab = () => {
               <TableHead>Method</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Initiated on</TableHead>
-              <TableHead>Settled on</TableHead>
+              <TableHead>Est. Arrival</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -4925,7 +5226,7 @@ export const PayoutsTab = () => {
               // EC-51: "no results for this filter" is distinct from "no history at all"
               <TableRow><TableCell colSpan={6} className="text-center py-10">
                 <p className="text-sm text-gray-500">No results for this filter.</p>
-                <button className="text-sm text-primary-600 underline mt-1" onClick={() => { setStatusFilter(""); setCurrentPage(1) }}>Clear filters</button>
+                <button className="text-sm text-primary-600 underline mt-1" onClick={() => { setStatusFilter(""); setDateRange("all_time"); setDepositMethodId(""); setCurrentPage(1) }}>Clear filters</button>
               </TableCell></TableRow>
             ) : payouts.length === 0 ? (
               // AC-27.01: empty state distinct from an error state
@@ -4947,12 +5248,15 @@ export const PayoutsTab = () => {
                       {/* AC-27.06: visually distinguish scheduled from manual payouts */}
                       {row.trigger === "scheduled" && <Badge visual="gray" size="sm">Scheduled</Badge>}
                     </div>
-                    {row.status === "failed" && row.failureReason && (
-                      <p className="text-xs text-red-500 mt-1">{row.failureReason}</p>
-                    )}
                   </TableCell>
                   <TableCell className="text-sm text-gray-500">{formatPayoutDate(row.createdAt)}</TableCell>
-                  <TableCell className="text-sm text-gray-500">{formatPayoutDate(row.settledAt)}</TableCell>
+                  <TableCell className="text-sm text-gray-500">
+                    {row.status === "completed"
+                      ? formatPayoutDate(row.settledAt)
+                      : row.estimatedArrivalAt
+                        ? `Est. ${formatPayoutDate(row.estimatedArrivalAt)}`
+                        : "—"}
+                  </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

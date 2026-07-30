@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PayoutError } from '../common/errors/payout.error';
 import { AuditService } from '../audit/audit.service';
+import { Public } from '../decorators/public.decorator';
 
 @Controller('v1/webhooks')
 export class RampWebhookController {
@@ -17,6 +18,11 @@ export class RampWebhookController {
     private readonly auditService: AuditService,
   ) {}
 
+  // Ramp's servers call this directly — no Marketeq JWT exists to send.
+  // Authenticity is verified entirely via the HMAC signature below, not
+  // session auth, so this must bypass the app-wide JwtAuthGuard (APP_GUARD
+  // in app.module.ts) rather than relying on it.
+  @Public()
   @Post('ramp')
   @HttpCode(200)
   async handleRampWebhook(
