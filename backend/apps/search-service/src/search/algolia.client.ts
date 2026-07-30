@@ -40,7 +40,7 @@ export class AlgoliaClient implements OnModuleInit {
     const requests = queries.map(({ indexName, query, params = {} }) => ({
       indexName,
       query,
-      params,
+      ...params,
     }))
     const { results } = await this.client.search({ requests })
     return results

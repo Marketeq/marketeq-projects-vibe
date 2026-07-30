@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  GatewayTimeoutException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -8,9 +9,11 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
+import { resolve4, resolveMx } from 'dns/promises';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -26,6 +29,7 @@ import { BrevoService } from '../brevo/brevo.service';
 
 import { User } from '../user/entities/user.entity';
 import { Session } from '../session/entities/session.entity';
+import { PasswordHistory } from '../password-history/entities/password-history.entity';
 import { SessionResponseDto } from './dto/session-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -60,6 +64,9 @@ type AuthUserPayload = {
   twoFactorMethod?: string | null;
   firstName?: string;
   lastName?: string;
+  isNewUser?: boolean;
+  accountLinked?: boolean;
+  linkedProvider?: string;
 };
 
 type LoginResult =
@@ -84,6 +91,7 @@ const parseExpiresIn = (value: string): number | StringValue =>
 const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
 const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
   'Too many requests. Please try again later.';
+const PASSWORD_HISTORY_LIMIT = 5;
 
 type RateLimitBucket = {
   count: number;
@@ -92,6 +100,11 @@ type RateLimitBucket = {
 
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
+  // Hard ceiling on the signup-time domain check. Node's resolver retries
+  // internally and can stall for many seconds, and this sits in the
+  // synchronous registration path.
+  private static readonly DNS_LOOKUP_TIMEOUT_MS = 3000;
+
   private readonly logger = new Logger(AuthService.name);
   private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
   private readonly passwordResetRateLimits = new Map<string, RateLimitBucket>();
@@ -108,6 +121,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(PasswordHistory)
+    private readonly passwordHistoryRepository: Repository<PasswordHistory>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly brevoService: BrevoService,
@@ -136,7 +151,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private serializeUser(
     user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'> & { twoFactorMethod?: string | null },
-    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
+    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName' | 'isNewUser' | 'accountLinked' | 'linkedProvider'>,
   ): AuthUserPayload {
     return {
       id: user.id,
@@ -152,6 +167,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -206,6 +222,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -265,6 +282,78 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { available: !existingUser };
+  }
+
+  // Format validation (@IsEmail) only checks shape, not whether the domain
+  // can actually receive mail — catches typos like "gmial.con" or made-up
+  // domains at sign-up time instead of a verification email silently
+  // going nowhere.
+  //
+  // Deliberately FAILS OPEN. Only a definitive NXDOMAIN/ENODATA on both the
+  // MX and the A record rejects a signup; a resolver timeout, SERVFAIL or
+  // network blip lets it through. A fail-closed check would turn one flaky
+  // resolver into a total signup outage that blames the user's address —
+  // catching a typo is never worth that trade.
+  private async assertValidEmailDomain(email: string): Promise<void> {
+    const domain = email.split('@')[1];
+    if (!domain) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    // NXDOMAIN / ENODATA are the only answers that definitively mean "this
+    // domain cannot receive mail". Anything else — timeout, SERVFAIL,
+    // EAI_AGAIN, refused — is inconclusive and must NOT reject the signup.
+    const isDefinitiveMiss = (err: unknown) => {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      return code === 'ENOTFOUND' || code === 'ENODATA';
+    };
+
+    const lookup = async (
+      fn: (host: string) => Promise<unknown[]>,
+      kind: string,
+    ): Promise<'found' | 'missing' | 'inconclusive'> => {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        const records = await Promise.race([
+          fn(domain),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  Object.assign(new Error(`${kind} lookup timed out`), {
+                    code: 'ETIMEOUT',
+                  }),
+                ),
+              AuthService.DNS_LOOKUP_TIMEOUT_MS,
+            );
+          }),
+        ]);
+        return Array.isArray(records) && records.length > 0
+          ? 'found'
+          : 'missing';
+      } catch (error) {
+        if (isDefinitiveMiss(error)) return 'missing';
+        this.logger.warn(
+          `${kind} lookup for "${domain}" was inconclusive (${
+            (error as NodeJS.ErrnoException)?.code ?? error
+          }) — allowing signup rather than blocking on DNS`,
+        );
+        return 'inconclusive';
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const mx = await lookup(resolveMx, 'MX');
+    if (mx !== 'missing') return;
+
+    // A domain with no MX record is NOT necessarily undeliverable: RFC 5321
+    // §5.1 falls back to the A/AAAA record (implicit MX), which plenty of
+    // small self-hosted domains rely on. Only reject once both are absent.
+    const a = await lookup(resolve4, 'A');
+    if (a !== 'missing') return;
+
+    throw new BadRequestException("Email domain can't receive mail");
   }
 
   private throwDuplicateEmailIfNeeded(error: unknown): never | void {
@@ -502,8 +591,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       'If an account exists for this email, password reset instructions will be sent.';
 
     if (!user) {
-      return { message };
+      this.logger.log(
+        `forgotPassword: reset requested for unknown email (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      return { accountFound: false };
     }
+
+    this.logger.log(
+      `forgotPassword: reset requested for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
 
     user.passwordResetVersion = randomUUID();
     await this.userRepository.save(user);
@@ -538,12 +634,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
 
     return {
+      accountFound: true,
       message,
       ...(isDev && { reset_token: resetToken, reset_url: resetUrl }),
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto, ipAddress = '') {
+  async resetPassword(dto: ResetPasswordDto, ipAddress = '', userAgent = '') {
     this.enforcePasswordResetRateLimit(
       `reset-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
       'AUTH_RESET_PASSWORD_IP_LIMIT',
@@ -564,10 +661,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         algorithms: ['RS256'],
       });
     } catch {
+      this.logger.warn(
+        `resetPassword: rejected invalid/expired token (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected malformed token payload (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
@@ -577,8 +680,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!user || user.passwordResetVersion !== payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected reused/stale token for userId=${payload.sub} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
+
+    await this.assertPasswordNotReused(user, dto.password);
 
     const nextResetVersion = randomUUID();
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -597,7 +705,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         throw new UnauthorizedException('Invalid or expired reset token');
       }
 
-      await manager.getRepository(Session).delete({ userId: user.id });
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager
+        .getRepository(PasswordHistory)
+        .find({
+          where: { userId: user.id },
+          order: { createdAt: 'DESC' },
+          skip: PASSWORD_HISTORY_LIMIT,
+        });
+
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
     });
 
     user.hasPassword = true;
@@ -605,7 +730,80 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     await this.syncUserProfile(user);
 
-    return { success: true };
+    this.logger.log(
+      `resetPassword: password reset for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    const sessionId = randomUUID();
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+
+    return {
+      success: true,
+      ...tokens,
+      sessionId,
+      user: this.serializeUser(user),
+    };
+  }
+
+  private async assertPasswordNotReused(
+    user: Pick<User, 'id' | 'password'>,
+    newPassword: string,
+  ): Promise<void> {
+    const recentHashes: string[] = [];
+
+    if (user.password) {
+      recentHashes.push(user.password);
+    }
+
+    const history = await this.passwordHistoryRepository.find({
+      where: { userId: user.id },
+      order: { createdAt: 'DESC' },
+      take: PASSWORD_HISTORY_LIMIT - 1,
+      select: ['passwordHash'],
+    });
+    recentHashes.push(...history.map((entry) => entry.passwordHash));
+
+    for (const hash of recentHashes) {
+      if (await bcrypt.compare(newPassword, hash)) {
+        throw new BadRequestException(
+          `You cannot reuse one of your last ${PASSWORD_HISTORY_LIMIT} passwords.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * True if the error means the provider was unreachable or too slow to
+   * respond (network error, timeout) rather than a genuine 4xx rejection.
+   */
+  private isProviderUnreachable(error: unknown): boolean {
+    return (
+      axios.isAxiosError(error) &&
+      (!error.response || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')
+    );
+  }
+
+  /**
+   * Classifies a failed outbound OAuth provider call (Google/LinkedIn) and
+   * throws the appropriate exception: a timeout/no-response distinguishes
+   * "provider unreachable" from a genuine 4xx "token/code rejected" case,
+   * so the frontend shows a non-technical "try again" message instead of
+   * a misleading "invalid token" during a provider outage or timeout.
+   * Timeout (504) vs. unreachable (503) is kept distinct at the status-code
+   * level for logs/monitoring, but both use the same user-facing message.
+   */
+  private throwProviderError(error: unknown, provider: 'Google' | 'LinkedIn', invalidMessage: string): never {
+    const unavailableMessage = `${provider} sign-in is unavailable right now. Please try again shortly.`;
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new GatewayTimeoutException(unavailableMessage);
+      }
+      if (!error.response) {
+        throw new ServiceUnavailableException(unavailableMessage);
+      }
+    }
+    throw new UnauthorizedException(invalidMessage);
   }
 
   async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
@@ -656,13 +854,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
         idToken = response.data?.id_token ?? idToken;
-      } catch {
-        throw new UnauthorizedException('Invalid Google auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google auth code');
       }
     }
 
@@ -693,11 +892,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { id_token: idToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google token');
       }
 
       if (!tokenInfo?.email || !tokenInfo?.sub) {
@@ -725,11 +925,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { access_token: accessToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google access token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google access token');
       }
 
       aud = tokenInfo.audience ?? tokenInfo.aud ?? tokenInfo.issued_to;
@@ -747,15 +948,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://www.googleapis.com/oauth2/v3/userinfo',
           {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 10000,
           },
         );
         email = email ?? response.data?.email;
         emailVerified = emailVerified ?? response.data?.email_verified;
         firstName = response.data?.given_name;
         lastName = response.data?.family_name;
-      } catch {
+      } catch (error) {
         if (!email) {
-          throw new UnauthorizedException('Invalid Google access token');
+          this.throwProviderError(error, 'Google', 'Invalid Google access token');
         }
       }
 
@@ -780,6 +982,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -797,6 +1000,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'GOOGLE') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with Google for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'GOOGLE';
+      await this.userRepository.update({ id: user.id }, { provider: 'GOOGLE' });
     }
 
     try {
@@ -826,7 +1036,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'GOOGLE' }),
+      }),
     };
   }
 
@@ -871,12 +1086,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
-      } catch {
-        throw new UnauthorizedException('Invalid LinkedIn auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn auth code');
       }
     }
 
@@ -903,6 +1119,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -920,6 +1137,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'LINKEDIN') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with LinkedIn for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'LINKEDIN';
+      await this.userRepository.update({ id: user.id }, { provider: 'LINKEDIN' });
     }
 
     try {
@@ -946,7 +1170,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'LINKEDIN' }),
+      }),
     };
   }
 
@@ -1600,7 +1829,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
+      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '24h',
     );
 
     return this.jwtService.signAsync(
@@ -1835,9 +2064,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async fetchLinkedInProfile(
     accessToken: string,
   ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
+    let firstStepUnreachable = false;
+
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
       });
 
       const email = response.data?.email;
@@ -1854,7 +2086,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       if (email) {
         return { email, emailVerified, firstName, lastName };
       }
-    } catch {
+    } catch (error) {
+      firstStepUnreachable = this.isProviderUnreachable(error);
       // fallback below
     }
 
@@ -1867,13 +2100,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             q: 'members',
             projection: '(elements*(handle~))',
           },
+          timeout: 10000,
         },
       );
 
       const email =
         response.data?.elements?.[0]?.['handle~']?.emailAddress ?? undefined;
       return { email };
-    } catch {
+    } catch (error) {
+      if (firstStepUnreachable || this.isProviderUnreachable(error)) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn token');
+      }
       return {};
     }
   }

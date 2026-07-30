@@ -177,6 +177,75 @@ export class PublishController {
     }
   }
 
+  @Get('project/:projectId/members')
+  async getProjectMembers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getProjectMembers(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/members')
+  async saveProjectMembers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { members: any[] },
+  ) {
+    try {
+      return await this.publishService.saveProjectMembers(
+        req.user.sub,
+        projectId,
+        body?.members ?? [],
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('project/:projectId/questions')
+  async getRecentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getRecentQuestions(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/questions')
+  async saveRecentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { questions: any[] },
+  ) {
+    try {
+      return await this.publishService.saveRecentQuestions(
+        req.user.sub,
+        projectId,
+        body?.questions ?? [],
+        req.headers.authorization,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Post('category/subcategory')
   async createModeratedSubcategory(
     @Body() dto: CreateModeratedSubcategoryDto,
@@ -193,6 +262,7 @@ export class PublishController {
       return await this.publishService.publishExistingProject(
         req.user.sub,
         projectId,
+        req.headers.authorization,
       );
     } catch (error) {
       console.log('err', error);

@@ -8,6 +8,11 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
+import {
+  getCheckoutProjectSummary,
+  titleizeCheckoutSlug,
+  type CheckoutProjectSummary,
+} from "@/lib/checkout/project-summary"
 import { cn } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -328,7 +333,7 @@ const replacementTeamMembers: CheckoutTeamMember[] = [
     phases: "4 Phases",
     experience: "Senior",
     location: "United States",
-    rate: "$650/hr",
+    rate: "$30/hr",
     status: "Confirmed",
     avatarSrc: "/man.jpg",
     source: "Favorites",
@@ -342,7 +347,7 @@ const replacementTeamMembers: CheckoutTeamMember[] = [
     phases: "3 Phases",
     experience: "Medior",
     location: "United States",
-    rate: "$575/hr",
+    rate: "$30/hr",
     status: "Confirmed",
     avatarSrc: "/man.jpg",
     source: "Talent Network",
@@ -356,7 +361,7 @@ const replacementTeamMembers: CheckoutTeamMember[] = [
     phases: "2 Phases",
     experience: "Junior",
     location: "United States",
-    rate: "$500/hr",
+    rate: "$30/hr",
     status: "Confirmed",
     avatarSrc: "/man.jpg",
     source: "Talent Network",
@@ -370,6 +375,42 @@ const safeDecodeSlug = (value: string): string => {
   } catch {
     return value
   }
+}
+
+const getCountryDisplayName = (location?: string | null) =>
+  location === "United States" ? "USA" : (location ?? "USA")
+
+const getCountryFlag = (location?: string | null) => {
+  const country = getCountryDisplayName(location).toLowerCase()
+
+  if (country === "usa" || country === "united states") return "🇺🇸"
+  if (country === "india") return "🇮🇳"
+  if (country === "pakistan") return "🇵🇰"
+  if (country === "canada") return "🇨🇦"
+  if (country === "united kingdom" || country === "uk") return "🇬🇧"
+
+  return "🇺🇸"
+}
+
+const getShortHandle = (handle?: string | null) => {
+  if (!handle) return ""
+  const normalizedHandle = handle.startsWith("@") ? handle.slice(1) : handle
+
+  return `@${normalizedHandle.slice(0, 6)}`
+}
+
+const renderRate = (rate?: string | null) => {
+  const value = rate || "$30/hr"
+  const [amount, unit = ""] = value.split("/")
+
+  return (
+    <span className="inline-flex h-5 w-[47px] items-center whitespace-nowrap text-sm leading-5">
+      <span className="font-semibold text-[#22376B]">{amount}</span>
+      {unit ? (
+        <span className="font-normal text-[#475467]">/{unit}</span>
+      ) : null}
+    </span>
+  )
 }
 
 export default function CheckoutPage() {
@@ -392,6 +433,8 @@ export default function CheckoutPage() {
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
+  const [projectSummary, setProjectSummary] =
+    React.useState<CheckoutProjectSummary | null>(null)
   const [isTalentProfileLoading, setIsTalentProfileLoading] =
     React.useState(isTalentCheckout)
   const [selectedRateValue, setSelectedRateValue] = React.useState(
@@ -406,6 +449,9 @@ export default function CheckoutPage() {
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [checkoutExitDialog, setCheckoutExitDialog] = React.useState<
     "edit-scope" | "add-task" | null
+  >(null)
+  const [legalDialog, setLegalDialog] = React.useState<
+    "terms" | "privacy" | null
   >(null)
   const [teamMemberDialog, setTeamMemberDialog] = React.useState<{
     action: "replace" | "remove"
@@ -467,10 +513,45 @@ export default function CheckoutPage() {
     }
   }, [decodedSlug, isTalentCheckout])
 
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+
+    let isActive = true
+
+    const loadProjectSummary = async () => {
+      try {
+        const summary = await getCheckoutProjectSummary(decodedSlug)
+        if (isActive) {
+          setProjectSummary(summary)
+        }
+      } catch {
+        if (isActive) {
+          setProjectSummary(null)
+        }
+      }
+    }
+
+    loadProjectSummary()
+
+    return () => {
+      isActive = false
+    }
+  }, [decodedSlug, isTalentCheckout])
+
   const talentName = talentProfile?.firstName || fallbackTalentName
   const talentUsername = talentProfile?.username || decodedSlug
   const talentAvatarUrl = talentProfile?.avatarUrl || ""
   const talentExperienceLabel = getExperienceLabel(talentProfile)
+  const checkoutProjectTitle =
+    projectSummary?.title || titleizeCheckoutSlug(decodedSlug)
+  const checkoutProjectImage = projectSummary?.mediaUrl || "/dashboard.png"
+  const checkoutProjectTeamLabel =
+    projectSummary?.teamMemberCount !== null &&
+    projectSummary?.teamMemberCount !== undefined
+      ? `${projectSummary.teamMemberCount} team members`
+      : "Team details unavailable"
+  const checkoutProjectDateRange =
+    projectSummary?.dateRangeLabel || "Timeline unavailable"
   const selectedRate =
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
@@ -591,8 +672,6 @@ export default function CheckoutPage() {
           ? "Estimated Monthly Cost"
           : "Estimated Total Cost"
   const formattedDueTodayTotal = `$${Math.round(dueTodayTotal).toLocaleString()}`
-  const projectPlanningPath = `/project-details/${safeSlugSegment}`
-
   const preventCheckoutDialogDismiss = (event: Event) => {
     event.preventDefault()
   }
@@ -650,11 +729,8 @@ export default function CheckoutPage() {
   )
 
   const leaveCheckoutForProjectPlanning = React.useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(addOnStateStorageKey)
-    }
-    router.push(projectPlanningPath)
-  }, [addOnStateStorageKey, projectPlanningPath, router])
+    setCheckoutExitDialog(null)
+  }, [])
 
   const continueToPaymentDetails = React.useCallback(() => {
     if (isTalentCheckout) {
@@ -700,7 +776,13 @@ export default function CheckoutPage() {
     const normalizedSearch = replacementSearch.trim().toLowerCase()
     const matchesSearch =
       normalizedSearch === "" ||
-      [member.name, member.handle, member.role, member.experience, member.location]
+      [
+        member.name,
+        member.handle,
+        member.role,
+        member.experience,
+        member.location,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(normalizedSearch)
@@ -864,6 +946,7 @@ export default function CheckoutPage() {
     <div className="bg-gray-50 pt-[64px]">
       <CheckoutNavigation
         currentStep={1}
+        logoHref=""
         firstStepLabel={
           isTalentCheckout ? "Contract Details" : "Project Details"
         }
@@ -1213,8 +1296,8 @@ export default function CheckoutPage() {
                     <div className="relative h-[92px] overflow-hidden w-[181px] border border-[#DFDFDF] rounded-md shrink-0">
                       <NextImage
                         className="object-cover"
-                        src="/dashboard.png"
-                        alt="Dashboard"
+                        src={checkoutProjectImage}
+                        alt={checkoutProjectTitle}
                         sizes="25vw"
                         fill
                       />
@@ -1223,22 +1306,19 @@ export default function CheckoutPage() {
                     <div className="flex-auto flex items-center gap-x-5">
                       <div className="flex-auto">
                         <h1 className="text-sm font-medium leading-5 border-gray-800">
-                          Marketeq Client Portal - Redesigning and Optimizing
-                          Website for Enhanced User Experience.
+                          {checkoutProjectTitle}
                         </h1>
 
                         <div className="mt-2 inline-flex items-center gap-x-2">
                           <UserGroup />
                           <span className="text-xs leading-5 font-semibold text-primary-500">
-                            {teamMembers.length > 0
-                              ? `${teamMembers.length} team members`
-                              : "Team details unavailable"}
+                            {checkoutProjectTeamLabel}
                           </span>
                         </div>
 
                         <div className="flex mt-2 items-center gap-x-2">
                           <span className="text-[13px] leading-none font-semibold text-[#122A4B]">
-                            January 2024 - August 2024
+                            {checkoutProjectDateRange}
                           </span>
                         </div>
                       </div>
@@ -1668,7 +1748,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -1707,7 +1787,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -1746,7 +1826,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -1785,7 +1865,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -1820,21 +1900,21 @@ export default function CheckoutPage() {
                                   </AccordionTrigger>
 
                                   <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                    Phase One{" "}
-                                    <span className="font-light">Research</span>
+                                    Phase Two{" "}
+                                    <span className="font-light">Design</span>
                                   </span>
                                 </div>
 
                                 <div className="inline-flex items-center gap-x-8">
                                   <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
                                     <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 1
+                                      Day 9
                                     </span>
                                     <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                       -
                                     </span>
                                     <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 8
+                                      Day 24
                                     </span>
                                   </div>
 
@@ -1895,7 +1975,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -1934,7 +2014,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -1973,7 +2053,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -2012,7 +2092,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -2043,21 +2123,23 @@ export default function CheckoutPage() {
                                   </AccordionTrigger>
 
                                   <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                    Phase One{" "}
-                                    <span className="font-light">Research</span>
+                                    Phase Three{" "}
+                                    <span className="font-light">
+                                      Front-End
+                                    </span>
                                   </span>
                                 </div>
 
                                 <div className="inline-flex items-center gap-x-8">
                                   <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
                                     <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 1
+                                      Day 25
                                     </span>
                                     <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
                                       -
                                     </span>
                                     <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 8
+                                      Day 48
                                     </span>
                                   </div>
 
@@ -2118,7 +2200,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -2157,7 +2239,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -2196,7 +2278,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -2235,7 +2317,7 @@ export default function CheckoutPage() {
 
                                           <span className="inline-flex flex-col">
                                             <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Vivek
+                                              Christopher
                                             </span>
                                             <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                               @topdesigner321
@@ -2527,13 +2609,15 @@ export default function CheckoutPage() {
                     <Button
                       className="font-medium underline text-[10px] leading-[14px]"
                       variant="link"
+                      onClick={() => setLegalDialog("terms")}
                     >
                       Terms of Use
-                    </Button>
+                    </Button>{" "}
                     and{" "}
                     <Button
                       className="font-medium underline text-[10px] leading-[14px]"
                       variant="link"
+                      onClick={() => setLegalDialog("privacy")}
                     >
                       Privacy Policy
                     </Button>
@@ -2554,7 +2638,10 @@ export default function CheckoutPage() {
         <Dialog
           open={checkoutExitDialog !== null}
           onOpenChange={(open) => {
-            if (!open) return
+            if (!open) {
+              setCheckoutExitDialog(null)
+              return
+            }
             setCheckoutExitDialog((current) => current ?? "edit-scope")
           }}
         >
@@ -2572,13 +2659,14 @@ export default function CheckoutPage() {
             </DialogHeader>
             <DialogFooter className="mt-8">
               <Button
+                type="button"
                 variant="outlined"
                 visual="gray"
                 onClick={leaveCheckoutForProjectPlanning}
               >
                 {checkoutExitDialog === "add-task" ? "Add Task" : "Edit Scope"}
               </Button>
-              <Button onClick={() => setCheckoutExitDialog(null)}>
+              <Button type="button" onClick={() => setCheckoutExitDialog(null)}>
                 Continue Checkout
               </Button>
             </DialogFooter>
@@ -2593,7 +2681,7 @@ export default function CheckoutPage() {
               if (!open) closeTeamMemberDialog()
             }}
           >
-            <DialogContent className="max-w-[558px]">
+            <DialogContent className="h-[664px] w-[558px] max-w-none gap-6 rounded-xl bg-white p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_20px_24px_-4px_rgba(16,24,40,0.08)]">
               <DialogHeader>
                 <div className="flex items-center justify-between">
                   <DialogTitle>Replace Team Member</DialogTitle>
@@ -2619,8 +2707,15 @@ export default function CheckoutPage() {
                     </Avatar>
 
                     <span className="inline-flex flex-col">
-                      <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                        {teamMemberDialog?.memberName ?? "Vivek"}
+                      <span className="inline-flex gap-px text-xs text-nowrap leading-[16.26px] text-dark-blue-400">
+                        <span className="font-semibold">
+                          {teamMemberDialog?.memberName ?? "Christopher"}
+                        </span>
+                        {teamMemberDialog?.memberHandle ? (
+                          <span className="font-normal">
+                            {getShortHandle(teamMemberDialog.memberHandle)}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                         {teamMemberDialog?.memberRole ?? "UX Researcher"}
@@ -2638,18 +2733,20 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex items-center px-3 py-4">
                   <Badge
-                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                    className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white gap-x-1.5"
                     visual="gray"
                   >
-                    {teamMemberDialog?.memberLocation === "United States"
-                      ? "USA"
-                      : (teamMemberDialog?.memberLocation ?? "USA")}
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex size-[18px] items-center justify-center text-[18px] leading-none"
+                    >
+                      {getCountryFlag(teamMemberDialog?.memberLocation)}
+                    </span>
+                    {getCountryDisplayName(teamMemberDialog?.memberLocation)}
                   </Badge>
                 </div>
                 <div className="flex items-center px-6 py-4">
-                  <span className="whitespace-nowrap inline-block text-sm leading-5 font-semibold text-dark-blue-400">
-                    {teamMemberDialog?.memberRate ?? "$500/hr"}
-                  </span>
+                  {renderRate(teamMemberDialog?.memberRate)}
                 </div>
               </div>
 
@@ -2667,37 +2764,39 @@ export default function CheckoutPage() {
                           <button
                             key={filter}
                             className={cn(
-                              "inline-flex h-12 items-center gap-x-1 border-b-2 border-transparent text-sm font-semibold text-gray-500 transition focus-visible:outline-none",
+                              "inline-flex h-12 items-center gap-x-2 border-b-2 border-transparent text-sm font-semibold leading-5 text-gray-500 transition focus-visible:outline-none",
                               replacementFilter === filter &&
                                 "border-primary-500 text-primary-500"
                             )}
                             type="button"
                             onClick={() => setReplacementFilter(filter)}
                           >
-                            {filter === "All" ? null : filter === "Favorites" ? (
-                              <Star className="size-4" />
+                            {filter === "All" ? null : filter ===
+                              "Favorites" ? (
+                              <Star className="size-5" />
                             ) : (
-                              <Globe className="size-4" />
+                              <Globe className="size-5" />
                             )}
                             {filter}
                           </button>
                         )
                       )}
                     </div>
-                    <div className="relative flex h-9 w-[180px] items-center">
-                      <Search className="absolute left-2 size-4 text-primary-500" />
+                    <div className="relative flex h-9 w-[180px] items-center justify-end">
                       <Input
-                        className="h-9 border-0 border-b border-primary-500 bg-transparent pl-8 pr-8 text-sm shadow-none focus-visible:ring-0"
-                        placeholder="Search"
+                        aria-label="Search replacement team members"
+                        className="h-9 border-0 bg-transparent pl-2 pr-9 text-sm shadow-none focus-visible:ring-0"
+                        placeholder=""
                         value={replacementSearch}
                         onChange={(event) =>
                           setReplacementSearch(event.target.value)
                         }
                       />
+                      <Search className="absolute right-2 size-5 text-gray-400" />
                       {replacementSearch ? (
                         <button
                           aria-label="Clear replacement search"
-                          className="absolute right-2 text-gray-400"
+                          className="absolute right-8 text-gray-400"
                           type="button"
                           onClick={() => setReplacementSearch("")}
                         >
@@ -2709,7 +2808,11 @@ export default function CheckoutPage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-white">
-                        <TableHead className="px-6 py-3">Name</TableHead>
+                        <TableHead className="px-6 py-3">
+                          <span className="inline-flex items-center gap-x-1">
+                            Name <ArrowDown className="size-4" />
+                          </span>
+                        </TableHead>
                         <TableHead className="px-3 py-3">Experience</TableHead>
                         <TableHead className="px-3 py-3">Country</TableHead>
                         <TableHead className="px-6 py-3">Rate</TableHead>
@@ -2752,8 +2855,13 @@ export default function CheckoutPage() {
                                 </Avatar>
 
                                 <span className="inline-flex flex-col">
-                                  <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                    {candidate.name}
+                                  <span className="inline-flex gap-px text-xs text-nowrap leading-[16.26px] text-dark-blue-400">
+                                    <span className="font-semibold">
+                                      {candidate.name}
+                                    </span>
+                                    <span className="font-normal">
+                                      {getShortHandle(candidate.handle)}
+                                    </span>
                                   </span>
                                   <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
                                     {candidate.role}
@@ -2771,18 +2879,20 @@ export default function CheckoutPage() {
                             </TableCell>
                             <TableCell className="px-3 py-3">
                               <Badge
-                                className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
+                                className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white gap-x-1.5"
                                 visual="gray"
                               >
-                                {candidate.location === "United States"
-                                  ? "USA"
-                                  : candidate.location}
+                                <span
+                                  aria-hidden="true"
+                                  className="inline-flex size-[18px] items-center justify-center text-[18px] leading-none"
+                                >
+                                  {getCountryFlag(candidate.location)}
+                                </span>
+                                {getCountryDisplayName(candidate.location)}
                               </Badge>
                             </TableCell>
                             <TableCell className="px-6 py-3">
-                              <span className="whitespace-nowrap inline-block text-sm leading-5 font-semibold text-dark-blue-400">
-                                {candidate.rate}
-                              </span>
+                              {renderRate(candidate.rate)}
                             </TableCell>
                           </TableRow>
                         ))
@@ -2875,6 +2985,26 @@ export default function CheckoutPage() {
           }}
         />
       ) : null}
+      <Dialog
+        open={legalDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setLegalDialog(null)
+        }}
+      >
+        <DialogContent className="max-w-[480px] p-6">
+          <h2 className="text-lg font-semibold text-dark-blue-400">
+            {legalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
+          </h2>
+          <p className="mt-3 text-sm leading-5 text-gray-500">
+            {legalDialog === "privacy"
+              ? "This privacy policy explains how Marketeq collects, uses, and protects checkout information. Payment details are handled securely and are only used to process and support your order."
+              : "These terms explain the basic conditions for using Marketeq checkout. By continuing, you confirm that your order details are accurate and authorize Marketeq to process the selected payment method."}
+          </p>
+          <div className="mt-6 flex justify-end">
+            <Button onClick={() => setLegalDialog(null)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

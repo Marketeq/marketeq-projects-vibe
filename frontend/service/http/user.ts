@@ -61,6 +61,13 @@ export interface UserProfilePayload {
   location?: string
   timezone?: string
   availability?: string
+  customAvailability?: Array<{
+    day: string
+    startTime: string
+    startTimeDayPeriod: string
+    endTime: string
+    endTimeDayPeriod: string
+  }> | null
   role?: string | null
   rateMin?: number | null
   rateMax?: number | null
@@ -83,6 +90,10 @@ export const UserAPI = {
   me: () => AxiosRequest.get(`${USER_BASE}/user/me`),
   handleSkip: (data: { role: string }) =>
     AxiosRequest.patch(`${USER_BASE}/user/onboarding-dismissed`, data),
+  // ES-06: Currency Settings entry point — sets the region currency
+  // earnings-service falls back to USD without.
+  updateCurrency: (currency: string) =>
+    AxiosRequest.patch(`${USER_BASE}/user/currency`, { currency }),
 
   // List users
   listUsers: (limit = 50, offset = 0) =>
@@ -150,4 +161,53 @@ export const UserAPI = {
     AxiosRequest.put(`${USER_BASE}/v1/industries/${industryId}`, data),
   removeIndustry: (industryId: string) =>
     AxiosRequest.del(`${USER_BASE}/v1/industries/${industryId}`),
+
+  // Resume
+  uploadResume: (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
+    return AxiosRequest.post(`${USER_BASE}/resume/upload`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000,
+    })
+  },
+  applyResume: (data: {
+    parseResultId?: string
+    skills?: { name: string; proficiency?: string }[]
+    education?: {
+      school: string
+      degree: string
+      fieldOfStudy?: string
+      startYear?: number
+      endYear?: number
+      currentlyStudying?: boolean
+    }[]
+    workExperience?: {
+      title: string
+      company: string
+      location?: string
+      startDate?: string
+      endDate?: string
+      isCurrentRole?: boolean
+      description?: string
+    }[]
+    certifications?: {
+      name: string
+      issuer?: string
+      issueDate?: string
+    }[]
+    replaceConflicts?: boolean
+    conflictResolutions?: {
+      entityType: "education" | "work" | "certification"
+      existingId: string
+      applyUpdate: boolean
+    }[]
+  }) => AxiosRequest.post(`${USER_BASE}/resume/apply`, data),
+  deleteResume: () => AxiosRequest.del(`${USER_BASE}/resume`),
+  getResumeStatus: () => AxiosRequest.get(`${USER_BASE}/resume/status`),
+  getPendingReview: () => AxiosRequest.get(`${USER_BASE}/resume/pending-review`),
+  getResumeViewUrl: () => AxiosRequest.get(`${USER_BASE}/resume/view`),
+  getResumeDownloadUrl: () => AxiosRequest.get(`${USER_BASE}/resume/download`),
+  undoResumeImport: (parseResultId: string) =>
+    AxiosRequest.post(`${USER_BASE}/resume/undo/${parseResultId}`, {}),
 }

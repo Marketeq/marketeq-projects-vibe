@@ -64,6 +64,52 @@ export const ProjectAPI = {
   GetMyProjects: () => {
     return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
   },
+  GetProjectMembers: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`
+    )
+  },
+  SaveProjectMembers: (
+    projectId: string,
+    members: Array<{
+      userId: string
+      projectRole?: string | null
+      status?: string | null
+      isLead?: boolean | null
+      leadLabel?: string | null
+    }>
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`,
+      { members }
+    )
+  },
+  GetProjectQuestions: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`
+    )
+  },
+  SaveProjectQuestions: (
+    projectId: string,
+    questions: Array<{
+      id?: string
+      question: string
+      answer?: string | null
+      askedByName?: string | null
+      askedByUsername?: string | null
+      askedAt?: string | null
+      answeredByUserId?: string | null
+      answeredByName?: string | null
+      answeredByRole?: string | null
+      assignedToUserId?: string | null
+      hidden?: boolean
+    }>
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`,
+      { questions }
+    )
+  },
   SuggestFaqs: (projectId: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,
@@ -193,5 +239,10 @@ export const ProjectAPI = {
     const params = new URLSearchParams({ limit: String(limit) })
     if (skills.length) params.set("skills", skills.join(","))
     return AxiosRequest.get(`${LISTINGS_BASE}/v1/projects/recommended?${params}`)
+  },
+  GetSuggestedQuestions: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/v1/projects/${projectId}/suggested-questions`
+    )
   },
 }

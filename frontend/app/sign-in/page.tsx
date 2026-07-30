@@ -445,9 +445,17 @@ export default function SignIn() {
               </p>
 
               <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
-                <GoogleLoginButton />
+                <GoogleLoginButton
+                  onSuccess={(user) =>
+                    router.push(redirectTarget ? nextRoute : resolveDashboardRoute(user))
+                  }
+                />
 
-                <LinkedInLoginButton />
+                <LinkedInLoginButton
+                  onSuccess={(user) =>
+                    router.push(redirectTarget ? nextRoute : resolveDashboardRoute(user))
+                  }
+                />
               </div>
 
               <div className="flex gap-x-[9px] mt-6 items-center">

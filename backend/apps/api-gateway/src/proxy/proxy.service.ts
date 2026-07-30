@@ -37,8 +37,12 @@ export class ProxyService {
       admin: config.get('ADMIN_SERVICE_URL') || 'http://localhost:3024',
       affiliateReferral: config.get('AFFILIATE_REFERRAL_SERVICE_URL') || 'http://localhost:3025',
       billing: config.get('BILLING_SERVICE_URL') || 'http://localhost:3026',
-      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3027',
-      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3028',
+      // Defaults matched to ecosystem.config.js's actual assigned ports (earnings-service:3026,
+      // payout-service:3022) — the previous 3027/3028 fallbacks didn't correspond to any running
+      // service, so gateway-proxied earnings/payouts calls always 502'd unless the env vars
+      // happened to be set to override them.
+      earnings: config.get('EARNINGS_SERVICE_URL') || 'http://localhost:3026',
+      payouts: config.get('PAYOUT_SERVICE_URL') || 'http://localhost:3022',
       pricing: config.get('PRICING_SERVICE_URL') || 'http://localhost:3029',
       wallet: config.get('WALLET_SERVICE_URL') || 'http://localhost:3030',
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
@@ -65,7 +69,25 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // Stripe/Ramp webhook signature headers — downstream (payout-service)
+      // verifies authenticity via these, not JWT, so they must survive the
+      // proxy same as the raw body below (main.ts captures req.rawBody for
+      // these exact paths ahead of the global json() parser).
+      ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
+      ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
     }
+
+    // Downstream services (timezone-resolution.service.ts, geo.service.ts's
+    // currency detection) do their own IP-geolocation and need the real
+    // client IP — without this they only ever see the gateway's own
+    // request, which silently breaks that detection with no error anywhere.
+    // Preserve any existing x-forwarded-for chain (CDN/load balancer hops)
+    // and append this gateway's view of the client, same convention as
+    // every other reverse proxy.
+    const existingXff = req.headers['x-forwarded-for']
+    const xffChain = (Array.isArray(existingXff) ? existingXff.join(',') : existingXff) || ''
+    const clientIp = req.ip || req.socket?.remoteAddress || ''
+    headers['x-forwarded-for'] = [xffChain, clientIp].filter(Boolean).join(', ')
 
     // Always forward auth headers so downstream services can validate JWT
     const authHeader = req.headers.authorization as string | undefined
@@ -90,17 +112,28 @@ export class ProxyService {
     const contentType = (req.headers['content-type'] as string) || ''
     const isMultipart = contentType.startsWith('multipart/')
 
+    // main.ts skips the json() parser and captures req.rawBody verbatim for
+    // /v1/webhooks/* — forward those exact bytes, not a re-parsed req.body,
+    // or Stripe's/Ramp's signature check fails on a byte mismatch.
+    const rawBody = (req as any).rawBody as Buffer | undefined
+
     const config: AxiosRequestConfig = {
       method: req.method as any,
       url,
       headers,
-      data: isMultipart ? req : req.body,
+      data: rawBody ?? (isMultipart ? req : req.body),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       // Query params are already included in the URL path from the proxy controller
       // Do NOT also set params here — that would duplicate them
       validateStatus: () => true,
       responseType: 'stream',
+      // Without this, axios' default maxRedirects (21) silently follows any
+      // 3xx a downstream service returns (e.g. the OAuth callback's redirect
+      // to the frontend) server-side, fetches the final page itself, and
+      // streams THAT back with a 200 — the browser never sees the redirect
+      // at all. Relay 3xx + Location as-is and let the browser navigate.
+      maxRedirects: 0,
     }
 
     try {

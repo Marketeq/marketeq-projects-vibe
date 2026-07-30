@@ -2,10 +2,11 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import { exportPrivateKey } from "@/src/crypto/keys"
+import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
-import { apiFetch } from "@/src/lib/api"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -30,6 +31,7 @@ import {
   Image03,
   Info,
   Mail05,
+  MessageSquare,
   MoreHorizontal,
   Pin02,
   Plus,
@@ -63,6 +65,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
   CircularProgressDropzone,
   CircularProgressDropzoneState,
   Dialog,
@@ -110,6 +113,36 @@ import { ForwardMessageDialog } from "./forward-message-dialog"
 import { Bubble, YourBubble } from "./message-components"
 import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
 
+/**
+ * Turn a key-unwrap failure into a message that matches what actually went
+ * wrong. Every failure here used to be reported as a decryption error, so an
+ * expired session or an unreachable backend told the user their conversation
+ * key was corrupt — pointing debugging at the crypto layer instead of the
+ * session. Only a genuine crypto failure gets the decryption wording.
+ */
+function describeKeyFailure(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401)
+      return "Your session expired. Sign in again to view this conversation."
+    if (err.status === 403)
+      return "You don't have access to this conversation."
+    if (err.status === 404)
+      return "This conversation's encryption key is no longer available."
+    // 409/422 are both permanent server-side key-material problems. Telling the
+    // user to retry would be false — no amount of retrying recovers these.
+    if (err.status === 409 || err.status === 422)
+      return "This conversation can't be unlocked. Its encryption key is missing from the server — contact support."
+    if (err.status >= 500)
+      return "Messaging is temporarily unavailable. Try again in a moment."
+    return "Couldn't load this conversation. Try again."
+  }
+  if (err instanceof TypeError) {
+    // fetch() rejects with TypeError for network/CORS failures
+    return "Couldn't reach the server. Check your connection and try again."
+  }
+  return "Could not decrypt this conversation key. Refresh and try again."
+}
+
 interface ChatsProps {
   selectedConversation: Conversation | null
   jwtToken: string
@@ -131,6 +164,9 @@ interface ChatsProps {
     createdAt: string
     attachments?: Message["attachments"]
   }) => void
+  acceptedOfferCard?: AcceptedOfferCardData | null
+  counterOfferCard?: CounterOfferCardData | null
+  declinedOfferCard?: DeclinedOfferCardData | null
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -208,6 +244,51 @@ const DateSeparator = ({ label }: { label: string }) => (
   </div>
 )
 
+export interface AcceptedOfferCardData {
+  status: "accepted"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  role: string
+  duration: string
+  schedule: string
+  startDate: string
+  acceptanceMessage?: string
+}
+
+export interface CounterOfferCardData {
+  status: "submitted"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  duration: string
+  schedule: string
+  startDate: string
+  expiresLabel: string
+  message?: string
+}
+
+export interface DeclinedOfferCardData {
+  status: "declined"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  receivedLabel?: string
+  declinedAt?: string
+  declinedLabel?: string
+  offerRate: string
+  role: string
+  duration: string
+  schedule: string
+  startDate: string
+  senderDisplayName?: string
+  senderUsername?: string
+  senderAvatarSrc?: string
+  declineMessage?: string
+}
+
 export function Chats({
   selectedConversation,
   jwtToken,
@@ -218,7 +299,11 @@ export function Chats({
   highlightMessageId,
   onHighlightConsumed,
   onIndexNewMessage,
+  acceptedOfferCard,
+  counterOfferCard,
+  declinedOfferCard,
 }: ChatsProps) {
+  const router = useRouter()
   const [textareaValue, setTextareaValue] = useState("")
   const lastTypedAtRef = useRef(0)
   const userTypedRef = useRef(false)
@@ -230,6 +315,80 @@ export function Chats({
   const [receiverUser, setReceiverUser] = useState<User | null>(null)
   const [counterpartDeleted, setCounterpartDeleted] = useState(false)
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
+  const [declinedOfferDetailsOpen, setDeclinedOfferDetailsOpen] =
+    useState(false)
+  const acceptedOfferToastRef = useRef<string | null>(null)
+  const submittedCounterOfferRef = useRef<string | null>(null)
+  const declinedOfferToastRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (
+      !acceptedOfferCard ||
+      acceptedOfferToastRef.current === acceptedOfferCard.contractId
+    ) {
+      return
+    }
+
+    acceptedOfferToastRef.current = acceptedOfferCard.contractId
+    toast({
+      title: "Offer Accepted",
+      description: "Your contract is now active.",
+    })
+  }, [acceptedOfferCard])
+
+  useEffect(() => {
+    if (
+      !counterOfferCard ||
+      submittedCounterOfferRef.current === counterOfferCard.contractId
+    ) {
+      return
+    }
+
+    submittedCounterOfferRef.current = counterOfferCard.contractId
+    toast({
+      title: "Counter Offer Submitted",
+      description: "Sent to the client. We'll notify you when they respond.",
+    })
+  }, [counterOfferCard])
+
+  useEffect(() => {
+    if (
+      !declinedOfferCard ||
+      declinedOfferToastRef.current === declinedOfferCard.contractId
+    ) {
+      return
+    }
+
+    declinedOfferToastRef.current = declinedOfferCard.contractId
+    toast({
+      title: "Offer Declined",
+      description: "This offer is now closed.",
+    })
+  }, [declinedOfferCard])
+  const declinedOfferSenderName =
+    declinedOfferCard?.senderDisplayName || "Laura"
+  const declinedOfferSenderUsername =
+    declinedOfferCard?.senderUsername || "@lauradesign21"
+  const declinedOfferSenderInitial =
+    declinedOfferSenderName.slice(0, 1) ||
+    declinedOfferSenderUsername.replace(/^@/, "").slice(0, 1) ||
+    "L"
+  const declinedAtDate = declinedOfferCard?.declinedAt
+    ? new Date(declinedOfferCard.declinedAt)
+    : null
+  const canRequestExtension =
+    !declinedAtDate ||
+    Number.isNaN(declinedAtDate.getTime()) ||
+    Date.now() - declinedAtDate.getTime() < 30 * 24 * 60 * 60 * 1000
+  const declinedDisplayLabel =
+    declinedOfferCard?.declinedLabel ||
+    declinedOfferCard?.receivedLabel ||
+    "Feb 1, 2025"
+  const askNowMessage = declinedOfferCard
+    ? canRequestExtension
+      ? `Hi ${declinedOfferSenderName}! Can you extend the offer for the project ${declinedOfferCard.offerTitle}? I'm still interested.`
+      : `Hi ${declinedOfferSenderName}! I wanted to check in and see if the ${declinedOfferCard.role} role for the project ${declinedOfferCard.offerTitle} is still available. If so, I'm still interested.`
+    : ""
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
     "Messages"
   )
@@ -437,7 +596,34 @@ export function Chats({
         await fetchAndUnwrap()
       } catch (firstErr: any) {
         if (firstErr?.name === "AbortError") return
-        // Key mismatch — delete the stale wrapped key and let the server re-wrap
+        // The recovery below only helps when our wrapped key is stale. If the
+        // server says its own key material is unusable (409/422) no client-side
+        // rewrap can fix it, and the DELETE would discard a wrapped key the
+        // server is unable to reissue. Report it instead of churning.
+        if (
+          firstErr instanceof ApiError &&
+          (firstErr.status === 409 || firstErr.status === 422)
+        ) {
+          if (!ac.signal.aborted) {
+            setKeyReady(false)
+            setKeyError(describeKeyFailure(firstErr))
+          }
+          return
+        }
+        // The wrapped key doesn't match our private key — either a stale wrap
+        // from before a key rotation, or messaging-service holds a public key
+        // that no longer matches our private key. Re-publish our LOCAL public
+        // key first so the server rewraps conversation keys to the keypair we
+        // actually hold, then delete this thread's wrapped key and refetch so
+        // it is re-wrapped fresh.
+        try {
+          await republishPublicKey(getCurrentUser()?.id)
+        } catch (republishErr) {
+          console.warn(
+            "Public-key re-publish before key retry failed",
+            republishErr
+          )
+        }
         try {
           await apiFetch(
             `/api/messaging/conversations/${convId}/key`,
@@ -454,9 +640,7 @@ export function Chats({
           console.error("Failed to unwrap conversation key after retry", retryErr)
           if (!ac.signal.aborted) {
             setKeyReady(false)
-            setKeyError(
-              "Could not decrypt this conversation key. Refresh and try again."
-            )
+            setKeyError(describeKeyFailure(retryErr))
           }
         }
       }
@@ -602,6 +786,18 @@ export function Chats({
     typingUserIds,
   } = useAblyPresence(selectedConversation?.id ?? "")
   const { isOnline } = useOnlineUsers()
+  const handleAskNow = useCallback(() => {
+    if (!askNowMessage || counterpartDeleted) return
+
+    setDeclinedOfferDetailsOpen(false)
+    setTextareaValue(askNowMessage)
+    lastTypedAtRef.current = Date.now()
+    userTypedRef.current = true
+    sendTyping(true)
+    requestAnimationFrame(() => {
+      composerRef.current?.focus()
+    })
+  }, [askNowMessage, counterpartDeleted, sendTyping])
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -1696,7 +1892,13 @@ export function Chats({
             <AvatarFallback>
               {selectedConversation?.isGroup
                 ? (selectedConversation?.group?.name?.[0] ?? "G")
-                : (receiverUser.username?.[0] ?? "")}
+                : (
+                    receiverUser.firstName?.trim() ||
+                    receiverUser.username ||
+                    "U"
+                  )
+                    .charAt(0)
+                    .toUpperCase()}
             </AvatarFallback>
           </Avatar>
 
@@ -1731,7 +1933,14 @@ export function Chats({
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
                   <span className="text-sm text-dark-blue-400">
-                    {receiverUser.recentJobTitle || receiverUser.jobTitles?.[0]}
+                    {receiverUser.recentJobTitle ||
+                      (typeof receiverUser.jobTitles?.[0] === "string"
+                        ? receiverUser.jobTitles?.[0]
+                        : (
+                            receiverUser.jobTitles?.[0] as unknown as {
+                              jobTitle?: string
+                            }
+                          )?.jobTitle)}
                   </span>
                 </>
               ) : null}
@@ -2033,12 +2242,17 @@ export function Chats({
                 <p className="text-sm font-medium">{keyError}</p>
               </div>
             )}
-            {!isSwitching && displayedMessages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
-                <Send className="size-8 stroke-[1.5]" />
-                <p className="text-sm">No messages yet. Say hello!</p>
-              </div>
-            )}
+            {!isSwitching &&
+              displayedMessages.length === 0 &&
+              !(
+                selectedTab === "Messages" &&
+                (acceptedOfferCard || counterOfferCard || declinedOfferCard)
+              ) && (
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                  <Send className="size-8 stroke-[1.5]" />
+                  <p className="text-sm">No messages yet. Say hello!</p>
+                </div>
+              )}
             {!isSwitching &&
               displayedMessages.map((m, i) => {
                 const prev = i > 0 ? displayedMessages[i - 1] : null
@@ -2136,6 +2350,148 @@ export function Chats({
                   </React.Fragment>
                 )
               })}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              acceptedOfferCard && (
+                <div className="flex justify-end rounded-lg">
+                  <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                    <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                      <span className="font-bold">Me</span>{" "}
+                      {currentUser.username ? (
+                        <span>@{currentUser.username} </span>
+                      ) : null}
+                      <span className="font-semibold underline decoration-primary-500 decoration-2 underline-offset-2">
+                        accepted the offer
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {acceptedOfferCard.acceptanceMessage ||
+                        "Excited to get started!"}
+                    </p>
+
+                    <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                        Offer Accepted!
+                      </h3>
+                      <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                        {acceptedOfferCard.offerTitle}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {acceptedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-xs leading-[14.52px] text-gray-500">
+                          {acceptedOfferCard.startDate.startsWith("Starts")
+                            ? acceptedOfferCard.startDate
+                            : `Starts on ${acceptedOfferCard.startDate}`}
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-4 w-fit px-5 text-primary-500"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() =>
+                          router.push(
+                            `/my-contracts?contractId=${encodeURIComponent(
+                              acceptedOfferCard.contractId
+                            )}`
+                          )
+                        }
+                      >
+                        View Contract
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching && selectedTab === "Messages" && counterOfferCard && (
+              <div className="flex justify-end rounded-lg">
+                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                    <span className="font-bold">You</span>{" "}
+                    {currentUser.username ? (
+                      <span>@{currentUser.username} </span>
+                    ) : null}
+                    <span className="font-semibold">sent a counter offer</span>
+                  </div>
+
+                  {counterOfferCard.message ? (
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {counterOfferCard.message}
+                    </p>
+                  ) : null}
+
+                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                      Counter Offer Submitted
+                    </h3>
+                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                      {counterOfferCard.offerTitle}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {counterOfferCard.offerType}
+                      </Badge>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        This counteroffer expires{" "}
+                        {counterOfferCard.expiresLabel}.
+                      </span>
+                    </div>
+                    <Button
+                      className="mt-4 w-fit px-5 text-primary-500"
+                      variant="outlined"
+                      visual="gray"
+                    >
+                      View Details
+                    </Button>
+                  </Card>
+                </article>
+              </div>
+            )}
+            {!isSwitching && selectedTab === "Messages" && declinedOfferCard && (
+              <div className="flex justify-end rounded-lg">
+                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                    <span className="font-bold">You</span>{" "}
+                    {currentUser.username ? (
+                      <span>@{currentUser.username} </span>
+                    ) : null}
+                    <span className="font-semibold">declined the offer</span>
+                  </div>
+
+                  <p className="text-sm leading-[20px] text-dark-blue-400">
+                    {declinedOfferCard.declineMessage ||
+                      "Thanks, unfortunately I can't take this on right now."}
+                  </p>
+
+                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                      Offer Declined
+                    </h3>
+                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                      {declinedOfferCard.offerTitle}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {declinedOfferCard.offerType}
+                      </Badge>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        This offer is now closed.
+                      </span>
+                    </div>
+                    <Button
+                      className="mt-4 w-fit px-5 text-primary-500"
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => setDeclinedOfferDetailsOpen(true)}
+                    >
+                      View Details
+                    </Button>
+                  </Card>
+                </article>
+              </div>
+            )}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
@@ -2780,6 +3136,154 @@ export function Chats({
         }
         contextThreadId={selectedConversation?.id ?? null}
       />
+
+      {declinedOfferCard ? (
+        <Dialog
+          open={declinedOfferDetailsOpen}
+          onOpenChange={setDeclinedOfferDetailsOpen}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setDeclinedOfferDetailsOpen(false)
+              }
+            }}
+          >
+            <div className="pointer-events-auto flex w-[520px] flex-col overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
+              <div className="flex h-[60px] shrink-0 items-center justify-between border-b border-gray-100 px-6 py-3">
+                <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
+                  This Offer Expired
+                </DialogTitle>
+
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <ScrollArea
+                className="h-[446px] flex-1"
+                scrollBar={<ScrollBar className="w-4 px-1" />}
+              >
+                <div className="space-y-6 px-6 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {declinedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-sm leading-5 text-gray-500">
+                          Expired on {declinedDisplayLabel}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 text-[18px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.offerTitle}
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-1.5 text-sm leading-5 text-dark-blue-400">
+                        <span>Offer from</span>
+                        <Avatar size="xs">
+                          <AvatarImage
+                            src={declinedOfferCard.senderAvatarSrc}
+                            alt={declinedOfferSenderName}
+                          />
+                          <AvatarFallback>
+                            {declinedOfferSenderInitial}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{declinedOfferSenderName}</span>
+                        <span className="text-primary-500">
+                          {declinedOfferSenderUsername}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      leftIcon={<MessageSquare className="size-4" />}
+                      onClick={() => setDeclinedOfferDetailsOpen(false)}
+                    >
+                      Message
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4 border-y border-gray-100 py-6">
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        Offer Rate
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.offerRate}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Role
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.role}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Contract Duration
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.duration}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Work Schedule
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.schedule}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Start Date
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.startDate}
+                      </span>
+                    </div>
+                  </div>
+
+                </div>
+              </ScrollArea>
+
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-100 px-6 py-4">
+                <div className="flex items-start gap-2 text-sm leading-5 text-gray-400">
+                  <Info className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    {canRequestExtension
+                      ? "Want to revisit this? You can ask the client to extend the offer."
+                      : "Want to revisit this? Ask the client to see if the role is still available."}
+                  </span>
+                </div>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  disabled={counterpartDeleted}
+                  onClick={handleAskNow}
+                >
+                  {canRequestExtension ? "Request Extension" : "Ask Now"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <OneDrivePickerDialog
         open={onedriveDialogOpen}

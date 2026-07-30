@@ -30,6 +30,7 @@ import { OAuthModule } from './oauth/oauth.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { ExecutionModule } from './execution/execution.module';
 import { CardModule } from './card/card.module';
+import { BankModule } from './bank/bank.module';
 import { KycModule } from './kyc/kyc.module';
 import { PauseModule } from './pause/pause.module';
 
@@ -76,9 +77,12 @@ import { PauseModule } from './pause/pause.module';
     DatabaseModule,
     CommonModule,
     AuditModule,
+    // ScheduleConfigModule's literal `v1/payouts/schedule` route must register before
+    // PayoutModule's `v1/payouts/:id` — Express matches routes in registration order,
+    // so :id would otherwise shadow it and try (and fail) to parse "schedule" as a UUID.
+    ScheduleConfigModule,
     PayoutModule,
     MethodsModule,
-    ScheduleConfigModule,
     ProvidersModule,
     MagicLinkModule,
     ConsumersModule,
@@ -88,6 +92,7 @@ import { PauseModule } from './pause/pause.module';
     CryptoModule,
     ExecutionModule,
     CardModule,
+    BankModule,
     KycModule,
     PauseModule,
   ],

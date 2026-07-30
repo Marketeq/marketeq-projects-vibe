@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   mergeDashboardUserFields,
@@ -57,7 +57,7 @@ type SignUpFormValues = z.infer<typeof signUpSchema>
 
 function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => void; onClose: () => void }) {
   const router = useRouter()
-  const { setUser, closeAuthModal } = useAuth()
+  const { setUser, closeAuthModal, pendingRedirect, setPendingRedirect } = useAuth()
   const { toast } = useToast()
   const [isVisible, toggleIsVisible] = useToggle(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -107,6 +107,10 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
           }
           closeAuthModal()
           onClose()
+          if (pendingRedirect) {
+            router.push(pendingRedirect)
+            setPendingRedirect(null)
+          }
           reset()
         } else if (response?.status === 200 && response?.data?.requiresTwoFactor) {
           // 2FA required — redirect to full sign-in page
@@ -137,8 +141,8 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
-          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -249,7 +253,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
 function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => void; onClose: () => void }) {
   const router = useRouter()
-  const { setUser, closeAuthModal } = useAuth()
+  const { setUser, closeAuthModal, pendingRedirect, setPendingRedirect } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [showSecuritySettings, setShowSecuritySettings] = useState(false)
@@ -279,6 +283,11 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
           closeAuthModal()
           onClose()
           setShowSecuritySettings(true)
+          // Mirror app/sign-up/page.tsx: a brand-new signup must go through
+          // onboarding (role selection etc.), not be left on whatever page
+          // the popup happened to be opened from.
+          router.push(pendingRedirect ?? "/onboarding")
+          setPendingRedirect(null)
           reset()
         } else {
           setFormError("Something went wrong. Please try again.")
@@ -320,8 +329,8 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
-          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); }} />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -402,6 +411,10 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
         <SecuritySettingsStepper
           onCloseModal={() => {
             setShowSecuritySettings(false)
+            if (pendingRedirect) {
+              router.push(pendingRedirect)
+              setPendingRedirect(null)
+            }
           }}
         />
       )}
@@ -420,14 +433,16 @@ export function AuthModal({
 }) {
   const [view, setView] = useState<"sign-in" | "sign-up">(defaultView)
 
-  // Reset view when modal opens
-  const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen) setView(defaultView)
-    onOpenChange(isOpen)
-  }
+  // Reset view whenever the modal opens with a (possibly new) default. A
+  // plain onOpenChange handler only fires on Radix-internal close events
+  // (Escape, overlay click), not when a parent flips `open` externally —
+  // so the reset has to live here instead.
+  useEffect(() => {
+    if (open) setView(defaultView)
+  }, [open, defaultView])
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[408px]">
         {view === "sign-in" ? (
           <SignInForm onSwitchToSignUp={() => setView("sign-up")} onClose={() => onOpenChange(false)} />

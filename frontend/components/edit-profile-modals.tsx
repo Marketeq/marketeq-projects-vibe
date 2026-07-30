@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI } from "@/service/http/user"
+import { UserAPI, type UserProfilePayload } from "@/service/http/user"
 import { getIssuerNameFromUrl } from "@/src/lib/certification-brand"
 import { cn, hookFormHasError } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
@@ -34,6 +34,7 @@ import { isAfter, isBefore } from "date-fns"
 import CurrencyInput from "react-currency-input-field"
 import {
   Controller,
+  DefaultValues,
   FormProvider,
   SubmitHandler,
   useForm,
@@ -279,6 +280,18 @@ const JOB_TITLE_WORDS = [
   "avp",
 ]
 
+// Capitalize the first letter of each word, preserving numbers, punctuation and
+// existing casing (so "3M", "AT&T", "eBay" stay intact). A word that already
+// contains an uppercase letter is left alone — otherwise deliberate brand casing
+// like "eBay"/"iPhone" would be flattened to "EBay"/"IPhone".
+function capitalizeCompanyName(value?: string): string {
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+}
+
 function formatJobTitle(raw: string): string {
   let title = raw.trim()
   if (!title) return title
@@ -388,6 +401,118 @@ const days = [
   "Saturday",
 ]
 
+// Custom availability schedule (per-day time slots). The backend accepts these
+// on PATCH /v1/users/:id as `customAvailability`; times are 12-hour HH:MM with a
+// separate AM/PM period, matching the slot shape the user-service validates.
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+type AvailabilitySlot = {
+  startTime: string
+  startTimeDayPeriod: string
+  endTime: string
+  endTimeDayPeriod: string
+}
+type DaySchedule = { enabled: boolean; slots: AvailabilitySlot[] }
+
+const DEFAULT_SLOT: AvailabilitySlot = {
+  startTime: "09:00",
+  startTimeDayPeriod: "AM",
+  endTime: "05:00",
+  endTimeDayPeriod: "PM",
+}
+
+const makeDefaultSchedule = (): Record<string, DaySchedule> =>
+  Object.fromEntries(
+    days.map((day) => [
+      day,
+      { enabled: WEEKDAYS.includes(day), slots: [{ ...DEFAULT_SLOT }] },
+    ])
+  )
+
+const TIME_OPTIONS = (() => {
+  const out: string[] = []
+  for (let hour = 1; hour <= 12; hour++) {
+    for (const minutes of ["00", "30"]) {
+      out.push(`${String(hour).padStart(2, "0")}:${minutes}`)
+    }
+  }
+  return out
+})()
+
+const timeLabel = (value?: string) => (value ?? "").replace(/^0(\d)/, "$1")
+
+// Stored schedules come back in two shapes. PATCH /v1/users/:id normalises to
+// flat rows ({day, startTime, ...}) via UpdateUserDto's @Transform, but the
+// talent DTO also accepts — and types/talent.ts declares — the nested
+// {day, times: [...]} form. Reading only the flat form leaves every time field
+// undefined on a nested row, which reaches timeLabel() and throws. Accept both.
+type StoredAvailabilityEntry = Partial<AvailabilitySlot> & {
+  day?: string
+  times?: Array<Partial<AvailabilitySlot>> | null
+}
+
+const normaliseStoredSchedule = (
+  raw: unknown
+): Array<AvailabilitySlot & { day: string }> => {
+  if (!Array.isArray(raw)) return []
+  return (raw as StoredAvailabilityEntry[]).flatMap((entry) => {
+    const day = entry?.day
+    if (!day) return []
+    const slots = Array.isArray(entry.times) ? entry.times : [entry]
+    return slots
+      .filter((slot): slot is Partial<AvailabilitySlot> => Boolean(slot))
+      .map((slot) => ({
+        day,
+        startTime: slot.startTime ?? DEFAULT_SLOT.startTime,
+        startTimeDayPeriod:
+          slot.startTimeDayPeriod ?? DEFAULT_SLOT.startTimeDayPeriod,
+        endTime: slot.endTime ?? DEFAULT_SLOT.endTime,
+        endTimeDayPeriod: slot.endTimeDayPeriod ?? DEFAULT_SLOT.endTimeDayPeriod,
+      }))
+  })
+}
+
+const TimeSelect = ({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) => (
+  <Listbox value={value} onChange={onChange} className="relative w-[72px]">
+    <ListboxButton className="h-9 px-2.5 text-sm" iconClassName="h-4 w-4">
+      {({ value }) => (
+        <span className="text-gray-black">{timeLabel(value as string)}</span>
+      )}
+    </ListboxButton>
+    <ListboxOptions className="w-[92px]">
+      {TIME_OPTIONS.map((time) => (
+        <ListboxOption key={time} value={time}>
+          {timeLabel(time)}
+        </ListboxOption>
+      ))}
+    </ListboxOptions>
+  </Listbox>
+)
+
+const PeriodSelect = ({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) => (
+  <Listbox value={value} onChange={onChange} className="relative w-[68px]">
+    <ListboxButton className="h-9 px-2.5 text-sm" iconClassName="h-4 w-4">
+      {({ value }) => <span className="text-gray-black">{value as string}</span>}
+    </ListboxButton>
+    <ListboxOptions>
+      <ListboxOption value="AM">AM</ListboxOption>
+      <ListboxOption value="PM">PM</ListboxOption>
+    </ListboxOptions>
+  </Listbox>
+)
+
 const workExperienceFormSchema = z
   .object({
     employer: z
@@ -482,6 +607,16 @@ const workExperienceFormSchema = z
   )
 
 type WorkExperienceFormValues = z.infer<typeof workExperienceFormSchema>
+
+const workExperienceFormDefaultValues = {
+  currentlyWorkHere: false,
+  jobDescription: "",
+  jobTitle: "",
+  employer: "",
+  endDate: undefined,
+  startDate: undefined,
+  skills: [],
+} as DefaultValues<WorkExperienceFormValues>
 
 const months = [
   { name: "January", value: 1 },
@@ -673,12 +808,13 @@ const certificationsFormSchema = z
   })
   .refine(
     (data) => {
-      const today = new Date()
-      today.setHours(23, 59, 59, 999)
-      return data.issuedDate.getTime() <= today.getTime()
+      const max = new Date()
+      max.setHours(23, 59, 59, 999)
+      max.setDate(max.getDate() + 90)
+      return data.issuedDate.getTime() <= max.getTime()
     },
     {
-      message: "Issue date cannot be in the future.",
+      message: "Issue date cannot be more than 90 days in the future.",
       path: ["issuedDate"],
     }
   )
@@ -698,6 +834,16 @@ const certificationsFormSchema = z
   )
 
 type CertificationsFormValues = z.infer<typeof certificationsFormSchema>
+
+const certificationsFormDefaultValues = {
+  credentialId: "",
+  credentialsUrl: "",
+  name: "",
+  canNotExpire: false,
+  issuedDate: undefined,
+  expirationDate: undefined,
+  skills: [],
+} as DefaultValues<CertificationsFormValues>
 
 // ============================================================
 // AboutMeDialog
@@ -1826,24 +1972,98 @@ export const AvailabilityDialog = ({
     },
   })
 
+  const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(
+    makeDefaultSchedule
+  )
+
   useEffect(() => {
     if (open && profile?.availability) {
       reset({ availability: profile.availability })
     }
   }, [open, profile?.availability, reset])
 
+  useEffect(() => {
+    if (!open) return
+    const stored = normaliseStoredSchedule(profile?.customAvailability)
+    if (stored.length === 0) {
+      setSchedule(makeDefaultSchedule())
+      return
+    }
+    const next: Record<string, DaySchedule> = Object.fromEntries(
+      days.map((day) => [day, { enabled: false, slots: [] }])
+    )
+    for (const slot of stored) {
+      if (!next[slot.day]) continue
+      next[slot.day].enabled = true
+      next[slot.day].slots.push({
+        startTime: slot.startTime,
+        startTimeDayPeriod: slot.startTimeDayPeriod,
+        endTime: slot.endTime,
+        endTimeDayPeriod: slot.endTimeDayPeriod,
+      })
+    }
+    for (const day of days) {
+      if (next[day].slots.length === 0) next[day].slots = [{ ...DEFAULT_SLOT }]
+    }
+    setSchedule(next)
+  }, [open, profile?.id])
+
+  const toggleDay = (day: string) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: { ...prev[day], enabled: !prev[day].enabled },
+    }))
+  const updateSlot = (
+    day: string,
+    index: number,
+    patch: Partial<AvailabilitySlot>
+  ) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        slots: prev[day].slots.map((slot, i) =>
+          i === index ? { ...slot, ...patch } : slot
+        ),
+      },
+    }))
+  const addSlot = (day: string) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: { ...prev[day], slots: [...prev[day].slots, { ...DEFAULT_SLOT }] },
+    }))
+  const removeSlot = (day: string, index: number) =>
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        slots: prev[day].slots.filter((_, i) => i !== index),
+      },
+    }))
+
   const onSubmit: SubmitHandler<AvailabilityFormValues> = async (values) => {
     setOpen(false)
-    if (userId) {
-      UserAPI.updateProfile(userId, { availability: values.availability })
-        .then(() => onSaved?.())
-        .catch(() => {})
-    }
+    if (!userId) return
+    const payload: UserProfilePayload = { availability: values.availability }
+    payload.customAvailability =
+      values.availability === "Custom"
+        ? days.flatMap((day) =>
+            schedule[day].enabled
+              ? schedule[day].slots.map((slot) => ({ day, ...slot }))
+              : []
+          )
+        : null
+    UserAPI.updateProfile(userId, payload)
+      .then(() => onSaved?.())
+      .catch(() => {})
   }
   const availability = useWatch({ control, name: "availability" })
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+      <DialogContent
+        className="max-w-[700px] rounded-[12px] p-0"
+        style={{ maxHeight: "calc(100vh - 40px)" }}
+      >
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="border-b border-gray-200 pt-6 px-6">
             <div className="flex items-start gap-x-2">
@@ -1867,7 +2087,6 @@ export const AvailabilityDialog = ({
             </div>
 
             <div className="mt-8">
-              <div className="pb-[50px]">
                 <div className="space-y-1.5">
                   <Label size="sm" htmlFor="availability">
                     What&apos;s your availability?
@@ -1903,66 +2122,115 @@ export const AvailabilityDialog = ({
                 </div>
 
                 {availability === "Custom" && (
-                  <div className="mt-6">
-                    {days.map((day) => (
-                      <article
-                        className="py-3 border-b last:border-b-0 flex items-center justify-between"
-                        key={day}
-                      >
-                        <div className="pt-2.5 inline-flex gap-x-2">
-                          <Switch
-                            id={day}
-                            defaultChecked={[
-                              "Monday",
-                              "Tuesday",
-                              "Wednesday",
-                              "Thursday",
-                              "Friday",
-                            ].includes(day)}
-                          />
-                          <Label
-                            htmlFor={day}
-                            className="text-gray-700"
-                            size="sm"
-                          >
-                            {day}
-                          </Label>
-                        </div>
+                  <ScrollArea
+                    type="auto"
+                    className="mt-6"
+                    viewportStyle={{ maxHeight: "calc(100vh - 400px)" }}
+                    scrollBar={<ScrollBar className="p-1 w-4" />}
+                  >
+                    {days.map((day) => {
+                      const daySchedule = schedule[day]
+                      return (
+                        <article
+                          className="py-3 border-b last:border-b-0 space-y-3"
+                          key={day}
+                        >
+                          {daySchedule.slots.map((slot, index) => (
+                            <div
+                              className="flex items-center justify-between"
+                              key={index}
+                            >
+                              <div className="inline-flex items-center gap-x-2 w-[130px]">
+                                {index === 0 && (
+                                  <>
+                                    <Switch
+                                      id={day}
+                                      checked={daySchedule.enabled}
+                                      onCheckedChange={() => toggleDay(day)}
+                                    />
+                                    <Label
+                                      htmlFor={day}
+                                      className="text-gray-700"
+                                      size="sm"
+                                    >
+                                      {day}
+                                    </Label>
+                                  </>
+                                )}
+                              </div>
 
-                        <div className="inline-flex items-center gap-x-3">
-                          <InputGroup>
-                            <Input
-                              className="[field-sizing:content] flex-auto text-xs leading-6"
-                              defaultValue="9:00"
-                            />
-                            <InputRightAddon>AM</InputRightAddon>
-                          </InputGroup>
+                              <div
+                                className={cn(
+                                  "inline-flex items-center gap-x-3",
+                                  !daySchedule.enabled &&
+                                    "opacity-50 pointer-events-none"
+                                )}
+                              >
+                                <TimeSelect
+                                  value={slot.startTime}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, { startTime: value })
+                                  }
+                                />
+                                <PeriodSelect
+                                  value={slot.startTimeDayPeriod}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, {
+                                      startTimeDayPeriod: value,
+                                    })
+                                  }
+                                />
 
-                          <span className="inline-block text-base leading-8 font-semibold text-gray-400">
-                            to
-                          </span>
+                                <span className="inline-block text-base leading-8 font-semibold text-gray-400">
+                                  to
+                                </span>
 
-                          <InputGroup>
-                            <Input
-                              className="[field-sizing:content] flex-auto text-xs leading-6"
-                              defaultValue="5:00"
-                            />
-                            <InputRightAddon>PM</InputRightAddon>
-                          </InputGroup>
+                                <TimeSelect
+                                  value={slot.endTime}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, { endTime: value })
+                                  }
+                                />
+                                <PeriodSelect
+                                  value={slot.endTimeDayPeriod}
+                                  onChange={(value) =>
+                                    updateSlot(day, index, {
+                                      endTimeDayPeriod: value,
+                                    })
+                                  }
+                                />
 
-                          <IconButton
-                            size="lg"
-                            visual="gray"
-                            variant="outlined"
-                          >
-                            <Plus className="size-[15px]" />
-                          </IconButton>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                                {index === 0 ? (
+                                  <IconButton
+                                    type="button"
+                                    size="lg"
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() => addSlot(day)}
+                                  >
+                                    <Plus className="size-[15px]" />
+                                  </IconButton>
+                                ) : index === daySchedule.slots.length - 1 ? (
+                                  <IconButton
+                                    type="button"
+                                    size="lg"
+                                    visual="gray"
+                                    variant="outlined"
+                                    onClick={() => removeSlot(day, index)}
+                                  >
+                                    <Trash03 className="size-[15px] text-error-500" />
+                                  </IconButton>
+                                ) : (
+                                  <span className="size-9 shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </article>
+                      )
+                    })}
+                  </ScrollArea>
                 )}
-              </div>
             </div>
           </div>
 
@@ -2074,15 +2342,7 @@ export const WorkExperienceDialog = ({
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
     mode: "onChange",
-    defaultValues: {
-      currentlyWorkHere: false,
-      jobDescription: "",
-      jobTitle: "",
-      employer: "",
-      endDate: undefined,
-      startDate: undefined,
-      skills: [],
-    },
+    defaultValues: workExperienceFormDefaultValues,
   })
   const [serverError, setServerError] = useState<string | null>(null)
   const MAX_EXPERIENCE_ENTRIES = 30
@@ -2219,7 +2479,7 @@ export const WorkExperienceDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(workExperienceFormDefaultValues)
     }
   }, [open, editIndex])
 
@@ -2325,6 +2585,12 @@ export const WorkExperienceDialog = ({
                       id="employer"
                       placeholder="Acme Inc."
                       {...register("employer")}
+                      onBlur={(e) => {
+                        setValue(
+                          "employer",
+                          capitalizeCompanyName(e.target.value)
+                        )
+                      }}
                       isInvalid={hookFormHasError({
                         errors,
                         name: "employer",
@@ -2377,7 +2643,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.month"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Month"
                                 displayValue={(value: number) =>
@@ -2421,7 +2693,13 @@ export const WorkExperienceDialog = ({
                           control={control}
                           name="startDate.year"
                           render={({ field: { value, onChange } }) => (
-                            <Listbox value={value ?? null} onChange={onChange}>
+                            <Listbox
+                              value={value ?? null}
+                              onChange={(v) => {
+                                onChange(v)
+                                trigger("endDate.year")
+                              }}
+                            >
                               <ListboxButton
                                 placeholder="Year"
                                 displayValue={(value: number) => value}
@@ -2867,7 +3145,7 @@ export const EducationDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(educationFormDefaultValues)
     }
   }, [open, editIndex])
 
@@ -4224,15 +4502,7 @@ export const CertificationsDialog = ({
   } = useForm<CertificationsFormValues>({
     resolver: zodResolver(certificationsFormSchema),
     mode: "onChange",
-    defaultValues: {
-      credentialId: "",
-      credentialsUrl: "",
-      name: "",
-      canNotExpire: false,
-      issuedDate: undefined,
-      expirationDate: undefined,
-      skills: [],
-    },
+    defaultValues: certificationsFormDefaultValues,
   })
   const [isShowing, setIsShowing] = useState(false)
   const [editingId, setEditingId] = useState<string | undefined>()
@@ -4274,7 +4544,7 @@ export const CertificationsDialog = ({
       edit(editIndex)
     } else if (open && !editIndex) {
       setEditingId(undefined)
-      reset()
+      reset(certificationsFormDefaultValues)
     }
   }, [open, editIndex, edit, reset])
 
@@ -4466,7 +4736,10 @@ export const CertificationsDialog = ({
                           }
                           placeholder="MM/DD/YYYY"
                           value={value}
-                          onValueChange={onChange}
+                          onValueChange={(v) => {
+                            onChange(v)
+                            trigger("expirationDate")
+                          }}
                         />
                       )}
                     />
@@ -4641,10 +4914,7 @@ export const CertificationsDialog = ({
                                 <ComboboxInput
                                   className="w-full"
                                   size="lg"
-                                  displayValue={(skill: {
-                                    id: number
-                                    name: string
-                                  }) => skill.name}
+                                  displayValue={() => query}
                                   onChange={(event) =>
                                     setQuery(event.target.value)
                                   }
@@ -4667,13 +4937,35 @@ export const CertificationsDialog = ({
                                           {skill.name}
                                         </ComboboxOption>
                                       ))
-                                    ) : (
-                                      <div className="px-3 py-2 text-sm font-light text-gray-500">
-                                        {query.trim()
-                                          ? "No matching skills found."
-                                          : "Start typing to search skills."}
-                                      </div>
-                                    )}
+                                    ) : (() => {
+                                      const q = query.trim()
+                                      const alreadySelected = (
+                                        value ?? []
+                                      ).some(
+                                        (s) =>
+                                          s.name.toLowerCase() ===
+                                          q.toLowerCase()
+                                      )
+                                      if (q && !alreadySelected) {
+                                        return (
+                                          <ComboboxOption
+                                            value={{
+                                              id: `custom-${q}`,
+                                              name: q,
+                                            }}
+                                          >
+                                            Add &ldquo;{q}&rdquo;
+                                          </ComboboxOption>
+                                        )
+                                      }
+                                      return (
+                                        <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                          {q
+                                            ? "No matching skills found."
+                                            : "Start typing to search skills."}
+                                        </div>
+                                      )
+                                    })()}
                                   </ScrollArea>
                                 </ComboboxOptions>
                               </ScaleOutIn>
@@ -4702,6 +4994,16 @@ export const CertificationsDialog = ({
                       Add Skills
                     </Button>
                   )}
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="skills"
+                    render={({ message }) => (
+                      <ErrorMessage className="mt-1.5" size="sm">
+                        {message}
+                      </ErrorMessage>
+                    )}
+                  />
 
                   <div className="mt-3 flex gap-3 flex-wrap">
                     {selected?.map((skill, index) => (

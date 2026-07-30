@@ -40,6 +40,8 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
   metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
+  'manual-time': 'timeTracking', // time-tracking-service manual-time entries — was
+                                  // missing entirely, so GET/POST /manual-time always 404'd
   public: 'users',               // public talent profiles live in user-service
   admin: 'admin',
   'affiliate-referral': 'affiliateReferral',
@@ -108,7 +110,7 @@ export class ProxyController {
     const serviceUrls: Record<string, string> = {
       'auth-service': process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
       'user-service': process.env.USER_SERVICE_URL || 'http://localhost:3002',
-      'listings-service': process.env.LISTINGS_SERVICE_URL || 'http://localhost:3003',
+      'listings-service': process.env.LISTINGS_SERVICE_URL || 'http://localhost:3004',
       'messaging-service': process.env.MESSAGING_SERVICE_URL || 'http://localhost:3005',
       'notification-service': process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
       'search-service': process.env.SEARCH_SERVICE_URL || 'http://localhost:3007',
@@ -128,7 +130,7 @@ export class ProxyController {
       'admin-service': process.env.ADMIN_SERVICE_URL || 'http://localhost:3024',
       'affiliate-referral-service': process.env.AFFILIATE_REFERRAL_SERVICE_URL || 'http://localhost:3025',
       'billing-service': process.env.BILLING_SERVICE_URL || 'http://localhost:3026',
-      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3027',
+      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3026',
       'payout-service': process.env.PAYOUT_SERVICE_URL || 'http://localhost:3028',
       'pricing-service': process.env.PRICING_SERVICE_URL || 'http://localhost:3029',
       'wallet-service': process.env.WALLET_SERVICE_URL || 'http://localhost:3030',
@@ -242,8 +244,24 @@ export class ProxyController {
       prefix = 'notifications'
     } else if (prefix === 'v1' && segments[1] === 'payouts') {
       prefix = 'payouts'
+    } else if (prefix === 'v1' && segments[1] === 'earnings') {
+      // Without this branch, /v1/earnings/* silently fell through to the 'v1'
+      // default (transaction-service) instead of earnings-service.
+      prefix = 'earnings'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
+    } else if (prefix === 'v1' && segments[1] === 'oauth') {
+      // /v1/oauth/:provider/callback (PayPal/Wise/Payoneer OAuth redirect
+      // target) lives in payout-service. Without this branch it silently
+      // fell through to the 'v1' default (transaction-service) and 404'd,
+      // so the OAuth callback that actually persists tokens never ran.
+      prefix = 'payouts'
+    } else if (prefix === 'v1' && segments[1] === 'webhooks') {
+      // /v1/webhooks/stripe and /v1/webhooks/ramp both live in payout-service.
+      // Without this branch these silently fell through to the 'v1' default
+      // (transaction-service) instead of payout-service — external providers
+      // hitting the public webhook URL would never reach the real handler.
+      prefix = 'payouts'
     } else if (prefix === 'v1' && segments[1] === 'offers') {
       prefix = 'offers'
     } else if (prefix === 'v1' && segments[1] === 'counter-offers') {
@@ -283,9 +301,9 @@ export class ProxyController {
     if (serviceName === 'categories') {
       downstreamPath = `/api${downstreamPath}`
     }
-    if (serviceName === 'earnings') {
-      downstreamPath = `/v1${downstreamPath}`
-    }
+    // earnings-service sets a global 'v1' prefix, so its real routes are
+    // /v1/earnings/... — matching the incoming path already; no rewrite needed
+    // here (the previous `/v1${downstreamPath}` rewrite doubled it to /v1/v1/...).
     if (req.url.includes('?')) {
       downstreamPath += '?' + req.url.split('?').slice(1).join('?')
     }

@@ -68,9 +68,17 @@ export class ProjectModerationService {
     return rawValue;
   }
 
+  private authConfig(authToken?: string, timeout?: number) {
+    return {
+      timeout: timeout ?? this.moderationTimeoutMs,
+      headers: authToken ? { Authorization: authToken } : undefined,
+    };
+  }
+
   private async detectRejectedField(
     projectId: string,
     input: ProjectModerationInput,
+    authToken?: string,
   ): Promise<string | undefined> {
     const faqText = (input.faqs ?? [])
       .map((f) => [f?.question, f?.answer].filter(Boolean).join(' '))
@@ -100,7 +108,7 @@ export class ProjectModerationService {
             category: '',
             subcategory: '',
           },
-          { timeout: this.moderationTimeoutMs },
+          this.authConfig(authToken),
         );
         if (response?.data?.status === 'rejected') {
           return field.key;
@@ -116,6 +124,7 @@ export class ProjectModerationService {
   async moderateProject(
     projectId: string,
     input: ProjectModerationInput,
+    authToken?: string,
   ): Promise<ProjectModerationResult> {
     // 1. Moderate image if imageUrl is provided
     if (input.imageUrl) {
@@ -127,7 +136,7 @@ export class ProjectModerationService {
             mediaType: 'image',
             mediaUrl: input.imageUrl,
           },
-          { timeout: this.moderationTimeoutMs },
+          this.authConfig(authToken),
         );
         const imageStatus = imageResponse?.data?.status;
         if (imageStatus === 'rejected') {
@@ -190,7 +199,7 @@ export class ProjectModerationService {
       const response = await this.httpService.axiosRef.post(
         `${this.moderationBaseUrl}/api/moderate/content`,
         payload,
-        { timeout: this.moderationTimeoutMs },
+        this.authConfig(authToken),
       );
 
       const status = response?.data?.status;
@@ -214,7 +223,7 @@ export class ProjectModerationService {
 
       const field =
         status === 'rejected'
-          ? await this.detectRejectedField(projectId, input)
+          ? await this.detectRejectedField(projectId, input, authToken)
           : undefined;
 
       return { status, reason, field };
@@ -256,6 +265,40 @@ export class ProjectModerationService {
       throw new ModerationInvalidResponseError(
         'Moderation request failed unexpectedly',
       );
+    }
+  }
+
+  async moderateText(
+    text: string,
+    contentId: string,
+    authToken?: string,
+  ): Promise<'approved' | 'rejected' | 'pending_review'> {
+    if (!text?.trim()) return 'approved';
+    try {
+      const response = await this.httpService.axiosRef.post(
+        `${this.moderationBaseUrl}/api/moderate/content`,
+        {
+          contentId,
+          title: text.slice(0, 150),
+          content: text,
+          category: '',
+          subcategory: '',
+          categories: [],
+          tags: [],
+        },
+        this.authConfig(authToken),
+      );
+      const status = response?.data?.status;
+      return status === 'rejected' || status === 'pending_review'
+        ? status
+        : 'approved';
+    } catch (error) {
+      this.logger.warn(
+        `Text moderation unavailable for ${contentId}: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+      return 'approved';
     }
   }
 

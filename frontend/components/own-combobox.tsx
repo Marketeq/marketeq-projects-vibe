@@ -5,7 +5,6 @@ import { cn } from "@/utils/functions"
 import { useControllableState, useDeferredValue } from "@/utils/hooks"
 import { Check, ChevronDown, SearchMd } from "@blend-metrics/icons"
 import { type DialogProps } from "@radix-ui/react-dialog"
-import axios from "axios"
 import { Command as CommandPrimitive } from "cmdk"
 import { useAsync } from "react-use"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -212,7 +211,9 @@ export function OwnCombobox({
           )}
         >
           <span className="block truncate">
-            {state ? options?.find((option) => option === state) : placeholder}
+            {state
+              ? (options?.find((option) => option === state) ?? state)
+              : placeholder}
           </span>
         </button>
       </PopoverTrigger>
@@ -247,15 +248,6 @@ export function OwnCombobox({
       </PopoverContent>
     </Popover>
   )
-}
-
-const instance = axios.create({
-  baseURL: "https://restcountries.com/v3.1",
-})
-
-const getCountries = async <TData,>(url: string) => {
-  const { data } = await instance.get<TData>(url)
-  return data
 }
 
 export interface Country {
@@ -318,6 +310,88 @@ export function getFlagUrlByName(countryName: string): string | null {
   return getFlagUrl(country)
 }
 
+const COUNTRY_CODES: Record<string, string> = {
+  "United States": "us",
+  "United Kingdom": "gb",
+  Canada: "ca",
+  India: "in",
+  Germany: "de",
+  Australia: "au",
+  Brazil: "br",
+  Philippines: "ph",
+  Ukraine: "ua",
+  Poland: "pl",
+  France: "fr",
+  Japan: "jp",
+  "South Korea": "kr",
+  China: "cn",
+  Mexico: "mx",
+  Spain: "es",
+  Italy: "it",
+  Netherlands: "nl",
+  Sweden: "se",
+  Norway: "no",
+  Denmark: "dk",
+  Finland: "fi",
+  Switzerland: "ch",
+  Austria: "at",
+  Belgium: "be",
+  Ireland: "ie",
+  "New Zealand": "nz",
+  Singapore: "sg",
+  Israel: "il",
+  Portugal: "pt",
+  Argentina: "ar",
+  Colombia: "co",
+  Chile: "cl",
+  Romania: "ro",
+  "Czech Republic": "cz",
+  Hungary: "hu",
+  Turkey: "tr",
+  Thailand: "th",
+  Vietnam: "vn",
+  Indonesia: "id",
+  Malaysia: "my",
+  Nigeria: "ng",
+  Kenya: "ke",
+  "South Africa": "za",
+  Egypt: "eg",
+  Pakistan: "pk",
+  Bangladesh: "bd",
+  "Sri Lanka": "lk",
+  Russia: "ru",
+  Estonia: "ee",
+  Latvia: "lv",
+  Lithuania: "lt",
+  Croatia: "hr",
+  Serbia: "rs",
+  Bulgaria: "bg",
+  Greece: "gr",
+}
+
+const STATIC_COUNTRIES: Country[] = Object.entries(COUNTRY_CODES).map(
+  ([name, code]) => ({
+    name: { common: name, official: name, nativeName: {} },
+    cca2: code.toUpperCase(),
+    flags: {
+      png: `https://flagcdn.com/w320/${code}.png`,
+      svg: `https://flagcdn.com/${code}.svg`,
+      alt: name,
+    },
+  })
+)
+
+/**
+ * Flag URL for a country name that works without the countries API loaded,
+ * using a static flag CDN. Falls back to the loaded-countries lookup.
+ */
+export function getStaticFlagUrl(countryName: string): string | null {
+  if (!countryName) return null
+  const code = COUNTRY_CODES[countryName]
+  if (code) return `https://flagcdn.com/36x27/${code}.png`
+  return getFlagUrlByName(countryName)
+}
+
 function sortCountries(countries: Country[]): {
   popular: Country[]
   rest: Country[]
@@ -361,11 +435,8 @@ export const CountriesCombobox = ({
 }) => {
   const data = useAsync(async () => {
     if (countriesCache) return countriesCache
-    const result = await getCountries<Country[]>(
-      "/all?fields=id,name,flags,cca2"
-    )
-    countriesCache = result
-    return result
+    countriesCache = STATIC_COUNTRIES
+    return countriesCache
   }, [])
 
   const [open, setOpen] = React.useState(false)
@@ -459,10 +530,23 @@ export const CountriesCombobox = ({
                 }}
               />
             </span>
+          ) : state && getStaticFlagUrl(state) ? (
+            <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden bg-gray-100">
+              <img
+                className="w-full h-full object-cover"
+                src={getStaticFlagUrl(state) ?? undefined}
+                alt={state}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                }}
+              />
+            </span>
           ) : null}
 
           <span className="text-xs inline-block truncate max-w-[120px] leading-[18px] font-medium text-gray-700">
-            {selectedCountry ? selectedCountry.name.common : placeholder}
+            {selectedCountry
+              ? selectedCountry.name.common
+              : state || placeholder}
           </span>
 
           <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />

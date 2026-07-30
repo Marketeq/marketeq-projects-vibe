@@ -12,6 +12,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  ScrollArea,
 } from "@/components/ui"
 
 const DatePicker = ({
@@ -65,19 +66,27 @@ const DatePicker = ({
       </PopoverTrigger>
       <PopoverContent
         className="w-[330px] shadow-xl border border-gray-100 bg-white"
+        collisionPadding={16}
         onOpenAutoFocus={preventDefault}
       >
-        <Calendar
-          className="shadow-none border-none"
-          value={state}
-          onValueChange={setState}
-        />
-        <div className="grid grid-cols-2 gap-x-3 border-t border-gray-200 p-4">
-          <Button variant="outlined" visual="gray" onClick={off}>
-            Cancel
-          </Button>
-          <Button onClick={onApply}>Apply</Button>
-        </div>
+        <ScrollArea
+          viewportStyle={{
+            maxHeight:
+              "var(--radix-popover-content-available-height, var(--radix-popper-available-height))",
+          }}
+        >
+          <Calendar
+            className="shadow-none border-none"
+            value={state}
+            onValueChange={setState}
+          />
+          <div className="grid grid-cols-2 gap-x-3 border-t border-gray-200 p-4">
+            <Button variant="outlined" visual="gray" onClick={off}>
+              Cancel
+            </Button>
+            <Button onClick={onApply}>Apply</Button>
+          </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   )

@@ -43,12 +43,16 @@ export class ThreadsService {
     private readonly blockEnforcement: BlockEnforcementService,
   ) {}
 
-  async getUserThreads(userId: string) {
-    const allThreads = await this.repo
+  async getUserThreads(userId: string, projectId?: string) {
+    const qb = this.repo
       .createQueryBuilder("t")
-      .where(":userId = ANY(t.participantIds)", { userId })
-      .orderBy("t.updatedAt", "DESC")
-      .getMany();
+      .where(":userId = ANY(t.participantIds)", { userId });
+    if (projectId) {
+      qb.andWhere("t.projectId = :projectId", { projectId });
+    } else {
+      qb.andWhere("t.projectId IS NULL");
+    }
+    const allThreads = await qb.orderBy("t.updatedAt", "DESC").getMany();
 
     const threads = await this.blockEnforcement.filterThreadsForBlocks(userId, allThreads);
     const threadIds = threads.map((t) => t.id);
@@ -193,6 +197,44 @@ export class ThreadsService {
       }
       throw err;
     }
+  }
+
+  async getOrCreateProjectThread(
+    projectId: string,
+    teamMemberIds: string[],
+    requesterId: string,
+  ) {
+    if (!projectId) {
+      throw new BadRequestException("projectId is required");
+    }
+    if (!requesterId) {
+      throw new ForbiddenException("Authentication required");
+    }
+    const team = Array.from(
+      new Set((teamMemberIds ?? []).map((id) => String(id)).filter(Boolean)),
+    ).filter((id) => id !== requesterId);
+    if (team.length === 0) {
+      throw new BadRequestException(
+        "Project has no team members available to chat with",
+      );
+    }
+
+    const existing = await this.repo
+      .createQueryBuilder("t")
+      .where("t.projectId = :projectId", { projectId })
+      .andWhere(":requester = ANY(t.participantIds)", { requester: requesterId })
+      .orderBy("t.createdAt", "ASC")
+      .limit(1)
+      .getOne();
+    if (existing) return existing;
+
+    const participantIds = Array.from(new Set([requesterId, ...team]));
+    const thread = this.repo.create({
+      participantIds,
+      isGroup: true,
+      projectId,
+    });
+    return this.repo.save(thread);
   }
 
   private async findOneToOneThread(userA: string, userB: string) {

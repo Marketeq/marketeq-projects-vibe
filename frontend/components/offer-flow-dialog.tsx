@@ -108,6 +108,9 @@ export function OfferFlowDialog({
   const resolvedDeclineReason =
     selectedDeclineReason ??
     (variant === "decline-offer-ready" ? "Too busy right now" : "")
+  const canDecline =
+    resolvedDeclineMessage.trim().length > 0 ||
+    resolvedDeclineReason.trim().length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -311,8 +314,8 @@ export function OfferFlowDialog({
                       Counter Offer
                     </Button>
                     <Button
-                      visual="error"
-                      disabled={declineLoading}
+                      visual="primary"
+                      disabled={!canDecline || declineLoading}
                       onClick={onDecline}
                     >
                       {declineLoading ? "Declining..." : "Decline Offer"}

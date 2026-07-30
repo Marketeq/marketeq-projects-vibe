@@ -66,6 +66,10 @@ const SERVICES = [
   { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service',             maxOldSpaceMb: 48 },
   { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service',        maxOldSpaceMb: 48 },
   { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 96 },
+  // 3033, not the 3028 used in ecosystem.config.js: this file assigns 3028 to
+  // payout-service, so 3028 here would collide (and did — user-service's
+  // resume upload was POSTing to payout-service).
+  { name: 'resume-parsing-service',     port: '3033', dir: 'apps/resume-parsing-service',     maxOldSpaceMb: 96 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
@@ -105,6 +109,9 @@ const gatewayEnv = {
   WALLET_SERVICE_URL:             'http://localhost:3030',
   WIRE_REVIEW_SERVICE_URL:        'http://localhost:3031',
   LEGAL_SERVICE_URL:              'http://localhost:3032',
+  // Consumed by user-service resume.service.ts, which otherwise falls back to
+  // its hardcoded http://localhost:3028 default — payout-service in this file.
+  RESUME_PARSING_SERVICE_URL:     'http://localhost:3033',
 };
 
 // svc.portKey allows services that read a non-standard env var for their port

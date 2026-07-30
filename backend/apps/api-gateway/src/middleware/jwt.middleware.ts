@@ -55,6 +55,20 @@ const PUBLIC_PATTERNS = [
   /^\/v1\/homepage(?:\/.*)?$/,
   /^\/public\/talent(?:\/.*)?$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  // Stripe/Ramp call these directly — no Marketeq session exists to send.
+  // Authenticity is verified downstream via each provider's own signature
+  // check (constructWebhookEvent / HMAC), not gateway-level JWT auth.
+  // Without this, the gateway 401s before the request ever reaches
+  // payout-service's own @Public() route — a separate, gateway-level auth
+  // layer that a downstream @Public() decorator has no power over.
+  // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
+  // route under this namespace does not silently make it unauthenticated.
+  /^\/v1\/webhooks\/(?:stripe|ramp)$/,
+  // PayPal/Wise/Payoneer redirect the browser here straight from the
+  // provider's own login page — there's no Marketeq session cookie to send,
+  // same reasoning as the webhooks entry above. payout-service's own
+  // @Public() on this route is powerless against this upstream gateway check.
+  /^\/v1\/oauth\/(?:paypal|wise|payoneer)\/callback$/,
 ]
 
 function isPublic(path: string): boolean {

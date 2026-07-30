@@ -22,6 +22,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { RefreshTimezoneDto } from './dtos/refresh-timezone.dto';
 import { UpdatePhoneDto } from './dtos/update-phone.dto';
+import { UpdateCurrencyDto } from './dtos/update-currency.dto';
 import { R2Service } from '../storage/r2.service';
 
 const ALLOWED_AVATAR_MIME_TYPES = new Set([
@@ -196,5 +197,19 @@ export class UserSelfController {
     const resolved = await this.userService.getUserByClaims(user);
     const updated = await this.userService.updatePhone(resolved.id, dto.phone ?? null);
     return { id: updated.id, phone: updated.phone ?? null };
+  }
+
+  // ES-06: talent's explicit region-currency override, surfaced via the
+  // Currency Settings entry point shown when earnings-service falls back
+  // to USD (no resolvable preference on this profile).
+  @ApiOperation({ summary: 'Update preferred display currency' })
+  @Patch('currency')
+  async updateCurrency(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdateCurrencyDto,
+  ) {
+    const resolved = await this.userService.getUserByClaims(user);
+    const updated = await this.userService.updateCurrency(resolved.id, dto.currency);
+    return { id: updated.id, preferredCurrency: updated.preferredCurrency ?? null };
   }
 }

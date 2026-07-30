@@ -1,15 +1,25 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { apiFetch } from "@/src/lib/api"
+import { useAblyChannel } from "@/utils/useAblyChannel"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
+import {
+  estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+} from "@/components/scope-builder"
 import {
   addFavorite,
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { InviteWindow, useInviteWindowStore } from "@/components/invite-window"
+import { LightboxVideoPlayer } from "./lightbox-video-player"
+import { countryOf } from "@/lib/geo"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -17,12 +27,14 @@ import {
   ArrowLeft,
   Attachment01,
   ChartBreakoutCircle,
+  Calendar,
   Check,
   CheckCircle,
   ChevronDown,
   Clock,
   FileText,
   Flag,
+  RefreshCcw05,
   HelpCircle,
   Home03,
   Image03,
@@ -38,6 +50,7 @@ import {
   ShieldDollar,
   ShieldZap,
   ShoppingCart,
+  Play,
   Smile,
   Star,
   Stars02,
@@ -63,7 +76,9 @@ import {
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { ProjectAPI } from "@/service/http/project"
+import { UserAPI } from "@/service/http/user"
 import { ChatsContextProvider } from "@/components/chat"
+import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
@@ -107,7 +122,6 @@ import {
   DialogTitle,
   DialogTrigger,
   DisclosureContent,
-  DisclosureTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -150,6 +164,67 @@ import {
   TooltipTrigger,
   useCarousel,
 } from "@/components/ui"
+
+const CollapsibleCard = ({
+  maxHeight,
+  className,
+  children,
+}: {
+  maxHeight: number
+  className?: string
+  children?: React.ReactNode
+}) => {
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [needsTruncation, setNeedsTruncation] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  useEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const check = () => setNeedsTruncation(el.scrollHeight > maxHeight)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [maxHeight])
+
+  return (
+    <div
+      className={cn(
+        "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+        className
+      )}
+      style={
+        needsTruncation && !isExpanded ? { height: maxHeight } : undefined
+      }
+    >
+      <div ref={innerRef}>{children}</div>
+
+      {needsTruncation &&
+        (isExpanded ? (
+          <div className="flex mt-6 items-center justify-center">
+            <Button
+              visual="gray"
+              variant="link"
+              onClick={() => setIsExpanded(false)}
+            >
+              View Less
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
+            <Button
+              visual="gray"
+              variant="link"
+              onClick={() => setIsExpanded(true)}
+            >
+              View More
+            </Button>
+          </div>
+        ))}
+    </div>
+  )
+}
 
 const Inbox = ({ children }: { children?: React.ReactNode }) => {
   const [pinnedChats, setPinnedChats] = React.useState(0)
@@ -221,11 +296,24 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
   )
 }
 
-const Chats = () => {
+const Chats = ({
+  projectId,
+  teamMemberIds = [],
+  ownerId,
+  initialDraft,
+}: {
+  projectId?: string
+  teamMemberIds?: string[]
+  ownerId?: string | null
+  initialDraft?: string
+}) => {
   const [state, setState] = React.useState<CircularProgressDropzoneState>()
   const [open, toggle] = useToggle(false)
+  const router = useRouter()
+  const { user } = useAuth()
+  const myId = user?.id ? String(user.id) : ""
 
-  const { onChatChange, onSave, chat } = useEditContext()
+  const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
     value: chat,
     onChange: onChatChange,
@@ -238,6 +326,130 @@ const Chats = () => {
     setTextareaValue(value)
   }
   const [bottomBarRef, bottomBarBounds] = useMeasure()
+
+  const [threadId, setThreadId] = React.useState<string | null>(null)
+  const [messages, setMessages] = React.useState<
+    Array<{
+      id: string
+      senderId: string
+      content?: string | null
+      createdAt: string
+      messageType?: string
+      attachments?: Array<{
+        id: string
+        fileUrl: string
+        fileType: string
+        fileName?: string | null
+        fileSize?: number | null
+      }>
+    }>
+  >([])
+  const chatBottomRef = React.useRef<HTMLDivElement | null>(null)
+
+  const participantIds = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [...(teamMemberIds ?? []).map(String), ownerId ? String(ownerId) : ""].filter(
+            Boolean
+          )
+        )
+      ),
+    [teamMemberIds, ownerId]
+  )
+
+  // Guard against concurrent creates (e.g. double-mount) making duplicate
+  // threads — a create in flight is shared by all callers.
+  const createInFlight = React.useRef<Promise<string | null> | null>(null)
+
+  const ensureThread = React.useCallback(async () => {
+    if (threadId) return threadId
+    if (!projectId || !myId) return null
+    if (createInFlight.current) return createInFlight.current
+    const pending = (async () => {
+      const t = await apiFetch<{ id: string }>(`/v1/threads/project`, {
+        method: "POST",
+        body: { projectId, teamMemberIds: participantIds },
+      })
+      setThreadId(t.id)
+      return t.id
+    })()
+    createInFlight.current = pending
+    try {
+      return await pending
+    } finally {
+      createInFlight.current = null
+    }
+  }, [threadId, projectId, myId, participantIds])
+
+  // On open, LOAD the visitor's existing thread (if any) so prior chat shows.
+  // Do NOT create one from viewing — creation happens on first send.
+  React.useEffect(() => {
+    if (!myId || !projectId) return
+    let cancelled = false
+    apiFetch<Array<{ id: string }>>(`/v1/threads?projectId=${projectId}`)
+      .then(async (rows) => {
+        const existing = rows?.[0]
+        if (!existing || cancelled) return
+        setThreadId(existing.id)
+        const hist = await apiFetch<{ messages: typeof messages }>(
+          `/v1/messages/thread/${existing.id}?all=true`
+        ).catch(() => ({ messages: [] as typeof messages }))
+        if (!cancelled) setMessages(hist?.messages ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [myId, projectId])
+
+  const onIncoming = React.useCallback((data: any) => {
+    if (!data?.id) return
+    setMessages((prev) =>
+      prev.some((m) => m.id === data.id) ? prev : [...prev, data]
+    )
+  }, [])
+  useAblyChannel(threadId ?? "", onIncoming)
+
+  React.useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ block: "end" })
+  }, [messages])
+
+  // Prefill the composer from the "Ask a Question" input once.
+  const draftApplied = React.useRef(false)
+  React.useEffect(() => {
+    if (!draftApplied.current && initialDraft && initialDraft.trim()) {
+      setTextareaValue(initialDraft)
+      draftApplied.current = true
+    }
+  }, [initialDraft, setTextareaValue])
+
+  const handleSend = React.useCallback(async () => {
+    const text = (textareaValue ?? "").trim()
+    if (!text) return
+    // Doc 15: login required before a message is sent.
+    if (!myId) {
+      router.push("/sign-in")
+      return
+    }
+    setTextareaValue("")
+    const tid = await ensureThread()
+    if (!tid) return
+    const saved = await apiFetch<{
+      id: string
+      senderId: string
+      content?: string | null
+      createdAt: string
+    }>(`/v1/messages`, {
+      method: "POST",
+      body: { threadId: tid, content: text, messageType: "text" },
+    }).catch(() => null)
+    if (saved?.id) {
+      setMessages((prev) =>
+        prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
+      )
+    }
+  }, [textareaValue, myId, ensureThread, router, setTextareaValue])
 
   return (
     <div
@@ -264,59 +476,70 @@ const Chats = () => {
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="p-8 pb-[100px] grid gap-y-6">
-          <div className="flex gap-x-3 py-6 items-center">
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-            <span className="text-xs leading-[14.52px] font-medium text-gray-500">
-              Jun 14, 2024
-            </span>
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-          </div>
-
-          <div className="flex justify-start">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<YourBubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua." />*/}
-          </div>
-
-          <div className="flex justify-end">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<Bubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit." />*/}
-          </div>
-
-          <div className="flex justify-start">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<YourBubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua." />*/}
-          </div>
-
-          <div className="flex gap-x-3 py-6 items-center">
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-            <span className="text-xs leading-[14.52px] font-medium text-gray-500">
-              Jun 14, 2024
-            </span>
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-          </div>
-
-          <div className="flex justify-end">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<Bubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit." />*/}
-          </div>
-
-          <div className="flex justify-start">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<YourBubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua." />*/}
-          </div>
-
-          <div className="flex gap-x-3 py-6 items-center">
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-            <span className="text-xs leading-[14.52px] font-medium text-gray-500">
-              Jun 14, 2024
-            </span>
-            <span className="inline-block bg-gray-200 flex-auto h-px" />
-          </div>
-
-          <div className="flex justify-end">
-            {/* FIXME: a type error as the message prop's type has been changed */}
-            {/*<Bubble message="Lorem ipsum dolor sit amet, consectetur adipiscing elit." />*/}
-          </div>
+          {messages.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">
+              {myId
+                ? "Start the conversation — ask the team a question about this project."
+                : "Log in to ask the team a question about this project."}
+            </p>
+          ) : (
+            (() => {
+              let lastDay = ""
+              return messages.map((m) => {
+                const mine = String(m.senderId) === myId
+                const day = formatChatDay(m.createdAt)
+                const showDay = day !== lastDay
+                lastDay = day
+                return (
+                  <React.Fragment key={m.id}>
+                    {showDay && (
+                      <div className="flex gap-x-3 py-6 items-center">
+                        <span className="inline-block bg-gray-200 flex-auto h-px" />
+                        <span className="text-xs leading-[14.52px] font-medium text-gray-500">
+                          {day}
+                        </span>
+                        <span className="inline-block bg-gray-200 flex-auto h-px" />
+                      </div>
+                    )}
+                    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-[70%] rounded-lg px-4 py-3",
+                          mine ? "bg-primary-50" : "bg-gray-50"
+                        )}
+                      >
+                        {m.attachments?.[0] && (
+                          <MessageAttachmentView attachment={m.attachments[0]} />
+                        )}
+                        {m.messageType === "gif" && m.content ? (
+                          <img
+                            src={m.content}
+                            alt="GIF"
+                            className="rounded-md w-60 h-auto max-h-80"
+                          />
+                        ) : (
+                          m.content && (
+                            <p className="text-sm text-dark-blue-400">
+                              {m.content}
+                            </p>
+                          )
+                        )}
+                        <p
+                          className={cn(
+                            "mt-1 text-xs text-gray-400",
+                            mine && "text-right"
+                          )}
+                        >
+                          Sent {formatChatTime(m.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </React.Fragment>
+                )
+              })
+            })()
+          )}
+          <div ref={chatBottomRef} />
         </div>
       </ScrollArea>
 
@@ -422,13 +645,19 @@ const Chats = () => {
             className="[field-sizing:content] h-auto pr-11 w-full"
             value={textareaValue}
             onChange={onChange}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                if (textareaValue) handleSend()
+              }
+            }}
           />
           <InputRightElement className="items-end pb-[13px]">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
                   className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
-                  onClick={() => textareaValue && onSave()}
+                  onClick={() => textareaValue && handleSend()}
                   disabled={!textareaValue}
                 >
                   <Send className="size-[18px]" />
@@ -446,16 +675,123 @@ const Chats = () => {
   )
 }
 
-const toEmbedUrl = (raw?: string | null): string => {
+const formatChatDay = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : ""
+
+const formatChatTime = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : ""
+
+const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
-  const url = raw.trim()
-  const yt = url.match(
+  const yt = raw.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
   )
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
-  return url
+  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
+  return ""
+}
+
+const isDirectVideoFile = (raw?: string | null): boolean =>
+  !!raw && /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|#|$)/i.test(raw)
+
+const DEFAULT_SUGGESTED_QUESTIONS = [
+  "Can I see your portfolio?",
+  "What is your typical turnaround time?",
+  "Do you offer revisions?",
+  "How do we communicate during the project?",
+]
+
+const VideoThumb = ({
+  url,
+  alt,
+}: {
+  url?: string | null
+  alt: string
+}): JSX.Element | null => {
+  const yt = toVideoThumb(url)
+  if (yt) {
+    return (
+      <img
+        src={yt}
+        alt={alt}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+  if (isDirectVideoFile(url)) {
+    return (
+      <video
+        src={url ?? undefined}
+        muted
+        playsInline
+        preload="metadata"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+  return null
+}
+
+// Derive a readable name from an R2 media URL, whose filenames follow
+// "{OriginalName}_{timestamp}-{uuid}.{ext}". Falls back to the given value.
+const mediaName = (raw?: string | null, fallback = ""): string => {
+  if (!raw) return fallback
+  try {
+    const file = decodeURIComponent(raw.split("?")[0].split("/").pop() ?? "")
+    let base = file.replace(/\.[a-z0-9]+$/i, "")
+    base = base.replace(/_\d{13}.*$/, "")
+    base = base.replace(
+      /[-_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      ""
+    )
+    const name = base.replace(/[-_]+/g, " ").trim()
+    return name || fallback
+  } catch {
+    return fallback
+  }
+}
+
+function LocationList({ locations }: { locations: string[] }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const countries = React.useMemo(
+    () => Array.from(new Set(locations.map(countryOf).filter(Boolean))),
+    [locations]
+  )
+  const visible = expanded ? countries : countries.slice(0, 3)
+  const extra = countries.length - visible.length
+  return (
+    <div className="flex items-center gap-1 overflow-hidden">
+      {visible.map((c, i) => (
+        <NextLink
+          key={c}
+          href={`/talent?location=${encodeURIComponent(c)}`}
+          className="shrink-0 focus-visible:outline-none duration-300 transition hover:underline text-sm leading-6 font-semibold text-dark-blue-400"
+        >
+          {c}
+          {i < visible.length - 1 || extra > 0 ? "," : ""}
+        </NextLink>
+      ))}
+      {extra > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="shrink-0 text-sm leading-6 font-semibold text-primary-500 hover:underline focus-visible:outline-none"
+        >
+          and {extra} more
+        </button>
+      )}
+    </div>
+  )
 }
 
 const CarouselPreviousTrigger = () => {
@@ -514,6 +850,142 @@ export default function ProjectDetails({
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
+  const [pendingQuestion, setPendingQuestion] = React.useState("")
+  const [askErrored, setAskErrored] = React.useState(false)
+  const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
+  const [askModalOpen, setAskModalOpen] = React.useState(false)
+  const [lightboxOpen, setLightboxOpen] = React.useState(false)
+  const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
+  const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
+  const { isOnline } = useOnlineUsers()
+
+  // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
+  // ≥1 assigned team member is online; their names are surfaced.
+  const onlineTeam = React.useMemo(
+    () =>
+      ((project as any)?.team ?? []).filter((m: any) =>
+        isOnline(String(m.userId ?? m.id ?? ""))
+      ),
+    [project, isOnline]
+  )
+
+  const mediaItems = React.useMemo(() => {
+    const items: { type: "video" | "image"; url: string }[] = []
+    const video =
+      ((project as any)?.videoUrl as string | undefined) ||
+      ((project as any)?.featuredVideo as string | undefined)
+    if (video) items.push({ type: "video", url: video })
+    const gallery =
+      ((project as any)?.mediaUrls as string[] | undefined)?.slice(1) ?? []
+    gallery.forEach((url) => items.push({ type: "image", url }))
+    return items
+  }, [project])
+
+  const openLiveChat = React.useCallback((question?: string) => {
+    if (question !== undefined) setPendingQuestion(question)
+    setSelected("Live Chat")
+  }, [])
+
+  const handleAsk = React.useCallback(() => {
+    if (pendingQuestion.trim()) {
+      setAskModalOpen(false)
+      openLiveChat()
+    } else {
+      setAskErrored(true)
+      setShowAskErrorMsg(true)
+    }
+  }, [pendingQuestion, openLiveChat])
+
+  const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
+    DEFAULT_SUGGESTED_QUESTIONS
+  )
+  React.useEffect(() => {
+    const pid = project?.id ? String(project.id) : ""
+    if (!pid) return
+    let cancelled = false
+    ProjectAPI.GetSuggestedQuestions(pid)
+      .then((res) => {
+        if (cancelled) return
+        const data = Array.isArray(res?.data) ? res.data : []
+        if (data.length) setSuggestedQuestions(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [project?.id])
+
+  // Owner viewing their own listing shouldn't be able to ask questions on it
+  // (Chris: "hide that for your own"). True in view-as-client preview, or when
+  // the logged-in user is the project owner.
+  const isOwnerViewing =
+    isPreview ||
+    (!!user?.id &&
+      String((project as any)?.ownerId ?? (project as any)?.userId ?? "") ===
+        String(user.id))
+  const projectOwnerId = String(
+    (project as any)?.ownerId ?? (project as any)?.userId ?? ""
+  )
+
+  const [ownerProfile, setOwnerProfile] = React.useState<any>(null)
+
+  React.useEffect(() => {
+    if (!projectOwnerId) {
+      setOwnerProfile(null)
+      return
+    }
+    let cancelled = false
+    UserAPI.getProfile(projectOwnerId)
+      .then((res) => {
+        if (cancelled) return
+        setOwnerProfile(res?.data ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerProfile(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectOwnerId])
+
+  const currentTeam = React.useMemo(() => {
+    const base = Array.isArray((project as any)?.team)
+      ? [...(project as any).team]
+      : []
+    const ownerId = projectOwnerId
+    const hasOwner = base.some((m: any) => {
+      const mid = String(m?.userId ?? m?.id ?? "")
+      return m?.role === "owner" || (!!ownerId && mid === ownerId)
+    })
+    const viewerIsOwner = !!user?.id && !!ownerId && String(user.id) === ownerId
+    const src =
+      ownerProfile ?? (viewerIsOwner ? user : null)
+    if (!hasOwner && src) {
+      const skills = Array.isArray((src as any).skills)
+        ? (src as any).skills.map((s: any) => s?.name ?? s).filter(Boolean)
+        : []
+      const languages = Array.isArray((src as any).languages)
+        ? (src as any).languages.map((l: any) => l?.name ?? l).filter(Boolean)
+        : []
+      base.unshift({
+        id: (src as any).id ?? ownerId,
+        userId: (src as any).id ?? ownerId,
+        firstName:
+          (src as any).firstName ?? (src as any).username ?? "Owner",
+        username: (src as any).username ?? "",
+        avatarUrl: (src as any).avatarUrl ?? null,
+        location:
+          (src as any).location ?? (src as any).country ?? null,
+        languages,
+        skills,
+        role: "owner",
+        isLead: true,
+        isOnline: true,
+      })
+    }
+    return base
+  }, [project, user, ownerProfile, projectOwnerId])
+
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
@@ -525,7 +997,17 @@ export default function ProjectDetails({
   // --- Sidebar pricing (docs §01, §14) ---
   const sidebarPricing = React.useMemo(() => {
     if (!project) return null
-    const totalCost = Number(project.priceMin ?? project.budget ?? 0)
+    // Budget (docs §14.7): compute from the scope when it's populated — same
+    // helper/rate-card as the edit view — so both views show the same number.
+    // Fall back to a stored price only when there's no scope to price.
+    const pricingCost = (Number(project.budgetUsdCents) || 0) / 100
+    const computedCost = estimateScopeBudgetCents(project.scope) / 100
+    const totalCost =
+      pricingCost > 0
+        ? pricingCost
+        : computedCost > 0
+          ? computedCost
+          : Number(project.priceMin ?? project.budget ?? 0)
 
     // Derive duration + roles from scope (matches edit mode). Handles both the
     // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
@@ -539,18 +1021,25 @@ export default function ProjectDetails({
         const role = row?.role ?? row?.roleName
         if (role) uniqueRoles.add(role)
         const dur = row?.duration
+        let days = 0
         if (dur && typeof dur === "object") {
           const val = Number(dur.value) || 0
           if (val > 0) {
-            const days =
+            days =
               dur.type === "weeks"
                 ? val * 7
                 : dur.type === "hours"
                   ? Math.max(1, Math.ceil(val / 24))
                   : val
-            taskDays.push(days)
           }
         }
+        // No explicit duration on the task — derive it from estimatedHours at
+        // 40 hrs/week (full-time), so duration reflects the actual scope.
+        if (days <= 0) {
+          const hrs = Number(row?.estimatedHours) || 0
+          if (hrs > 0) days = Math.max(1, Math.round((hrs * 7) / 40))
+        }
+        if (days > 0) taskDays.push(days)
       }
       if (taskDays.length > 0) totalDays += Math.max(...taskDays)
     }
@@ -563,14 +1052,21 @@ export default function ProjectDetails({
         durationWeeks = Number(project.durationMonths) * 4.33
       }
     }
-    const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
-
-    // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
-    const costPerWeek = durationWeeks > 0 ? Math.round(totalCost / durationWeeks) : 0
-    const costPerBiweek = durationWeeks > 0 ? Math.round(totalCost / (durationWeeks / 2)) : 0
-    const costPerMonth = durationMonths > 0 ? Math.round(totalCost / durationMonths) : 0
-    const costPerQuarter = durationMonths >= 3 ? Math.round(totalCost / (durationMonths / 3)) : 0
-    const costPerYear = durationMonths >= 12 ? Math.round(totalCost / (durationMonths / 12)) : 0
+    // Whole billing periods (docs: Installment Plans §04). Each installment is
+    // Total_Cost ÷ ceil(duration / period); the initial payment is one
+    // installment (the first week / 2 weeks / month), not an average spread
+    // over a fractional number of periods.
+    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
+    const installmentCost = (periodDays: number) => {
+      if (effDays <= 0 || totalCost <= 0) return 0
+      const count = Math.max(1, Math.ceil(effDays / periodDays))
+      return Math.ceil(totalCost / count)
+    }
+    const costPerWeek = installmentCost(7)
+    const costPerBiweek = installmentCost(14)
+    const costPerMonth = installmentCost(30)
+    const costPerQuarter = effDays >= 90 ? installmentCost(90) : 0
+    const costPerYear = effDays >= 360 ? installmentCost(360) : 0
 
     const periodOptions = [
       { label: "week", value: "week", cost: costPerWeek },
@@ -581,7 +1077,6 @@ export default function ProjectDetails({
     ]
 
     // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
     let formattedDuration = ""
     if (effDays > 0 && effDays < 7) {
       formattedDuration = `${effDays} day`
@@ -704,8 +1199,111 @@ export default function ProjectDetails({
                             (c: any) => c?.subCategories ?? []
                           )
                         : []
+                  const durToDays = (dur: any): number => {
+                    if (!dur) return 0
+                    if (typeof dur === "object") {
+                      const v = Number(dur.value) || 0
+                      return dur.type === "weeks"
+                        ? v * 7
+                        : dur.type === "months"
+                          ? v * 30
+                          : dur.type === "hours"
+                            ? Math.max(1, Math.ceil(v / 24))
+                            : v
+                    }
+                    const [rv, ru] = String(dur).trim().split(/\s+/)
+                    const v = Number(rv) || 0
+                    const u = (ru || "days").toLowerCase()
+                    return u.startsWith("week")
+                      ? v * 7
+                      : u.startsWith("month")
+                        ? v * 30
+                        : u.startsWith("hour")
+                          ? Math.max(1, Math.ceil(v / 24))
+                          : v
+                  }
+                  // The draft endpoint loads tasks from the relational table,
+                  // which stores `duration` (e.g. "2 weeks") but no
+                  // estimatedHours. Derive hours from duration (40 hrs/week,
+                  // 8 hrs/day) so the scope viewer shows real hours, not 0.
+                  const durHours = (dur: any): number => {
+                    if (!dur) return 0
+                    if (typeof dur === "object") {
+                      const v = Number(dur.value) || 0
+                      if (v <= 0) return 0
+                      return dur.type === "weeks"
+                        ? v * 40
+                        : dur.type === "months"
+                          ? v * 160
+                          : dur.type === "hours"
+                            ? v
+                            : v * 8
+                    }
+                    const [rv, ru] = String(dur).trim().split(/\s+/)
+                    const v = Number(rv) || 0
+                    const u = (ru || "days").toLowerCase()
+                    return u.startsWith("week")
+                      ? v * 40
+                      : u.startsWith("month")
+                        ? v * 160
+                        : u.startsWith("hour")
+                          ? v
+                          : v * 8
+                  }
+                  const draftPhases: any[] = Array.isArray(d.scope)
+                    ? d.scope
+                    : []
+                  const normalizedScope = draftPhases.map(
+                    (ph: any, i: number) => ({
+                      phaseName:
+                        ph.phaseName ??
+                        ph.name ??
+                        ph.stageName ??
+                        `Phase ${i + 1}`,
+                      order: ph.order ?? i,
+                      phaseType: ph.phaseType ?? undefined,
+                      recurrenceSchedule: ph.recurrenceSchedule ?? undefined,
+                      recurrenceCount: ph.recurrenceCount ?? undefined,
+                      tasks: (ph.tasks ?? ph.task ?? []).map((t: any) => ({
+                        title: t.title ?? t.taskName ?? "",
+                        roleName: t.roleName ?? t.role ?? "",
+                        location: Array.isArray(t.location)
+                          ? t.location
+                          : t.location
+                            ? [t.location]
+                            : [],
+                        experienceLevel:
+                          t.experienceLevel ??
+                          (Array.isArray(t.experience)
+                            ? t.experience[0]
+                            : t.experience) ??
+                          "Medior",
+                        estimatedHours:
+                          Number(t.estimatedHours) || durHours(t.duration),
+                        duration:
+                          typeof t.duration === "string"
+                            ? t.duration
+                            : undefined,
+                      })),
+                    })
+                  )
+                  let draftTotalDays = 0
+                  for (const ph of draftPhases) {
+                    let phaseDays = 0
+                    for (const t of ph.tasks ?? ph.task ?? [])
+                      phaseDays = Math.max(phaseDays, durToDays(t.duration))
+                    draftTotalDays += phaseDays
+                  }
+                  const draftWeeks =
+                    draftTotalDays > 0
+                      ? Math.max(1, Math.ceil(draftTotalDays / 7))
+                      : 0
                   setProject({
                     ...d,
+                    scope: normalizedScope.length ? normalizedScope : d.scope,
+                    duration:
+                      d.duration ??
+                      (draftWeeks > 0 ? String(draftWeeks) : undefined),
                     role:
                       d.category || d.categories?.[0] || "Software Development",
                     summary: d.shortDescription || d.fullDescription || "",
@@ -1100,7 +1698,10 @@ export default function ProjectDetails({
               </div>
 
               <div className="mt-3 relative">
-                <p className="text-sm font-extralight text-dark-blue-400">
+                <p
+                  style={{ whiteSpace: "pre-line" }}
+                  className="text-sm font-extralight break-words line-clamp-3 text-dark-blue-400"
+                >
                   {project.summary}
                 </p>
               </div>
@@ -1121,19 +1722,16 @@ export default function ProjectDetails({
                 </Button>
               </div>
 
-              <DisclosureTrigger
-                value={
-                  selected === "Details" || selected === "View Project Scope"
-                    ? "Live Chat"
-                    : "Details"
+              <Button
+                variant="link"
+                className="!text-primary-500 shrink-0"
+                onClick={() =>
+                  setSelected(selected === "Live Chat" ? "Details" : "Live Chat")
                 }
-                asChild
               >
-                <Button variant="link">
-                  <MessageTextCircle01 className="size-5" />
-                  Live Chat
-                </Button>
-              </DisclosureTrigger>
+                <MessageTextCircle01 className="size-5" />
+                {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
+              </Button>
 
               <div className="flex-1 flex justify-end">
                 <Button
@@ -1160,7 +1758,14 @@ export default function ProjectDetails({
             </RadixTabs.TabsList>
             <TabsContent value="Live Chat">
               <Inbox>
-                <Chats />
+                <Chats
+                  projectId={project?.id ? String(project.id) : undefined}
+                  teamMemberIds={(project?.team ?? [])
+                    .map((m: any) => String(m.userId ?? m.id ?? ""))
+                    .filter(Boolean)}
+                  ownerId={project?.ownerId ?? project?.userId ?? null}
+                  initialDraft={pendingQuestion}
+                />
               </Inbox>
             </TabsContent>
 
@@ -1186,15 +1791,8 @@ export default function ProjectDetails({
               */}
               <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
-                  {(() => {
-                    const video =
-                      (project.videoUrl as string | undefined) ||
-                      (project.featuredVideo as string | undefined)
-                    const gallery =
-                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
-                      []
-                    if (!video && gallery.length === 0) {
-                      return Array.from({ length: 5 }).map((_, index) => (
+                  {mediaItems.length === 0
+                    ? Array.from({ length: 5 }).map((_, index) => (
                         <CarouselItem key={index} className="group basis-1/3">
                           <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
                             <NextImage
@@ -1208,49 +1806,201 @@ export default function ProjectDetails({
                           </div>
                         </CarouselItem>
                       ))
-                    }
-                    const items: React.ReactNode[] = []
-                    if (video) {
-                      items.push(
-                        <CarouselItem key="video" className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                            <iframe
-                              src={toEmbedUrl(video)}
-                              className="absolute inset-0 h-full w-full"
-                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                              allowFullScreen
-                              title="Project video"
-                            />
-                          </div>
-                        </CarouselItem>
-                      )
-                    }
-                    gallery.forEach((url, index) => {
-                      items.push(
+                    : mediaItems.map((m, i) => (
                         <CarouselItem
-                          key={`${url}-${index}`}
+                          key={`${m.url}-${i}`}
                           className="group basis-1/3"
                         >
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            <NextImage
-                              className="object-cover"
-                              src={url}
-                              alt={`${project.title} — gallery image ${index + 1}`}
-                              sizes="25vw"
-                              fill
-                            />
-                            <div className="absolute inset-0 transition duration-300" />
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMediaIndex(i)
+                              setLightboxOpen(true)
+                            }}
+                            className={cn(
+                              "relative block w-full border border-gray-200 h-[150.6px] overflow-hidden rounded-lg focus-visible:outline-none",
+                              m.type === "video" ? "bg-black" : "bg-gray-50"
+                            )}
+                          >
+                            {m.type === "video" ? (
+                              <>
+                                <VideoThumb url={m.url} alt="Project video" />
+                                <span className="absolute inset-0 flex items-center justify-center">
+                                  <span
+                                    className="flex items-center justify-center rounded-full bg-white/90 shadow"
+                                    style={{
+                                      width: 48,
+                                      height: 48,
+                                    }}
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      aria-hidden="true"
+                                      className="text-gray-800"
+                                      style={{
+                                        width: 29,
+                                        height: 29,
+                                        fill: "currentColor",
+                                        marginLeft: 2,
+                                      }}
+                                    >
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </span>
+                                </span>
+                              </>
+                            ) : (
+                              <NextImage
+                                className="object-cover"
+                                src={m.url}
+                                alt={`${project.title} — media ${i + 1}`}
+                                sizes="25vw"
+                                fill
+                              />
+                            )}
+                          </button>
                         </CarouselItem>
-                      )
-                    })
-                    return items
-                  })()}
+                      ))}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
+
+              <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+                <DialogContent
+                  className="p-0 bg-transparent border-0 shadow-none"
+                  style={{ maxWidth: 760, width: "100%" }}
+                >
+                  <DialogClose
+                    className="absolute z-10 flex items-center justify-center rounded-full bg-white text-gray-500 shadow-md transition-colors hover:bg-gray-900 hover:text-white focus-visible:outline-none"
+                    style={{ width: 32, height: 32, top: -16, right: -16 }}
+                  >
+                    <X style={{ width: 16, height: 16 }} />
+                  </DialogClose>
+                  {(() => {
+                    const m = mediaItems[selectedMediaIndex]
+                    if (!m) return null
+                    return (
+                      <>
+                        <div
+                          style={{
+                            position: "relative",
+                            width: "100%",
+                            aspectRatio: "16 / 9",
+                            maxHeight: "80vh",
+                            backgroundColor: "#fff",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {m.type === "video" ? (
+                            <LightboxVideoPlayer
+                              url={m.url}
+                              active={lightboxOpen}
+                            />
+                          ) : (
+                            <>
+                              <img
+                                src={m.url}
+                                alt={project.title}
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                }}
+                              />
+                              <span
+                                className="absolute text-sm font-semibold text-white"
+                                style={{
+                                  left: 16,
+                                  bottom: 16,
+                                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                                }}
+                              >
+                                {mediaName(m.url, project.title)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {mediaItems.length > 1 && (
+                          <div
+                            className="flex gap-x-3 pt-4"
+                            style={{ overflowX: "auto" }}
+                          >
+                            {mediaItems.map((mm, i) => {
+                              const active = i === selectedMediaIndex
+                              return (
+                                <button
+                                  key={`lb-${mm.url}-${i}`}
+                                  type="button"
+                                  onClick={() => setSelectedMediaIndex(i)}
+                                  className={cn(
+                                    "relative shrink-0 overflow-hidden rounded-lg focus-visible:outline-none",
+                                    mm.type === "video" ? "bg-black" : "bg-gray-50"
+                                  )}
+                                  style={{
+                                    width: 84,
+                                    height: 60,
+                                  }}
+                                >
+                                  {mm.type === "video" ? (
+                                    <>
+                                      <VideoThumb url={mm.url} alt="Video" />
+                                      <span className="absolute inset-0 flex items-center justify-center">
+                                        <span
+                                          className="flex items-center justify-center rounded-full"
+                                          style={{
+                                            width: 22,
+                                            height: 22,
+                                            backgroundColor:
+                                              "rgba(255,255,255,0.45)",
+                                          }}
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                            className="text-gray-800"
+                                            style={{
+                                              width: 10,
+                                              height: 10,
+                                              fill: "currentColor",
+                                              marginLeft: 1,
+                                            }}
+                                          >
+                                            <path d="M8 5v14l11-7z" />
+                                          </svg>
+                                        </span>
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <img
+                                      src={mm.url}
+                                      alt={`${project.title} — media ${i + 1}`}
+                                      className="absolute inset-0 h-full w-full object-cover"
+                                    />
+                                  )}
+                                  {active && (
+                                    <span
+                                      className="pointer-events-none absolute inset-0"
+                                      style={{
+                                        border: "2px solid #ffffff",
+                                        borderRadius: 8,
+                                      }}
+                                    />
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </DialogContent>
+              </Dialog>
 
               <div className="mt-6">
                 <Tabs
@@ -1318,74 +2068,34 @@ export default function ProjectDetails({
 
                   <div>
                     <div id="section-description" className="pt-6">
-                      <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing, scrollHeight }) => (
+                      <CollapsibleCard maxHeight={599}>
+                        <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
+                          {project.title}
+                        </h1>
+
+                        <div className="mt-6 border-t pt-6 border-gray-200">
+                          {/*
+                            project.description is HTML generated from the
+                            Payload Lexical rich-text editor by the
+                            listings-service ProjectSyncService. Editor
+                            content is admin-authored (not user-submitted)
+                            so `dangerouslySetInnerHTML` is safe here — see
+                            the lexicalToHtml() helper on the service which
+                            escapes text content before wrapping in tags.
+                          */}
                           <div
-                            className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              scrollHeight > 506 && !isShowing ? "h-[506px]" : "h-auto"
-                            )}
-                          >
-                            <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                              {project.title}
-                            </h1>
+                            className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                            dangerouslySetInnerHTML={{
+                              __html:
+                                project.description ||
+                                project.summary ||
+                                "",
+                            }}
+                          />
+                        </div>
+                      </CollapsibleCard>
 
-                            <div className="mt-6 border-t pt-6 border-gray-200">
-                              {/*
-                                project.description is HTML generated from the
-                                Payload Lexical rich-text editor by the
-                                listings-service ProjectSyncService. Editor
-                                content is admin-authored (not user-submitted)
-                                so `dangerouslySetInnerHTML` is safe here — see
-                                the lexicalToHtml() helper on the service which
-                                escapes text content before wrapping in tags.
-                              */}
-                              <div
-                                className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                                dangerouslySetInnerHTML={{
-                                  __html:
-                                    project.description ||
-                                    project.summary ||
-                                    "",
-                                }}
-                              />
-                            </div>
-
-                            {scrollHeight > 506 && (
-                              isShowing ? (
-                                <div className="flex mt-6 items-center justify-center">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(false)}
-                                  >
-                                    View Less
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(true)}
-                                  >
-                                    View More
-                                  </Button>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </ShowMoreLessRoot>
-
-                      <ShowMoreLessRoot>
-                        {({ isShowing, setIsShowing, scrollHeight }) => (
-                          <div
-                            className={cn(
-                              "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                              scrollHeight > 456 && !isShowing ? "h-[456px]" : "h-auto"
-                            )}
-                          >
+                      <CollapsibleCard maxHeight={456} className="mt-6">
                             <h2 id="section-deliverables" className="text-xl leading-none text-dark-blue-400 font-semibold scroll-mt-[120px]">
                               Deliverables
                             </h2>
@@ -1480,33 +2190,7 @@ export default function ProjectDetails({
                                 </AlertDescription>
                               </AlertContent>
                             </Alert>
-
-                            {scrollHeight > 456 && (
-                              isShowing ? (
-                                <div className="flex mt-6 items-center justify-center">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(false)}
-                                  >
-                                    View Less
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
-                                  <Button
-                                    visual="gray"
-                                    variant="link"
-                                    onClick={() => setIsShowing(true)}
-                                  >
-                                    View More
-                                  </Button>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </ShowMoreLessRoot>
+                      </CollapsibleCard>
 
                       <div id="section-project-details" className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[120px]">
                         <div className="p-6 border-b border-gray-200">
@@ -1640,8 +2324,8 @@ export default function ProjectDetails({
                           project.team[] (Step 2 of the hybrid team model).
                           Falls back to the static design when team is empty.
                         */}
-                        {Array.isArray(project.team) &&
-                        project.team.length > 0 ? (
+                        {Array.isArray(currentTeam) &&
+                        currentTeam.length > 0 ? (
                           (() => {
                             type TeamMember = {
                               firstName: string
@@ -1654,7 +2338,7 @@ export default function ProjectDetails({
                               isLead: boolean
                               isOnline: boolean
                             }
-                            const members = project.team as TeamMember[]
+                            const members = currentTeam as TeamMember[]
                             const lead =
                               members.find((m) => m.isLead) ?? members[0]
                             const allLocations = Array.from(
@@ -1725,20 +2409,7 @@ export default function ProjectDetails({
                                         <MapPin className="size-[18px]" />{" "}
                                         Locations
                                       </h3>
-                                      <div className="gap-1 flex items-center flex-wrap">
-                                        {allLocations.map((loc, i) => (
-                                          <NextLink
-                                            key={loc}
-                                            href={`/talent?location=${encodeURIComponent(loc)}`}
-                                            className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                          >
-                                            {loc}
-                                            {i < allLocations.length - 1
-                                              ? ","
-                                              : ""}
-                                          </NextLink>
-                                        ))}
-                                      </div>
+                                      <LocationList locations={allLocations} />
                                     </div>
                                   )}
                                 </div>
@@ -1839,29 +2510,79 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
+                        {onlineTeam.length > 0 && (
                         <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                          <Avatar size="md">
-                            <AvatarImage src="/man.jpg" alt="Man" />
-                            <AvatarFallback>M</AvatarFallback>
-                          </Avatar>
+                          {onlineTeam.length === 1 ? (
+                            <>
+                              <Avatar size="md">
+                                <AvatarImage
+                                  src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                  alt={onlineTeam[0].firstName || "Team member"}
+                                />
+                                <AvatarFallback>
+                                  {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
 
-                          <div className="flex flex-col items-start gap-y-2">
-                            <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                              Kevin{" "}
-                              <span className="text-xs leading-none text-extralight text-gray-500">
-                                @username
-                              </span>
-                            </span>
+                              <div className="flex flex-col items-start gap-y-2">
+                                <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                  {onlineTeam[0].firstName ||
+                                    onlineTeam[0].username}{" "}
+                                  {onlineTeam[0].username && (
+                                    <span className="text-xs leading-none text-extralight text-gray-500">
+                                      @{onlineTeam[0].username}
+                                    </span>
+                                  )}
+                                </span>
 
-                            <div className="flex items-center gap-x-1">
-                              <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                              <span className="text-xs leading-none text-dark-blue-400">
-                                Online
+                                <div className="flex items-center gap-x-1">
+                                  <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                  <span className="text-xs leading-none text-dark-blue-400">
+                                    Online
+                                  </span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center gap-y-2">
+                              <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                Live Chat
                               </span>
+
+                              <AvatarGroup size="sm" max={3} excess>
+                                {onlineTeam.map((m: any, i: number) => (
+                                  <Avatar
+                                    key={m.username ?? i}
+                                    className="border-2 border-white hover:ring-0 active:ring-0"
+                                    size="sm"
+                                  >
+                                    {m.avatarUrl ? (
+                                      <AvatarImage
+                                        src={m.avatarUrl}
+                                        alt={m.firstName}
+                                      />
+                                    ) : null}
+                                    <AvatarFallback>
+                                      {(m.firstName || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                              </AvatarGroup>
+
+                              <div className="flex items-center gap-x-1">
+                                <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                <span className="text-xs leading-none text-dark-blue-400">
+                                  {onlineTeam.length} team members online
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
+                        )}
 
+                        {!isOwnerViewing && (
                         <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                           <Label
                             className="font-semibold inline-flex items-center gap-x-2"
@@ -1873,18 +2594,48 @@ export default function ProjectDetails({
 
                           <div className="mt-3 flex gap-x-2 items-center">
                             <Input
-                              className="flex-auto"
+                              className={cn(
+                                "flex-auto",
+                                showAskErrorMsg &&
+                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
+                              )}
                               placeholder="Type your question..."
+                              value={pendingQuestion}
+                              onFocus={() => setShowAskErrorMsg(false)}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setPendingQuestion(v)
+                                if (v.trim()) {
+                                  setAskErrored(false)
+                                  setShowAskErrorMsg(false)
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleAsk()
+                              }}
                             />
-                            <Button className="text-xs leading-none" size="lg">
+                            <Button
+                              className="text-xs leading-none"
+                              size="lg"
+                              disabled={askErrored && !pendingQuestion.trim()}
+                              onClick={handleAsk}
+                            >
                               Ask Question
                             </Button>
                           </div>
 
                           <div className="mt-2 flex items-center justify-between">
-                            <span className="text-xs text-dark-blue-400 leading-none">
-                              A team member will reach out to you as soon as
-                              possible.
+                            <span
+                              className={cn(
+                                "text-xs leading-none",
+                                showAskErrorMsg
+                                  ? "font-medium text-error-500"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              {showAskErrorMsg
+                                ? "Please enter your question above"
+                                : "A team member will reach out to you as soon as possible."}
                             </span>
 
                             <span className="text-xs text-dark-blue-400 leading-none">
@@ -1892,79 +2643,28 @@ export default function ProjectDetails({
                             </span>
                           </div>
 
-                          <div className="mt-6 flex items-center gap-3 flex-wrap">
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your portfolio?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                          </div>
+                          {suggestedQuestions.length > 0 && (
+                            <div className="mt-6 flex items-start gap-3 flex-wrap">
+                              {suggestedQuestions.map((q, idx) => (
+                                <Badge
+                                  key={`sq-${idx}`}
+                                  className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400 text-left"
+                                  size="lg"
+                                  visual="gray"
+                                  onClick={() => openLiveChat(q)}
+                                  style={{
+                                    maxWidth: "100%",
+                                    height: "auto",
+                                    whiteSpace: "normal",
+                                  }}
+                                >
+                                  {q}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
+                        )}
 
                         <div className="mt-8">
                           <Tabs defaultValue="FAQs">
@@ -2098,28 +2798,41 @@ export default function ProjectDetails({
                             </TabsContent>
 
                             <TabsContent value="Recently Asked Questions">
-                              {!project.recentQuestions ||
-                              project.recentQuestions.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-10 text-center">
-                                  <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                    <HelpCircle className="size-5 text-gray-400" />
+                              {(() => {
+                                const visibleQuestions = (
+                                  (project.recentQuestions as Array<{
+                                    question: string
+                                    answer?: string | null
+                                    hidden?: boolean
+                                    moderationFailed?: boolean
+                                  }>) ?? []
+                                ).filter(
+                                  (q) =>
+                                    q &&
+                                    q.answer &&
+                                    !q.hidden &&
+                                    !q.moderationFailed
+                                )
+                                return visibleQuestions.length === 0 ? (
+                                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                                    <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                      <HelpCircle className="size-5 text-gray-400" />
+                                    </div>
+                                    <h3 className="text-sm font-semibold text-dark-blue-400">
+                                      No questions yet
+                                    </h3>
+                                    <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                      When people ask questions on this listing,
+                                      they&apos;ll show up here.
+                                    </p>
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">
-                                    No questions yet
-                                  </h3>
-                                  <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    When people ask questions on this listing,
-                                    they&apos;ll show up here.
-                                  </p>
-                                </div>
-                              ) : (
-                                <Accordion
-                                  type="single"
-                                  className="pt-6 space-y-[15px]"
-                                  defaultValue="rq-0"
-                                >
-                                  {(project.recentQuestions as string[]).map(
-                                    (q, idx) => (
+                                ) : (
+                                  <Accordion
+                                    type="single"
+                                    className="pt-6 space-y-[15px]"
+                                    defaultValue="rq-0"
+                                  >
+                                    {visibleQuestions.map((q, idx) => (
                                       <AccordionItem
                                         key={`rq-${idx}`}
                                         className="rounded-lg bg-white border border-gray-300"
@@ -2127,29 +2840,87 @@ export default function ProjectDetails({
                                       >
                                         <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
                                           <span className="flex-auto text-left inline-block">
-                                            {q}
+                                            {q.question}
                                           </span>
                                           <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                         </AccordionTrigger>
+                                        <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
+                                          {q.answer}
+                                        </DisclosureContent>
                                       </AccordionItem>
-                                    )
-                                  )}
-                                </Accordion>
-                              )}
+                                    ))}
+                                  </Accordion>
+                                )
+                              })()}
                             </TabsContent>
                           </Tabs>
 
-                          <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
-                            <h1 className="text-base font-semibold text-dark-blue-400 text-center">
-                              Can’t find what you’re looking for?
-                            </h1>
+                          {!isOwnerViewing && (
+                            <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
+                              <h1 className="text-base font-semibold text-dark-blue-400 text-center">
+                                Can’t find what you’re looking for?
+                              </h1>
 
-                            <div className="flex items-center justify-center mt-5">
-                              <Button variant="outlined" visual="gray">
-                                Ask a question
-                              </Button>
+                              <div className="flex items-center justify-center mt-5">
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  onClick={() => setAskModalOpen(true)}
+                                >
+                                  Ask a question
+                                </Button>
+                              </div>
                             </div>
-                          </div>
+                          )}
+
+                          <Dialog
+                            open={askModalOpen}
+                            onOpenChange={setAskModalOpen}
+                          >
+                            <DialogContent className="max-w-[480px] p-6">
+                              <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+                                Ask Question
+                              </DialogTitle>
+
+                              <div className="mt-5">
+                                <Label size="sm" className="text-dark-blue-400">
+                                  Type your question
+                                </Label>
+                                <Textarea
+                                  autoFocus
+                                  isInvalid={showAskErrorMsg}
+                                  className="mt-1.5"
+                                  placeholder="Enter a description..."
+                                  value={pendingQuestion}
+                                  onFocus={() => setShowAskErrorMsg(false)}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setPendingQuestion(v)
+                                    if (v.trim()) {
+                                      setAskErrored(false)
+                                      setShowAskErrorMsg(false)
+                                    }
+                                  }}
+                                />
+                                {showAskErrorMsg && (
+                                  <span className="mt-1.5 block text-xs font-medium text-error-500">
+                                    Please enter your question
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="mt-6 flex items-center justify-between">
+                                <DialogClose asChild>
+                                  <Button variant="link" visual="gray">
+                                    Cancel
+                                  </Button>
+                                </DialogClose>
+                                <Button onClick={handleAsk}>
+                                  Submit Question
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                       </div>
 
@@ -3660,10 +4431,14 @@ export default function ProjectDetails({
                     location?: string | null
                     experienceLevel: string
                     estimatedHours: number
+                    duration?: string
                   }
                   type ScopePhase = {
                     phaseName: string
                     order: number
+                    phaseType?: "setup" | "recurring" | "ongoing"
+                    recurrenceSchedule?: "weekly" | "monthly" | "quarterly"
+                    recurrenceCount?: number
                     tasks: ScopeTask[]
                   }
                   const phases = (project.scope as ScopePhase[])
@@ -3679,15 +4454,49 @@ export default function ProjectDetails({
                     "Phase Seven",
                     "Phase Eight",
                   ]
+                  const recurLabelMap: Record<string, string> = {
+                    weekly: "Weekly",
+                    monthly: "Monthly",
+                    quarterly: "Quarterly",
+                  }
                   // Accumulate day ranges across phases so later phases
                   // start on day (prev end + 1).
+                  // Per-task days from hours (40 hrs/week). Tasks in a phase run
+                  // in parallel → take the MAX (matches the my-listings owner
+                  // view); phases are sequential → accumulate.
+                  const taskDays = (t: ScopeTask) => {
+                    const h = Number(t.estimatedHours) || 0
+                    return h > 0 ? Math.max(1, Math.round((h * 7) / 40)) : 0
+                  }
+                  const durationLabel = (h: number) => {
+                    if (h <= 0) return "—"
+                    const weeks = h / 40
+                    if (Number.isInteger(weeks))
+                      return `${weeks} week${weeks > 1 ? "s" : ""}`
+                    const days = Math.max(1, Math.round(h / 8))
+                    return `${days} day${days > 1 ? "s" : ""}`
+                  }
+                  // Show the duration in the UNIT the seller chose (weeks →
+                  // weeks, hours → hours, days → days). Only fall back to the
+                  // hours→weeks estimate when no explicit duration was set.
+                  const taskDurationLabel = (task: ScopeTask) => {
+                    const raw = task.duration?.trim()
+                    const m = raw?.match(/^([\d.]+)\s*([a-zA-Z]+)/)
+                    if (m) {
+                      const val = Number(m[1])
+                      const unit = m[2].toLowerCase().replace(/s$/, "")
+                      if (Number.isFinite(val) && val > 0)
+                        return `${val} ${unit}${val === 1 ? "" : "s"}`
+                    }
+                    if (raw) return raw
+                    return durationLabel(task.estimatedHours)
+                  }
                   let cursor = 1
                   const withDays = phases.map((phase) => {
-                    const phaseHours = (phase.tasks ?? []).reduce(
-                      (sum, t) => sum + (t.estimatedHours || 0),
-                      0
+                    const days = Math.max(
+                      1,
+                      ...(phase.tasks ?? []).map(taskDays)
                     )
-                    const days = Math.max(1, Math.ceil(phaseHours / 8))
                     const start = cursor
                     const end = cursor + days - 1
                     cursor = end + 1
@@ -3714,7 +4523,9 @@ export default function ProjectDetails({
                                   </div>
 
                                   <span className="text-base md:text-[18px] font-semibold leading-7 text-dark-blue-400">
-                                    {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                    {phase.phaseType
+                                      ? PHASE_TYPE_TITLE[phase.phaseType]
+                                      : (phaseLabels[pi] ?? `Phase ${pi + 1}`)}{" "}
                                     <span className="font-light">
                                       {phase.phaseName}
                                     </span>
@@ -3722,15 +4533,61 @@ export default function ProjectDetails({
                                 </div>
 
                                 <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {start}
-                                  </span>
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    -
-                                  </span>
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {end}
-                                  </span>
+                                  {phase.phaseType === "ongoing" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="size-4 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+                                      </svg>
+                                      Ongoing
+                                    </span>
+                                  ) : phase.phaseType === "recurring" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+                                      <RefreshCcw05
+                                        className="size-3.5 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                      />
+                                      Recurs:{" "}
+                                      {
+                                        recurLabelMap[
+                                          phase.recurrenceSchedule ?? "monthly"
+                                        ]
+                                      }
+                                      , {phase.recurrenceCount ?? 1} time
+                                      {(phase.recurrenceCount ?? 1) > 1
+                                        ? "s"
+                                        : ""}
+                                    </span>
+                                  ) : phase.phaseType === "setup" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] font-semibold text-dark-blue-400">
+                                      <Calendar
+                                        className="size-3.5 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                      />
+                                      Day {start} - Day {end}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        Day {start}
+                                      </span>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        -
+                                      </span>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        Day {end}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </AccordionTrigger>
@@ -3786,7 +4643,7 @@ export default function ProjectDetails({
                                       </TableCell>
                                       <TableCell className="py-4 px-6 text-right">
                                         <span className="text-sm text-nowrap text-dark-blue-400">
-                                          {task.estimatedHours} hours
+                                          {taskDurationLabel(task)}
                                         </span>
                                       </TableCell>
                                     </TableRow>
@@ -4465,12 +5322,12 @@ export default function ProjectDetails({
                   Current Team
                 </span>
 
-                {Array.isArray(project.team) && project.team.length > 0 ? (
+                {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <AvatarGroup size="sm" excess>
-                          {project.team.map((m: any, i: number) => (
+                          {currentTeam.map((m: any, i: number) => (
                             <Avatar
                               key={m.username ?? i}
                               className="border-2 border-white hover:ring-0 active:ring-0"
@@ -4500,7 +5357,7 @@ export default function ProjectDetails({
                           }
                         >
                           <div className="space-y-3 pr-5">
-                            {project.team.map((m: any, i: number) => (
+                            {currentTeam.map((m: any, i: number) => (
                               <div
                                 key={m.username ?? i}
                                 className="flex items-center gap-x-[18px]"
@@ -4580,7 +5437,7 @@ export default function ProjectDetails({
                 )}
               </div>
 
-              {!isPreview && (
+              {!isOwnerViewing && (
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button
@@ -4630,14 +5487,7 @@ export default function ProjectDetails({
                     size="lg"
                     variant="outlined"
                     visual="gray"
-                    onClick={() => {
-                      if (
-                        typeof navigator !== "undefined" &&
-                        navigator.clipboard
-                      ) {
-                        navigator.clipboard.writeText(window.location.href)
-                      }
-                    }}
+                    onClick={() => toggleInviteWindow(true)}
                   >
                     <Share06 className="size-5" />
                   </IconButton>
@@ -4674,6 +5524,7 @@ export default function ProjectDetails({
               </div>
             </div>
 
+            <InviteWindow />
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
               {project.reportButtonEnabled !== false && (
                 <div className="inline-flex items-center gap-x-2">
@@ -4684,17 +5535,18 @@ export default function ProjectDetails({
                 </div>
               )}
 
-              {project.helpButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <HelpCircle className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Help
-                  </span>
-                </div>
-              )}
+              <div className="inline-flex items-center gap-x-2">
+                <HelpCircle className="size-[15px] text-gray-500" />
+                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                  Help
+                </span>
+              </div>
 
               {project.shareButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
+                <div
+                  className="inline-flex items-center gap-x-2 cursor-pointer"
+                  onClick={() => toggleInviteWindow(true)}
+                >
                   <Share06 className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
                     Share

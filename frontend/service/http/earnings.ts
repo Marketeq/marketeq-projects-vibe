@@ -1,26 +1,13 @@
 import axios from "axios"
-import Cookies from "js-cookie"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 
-const EARNINGS_BASE = process.env.NEXT_PUBLIC_EARNINGS_SERVICE_URL ?? "http://localhost:3026/v1"
+// Routed through api-gateway (not earnings-service directly): access_token is an
+// HttpOnly cookie, invisible to JS, so a manually-read "Bearer <token>" header was
+// always empty here. The gateway reads the httpOnly cookie server-side and forwards
+// it as a real Authorization header — withCredentials lets the browser attach it.
+const EARNINGS_BASE = `${getPublicApiUrl()}/v1`
 
-function getToken() {
-  return (
-    Cookies.get("access_token") ||
-    Cookies.get("accessToken") ||
-    (typeof window !== "undefined"
-      ? window.localStorage.getItem("access_token") ||
-        window.localStorage.getItem("token")
-      : null) ||
-    ""
-  )
-}
-
-const earningsAxios = axios.create({ baseURL: EARNINGS_BASE, timeout: 15000 })
-earningsAxios.interceptors.request.use((config) => {
-  const token = getToken()
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+const earningsAxios = axios.create({ baseURL: EARNINGS_BASE, timeout: 15000, withCredentials: true })
 
 export interface SummaryCard {
   amount: string
@@ -40,6 +27,9 @@ export interface EarningsSummary {
   thisWeek: SummaryCard
   thisMonth: SummaryCard
   allTime: SummaryCard
+  // ES-06 EC-13: true when the talent's region currency couldn't be resolved
+  // and amounts above fell back to USD.
+  currencyFallback?: boolean
 }
 
 export interface FeeBreakdown {
@@ -93,6 +83,7 @@ export interface EarningsListResponse {
   manualTimeLabel: string
   data: EarningsRow[]
   appliedFilters: Record<string, string | null>
+  currencyFallback?: boolean
 }
 
 export interface EarningsQuery {
@@ -126,7 +117,59 @@ export async function getEarnings(query: EarningsQuery = {}): Promise<EarningsLi
   return res.data
 }
 
-export async function getEarningDetail(id: string) {
+export interface EarningDetailLineItem {
+  label: string
+  amount: string
+  currency: string
+  amountRaw: string
+  currencyRaw: string
+  isTotal?: boolean
+}
+
+export interface EarningDetailFeeSection {
+  grossAmount: string
+  grossAmountDisplay: string
+  feeAmount: string
+  feeAmountDisplay: string
+  netAmount: string
+  netAmountDisplay: string
+  grossAmountUsd: string
+  feeAmountUsd: string
+  netAmountUsd: string
+  billingCurrency: string
+  displayCurrency: string
+  fxRateToUsd: string
+  fxRateLabel: string
+  feeLabel: string
+  feePercent: string
+  lineItems: EarningDetailLineItem[]
+}
+
+export interface EarningDetail {
+  id: string
+  entryType: "automated" | "manual"
+  status: "paid" | "failed" | "confirmed"
+  grossAmount: string
+  feeAmount: string
+  netAmount: string
+  netAmountDisplay: string
+  currency: string
+  displayCurrency: string
+  fxRateToUsd: string
+  workStartAt: string
+  workEndAt: string
+  durationMinutes: number
+  durationLabel: string
+  avgKeyboardPct: number | null
+  avgMousePct: number | null
+  reversedAt: string | null
+  contract: { id: string; title: string; status: string } | null
+  project: { id: string; name: string; clientHandle: string | null; clientName: string | null } | null
+  feeSection: EarningDetailFeeSection
+  currencyFallback?: boolean
+}
+
+export async function getEarningDetail(id: string): Promise<EarningDetail> {
   const res = await earningsAxios.get(`/earnings/${id}`)
   return res.data
 }
@@ -135,15 +178,56 @@ export interface BalanceResponse {
   availableBalance: string
   availableBalanceDisplay: string
   displayCurrency: string
+  // US-07: secondary amount shown only when localCurrency !== displayCurrency.
+  // Backend (balance.service.ts) already computes and returns both — the
+  // frontend type just never declared them, so this was silently unused.
+  availableBalanceLocal: string
+  localCurrency: string
   reserveBalance: string
   pendingHoldUsd: string
   totalEarnedUsd: string
   totalPaidOutUsd: string
   displayLabel: string
+  // US-08: explicit stale-FX signal — never hidden, always flagged with an
+  // asterisk on the balance amount when true.
+  stale: boolean
   lastUpdatedAt: string
+  // US-01 Last Updated Label: when the balance figure was cached, distinct
+  // from lastUpdatedAt (which reflects the underlying ledger snapshot, not
+  // the cache read that actually produced this response).
+  cachedAt?: string
+  // ES-06 EC-13: true when the talent's region currency couldn't be resolved
+  // (no preference saved, or user-service unreachable) and this response
+  // fell back to USD — drives the Currency Settings prompt.
+  currencyFallback?: boolean
 }
 
 export async function getBalance(): Promise<BalanceResponse> {
-  const res = await earningsAxios.get("/earnings/balance")
-  return res.data
+  try {
+    const res = await earningsAxios.get("/earnings/balance")
+    return res.data
+  } catch (e: any) {
+    // earnings-service returns 404 when a contractor has no BalanceSnapshot row
+    // yet (never earned anything) — that's a real, valid state, not a service
+    // failure. Callers shouldn't have to special-case it: it means $0.00, not
+    // "unavailable" (which is reserved for genuine errors — 5xx/network/timeout).
+    if (e?.response?.status === 404) {
+      return {
+        availableBalance: "0.00",
+        availableBalanceDisplay: "0.00",
+        displayCurrency: "USD",
+        availableBalanceLocal: "0.00",
+        localCurrency: "USD",
+        reserveBalance: "0.00",
+        pendingHoldUsd: "0.00",
+        totalEarnedUsd: "0.00",
+        totalPaidOutUsd: "0.00",
+        displayLabel: "After reserve & threshold deductions",
+        stale: false,
+        lastUpdatedAt: new Date().toISOString(),
+        cachedAt: new Date().toISOString(),
+      }
+    }
+    throw e
+  }
 }

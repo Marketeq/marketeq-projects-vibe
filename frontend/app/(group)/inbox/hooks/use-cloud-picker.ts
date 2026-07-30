@@ -165,6 +165,22 @@ export async function openGoogleDrivePicker(
       })
       .build()
     picker.setVisible(true)
+    let pinTries = 0
+    const pinToViewport = () => {
+      const bg = document.querySelector(".picker-dialog-bg")
+      const dialog = document.querySelector(".picker-dialog")
+      if (dialog instanceof HTMLElement) {
+        if (bg instanceof HTMLElement) bg.style.position = "fixed"
+        dialog.style.position = "fixed"
+        dialog.style.top = "50%"
+        dialog.style.left = "50%"
+        dialog.style.transform = "translate(-50%, -50%)"
+        dialog.style.margin = "0"
+      } else if (pinTries++ < 40) {
+        requestAnimationFrame(pinToViewport)
+      }
+    }
+    requestAnimationFrame(pinToViewport)
   })
 
   // Map Google native formats → export MIME type + filename extension.

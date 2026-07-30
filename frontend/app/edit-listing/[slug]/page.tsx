@@ -13,7 +13,12 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import options from "@/public/mock/options.json"
 import {
@@ -53,6 +58,7 @@ import {
   ArrowUpLeft,
   ChartBreakoutCircle,
   Check,
+  XCircle,
   CheckCircle,
   CheckCircleBroken,
   ChevronDown,
@@ -61,6 +67,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   Clock,
+  RefreshCcw05,
   Copy,
   Edit03,
   Eye,
@@ -107,6 +114,21 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
+import {
+  AddRoleDialog,
+  countryFromLocation,
+  estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+  PhaseHeaderMeta,
+  RolePicker,
+  type PhaseType,
+  type RecurrenceSchedule,
+  type ScopeType,
+  type TeamMember,
+} from "@/components/scope-builder"
+import { TeamsAPI } from "@/service/http/teams"
+import { useInviteWindowStore } from "@/components/invite-window"
+import { getCurrentUser } from "@/utils/auth"
 import {
   Row,
   flexRender,
@@ -200,6 +222,9 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Progress,
   ScrollArea,
   ScrollBar,
@@ -236,8 +261,13 @@ declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    batchUpdateData?: (
+      rowIndex: number,
+      updates: Record<string, unknown>
+    ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
+    teamMembers?: TeamMember[]
   }
 }
 
@@ -454,57 +484,55 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
   }
 }
 
+// Draft autosave payload. Drafts are allowed to be partial, so we send every
+// phase and every row (with fallbacks) rather than dropping incomplete ones —
+// otherwise editing a not-yet-complete task/phase produces an unchanged payload
+// and the autosave never fires. Publish-time validation is enforced separately.
 const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
   (phases ?? [])
+    // Skip the blank starter phase ({}), but keep anything the user has begun
+    // filling in (a name, a phase type, or at least one row).
+    .filter(
+      (phase) =>
+        !!phase?.phaseName?.trim() ||
+        !!phase?.phaseType ||
+        (phase?.rows?.length ?? 0) > 0
+    )
     .map((phase, phaseIndex) => {
-      const phaseName = phase?.phaseName?.trim()
-      const rows = (phase?.rows ?? [])
-        .map((row) => {
-          const taskName = row?.task?.trim()
-          const role = row?.role?.trim()
-          const locationValue = row?.location?.trim()
-          const experienceLevel = row?.experience?.trim()
-          const durationValue = row?.duration?.value
-          const durationType = row?.duration?.type
-
-          if (
-            !taskName ||
-            !role ||
-            !locationValue ||
-            !experienceLevel ||
-            durationValue === undefined ||
-            !durationType
-          ) {
-            return null
-          }
-
-          return {
-            taskName,
-            role,
-            location: [locationValue],
-            experience: [experienceLevel],
-            experienceLevel,
-            duration: `${durationValue} ${durationType}`,
-            phaseId: "temporary-required-string",
-          }
-        })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
-
-      if (!phaseName || rows.length === 0) {
-        return null
-      }
-
+    const phaseName = phase?.phaseName?.trim() || `Phase ${phaseIndex + 1}`
+    const rows = (phase?.rows ?? []).map((row) => {
+      const durationValue = row?.duration?.value
+      const durationType = row?.duration?.type
+      const experienceLevel = row?.experience?.trim() ?? ""
       return {
-        name: phaseName,
-        stageName: `Stage ${phaseIndex + 1}`,
-        startDay: 1,
-        endDay: 8,
-        order: phaseIndex + 1,
-        projectId,
-        tasks: rows,
+        taskName: row?.task?.trim() ?? "",
+        role: row?.role?.trim() ?? "",
+        location: [row?.location?.trim() ?? ""].filter(Boolean),
+        experience: [experienceLevel].filter(Boolean),
+        experienceLevel,
+        duration:
+          durationValue !== undefined && durationType
+            ? `${durationValue} ${durationType}`
+            : "1 days",
+        assigneeUserId:
+          row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
+        phaseId: "temporary-required-string",
       }
     })
-    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+
+    return {
+      name: phaseName,
+      stageName: `Stage ${phaseIndex + 1}`,
+      startDay: 1,
+      endDay: 8,
+      order: phaseIndex + 1,
+      projectId,
+      phaseType: phase?.phaseType ?? undefined,
+      recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+      recurrenceCount: phase?.recurrenceCount ?? undefined,
+      tasks: rows,
+    }
+  })
 const Empty = ({
   outcome,
   draftId,
@@ -859,49 +887,45 @@ const Sidebar = () => {
   )
 
   return (
-    <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+    <div className="sticky top-0 py-6 px-6 flex h-screen flex-col shrink-0 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+      <div className="mb-8">
+        <Logo3 className="h-[19px] w-auto" />
+      </div>
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
+        const isLast = index === stepsState.length - 1
         return (
-          <TooltipProvider key={index}>
-            <Tooltip>
-              <div className="flex flex-col">
-                <TooltipTrigger asChild>
-                  <button
-                    className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 rounded-md px-3 py-2"
-                    data-ui-state={
-                      isActive ? "active" : isValid ? "complete" : undefined
-                    }
-                    onClick={() => setStep(index)}
-                  >
-                    <span className="flex items-center gap-x-3">
-                      <span className="text-sm leading-[16.94px] font-semibold size-[25px] rounded-full shrink-0 inline-flex justify-center items-center text-white group-data-[ui-state=active]:border-2 group-data-[ui-state=active]:text-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=undefined]:bg-gray-300">
-                        {index + 1}
-                      </span>
-                      <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold">
-                        {label}
-                      </span>
-                    </span>
-                  </button>
-                </TooltipTrigger>
+          <div key={index} className="relative pb-6 last:pb-0">
+            {!isLast && (
+              <span
+                aria-hidden
+                className="absolute left-3 top-7 bottom-0 border-l-2 border-dashed border-gray-300"
+              />
+            )}
+            <button
+              type="button"
+              className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
+              data-ui-state={
+                isActive ? "active" : isValid ? "complete" : undefined
+              }
+              onClick={() => setStep(index)}
+            >
+              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500">
+                {isValid && !isActive ? (
+                  <Check className="size-3.5 text-white" />
+                ) : isActive ? (
+                  <span className="size-2 rounded-full bg-primary-500" />
+                ) : (
+                  <Plus className="size-3.5 text-gray-400" />
+                )}
+              </span>
+              <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold">
+                {label}
+              </span>
+            </button>
 
-                <TooltipContent className="max-w-[138px]">
-                  {isActive
-                    ? "Opened"
-                    : isValid
-                      ? "Click to open"
-                      : "Click to open"}
-                </TooltipContent>
-
-                <div
-                  className="pl-[25px] overflow-hidden"
-                  style={{
-                    maxHeight: isActive ? "500px" : "0px",
-                    opacity: isActive ? 1 : 0,
-                    transition:
-                      "max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms",
-                  }}
-                >
+            {isActive && (
+              <div className="mt-1 pl-9">
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
                       const isDirty = Boolean(
@@ -912,7 +936,7 @@ const Sidebar = () => {
 
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
@@ -940,7 +964,7 @@ const Sidebar = () => {
 
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
@@ -961,7 +985,7 @@ const Sidebar = () => {
                   {label === "Project Scope" &&
                     meta[label].map((field, i) => (
                       <div
-                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        className="py-1.5 flex items-center justify-between pr-3"
                         key={i}
                       >
                         {field.label === "Task Name" ? (
@@ -1011,7 +1035,7 @@ const Sidebar = () => {
                   {label === "Questions" &&
                     meta[label].map((field, i) => (
                       <div
-                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        className="py-1.5 flex items-center justify-between pr-3"
                         key={i}
                       >
                         <span className="text-sm leading-6 text-gray-500">
@@ -1019,10 +1043,9 @@ const Sidebar = () => {
                         </span>
                       </div>
                     ))}
-                </div>
               </div>
-            </Tooltip>
-          </TooltipProvider>
+            )}
+          </div>
         )
       })}
     </div>
@@ -1642,8 +1665,8 @@ const projectInfoSchema = z.object({
     .max(5, "Please do not enter more than 5 industry(s)"),
   shortDescription: z
     .string()
-    .min(50, "Please enter at least 50 character(s)")
-    .max(300, "Please do not enter more than 300 character(s)"),
+    .min(350, "Please enter at least 350 character(s)")
+    .max(450, "Please do not enter more than 450 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
@@ -1739,11 +1762,11 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 450 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 5,000 character(s)"
 
@@ -4244,13 +4267,18 @@ const PhaseNameDialog = ({
   open,
   defaultName,
   placeholder = "Enter Phase Name",
+  showPhaseType = false,
+  disabledTypes = [],
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
+  onAddPhaseName: (phaseName: string, phaseType?: PhaseType) => void
   defaultName?: string
   placeholder?: string
+  showPhaseType?: boolean
+  disabledTypes?: PhaseType[]
 }) => {
+  const [phaseType, setPhaseType] = useState<PhaseType | undefined>(undefined)
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -4271,12 +4299,15 @@ const PhaseNameDialog = ({
   useEffect(() => {
     if (isOpen) {
       reset({ name: defaultName ?? "" })
+      setPhaseType(undefined)
     }
   }, [isOpen, defaultName, reset])
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
     const { name } = values
-    onAddPhaseName(name)
+    // Services require a phase type before the phase can be created.
+    if (showPhaseType && !phaseType) return
+    onAddPhaseName(name, showPhaseType ? phaseType : undefined)
 
     toggleIsOpen(false)
   }
@@ -4301,7 +4332,14 @@ const PhaseNameDialog = ({
                 id="phase-name"
                 className="text-gray-900"
                 placeholder={placeholder}
-                {...register("name")}
+                {...register("name", {
+                  onChange: (e) => {
+                    const v = e.target.value
+                    if (v && v[0] !== v[0].toUpperCase()) {
+                      e.target.value = v.charAt(0).toUpperCase() + v.slice(1)
+                    }
+                  },
+                })}
                 isInvalid={hookFormHasError({ errors, name: "name" })}
               />
               <HookFormErrorMessage
@@ -4310,6 +4348,41 @@ const PhaseNameDialog = ({
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
+
+            {showPhaseType && (
+              <div className="space-y-1.5 mt-4">
+                <Label size="sm" className="text-dark-blue-400">
+                  Phase Type
+                </Label>
+                <Listbox value={phaseType} onChange={setPhaseType}>
+                  <ListboxButton placeholder="Select phase type">
+                    {({ value }) => (
+                      <span className="text-gray-black">
+                        {PHASE_TYPE_TITLE[value as PhaseType]}
+                      </span>
+                    )}
+                  </ListboxButton>
+                  <ListboxOptions>
+                    <ListboxOption
+                      value="setup"
+                      disabled={disabledTypes.includes("setup")}
+                    >
+                      Setup
+                    </ListboxOption>
+                    <ListboxOption value="recurring">Recurring</ListboxOption>
+                    <ListboxOption
+                      value="ongoing"
+                      disabled={disabledTypes.includes("ongoing")}
+                    >
+                      Ongoing
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                <p className="text-xs font-light text-gray-500">
+                  Helps organize tasks by timing and frequency
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="mt-8 grid gap-x-3">
               <DialogClose asChild>
@@ -4893,12 +4966,17 @@ type PhaseRow = Prettify<
     role?: string
     location?: string
     experience?: string
+    assignedMember?: TeamMember | null
+    assigneeUserId?: string | null
   } & TaskFormValues
 >
 
 interface Phase {
   phaseName?: string
   rows?: PhaseRow[]
+  phaseType?: PhaseType
+  recurrenceSchedule?: RecurrenceSchedule
+  recurrenceCount?: number
 }
 
 const getPhaseDurationInDays = (phase?: Phase) => {
@@ -5015,35 +5093,133 @@ const columns = [
     header: "Task Name",
   }),
   columnHelper.accessor("role", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
+    cell: ({ row: { index, original }, table }) => {
+      const value = original.role ?? ""
+      const teamMembers = table.options.meta?.teamMembers ?? []
+      const allRoles = table.options.meta?.roles ?? []
+      const member =
+        original.assignedMember ??
+        teamMembers.find((m) => m.id === original.assigneeUserId) ??
+        null
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      const [popoverOpen, setPopoverOpen] = useState(false)
+      // eslint-disable-next-line
+      const [addRoleOpen, setAddRoleOpen] = useState(false)
+
+      const handleSelectMember = (tm: TeamMember) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role: tm.role,
+          assignedMember: tm,
+          assigneeUserId: tm.id,
+          location: tm.location ?? "",
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleSelectVacantRole = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleAddRole = () => {
+        setPopoverOpen(false)
+        setAddRoleOpen(true)
+      }
+
+      const handleAddRoleDone = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+      }
+
+      const pickerPopover = (
+        <>
+          <PopoverContent className="w-[220px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+            <RolePicker
+              teamMembers={teamMembers}
+              roles={allRoles}
+              onSelectMember={handleSelectMember}
+              onSelectRole={handleSelectVacantRole}
+              onAddRole={handleAddRole}
+            />
+          </PopoverContent>
+          <AddRoleDialog
+            open={addRoleOpen}
+            onOpenChange={setAddRoleOpen}
+            roles={allRoles}
+            onDone={handleAddRoleDone}
+          />
+        </>
+      )
+
+      if (member) {
+        return (
+          <TableCell className="py-4 px-3">
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
+                  <Avatar className="size-6 shrink-0">
+                    {member.avatarUrl ? (
+                      <AvatarImage
+                        src={member.avatarUrl}
+                        alt={member.firstName}
+                      />
+                    ) : null}
+                    <AvatarFallback className="text-[10px]">
+                      {member.firstName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-medium text-gray-900 truncate leading-tight">
+                      {member.firstName}
+                      <span className="text-gray-400 font-normal ml-0.5">
+                        @{member.username}...
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-gray-500 truncate leading-tight">
+                      {member.role}
+                    </p>
+                  </div>
+                </button>
+              </PopoverTrigger>
+              {pickerPopover}
+            </Popover>
+          </TableCell>
+        )
+      }
 
       return (
-        <TableCell className="py-4 px-6">
-          <OwnCombobox
-            value={value}
-            onValueChange={setValue}
-            placeholder="Add Role"
-            options={table.options.meta?.roles}
-            triggerClassName="max-w-full"
-          />
+        <TableCell className="py-4 px-3">
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
+                  value ? "text-gray-600" : "text-gray-400"
+                )}
+              >
+                <span className="block truncate">{value || "Add Role"}</span>
+              </button>
+            </PopoverTrigger>
+            {pickerPopover}
+          </Popover>
         </TableCell>
       )
     },
-    header: "Role",
+    header: "Team Member",
   }),
   columnHelper.accessor("location", {
     cell: ({ getValue, row: { index }, column: { id }, table }) => {
       // eslint-disable-next-line
       const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: () => {
-          table.options.meta?.updateData(index, id, value)
-        },
+        defaultValue: countryFromLocation(getValue()),
+        onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
       return (
         <TableCell className="px-3 py-4">
@@ -5102,6 +5278,7 @@ interface PhaseTableProps {
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
+  teamMembers: TeamMember[]
 }
 
 const ROLES = [
@@ -5195,6 +5372,7 @@ const PhaseTable = ({
   rows,
   onRowsChange,
   openDurationDialog,
+  teamMembers,
 }: PhaseTableProps) => {
   const [data, setData] = useControllableState({
     value: rows,
@@ -5223,8 +5401,16 @@ const PhaseTable = ({
           })
         )
       },
+      batchUpdateData: (rowIndex, patch) => {
+        setData((prev) =>
+          prev.map((row, index) =>
+            index === rowIndex ? ({ ...row, ...patch } as PhaseRow) : row
+          )
+        )
+      },
       openDurationDialog,
       roles: ROLES,
+      teamMembers,
     },
   })
 
@@ -5367,8 +5553,12 @@ const ProjectScope = ({
 }: {
   setProgress?: (val: number) => void
 }) => {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
+  const handledCheckoutActionRef = useRef(false)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
@@ -5384,11 +5574,84 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = res?.data?.data ?? res?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        const mapped: TeamMember[] = roster.map((m: any) => {
+          const jobTitleList = Array.isArray(m.jobTitles)
+            ? m.jobTitles
+                .map((j: any) =>
+                  typeof j === "string" ? j : (j?.jobTitle ?? j?.headline ?? "")
+                )
+                .filter(Boolean)
+            : []
+          const jobTitle = m.recentJobTitle || jobTitleList[0] || ""
+          return {
+            id: m.userId || m.id,
+            firstName: m.firstName || m.username || "User",
+            username: m.username || "",
+            avatarUrl: m.avatarUrl || null,
+            role: jobTitle,
+            jobTitles: jobTitleList,
+            hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+            workSchedule: m.workSchedule ?? null,
+            customHoursPerWeek: m.customHoursPerWeek ?? null,
+            location: m.location ?? m.country ?? null,
+            experience: m.experience ?? m.experienceLevel ?? null,
+          }
+        })
+        if (!cancelled) setScopeTeam(mapped)
+      } catch {
+        /* roster fetch failed — picker shows empty state */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const {
     projectScopeMethods,
     isTaskSearchDialogOpen,
     setTaskSearchDialogOpen,
+    teamMemberIds,
+    pricingBudgetCents,
+    scopeType,
+    setScopeType,
+    draftProjectId,
   } = useProjectScopeContext()
+  const isService = scopeType === "service"
+
+  const handleScopeTypeChange = (type: ScopeType) => {
+    if (type === scopeType) return
+    setScopeType(type)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        listingType: type,
+      }).catch(() => {})
+    }
+    toast({
+      variant: "success",
+      title: type === "service" ? "Switched to Service" : "Switched to Project",
+    })
+  }
+  // Scope assignees must be members ON this project (Chris 07-28) — the owner
+  // (self) plus added members — never the whole roster.
+  const scopeOwnerId = getCurrentUser()?.id
+  const projectTeam = useMemo(
+    () =>
+      scopeTeam.filter(
+        (m) =>
+          String(m.id) === String(scopeOwnerId) ||
+          teamMemberIds.includes(m.id)
+      ),
+    [scopeTeam, teamMemberIds, scopeOwnerId]
+  )
   const { toggleValidation } = useStepContext()
 
   const [projectScopeState, setProjectScopeState] = projectScopeMethods
@@ -5401,6 +5664,64 @@ const ProjectScope = ({
     },
   })
   const success = projectScopeSchema.safeParse(phases)
+
+  // Budget + duration computed from the scope (same helper/rate-card as the
+  // inline my-listings view) — replaces the hardcoded sidebar figures.
+  const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
+    const scopePhases = Array.isArray(phases) ? phases : []
+    let totalDays = 0
+    for (const phase of scopePhases) {
+      const taskDays = (((phase as any)?.rows ?? []) as any[])
+        .map((row: any) => {
+          const dur = row?.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val
+        })
+        .filter((d: number) => d > 0)
+      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
+    }
+    let label = "—"
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const w = Math.max(1, Math.ceil(totalDays / 7))
+        label = `${w} Week${w !== 1 ? "s" : ""}`
+      } else {
+        const m = Math.max(1, Math.ceil(totalDays / 30))
+        label = `${m} Month${m !== 1 ? "s" : ""}`
+      }
+    }
+    const computedCents = estimateScopeBudgetCents(scopePhases)
+    return {
+      budgetTotalCents:
+        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      durationLabel: label,
+      durationDays: totalDays,
+    }
+  }, [phases, pricingBudgetCents])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: string) => {
+      if (cents <= 0) return "$0"
+      const total = cents / 100
+      const periodDays: Record<string, number> = {
+        week: 7,
+        "2-week": 14,
+        month: 30,
+        quarter: 90,
+        year: 365,
+      }
+      const daysPerPeriod = periodDays[period] ?? 7
+      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
+      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [durationDays]
+  )
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(success)
@@ -5435,6 +5756,26 @@ const ProjectScope = ({
     },
     [phases]
   )
+
+  useEffect(() => {
+    if (handledCheckoutActionRef.current) return
+    if (searchParams.get("checkoutAction") !== "add-task") return
+    if (phases.length < 1) return
+
+    handledCheckoutActionRef.current = true
+    setAccordionState((current) =>
+      current.includes("item-0") ? current : [...current, "item-0"]
+    )
+    handleOpenTaskDialog(0)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    nextSearchParams.delete("checkoutAction")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [handleOpenTaskDialog, pathname, phases.length, router, searchParams])
 
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
@@ -5481,7 +5822,11 @@ const ProjectScope = ({
   )
 
   const onAddPhaseName = useCallback(
-    (phaseName: string) => {
+    (rawPhaseName: string, phaseType?: PhaseType) => {
+      const trimmedName = rawPhaseName.trim()
+      const phaseName = trimmedName
+        ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+        : trimmedName
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -5532,14 +5877,40 @@ const ProjectScope = ({
           editingPhaseIndex >= 0 &&
           editingPhaseIndex < next.length
 
-        insertedPhaseIndex =
-          addTo === "start" && hasTargetPhase
-            ? editingPhaseIndex
-            : addTo === "below" && hasTargetPhase
-              ? editingPhaseIndex + 1
-              : next.length
+        if (phaseType) {
+          // Service ordering: Setup first, Ongoing last, Recurring before Ongoing.
+          const ongoingIdx = next.findIndex((p) => p.phaseType === "ongoing")
+          insertedPhaseIndex =
+            phaseType === "setup"
+              ? 0
+              : phaseType === "ongoing"
+                ? next.length
+                : ongoingIdx >= 0
+                  ? ongoingIdx
+                  : next.length
+        } else {
+          insertedPhaseIndex =
+            addTo === "start" && hasTargetPhase
+              ? editingPhaseIndex
+              : addTo === "below" && hasTargetPhase
+                ? editingPhaseIndex + 1
+                : next.length
+        }
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(
+          insertedPhaseIndex,
+          0,
+          phaseType === "recurring"
+            ? {
+                phaseName,
+                phaseType,
+                recurrenceSchedule: "monthly",
+                recurrenceCount: 1,
+              }
+            : phaseType
+              ? { phaseName, phaseType }
+              : { phaseName }
+        )
         return next
       })
 
@@ -5575,6 +5946,19 @@ const ProjectScope = ({
       })
     },
     [phaseDialogState, setPhases, toast]
+  )
+
+  const updatePhaseRecurrence = useCallback(
+    (index: number, schedule: RecurrenceSchedule, count: number) => {
+      setPhases((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { ...p, recurrenceSchedule: schedule, recurrenceCount: count }
+            : p
+        )
+      )
+    },
+    [setPhases]
   )
 
   const onAddTask = useCallback(
@@ -5983,7 +6367,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      $5,000
+                      {formatBudget(budgetTotalCents, "week")}
                     </span>
                     <span className="text-sm text-dark-blue-400">per</span>
                     <Badge visual="gray" className="rounded-[5px]">
@@ -6011,7 +6395,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      6 Months
+                      {isService ? "Ongoing" : durationLabel}
                     </span>
                   </div>
                 </div>
@@ -6021,10 +6405,54 @@ const ProjectScope = ({
 
             <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
               <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                Project Scope
+                {isService ? "Service" : "Project"} Scope
               </h1>
 
               <div className="flex items-center md:gap-x-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outlined" visual="gray">
+                      <RefreshCcw05 className="size-[15px]" />
+                      {isService ? "Service" : "Project"}
+                      <ChevronDown className="size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[280px]">
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("project")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {!isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Project{!isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        One-time job with a defined duration
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("service")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Service{isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        Recurring work with consistent needs
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <div className="flex items-center">
                   <Button
                     className="border-r-0 rounded-r-none"
@@ -6074,14 +6502,16 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
+                                {isService && phases[index]?.phaseType
+                                  ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                  : `Phase ${numberToWord(index)}`}{" "}
                                 <button
                                   type="button"
                                   className="font-light hover:underline focus-visible:outline-none"
@@ -6097,14 +6527,18 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6156,6 +6590,7 @@ const ProjectScope = ({
                                 open: true,
                               })
                             }
+                            teamMembers={projectTeam}
                           />
                         </DisclosureContent>
                       </div>
@@ -6164,15 +6599,17 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <div className="inline-flex md:flex-row gap-x-1.5 flex-col md:items-center gap-y-3 md:gap-x-5">
                                 <span className="text-base md:text-[18px] font-semibold md:font-light leading-7 text-gray-900">
-                                  Phase {numberToWord(index)}
+                                  {isService && phases[index]?.phaseType
+                                    ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                    : `Phase ${numberToWord(index)}`}
                                 </span>{" "}
                                 {phaseName ? (
                                   <button
@@ -6205,21 +6642,29 @@ const ProjectScope = ({
                                   </button>
                                 )}
                                 <div className="inline-block md:hidden">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    {getPhaseDayRangeLabel(phases, index)}
-                                  </span>
+                                  <PhaseHeaderMeta
+                                    phases={phases}
+                                    index={index}
+                                    onRecurrenceChange={(schedule, count) =>
+                                      updatePhaseRecurrence(index, schedule, count)
+                                    }
+                                  />
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6305,6 +6750,12 @@ const ProjectScope = ({
               open={phaseDialogState.open}
               onAddPhaseName={onAddPhaseName}
               defaultName={currentPhaseName}
+              showPhaseType={
+                isService && phaseDialogState.action !== "EDIT"
+              }
+              disabledTypes={phases
+                .map((p) => p.phaseType)
+                .filter((t): t is PhaseType => !!t)}
               placeholder={
                 phaseDialogState.action === "EDIT"
                   ? "Edit Phase name"
@@ -6397,12 +6848,174 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   >
   isTaskSearchDialogOpen: boolean
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
+  teamMemberIds: string[]
+  setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  draftProjectId: string | null
+  pricingBudgetCents: number
+  scopeType: ScopeType
+  setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
 })
 
 const Team = () => {
+  const [members, setMembers] = React.useState<any[]>([])
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = (res as any)?.data?.data ?? (res as any)?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        if (!cancelled) setMembers(roster)
+      } catch {
+        /* no roster — render empty */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentUserId = getCurrentUser()?.id
+  const owner =
+    members.find((m: any) => m.role === "owner") ?? members[0] ?? null
+  const mapRole = (role?: string) =>
+    role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
+
+  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
+    useProjectScopeContext()
+  const inviteWindow = useInviteWindowStore()
+  const [addQuery, setAddQuery] = React.useState("")
+  const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
+    {}
+  )
+  const [wizardStatus, setWizardStatus] = React.useState<
+    Record<string, string>
+  >({})
+  const [wizardLeadLabel, setWizardLeadLabel] = React.useState("")
+  const [wizardLeadId, setWizardLeadId] = React.useState<string | null>(null)
+  const [wizardLeadSearch, setWizardLeadSearch] = React.useState("")
+  const { toast: wizardToast } = useToast()
+  const [wizardRemoveTarget, setWizardRemoveTarget] = React.useState<{
+    id: string
+    firstName: string
+  } | null>(null)
+  const confirmWizardRemove = (deactivate: boolean) => {
+    const t = wizardRemoveTarget
+    if (!t) return
+    if (deactivate) {
+      setWizardStatus((s) => ({ ...s, [t.id]: "Inactive" }))
+      wizardToast({
+        title: `${t.firstName} has been deactivated`,
+        variant: "success",
+      })
+    } else {
+      removeFromProject(t.id)
+      wizardToast({
+        title: `${t.firstName} has been removed`,
+        variant: "success",
+      })
+    }
+    setWizardRemoveTarget(null)
+  }
+
+  const inProject = (m: any) =>
+    m.role === "owner" || teamMemberIds.includes(String(m.userId || m.id))
+  const projectMembers = members.filter(inProject)
+  const addable = members.filter(
+    (m: any) =>
+      !inProject(m) &&
+      (m.firstName || m.username || "")
+        .toLowerCase()
+        .includes(addQuery.trim().toLowerCase())
+  )
+
+  const wizardHydratedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!draftProjectId || wizardHydratedRef.current) return
+    ;(async () => {
+      try {
+        const res = await ProjectAPI.GetProjectMembers(draftProjectId)
+        const pm = ((res as any)?.data ?? []) as any[]
+        if (Array.isArray(pm) && pm.length > 0) {
+          const roles: Record<string, string> = {}
+          const statuses: Record<string, string> = {}
+          let leadId: string | null = null
+          let leadLabel = ""
+          for (const m of pm) {
+            const uid = String(m.userId)
+            if (m.projectRole) roles[uid] = m.projectRole
+            if (m.status) statuses[uid] = m.status
+            if (m.isLead) {
+              leadId = uid
+              leadLabel = m.leadLabel || ""
+            }
+          }
+          setWizardRoles(roles)
+          setWizardStatus(statuses)
+          if (leadId) setWizardLeadId(leadId)
+          if (leadLabel) setWizardLeadLabel(leadLabel)
+        }
+      } catch {
+        /* no members yet */
+      }
+      wizardHydratedRef.current = true
+    })()
+  }, [draftProjectId])
+
+  React.useEffect(() => {
+    if (!draftProjectId || !wizardHydratedRef.current) return
+    const payload = projectMembers.map((m: any) => {
+      const id = String(m.userId || m.id)
+      const isOwner = m.role === "owner" || m.userId === currentUserId
+      const isLead = wizardLeadId ? id === wizardLeadId : isOwner
+      return {
+        userId: id,
+        projectRole: isOwner ? "Owner" : (wizardRoles[id] ?? "Contributor"),
+        status: wizardStatus[id] ?? "Active",
+        isLead,
+        leadLabel: isLead ? wizardLeadLabel || null : null,
+      }
+    })
+    if (payload.length === 0) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectMembers(draftProjectId, payload).catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardRoles, wizardStatus, wizardLeadId, wizardLeadLabel, teamMemberIds])
+
+  const persistTeam = (next: string[]) => {
+    setTeamMemberIds(next)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        teamMemberIds: next,
+      } as any).catch(() => {})
+    }
+  }
+  const addToProject = (userId: string) => {
+    persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
+    setAddQuery("")
+  }
+  const removeFromProject = (userId: string) => {
+    if (wizardLeadId === String(userId)) setWizardLeadId(null)
+    persistTeam(teamMemberIds.filter((id) => id !== String(userId)))
+    const [, setPhases] = projectScopeMethods
+    setPhases((prev) =>
+      prev.map((phase) => ({
+        ...phase,
+        rows: (phase.rows ?? []).map((row) =>
+          String(row.assigneeUserId ?? row.assignedMember?.id ?? "") ===
+          String(userId)
+            ? { ...row, assigneeUserId: null, assignedMember: null }
+            : row
+        ),
+      }))
+    )
+  }
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
@@ -6428,19 +7041,26 @@ const Team = () => {
             <div className="mt-3 flex items-center justify-between">
               <div className="flex items-center gap-x-3">
                 <Avatar size="md">
-                  <AvatarImage src="/man.jpg" alt="Chris" />
-                  <AvatarFallback>C</AvatarFallback>
+                  <AvatarImage
+                    src={owner?.avatarUrl || ""}
+                    alt={owner?.firstName || "Owner"}
+                  />
+                  <AvatarFallback>
+                    {(owner?.firstName || owner?.username || "?")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
                 <div>
                   <span className="text-sm font-bold text-dark-blue-400">
-                    Chris
+                    {owner?.firstName || owner?.username || "—"}
                   </span>
                   <span className="text-sm font-light text-gray-500">
                     {" "}
-                    @ux23isee
+                    @{owner?.username || ""}
                   </span>
                   <p className="text-xs font-light text-dark-blue-400">
-                    Full Stack Designer
+                    {owner ? "Project Owner" : ""}
                   </p>
                 </div>
               </div>
@@ -6457,17 +7077,119 @@ const Team = () => {
                 Assign Project Lead
               </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton
-                    className="w-full h-[44px]"
-                    placeholder="Add user from team"
-                  />
-                  <ListboxOptions>
-                    <ListboxOption value="Chris">Chris</ListboxOption>
-                    <ListboxOption value="Sarah">Sarah</ListboxOption>
-                    <ListboxOption value="Laura">Laura</ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                {wizardLeadId ? (
+                  (() => {
+                    const lead = members.find(
+                      (mm: any) => String(mm.userId || mm.id) === wizardLeadId
+                    )
+                    return lead ? (
+                      <div className="flex h-[44px] items-center justify-between rounded-lg border border-gray-200 px-3">
+                        <div className="flex items-center gap-x-2">
+                          <Avatar size="sm">
+                            <AvatarImage
+                              src={lead.avatarUrl || undefined}
+                              alt={lead.firstName}
+                            />
+                            <AvatarFallback>
+                              {(lead.firstName || "U").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {lead.firstName || lead.username || "User"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-sm font-semibold text-gray-700 hover:text-dark-blue-400 focus-visible:outline-none"
+                          onClick={() => setWizardLeadId(null)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null
+                  })()
+                ) : (
+                  <>
+                    <InputGroup>
+                      <Input
+                        className="h-[44px]"
+                        placeholder="Search team members"
+                        value={wizardLeadSearch}
+                        onChange={(e) => setWizardLeadSearch(e.target.value)}
+                      />
+                      <InputLeftElement>
+                        <SearchMd className="text-gray-500 h-4 w-4" />
+                      </InputLeftElement>
+                    </InputGroup>
+                    {wizardLeadSearch &&
+                      (() => {
+                        const q = wizardLeadSearch.trim().toLowerCase()
+                        const candidates = members.filter(
+                          (mm: any) =>
+                            !q ||
+                            (mm.firstName || "").toLowerCase().includes(q) ||
+                            (mm.username || "").toLowerCase().includes(q)
+                        )
+                        return (
+                          <div className="mt-1 max-h-[240px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-lg">
+                            {candidates.length > 0 ? (
+                              candidates.map((mm: any) => (
+                                <button
+                                  key={mm.userId || mm.id}
+                                  type="button"
+                                  className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50"
+                                  onClick={() => {
+                                    setWizardLeadId(String(mm.userId || mm.id))
+                                    setWizardLeadSearch("")
+                                  }}
+                                >
+                                  <Avatar size="sm">
+                                    <AvatarImage
+                                      src={mm.avatarUrl || undefined}
+                                      alt={mm.firstName}
+                                    />
+                                    <AvatarFallback>
+                                      {(
+                                        mm.firstName ||
+                                        mm.username ||
+                                        "U"
+                                      ).charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <span className="text-sm font-semibold text-dark-blue-400">
+                                      {mm.firstName || mm.username || "User"}
+                                    </span>
+                                    {mm.username && (
+                                      <span className="text-sm font-light text-gray-500">
+                                        {" "}
+                                        @{mm.username}
+                                      </span>
+                                    )}
+                                    {mm.userId === currentUserId && (
+                                      <span className="text-sm font-semibold text-dark-blue-400">
+                                        {" "}
+                                        (You)
+                                      </span>
+                                    )}
+                                    {mm.recentJobTitle && (
+                                      <p className="text-xs font-light text-dark-blue-400">
+                                        {mm.recentJobTitle}
+                                      </p>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                No matching members.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                  </>
+                )}
               </div>
             </div>
             <div>
@@ -6475,26 +7197,56 @@ const Team = () => {
                 Select label
               </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton
-                    className="w-full h-[44px]"
-                    placeholder="None selected"
-                  />
-                  <ListboxOptions>
-                    <ListboxOption value="Project Lead">
-                      Project Lead
-                    </ListboxOption>
-                    <ListboxOption value="Account Manager">
-                      Account Manager
-                    </ListboxOption>
-                    <ListboxOption value="Technical Lead">
-                      Technical Lead
-                    </ListboxOption>
-                    <ListboxOption value="Design Lead">
-                      Design Lead
-                    </ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
+                    >
+                      <span
+                        className={
+                          wizardLeadLabel
+                            ? "text-dark-blue-400"
+                            : "text-gray-500"
+                        }
+                      >
+                        {wizardLeadLabel || "None selected"}
+                      </span>
+                      <ChevronDown className="size-4 text-gray-500" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    style={{
+                      width: "var(--radix-dropdown-menu-trigger-width)",
+                    }}
+                  >
+                    {[
+                      "Account Manager",
+                      "Project Manager",
+                      "Client Relations Manager",
+                      "Team Manager",
+                    ].map((l) => (
+                      <DropdownMenuItem
+                        key={l}
+                        onClick={() => setWizardLeadLabel(l)}
+                      >
+                        {l}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Use Profile Job Title")}
+                    >
+                      Use Profile Job Title
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Create Custom Label")}
+                    >
+                      Create Custom Label
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -6505,7 +7257,11 @@ const Team = () => {
               <h2 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
                 Team Members
               </h2>
-              <Button variant="outlined" visual="gray">
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+              >
                 <Plus className="size-[15px]" />
                 Add Team Member
               </Button>
@@ -6513,7 +7269,7 @@ const Team = () => {
 
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-dark-blue-400">
-                All assignees (3)
+                All assignees ({projectMembers.length})
               </h3>
               <p className="mt-1 text-xs font-light text-dark-blue-400">
                 View and manage all users currently assigned to Project name
@@ -6521,16 +7277,51 @@ const Team = () => {
               </p>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 relative">
               <span className="text-sm font-semibold text-dark-blue-400">
                 Add team members to this project
               </span>
               <InputGroup className="mt-2">
-                <Input placeholder="Add users to this project" />
+                <Input
+                  placeholder="Add users to this project"
+                  value={addQuery}
+                  onChange={(e) => setAddQuery(e.target.value)}
+                />
                 <InputLeftElement>
                   <SearchMd className="text-gray-500 h-4 w-4" />
                 </InputLeftElement>
               </InputGroup>
+              {addQuery.trim().length > 0 && addable.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden max-h-[232px] overflow-y-auto">
+                  {addable.map((m: any) => (
+                    <button
+                      key={m.userId || m.id}
+                      type="button"
+                      className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50 transition duration-150"
+                      onClick={() => addToProject(m.userId || m.id)}
+                    >
+                      <Avatar className="size-6 shrink-0">
+                        {m.avatarUrl ? (
+                          <AvatarImage src={m.avatarUrl} alt={m.firstName} />
+                        ) : null}
+                        <AvatarFallback className="text-[10px]">
+                          {(m.firstName || m.username || "U")
+                            .charAt(0)
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-gray-900 truncate leading-tight">
+                          {m.firstName || m.username || "User"}
+                          <span className="text-gray-400 font-normal ml-0.5">
+                            @{m.username}
+                          </span>
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-6">
@@ -6550,45 +7341,22 @@ const Team = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[
-                    {
-                      name: "Chris",
-                      username: "ux23isee",
-                      role: "Owner",
-                      status: "Active",
-                      you: true,
-                      avatar: "/man.jpg",
-                    },
-                    {
-                      name: "Sarah",
-                      username: "ux23isee",
-                      role: "Manager",
-                      status: "Active",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Laura",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Active",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Tina",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Inactive",
-                      avatar: "/woman.jpg",
-                    },
-                    {
-                      name: "Shelly",
-                      username: "ux23isee",
-                      role: "Contributor",
-                      status: "Inactive",
-                      avatar: "/woman.jpg",
-                    },
-                  ].map((member, mi) => (
-                    <TableRow key={mi}>
+                  {projectMembers.map((m: any, mi: number) => {
+                    const id = String(m.userId || m.id || "")
+                    const isOwner =
+                      m.role === "owner" || m.userId === currentUserId
+                    const member = {
+                      name: m.firstName || m.username || "User",
+                      username: m.username || "",
+                      you: m.userId === currentUserId,
+                      avatar: m.avatarUrl || "",
+                    }
+                    const role = isOwner
+                      ? "Owner"
+                      : (wizardRoles[id] ?? mapRole(m.role))
+                    const status = wizardStatus[id] ?? "Active"
+                    return (
+                    <TableRow key={m.userId || mi}>
                       <TableCell className="py-4">
                         <div className="flex items-center gap-x-3">
                           <Avatar size="sm">
@@ -6621,32 +7389,75 @@ const Team = () => {
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
-                        <Listbox defaultValue={member.role}>
-                          <ListboxButton
-                            className="h-[36px] w-[140px] text-sm"
-                            placeholder="Select role"
-                          />
-                          <ListboxOptions>
-                            <ListboxOption value="Owner">Owner</ListboxOption>
-                            <ListboxOption value="Manager">
-                              Manager
-                            </ListboxOption>
-                            <ListboxOption value="Contributor">
-                              Contributor
-                            </ListboxOption>
-                          </ListboxOptions>
-                        </Listbox>
+                        {isOwner ? (
+                          <div className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                            Owner
+                            <ChevronDown className="size-4 opacity-50" />
+                          </div>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
+                              >
+                                {role}
+                                <ChevronDown className="size-4 text-gray-500" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="start"
+                              className="w-[288px]"
+                            >
+                              {["Manager", "Contributor", "Viewer"].map((r) => (
+                                <DropdownMenuItem
+                                  key={r}
+                                  className="flex flex-col items-start gap-0.5 py-2"
+                                  onClick={() =>
+                                    setWizardRoles((mr) => ({ ...mr, [id]: r }))
+                                  }
+                                >
+                                  <span className="flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+                                    {role === r ? (
+                                      <Check className="size-4 text-primary-500" />
+                                    ) : (
+                                      <span className="size-4" />
+                                    )}
+                                    {r}
+                                  </span>
+                                  <span className="pl-6 text-xs font-light text-gray-500">
+                                    This is where the role&apos;s permissions and
+                                    limitations are briefly explained.
+                                  </span>
+                                </DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-error-600 focus:text-error-600"
+                                onClick={() =>
+                                  setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                }
+                              >
+                                <XCircle className="size-4" />
+                                Remove from project
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                       <TableCell className="py-4">
                         <span
                           className={cn(
                             "text-sm font-semibold",
-                            member.status === "Active"
+                            status === "Active"
                               ? "text-success-500"
                               : "text-gray-500"
                           )}
                         >
-                          {member.status}
+                          {status}
                         </span>
                       </TableCell>
                       <TableCell className="py-4">
@@ -6656,14 +7467,52 @@ const Team = () => {
                               <MoreHorizontal className="size-4" />
                             </IconButton>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Remove</DropdownMenuItem>
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-[200px]"
+                          >
+                            <DropdownMenuItem>Manage User</DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Assign Team Lead
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Transfer Ownership
+                            </DropdownMenuItem>
+                            {status === "Inactive" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setWizardStatus((s) => ({
+                                    ...s,
+                                    [id]: "Active",
+                                  }))
+                                }
+                              >
+                                Activate User
+                              </DropdownMenuItem>
+                            )}
+                            {!isOwner && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-error-600 focus:text-error-600"
+                                  onClick={() =>
+                                    setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                  }
+                                >
+                                  <XCircle className="size-4" />
+                                  Remove from project
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -6673,11 +7522,104 @@ const Team = () => {
           <ProjectInfoTip showArrow />
         </div>
       </div>
+
+      <Dialog
+        open={!!wizardRemoveTarget}
+        onOpenChange={(o) => !o && setWizardRemoveTarget(null)}
+      >
+        <DialogContent className="max-w-[540px] p-0">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dark-blue-400">
+              Remove this user?
+            </h3>
+            <p className="mt-2 text-sm font-light text-gray-500">
+              <span className="font-semibold text-dark-blue-400">
+                {wizardRemoveTarget?.firstName}
+              </span>{" "}
+              will no longer have access to this project, including any tasks,
+              files, or chat threads previously assigned. This will not delete
+              any tasks, files, or comments.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 py-4 px-6">
+            <Button
+              type="button"
+              variant="link"
+              visual="gray"
+              onClick={() => setWizardRemoveTarget(null)}
+            >
+              <X className="size-[15px]" />
+              Cancel
+            </Button>
+            <div className="flex items-center gap-x-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                className="text-error-600"
+                onClick={() => confirmWizardRemove(true)}
+              >
+                Deactivate Instead
+              </Button>
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => confirmWizardRemove(false)}
+              >
+                Yes, Remove
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ScrollArea>
   )
 }
 
 type WizardFaq = { id: string; q: string; a: string }
+
+type RecentQuestion = {
+  id: string
+  question: string
+  answer: string | null
+  askedByName?: string | null
+  askedByUsername?: string | null
+  askedAt?: string | null
+  answeredByUserId?: string | null
+  answeredByName?: string | null
+  answeredByRole?: string | null
+  assignedToUserId?: string | null
+  hidden?: boolean
+  moderationFailed?: boolean
+}
+
+function HideToggle({
+  hidden,
+  moderationFailed,
+  onToggle,
+}: {
+  hidden: boolean
+  moderationFailed?: boolean
+  onToggle: (value: boolean) => void
+}) {
+  if (moderationFailed) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Switch checked={hidden} disabled />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            This question can&apos;t be made visible because it didn&apos;t pass
+            content moderation.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  return <Switch checked={hidden} onCheckedChange={(v) => onToggle(!!v)} />
+}
 
 const SortableFaqItem = ({
   id,
@@ -6830,6 +7772,102 @@ const Questions = ({
   const [suggestions, setSuggestions] = useState<
     Array<{ question: string; answer: string; added?: boolean }>
   >([])
+
+  const [questions, setQuestions] = useState<RecentQuestion[]>([])
+  const [assignTeam, setAssignTeam] = useState<
+    Array<{ id: string; name: string }>
+  >([])
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const questionsHydrated = useRef(false)
+
+  useEffect(() => {
+    if (!draftProjectId) return
+    ProjectAPI.GetProjectDraft(draftProjectId)
+      .then((res) => {
+        const d = res?.data ?? {}
+        const rq = (d.recentQuestions ?? []).map(
+          (q: RecentQuestion, i: number) => ({
+            ...q,
+            id: q.id ?? `rq-${i}`,
+          })
+        )
+        setQuestions(rq)
+        const team = (d.team ?? []).map((t: any) => ({
+          id: String(t.userId ?? t.id ?? ""),
+          name:
+            [t.firstName, t.lastName].filter(Boolean).join(" ") ||
+            t.username ||
+            "Team Member",
+        }))
+        setAssignTeam(team.filter((t: { id: string }) => t.id))
+        questionsHydrated.current = true
+      })
+      .catch(() => {})
+  }, [draftProjectId])
+
+  useEffect(() => {
+    if (!questionsHydrated.current || !draftProjectId) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectQuestions(draftProjectId, questions)
+        .then((res) => {
+          const saved = res?.data
+          if (!Array.isArray(saved)) return
+          const byId = new Map(
+            saved.map((s: RecentQuestion, i: number) => [s.id ?? `rq-${i}`, s])
+          )
+          setQuestions((prev) => {
+            let changed = false
+            const next = prev.map((q) => {
+              const s = q.id ? byId.get(q.id) : undefined
+              if (s && !!s.moderationFailed !== !!q.moderationFailed) {
+                changed = true
+                return { ...q, moderationFailed: s.moderationFailed }
+              }
+              return q
+            })
+            return changed ? next : prev
+          })
+        })
+        .catch(() => {})
+    }, 600)
+    return () => clearTimeout(t)
+  }, [questions, draftProjectId])
+
+  const isAnswered = (q: RecentQuestion) => !!(q.answer && q.answer.trim())
+  const updateQuestion = (id: string, patch: Partial<RecentQuestion>) =>
+    setQuestions((qs) =>
+      qs.map((q) => (q.id === id ? { ...q, ...patch } : q))
+    )
+  const handleAnswerChange = (id: string, text: string) => {
+    const me = getCurrentUser() as
+      | {
+          id?: string
+          firstName?: string
+          lastName?: string
+          username?: string
+        }
+      | null
+    const hasText = !!text.trim()
+    updateQuestion(id, {
+      answer: text,
+      answeredByUserId: hasText ? (me?.id ? String(me.id) : null) : null,
+      answeredByName: hasText
+        ? [me?.firstName, me?.lastName].filter(Boolean).join(" ") ||
+          me?.username ||
+          "You"
+        : null,
+      answeredByRole: hasText ? "Project Lead" : null,
+    })
+  }
+  const answeredCount = questions.filter(isAnswered).length
+  const awaitingCount = questions.length - answeredCount
+  const visibleQuestions =
+    recentQTab === "awaiting"
+      ? questions.filter((q) => !isAnswered(q))
+      : recentQTab === "answered"
+        ? questions.filter(isAnswered)
+        : questions
 
   const remainingSlots = Math.max(0, 10 - faqs.length)
   const addedCount = suggestions.filter((s) => s.added).length
@@ -7198,250 +8236,220 @@ const Questions = ({
                 className="mt-4"
               >
                 <TabsList className="justify-start border-b border-gray-200 px-0 pt-0">
-                  <TabsTrigger value="all">All (8)</TabsTrigger>
-                  <TabsTrigger value="awaiting">
-                    Awaiting Response (5)
+                  <TabsTrigger value="all">
+                    All ({questions.length})
                   </TabsTrigger>
-                  <TabsTrigger value="answered">Answered (3)</TabsTrigger>
+                  <TabsTrigger value="awaiting">
+                    Awaiting Response ({awaitingCount})
+                  </TabsTrigger>
+                  <TabsTrigger value="answered">
+                    Answered ({answeredCount})
+                  </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="all">
-                  <div className="mt-4 space-y-3">
-                    {[
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                      {
-                        question:
-                          "How will you ensure we're aligned on progress and feedback throughout each stage?",
-                        asker: "Kevin",
-                        username: "usernamehere",
-                        time: "3 weeks ago",
-                        status: "Answered" as const,
-                      },
-                    ].map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-sm font-medium text-dark-blue-400">
-                            {item.question}
-                          </p>
-                          <IconButton
-                            variant="ghost"
-                            visual="gray"
-                            size="sm"
-                            className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-                          >
-                            <Edit03 className="size-4" />
-                          </IconButton>
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Asked by {item.asker}{" "}
-                          <span className="text-gray-400">
-                            @{item.username}
-                          </span>{" "}
-                          {item.time}
-                          <span className="ml-3 text-xs font-semibold text-success-500">
-                            {item.status}
-                          </span>
-                        </p>
-                      </div>
-                    ))}
+                {visibleQuestions.length === 0 ? (
+                  <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
+                    <h3 className="text-base font-semibold text-dark-blue-400">
+                      No Recent Questions
+                    </h3>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      You will see recent questions here once your project is
+                      live in the marketplace and visitors engage in chat with
+                      you and your team.
+                    </p>
                   </div>
-                </TabsContent>
-
-                <TabsContent value="awaiting">
+                ) : (
                   <div className="mt-4 space-y-3">
-                    {[0, 1, 2, 3, 4].map((idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-2 min-w-0">
-                            {idx === 0 && (
-                              <Check className="size-4 mt-0.5 shrink-0 text-gray-400" />
-                            )}
-                            <p className="text-sm font-medium text-dark-blue-400">
-                              How will you ensure we&apos;re aligned on progress
-                              and feedback throughout each stage?
-                            </p>
-                          </div>
-                          {idx !== 0 && (
-                            <IconButton
-                              variant="ghost"
-                              visual="gray"
-                              size="sm"
-                              className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
-                            >
-                              <Edit03 className="size-4" />
-                            </IconButton>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Asked by Kevin{" "}
-                          <span className="text-gray-400">@usernamehere</span> 3
-                          weeks ago
-                          {idx !== 0 && (
-                            <span className="ml-3 text-xs font-semibold text-warning-500">
-                              Awaiting Response
-                            </span>
-                          )}
-                        </p>
-                        {idx === 0 && (
-                          <>
-                            <div className="mt-3 flex items-center gap-3">
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                size="sm"
-                              >
-                                Assign To Team Member
-                              </Button>
-                              <Button size="sm">Respond</Button>
-                            </div>
-                            <div className="mt-3 flex items-center gap-2">
-                              <Switch />
-                              <span className="text-xs text-gray-500">
-                                Hide this question
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="answered">
-                  <div className="mt-4 space-y-3">
-                    {[0, 1, 2].map((idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        {idx === 0 ? (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-2 min-w-0">
-                                <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                <p className="text-sm font-medium text-dark-blue-400">
-                                  How will you ensure we&apos;re aligned on
-                                  progress and feedback throughout each stage?
-                                </p>
-                              </div>
-                            </div>
-                            <p className="mt-2 ml-6 text-xs text-gray-500">
-                              Asked by Kevin{" "}
-                              <span className="text-gray-400">
-                                @usernamehere
-                              </span>{" "}
-                              3 weeks ago
-                            </p>
-                            <div className="mt-3 ml-6 flex items-start gap-2">
-                              <Avatar size="xs">
-                                <AvatarImage src="/man.jpg" alt="You" />
-                                <AvatarFallback>Y</AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-dark-blue-400">
-                                  You{" "}
-                                  <Badge
-                                    visual="primary"
-                                    className="ml-1 rounded-[4px] bg-primary-50 text-[10px]"
-                                  >
-                                    Project Lead
-                                  </Badge>
-                                </p>
-                                <Textarea
-                                  className="mt-2"
-                                  rows={3}
-                                  defaultValue="We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management."
-                                  maxLength={300}
+                    {visibleQuestions.map((q) => {
+                      const answered = isAnswered(q)
+                      const expanded = expandedId === q.id
+                      const responding = respondingId === q.id
+                      const showEditor = expanded && (answered || responding)
+                      const assignedName = q.assignedToUserId
+                        ? assignTeam.find(
+                            (t) => t.id === String(q.assignedToUserId)
+                          )?.name
+                        : null
+                      return (
+                        <div
+                          key={q.id}
+                          className="rounded-lg border border-gray-200 bg-white p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2 min-w-0">
+                              {expanded && (
+                                <Check
+                                  className={cn(
+                                    "size-4 mt-0.5 shrink-0",
+                                    answered
+                                      ? "text-success-500"
+                                      : "text-gray-400"
+                                  )}
                                 />
-                                <p className="mt-1 text-right text-xs text-gray-500">
-                                  250/300
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-3 ml-6 flex items-center gap-2">
-                              <Switch />
-                              <span className="text-xs text-gray-500">
-                                Hide this question
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
+                              )}
                               <p className="text-sm font-medium text-dark-blue-400">
-                                How will you ensure we&apos;re aligned on
-                                progress and feedback throughout each stage?
+                                {q.question}
                               </p>
+                            </div>
+                            {!expanded && (
                               <IconButton
                                 variant="ghost"
                                 visual="gray"
                                 size="sm"
                                 className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                                onClick={() => setExpandedId(q.id)}
                               >
                                 <Edit03 className="size-4" />
                               </IconButton>
-                            </div>
-                            <p className="mt-2 text-xs text-gray-500">
-                              Asked by Kevin{" "}
-                              <span className="text-gray-400">
-                                @usernamehere
-                              </span>{" "}
-                              3 weeks ago
-                              <span className="ml-3 text-xs font-semibold text-success-500">
-                                Answered
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "mt-2 text-xs text-gray-500",
+                              expanded && "ml-6"
+                            )}
+                          >
+                            Asked by {q.askedByName ?? "Someone"}{" "}
+                            <span className="text-gray-400">
+                              @{q.askedByUsername ?? "user"}
+                            </span>{" "}
+                            {q.askedAt ?? "recently"}
+                            {!expanded && (
+                              <span
+                                className={cn(
+                                  "ml-3 text-xs font-semibold",
+                                  answered
+                                    ? "text-success-500"
+                                    : "text-warning-500"
+                                )}
+                              >
+                                {answered ? "Answered" : "Awaiting Response"}
                               </span>
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                            )}
+                          </p>
+
+                          {showEditor && (
+                            <div className="mt-3 ml-6">
+                              <div className="flex items-center gap-2">
+                                <Avatar size="xs">
+                                  <AvatarImage src="/man.jpg" alt="" />
+                                  <AvatarFallback>
+                                    {(q.answeredByName ?? "You").slice(0, 1)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <p className="text-xs font-medium text-dark-blue-400">
+                                  {q.answeredByName ?? "You"}{" "}
+                                  <Badge
+                                    visual="primary"
+                                    className="ml-1 rounded-[4px] bg-primary-50 text-[10px]"
+                                  >
+                                    {q.answeredByRole ?? "Project Lead"}
+                                  </Badge>
+                                </p>
+                              </div>
+                              <Textarea
+                                className="mt-2"
+                                rows={3}
+                                maxLength={300}
+                                placeholder="Write your response..."
+                                value={q.answer ?? ""}
+                                onChange={(e) =>
+                                  handleAnswerChange(q.id, e.target.value)
+                                }
+                              />
+                              <p className="mt-1 text-right text-xs text-gray-500">
+                                {(q.answer ?? "").length}/300
+                              </p>
+                              <div className="mt-3 flex items-center gap-2">
+                                <HideToggle
+                                  hidden={!!q.hidden}
+                                  moderationFailed={q.moderationFailed}
+                                  onToggle={(v) =>
+                                    updateQuestion(q.id, { hidden: v })
+                                  }
+                                />
+                                <span className="text-xs text-gray-500">
+                                  Hide this question
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {expanded && !showEditor && (
+                            <>
+                              <div className="mt-3 ml-6 flex items-center gap-3">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      size="sm"
+                                    >
+                                      {assignedName
+                                        ? `Assigned: ${assignedName}`
+                                        : "Assign To Team Member"}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="start"
+                                    className="min-w-[220px]"
+                                  >
+                                    {assignTeam.length === 0 ? (
+                                      <DropdownMenuItem disabled>
+                                        No team members
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      assignTeam.map((t) => (
+                                        <DropdownMenuItem
+                                          key={t.id}
+                                          onSelect={() =>
+                                            updateQuestion(q.id, {
+                                              assignedToUserId: t.id,
+                                            })
+                                          }
+                                        >
+                                          {t.name}
+                                        </DropdownMenuItem>
+                                      ))
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                  size="sm"
+                                  onClick={() => setRespondingId(q.id)}
+                                >
+                                  Respond
+                                </Button>
+                              </div>
+                              <div className="mt-3 ml-6 flex items-center gap-2">
+                                <HideToggle
+                                  hidden={!!q.hidden}
+                                  moderationFailed={q.moderationFailed}
+                                  onToggle={(v) =>
+                                    updateQuestion(q.id, { hidden: v })
+                                  }
+                                />
+                                <span className="text-xs text-gray-500">
+                                  Hide this question
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                </TabsContent>
+                )}
               </Tabs>
 
-              <div className="mt-4 flex justify-center">
-                <Button variant="outlined" visual="gray" size="sm">
-                  View More
-                  <ChevronDown className="size-4" />
-                </Button>
-              </div>
+              {visibleQuestions.length > 5 && (
+                <div className="mt-4 flex justify-center">
+                  <Button variant="outlined" visual="gray" size="sm">
+                    View More
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </div>
+              )}
             </RadixTabs.Content>
           </RadixTabs.Root>
         </div>
@@ -7474,6 +8482,25 @@ function PublishProject({
   } = useStepper({
     steps,
   })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const handledCheckoutStepRef = useRef(false)
+
+  useEffect(() => {
+    if (handledCheckoutStepRef.current) return
+    if (searchParams.get("checkoutStep") !== "scope") return
+
+    handledCheckoutStepRef.current = true
+    setStep(2)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [pathname, router, searchParams, setStep])
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -7490,7 +8517,6 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
-  const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {
@@ -7521,6 +8547,9 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
 
   const handlePublish = async () => {
@@ -7558,6 +8587,47 @@ function PublishProject({
   useEffect(() => {
     faqsRef.current = faqs
   }, [faqs])
+
+  // Sidebar step ticks: each step's form only mounts when it's the active step,
+  // so validate every step here (always mounted) — an existing/edited project
+  // shows completed steps immediately, and Team/Questions can tick too.
+  // Criteria: Project Info / Media / Project Scope pass their schema; Team has
+  // at least one member; Questions has at least one FAQ.
+  const [scopePhases] = projectScopeMethods
+  const lastStepValidRef = useRef<Record<number, boolean>>({})
+  const setStepValid = useCallback(
+    (index: number, valid: boolean) => {
+      if (lastStepValidRef.current[index] === valid) return
+      lastStepValidRef.current[index] = valid
+      toggleStepValidation(index)(valid)
+    },
+    [toggleStepValidation]
+  )
+  // useWatch re-computes on every value change — including the async reset() on
+  // load — so ticks reflect the loaded project immediately (no user edit needed).
+  const projectInfoWatch = useWatch({ control: projectInfoMethods.control })
+  const mediaWatch = useWatch({ control: mediaMethods.control })
+  useEffect(() => {
+    setStepValid(
+      0,
+      projectInfoSchema.safeParse(projectInfoMethods.getValues()).success
+    )
+  }, [projectInfoWatch, projectInfoMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(
+      1,
+      mediaFormSchema.safeParse(mediaMethods.getValues()).success
+    )
+  }, [mediaWatch, mediaMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(2, projectScopeSchema.safeParse(scopePhases))
+  }, [scopePhases, setStepValid])
+  useEffect(() => {
+    setStepValid(3, teamMemberIds.length > 0)
+  }, [teamMemberIds, setStepValid])
+  useEffect(() => {
+    setStepValid(4, faqs.length > 0)
+  }, [faqs, setStepValid])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -7615,6 +8685,13 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setTeamMemberIds(
+          Array.isArray(draft?.teamMemberIds)
+            ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        setScopeType(draft?.listingType === "service" ? "service" : "project")
 
         const rawCategorySelections = Array.isArray(draft?.categorySelections)
           ? draft.categorySelections
@@ -7740,6 +8817,9 @@ function PublishProject({
         const scope = Array.isArray(draft?.scope)
           ? draft.scope.map((phase: any) => ({
               phaseName: phase?.name ?? "",
+              phaseType: phase?.phaseType ?? undefined,
+              recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase?.recurrenceCount ?? undefined,
               rows: Array.isArray(phase?.task)
                 ? phase.task.map((task: any) => {
                     const durationRaw = String(task?.duration ?? "").trim()
@@ -7749,6 +8829,7 @@ function PublishProject({
                       id: String(task?.id ?? getId()),
                       task: task?.taskName ?? "",
                       role: task?.role ?? "",
+                      assigneeUserId: task?.assigneeUserId ?? null,
                       location: Array.isArray(task?.location)
                         ? (task.location[0] ?? "")
                         : "",
@@ -7853,7 +8934,14 @@ function PublishProject({
       if (serializedPayload === lastScopePayloadRef.current) return
 
       try {
-        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
+        const scopeRes = await ProjectAPI.ReplaceProjectScope(
+          draftProjectId,
+          payload
+        )
+        const nextBudget = Number((scopeRes as any)?.data?.budgetUsdCents)
+        if (Number.isFinite(nextBudget) && nextBudget > 0) {
+          setPricingBudgetCents(nextBudget)
+        }
         lastScopePayloadRef.current = serializedPayload
         setLastSavedAt(new Date())
       } catch (error) {
@@ -8075,6 +9163,12 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
+      scopeType,
+      setScopeType,
     }),
     [
       projectScopeMethods,
@@ -8084,6 +9178,12 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
+      scopeType,
+      setScopeType,
     ]
   )
   //  Validate the current step when Next is clicked

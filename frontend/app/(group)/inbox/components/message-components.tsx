@@ -14,6 +14,7 @@ import {
   Download02,
   Edit03,
   EyeOff,
+  HelpCircle,
   Pin02,
   Send03,
   Smile,
@@ -154,7 +155,7 @@ const toSafeHttpUrl = (value?: string | null): string | null => {
   }
 }
 
-const MessageAttachmentView = ({
+export const MessageAttachmentView = ({
   attachment,
 }: {
   attachment: {
@@ -693,6 +694,7 @@ const YourBubbleImpl = ({
   onReply,
   replyToMessage,
   onToggleReaction,
+  onAddToRecentQuestions,
 }: {
   message: Message
   currentUser: CurrentUser
@@ -703,6 +705,7 @@ const YourBubbleImpl = ({
   onReply?: (message: Message) => void
   replyToMessage?: Message | null
   onToggleReaction?: (messageId: string, emoji: string) => void
+  onAddToRecentQuestions?: (message: Message) => void
 }) => {
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
@@ -824,6 +827,13 @@ const YourBubbleImpl = ({
                   <DropdownMenuItem onSelect={() => onForward?.(message)}>
                     <Send03 className="h-4 w-4" /> Forward
                   </DropdownMenuItem>
+                  {onAddToRecentQuestions && (
+                    <DropdownMenuItem
+                      onSelect={() => onAddToRecentQuestions(message)}
+                    >
+                      <HelpCircle className="h-4 w-4" /> Add to Recent Questions
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

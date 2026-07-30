@@ -141,4 +141,10 @@ export class UpsertProjectDraftDto {
   @ValidateNested({ each: true })
   @Type(() => FaqItemDto)
   faqs?: FaqItemDto[];
+
+  @ApiProperty({ type: [String], required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  teamMemberIds?: string[];
 }

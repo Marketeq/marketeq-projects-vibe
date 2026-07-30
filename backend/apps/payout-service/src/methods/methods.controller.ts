@@ -29,6 +29,14 @@ export class MethodsController {
     return this.methodsService.addMethod(req.user.userId, dto);
   }
 
+  // SCR-20: declared before ':id' below so 'config' is never swallowed by the
+  // UUID param route — feature-flag state must be server-fetched, not hardcoded.
+  @Get('config')
+  @HttpCode(200)
+  async config() {
+    return this.methodsService.getMethodTypeConfig();
+  }
+
   @Get(':id')
   @HttpCode(200)
   async getOne(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
@@ -63,8 +71,8 @@ export class MethodsController {
 
   @Post('stripe/finalise')
   @HttpCode(200)
-  async stripeFinalize(@Request() req: any, @Body() body: { sessionId: string; linkedAccountId: string }) {
-    return this.stripeProvider.finaliseBankStripe(req.user.userId, body.sessionId, body.linkedAccountId);
+  async stripeFinalize(@Request() req: any, @Body() body: { sessionId: string }) {
+    return this.stripeProvider.finaliseBankStripe(req.user.userId, body.sessionId);
   }
 
   @Post('stripe/restart')

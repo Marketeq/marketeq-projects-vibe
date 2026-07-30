@@ -27,6 +27,7 @@ import {
   Check,
   ChevronDown,
   ChevronsDown,
+  Calendar,
   ChevronsUp,
   Clock,
   Copy,
@@ -88,7 +89,7 @@ import { Network4 } from "@/components/icons/network-4"
 import {
   CountriesCombobox,
   OwnCombobox,
-  getFlagUrlByName,
+  getStaticFlagUrl,
 } from "@/components/own-combobox"
 import {
   DropdownMenu,
@@ -271,7 +272,7 @@ export interface TeamMember {
 }
 
 /** Convert a duration to billable hours based on work schedule */
-function durationToHours(
+export function durationToHours(
   durationValue: number,
   durationType: string,
   workSchedule?: string | null,
@@ -289,6 +290,77 @@ function durationToHours(
   if (durationType === "weeks") return durationValue * hoursPerWeek
   // days
   return durationValue * hoursPerDay
+}
+
+// Stand-in rate card (USD/hour by experience level) — mirrors the backend's
+// cms-projects deriveBudgetFromScope. Swap for pricing-service rates once the
+// roles/rate table is wired (docs §14.7 HOURLY_RATE_BY_LEVEL stand-in).
+export const HOURLY_RATE_BY_LEVEL: Record<string, number> = {
+  Student: 25,
+  Junior: 55,
+  Medior: 85,
+  Senior: 125,
+  Guru: 175,
+}
+
+// Role-specific hourly rates (USD/hr), reusing the pricing-service test seed
+// (PS-07 / ps_platform_rate_averages median). Roles not listed fall back to
+// HOURLY_RATE_BY_LEVEL by experience level.
+export const HOURLY_RATE_BY_ROLE: Record<string, number> = {
+  "ux designer": 100,
+  "backend developer": 70,
+  "product manager": 55,
+  "devops engineer": 45,
+}
+
+// startingPriceTotal (docs §14.7): Σ (hours × rate), returned in USD cents.
+// Hours come from an explicit estimatedHours, else derived from the task's
+// duration via durationToHours (respecting workSchedule).
+export function estimateScopeBudgetCents(
+  phases: any[] | null | undefined
+): number {
+  if (!Array.isArray(phases)) return 0
+  let totalUsd = 0
+  for (const phase of phases) {
+    const rows = phase?.rows ?? phase?.tasks ?? []
+    for (const row of rows) {
+      if (!row) continue
+      const explicit = Number(row.estimatedHours)
+      let hours = Number.isFinite(explicit) && explicit > 0 ? explicit : 0
+      if (hours <= 0 && row.duration) {
+        const dur = row.duration
+        const value =
+          typeof dur === "object"
+            ? Number(dur?.value)
+            : Number(String(dur).trim().split(/\s+/)[0])
+        const type =
+          typeof dur === "object"
+            ? dur?.type
+            : String(dur).trim().split(/\s+/)[1]
+        if (Number.isFinite(value) && value > 0) {
+          hours = durationToHours(value, type ?? "days", row.workSchedule)
+        }
+      }
+      if (hours <= 0) continue
+      const level = Array.isArray(row.experience)
+        ? row.experience[0]
+        : row.experienceLevel || row.experience || "Medior"
+      const roleKey = String(row.role ?? "")
+        .trim()
+        .toLowerCase()
+      const memberRate = Number(row.assignedMember?.hourlyRate)
+      const fallbackRate =
+        HOURLY_RATE_BY_ROLE[roleKey] ??
+        HOURLY_RATE_BY_LEVEL[level] ??
+        HOURLY_RATE_BY_LEVEL.Medior
+      const rate =
+        Number.isFinite(memberRate) && memberRate > 0
+          ? memberRate
+          : fallbackRate
+      totalUsd += hours * rate
+    }
+  }
+  return Math.round(totalUsd * 100)
 }
 
 /** Calculate task cost for an assigned team member */
@@ -317,9 +389,16 @@ export type PhaseRow = Prettify<
   } & TaskFormValues
 >
 
+export type PhaseType = "setup" | "recurring" | "ongoing"
+export type RecurrenceSchedule = "weekly" | "monthly" | "quarterly"
+
 export interface Phase {
   phaseName?: string
   rows?: PhaseRow[]
+  // Service-scope only. Undefined on project (flat) phases.
+  phaseType?: PhaseType
+  recurrenceSchedule?: RecurrenceSchedule
+  recurrenceCount?: number
 }
 
 // ─── Table meta augmentation ────────────────────────────────────────────
@@ -376,6 +455,204 @@ const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
   return `Day ${startDay} - Day ${endDay}`
 }
 
+// Setup phases show their TOTAL duration (e.g. "2 weeks"), not a day range.
+export const getPhaseDurationLabel = (phases: Phase[], phaseIndex: number) => {
+  const days = getPhaseDurationInDays(phases[phaseIndex])
+  if (days <= 0) return getPhaseDayRangeLabel(phases, phaseIndex)
+  if (days % 7 === 0) {
+    const weeks = days / 7
+    return `${weeks} ${formatDurationUnit(weeks, "weeks")}`
+  }
+  return `${days} ${formatDurationUnit(days, "days")}`
+}
+
+const RECURRENCE_LABEL: Record<RecurrenceSchedule, string> = {
+  weekly: "Weekly",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+}
+
+// Service phases are titled by their type (Setup / Recurring / Ongoing) rather
+// than "Phase One/Two" (design: whole table.png).
+export const PHASE_TYPE_TITLE: Record<PhaseType, string> = {
+  setup: "Setup",
+  recurring: "Recurring",
+  ongoing: "Ongoing",
+}
+
+// Recurring-phase editor (docs: Scope edit.png) — schedule + repeats count.
+const RecurrenceEditor = ({
+  schedule,
+  count,
+  onChange,
+}: {
+  schedule?: RecurrenceSchedule
+  count?: number
+  onChange: (schedule: RecurrenceSchedule, count: number) => void
+}) => {
+  const [open, setOpen] = useState(false)
+  const [draftSchedule, setDraftSchedule] = useState<RecurrenceSchedule>(
+    schedule ?? "monthly"
+  )
+  const [draftCount, setDraftCount] = useState<number>(count ?? 1)
+  useEffect(() => {
+    if (open) {
+      setDraftSchedule(schedule ?? "monthly")
+      setDraftCount(count ?? 1)
+    }
+  }, [open, schedule, count])
+
+  const value =
+    schedule && count
+      ? `${RECURRENCE_LABEL[schedule]}, ${count} time${count > 1 ? "s" : ""}`
+      : null
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400 focus-visible:outline-none"
+        >
+          <RefreshCcw05 className="size-3.5 shrink-0" style={{ color: "#12B76A" }} />
+          {value ? (
+            <>
+              <span>Recurs:</span>
+              <span
+                className="rounded-md px-2 py-0.5 text-[13px] font-medium"
+                style={{ backgroundColor: "#F2F4F7", color: "#344054" }}
+              >
+                {value}
+              </span>
+            </>
+          ) : (
+            <span>Set recurrence</span>
+          )}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-[360px] p-6">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label size="sm" className="text-dark-blue-400">
+              Recurring schedule
+            </Label>
+            <Listbox value={draftSchedule} onChange={setDraftSchedule}>
+              <ListboxButton>
+                {({ value }) => (
+                  <span className="text-gray-black">
+                    {RECURRENCE_LABEL[value as RecurrenceSchedule]}
+                  </span>
+                )}
+              </ListboxButton>
+              <ListboxOptions>
+                <ListboxOption value="weekly">Weekly</ListboxOption>
+                <ListboxOption value="monthly">Monthly</ListboxOption>
+                <ListboxOption value="quarterly">Quarterly</ListboxOption>
+              </ListboxOptions>
+            </Listbox>
+          </div>
+          <div className="space-y-1.5">
+            <Label size="sm" className="text-dark-blue-400">
+              Repeats
+            </Label>
+            <div className="flex items-center rounded-md border border-gray-300">
+              <button
+                type="button"
+                className="px-3.5 py-2.5 text-gray-500 hover:text-gray-900 focus-visible:outline-none"
+                onClick={() => setDraftCount((v) => Math.max(1, v - 1))}
+              >
+                −
+              </button>
+              <span className="flex-auto text-center text-sm text-gray-900">
+                {draftCount} times
+              </span>
+              <button
+                type="button"
+                className="px-3.5 py-2.5 text-gray-500 hover:text-gray-900 focus-visible:outline-none"
+                onClick={() => setDraftCount((v) => Math.min(99, v + 1))}
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-end gap-x-3 pt-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outlined" visual="gray">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={() => {
+                onChange(draftSchedule, draftCount)
+                setOpen(false)
+              }}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Phase-header meta: service phases show a type chip (Setup duration /
+// Recurs editor / Ongoing); project phases show the Day range.
+export const PhaseHeaderMeta = ({
+  phases,
+  index,
+  onRecurrenceChange,
+}: {
+  phases: Phase[]
+  index: number
+  onRecurrenceChange: (schedule: RecurrenceSchedule, count: number) => void
+}) => {
+  const phase = phases[index]
+  if (phase?.phaseType === "ongoing") {
+    return (
+      <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-4 shrink-0"
+          style={{ color: "#12B76A" }}
+          aria-hidden="true"
+        >
+          <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+        </svg>
+        Ongoing
+      </span>
+    )
+  }
+  if (phase?.phaseType === "recurring") {
+    return (
+      <RecurrenceEditor
+        schedule={phase.recurrenceSchedule}
+        count={phase.recurrenceCount}
+        onChange={onRecurrenceChange}
+      />
+    )
+  }
+  if (phase?.phaseType === "setup") {
+    return (
+      <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] font-semibold text-dark-blue-400">
+        <Calendar className="size-3.5 shrink-0" style={{ color: "#12B76A" }} />
+        {getPhaseDurationLabel(phases, index)}
+      </span>
+    )
+  }
+  return (
+    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold whitespace-nowrap">
+      {getPhaseDayRangeLabel(phases, index)}
+    </span>
+  )
+}
+
 const getPhaseSearchTargetId = (phaseIndex: number) =>
   `project-scope-phase-${phaseIndex}`
 
@@ -401,70 +678,56 @@ const numberToWord = (num: number) => {
   return words[num] || num + 1 // fallback for numbers > 10
 }
 
-// ─── Country code lookup (static fallback for flags before API loads) ────
-const COUNTRY_CODES: Record<string, string> = {
-  "United States": "us",
-  "United Kingdom": "gb",
-  Canada: "ca",
-  India: "in",
-  Germany: "de",
-  Australia: "au",
-  Brazil: "br",
-  Philippines: "ph",
-  Ukraine: "ua",
-  Poland: "pl",
-  France: "fr",
-  Japan: "jp",
-  "South Korea": "kr",
-  China: "cn",
-  Mexico: "mx",
-  Spain: "es",
-  Italy: "it",
-  Netherlands: "nl",
-  Sweden: "se",
-  Norway: "no",
-  Denmark: "dk",
-  Finland: "fi",
-  Switzerland: "ch",
-  Austria: "at",
-  Belgium: "be",
-  Ireland: "ie",
-  "New Zealand": "nz",
-  Singapore: "sg",
-  Israel: "il",
-  Portugal: "pt",
-  Argentina: "ar",
-  Colombia: "co",
-  Chile: "cl",
-  Romania: "ro",
-  "Czech Republic": "cz",
-  Hungary: "hu",
-  Turkey: "tr",
-  Thailand: "th",
-  Vietnam: "vn",
-  Indonesia: "id",
-  Malaysia: "my",
-  Nigeria: "ng",
-  Kenya: "ke",
-  "South Africa": "za",
-  Egypt: "eg",
-  Pakistan: "pk",
-  Bangladesh: "bd",
-  "Sri Lanka": "lk",
-  Russia: "ru",
-  Estonia: "ee",
-  Latvia: "lv",
-  Lithuania: "lt",
-  Croatia: "hr",
-  Serbia: "rs",
-  Bulgaria: "bg",
-  Greece: "gr",
+// Member locations are free-text and inconsistent: "City, Country"
+// (Munich, Germany), "City, State, Country" (San Francisco, California,
+// United States), US "City, State" with no country (New York, NY), or a
+// bare country (USA). This column is country-based (flag + country), so
+// reduce any of those to a country name COUNTRY_CODES understands.
+//
+// "Georgia" is intentionally NOT treated as a US state — it collides with the
+// country of the same name, so we default the ambiguous case to the country.
+const US_STATES = new Set<string>([
+  "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id",
+  "il", "in", "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms",
+  "mo", "mt", "ne", "nv", "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok",
+  "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv",
+  "wi", "wy", "dc",
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+  "connecticut", "delaware", "florida", "hawaii", "idaho", "illinois",
+  "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
+  "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
+  "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+  "new mexico", "new york", "north carolina", "north dakota", "ohio",
+  "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
+  "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+  "washington", "west virginia", "wisconsin", "wyoming",
+])
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "United States",
+  "u.s.": "United States",
+  "u.s.a.": "United States",
+  "united states of america": "United States",
+  us: "United States",
+  uk: "United Kingdom",
+  "u.k.": "United Kingdom",
+  "great britain": "United Kingdom",
+  uae: "United Arab Emirates",
 }
 
-function getStaticFlagUrl(countryName: string): string | null {
-  const code = COUNTRY_CODES[countryName]
-  if (code) return `https://flagcdn.com/36x27/${code}.png`
-  return getFlagUrlByName(countryName)
+export function countryFromLocation(location?: string | null): string {
+  const parts = (location ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!parts.length) return ""
+
+  const last = parts[parts.length - 1]
+  const key = last.toLowerCase()
+
+  if (US_STATES.has(key)) return "United States"
+  if (COUNTRY_ALIASES[key]) return COUNTRY_ALIASES[key]
+  return last
 }
 
 // ─── Roles ──────────────────────────────────────────────────────────────
@@ -713,13 +976,18 @@ const PhaseNameDialog = ({
   open,
   defaultName,
   placeholder = "Enter Phase Name",
+  showPhaseType = false,
+  disabledTypes = [],
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
+  onAddPhaseName: (phaseName: string, phaseType?: PhaseType) => void
   defaultName?: string
   placeholder?: string
+  showPhaseType?: boolean
+  disabledTypes?: PhaseType[]
 }) => {
+  const [phaseType, setPhaseType] = useState<PhaseType | undefined>(undefined)
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -740,12 +1008,15 @@ const PhaseNameDialog = ({
   useEffect(() => {
     if (isOpen) {
       reset({ name: defaultName ?? "" })
+      setPhaseType(undefined)
     }
   }, [isOpen, defaultName, reset])
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
     const { name } = values
-    onAddPhaseName(name)
+    // Services require a phase type before the phase can be created.
+    if (showPhaseType && !phaseType) return
+    onAddPhaseName(name, showPhaseType ? phaseType : undefined)
 
     toggleIsOpen(false)
   }
@@ -770,7 +1041,14 @@ const PhaseNameDialog = ({
                 id="phase-name"
                 className="text-gray-900"
                 placeholder={placeholder}
-                {...register("name")}
+                {...register("name", {
+                  onChange: (e) => {
+                    const v = e.target.value
+                    if (v && v[0] !== v[0].toUpperCase()) {
+                      e.target.value = v.charAt(0).toUpperCase() + v.slice(1)
+                    }
+                  },
+                })}
                 isInvalid={hookFormHasError({ errors, name: "name" })}
               />
               <HookFormErrorMessage
@@ -779,6 +1057,41 @@ const PhaseNameDialog = ({
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
+
+            {showPhaseType && (
+              <div className="space-y-1.5 mt-4">
+                <Label size="sm" className="text-dark-blue-400">
+                  Phase Type
+                </Label>
+                <Listbox value={phaseType} onChange={setPhaseType}>
+                  <ListboxButton placeholder="Select phase type">
+                    {({ value }) => (
+                      <span className="text-gray-black">
+                        {PHASE_TYPE_TITLE[value as PhaseType]}
+                      </span>
+                    )}
+                  </ListboxButton>
+                  <ListboxOptions>
+                    <ListboxOption
+                      value="setup"
+                      disabled={disabledTypes.includes("setup")}
+                    >
+                      Setup
+                    </ListboxOption>
+                    <ListboxOption value="recurring">Recurring</ListboxOption>
+                    <ListboxOption
+                      value="ongoing"
+                      disabled={disabledTypes.includes("ongoing")}
+                    >
+                      Ongoing
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                <p className="text-xs font-light text-gray-500">
+                  Helps organize tasks by timing and frequency
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="mt-8 grid gap-x-3">
               <DialogClose asChild>
@@ -1196,6 +1509,7 @@ const MoreDropdown = (props: {
   onInsertAbove: () => void
   onDuplicatePhase: () => void
   onSwapPhases: (to: number) => void
+  phaseType?: PhaseType
 }) => {
   const {
     openDeletePhaseDialog,
@@ -1205,7 +1519,10 @@ const MoreDropdown = (props: {
     onInsertBelow,
     onDuplicatePhase,
     onSwapPhases: onSwapPhasesProp,
+    phaseType,
   } = props
+  // Setup and Ongoing are position-locked singletons (docs: whole table.png).
+  const locked = phaseType === "setup" || phaseType === "ongoing"
   const arrayNavigator = useArrayNavigationContext()
   const selectedIndex = arrayNavigator?.selectedIndex
 
@@ -1230,19 +1547,19 @@ const MoreDropdown = (props: {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
-          disabled={!arrayNavigator?.canMoveLeft}
+          disabled={locked || !arrayNavigator?.canMoveLeft}
           onSelect={arrayNavigator?.moveToLeft}
         >
           <ArrowUp className="h-4 w-4" /> Move Up
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={!arrayNavigator?.canMoveRight}
+          disabled={locked || !arrayNavigator?.canMoveRight}
           onSelect={arrayNavigator?.moveToRight}
         >
           <ArrowDown className="h-4 w-4" /> Move Down
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onDuplicatePhase}>
+        <DropdownMenuItem disabled={locked} onClick={onDuplicatePhase}>
           <Copy className="h-4 w-4" /> Duplicate Phase
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -1415,7 +1732,7 @@ const CUSTOM_PERIODS = [
   "per quarter",
 ] as const
 
-function AddRoleDialog({
+export function AddRoleDialog({
   open,
   onOpenChange,
   roles,
@@ -1597,7 +1914,7 @@ function AddRoleDialog({
   )
 }
 
-function RolePicker({
+export function RolePicker({
   teamMembers,
   roles,
   onSelectMember,
@@ -1779,7 +2096,6 @@ const columns = [
           role: tm.role,
           assignedMember: tm,
           location: tm.location ?? "",
-          experience: tm.experience ?? "",
         })
         setPopoverOpen(false)
       }
@@ -1905,9 +2221,8 @@ const columns = [
       const assigned = original.assignedMember
       const currentValue = original.location ?? ""
       if (assigned) {
-        const flagUrl = assigned.location
-          ? getStaticFlagUrl(assigned.location)
-          : null
+        const country = countryFromLocation(original.location)
+        const flagUrl = country ? getStaticFlagUrl(country) : null
         return (
           <TableCell className="px-3 py-4">
             <span className="inline-flex items-center gap-x-1.5 px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
@@ -1916,11 +2231,11 @@ const columns = [
                   <img
                     className="w-full h-full object-cover"
                     src={flagUrl}
-                    alt={assigned.location || ""}
+                    alt={country}
                   />
                 </span>
               )}
-              {assigned.location || "—"}
+              {country || "—"}
             </span>
           </TableCell>
         )
@@ -1949,7 +2264,7 @@ const columns = [
         return (
           <TableCell className="py-4 px-6">
             <span className="inline-flex items-center px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
-              {assigned.experience || "—"}
+              {original.experience || "—"}
             </span>
           </TableCell>
         )
@@ -2321,6 +2636,19 @@ export function ScopeBuilder({
     [setPhases]
   )
 
+  const updatePhaseRecurrence = useCallback(
+    (index: number, schedule: RecurrenceSchedule, count: number) => {
+      setPhases((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { ...p, recurrenceSchedule: schedule, recurrenceCount: count }
+            : p
+        )
+      )
+    },
+    [setPhases]
+  )
+
   // Helper to show success toast with Undo
   const pushSuccess = useCallback(
     (label: string, onUndo?: () => void) => {
@@ -2342,11 +2670,11 @@ export function ScopeBuilder({
   )
 
   const onAddPhaseName = useCallback(
-    (rawPhaseName: string) => {
-      const phaseName = rawPhaseName
-        .trim()
-        .toLowerCase()
-        .replace(/\b\w/g, (c) => c.toUpperCase())
+    (rawPhaseName: string, phaseType?: PhaseType) => {
+      const trimmedName = rawPhaseName.trim()
+      const phaseName = trimmedName
+        ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+        : trimmedName
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -2397,14 +2725,42 @@ export function ScopeBuilder({
           editingPhaseIndex >= 0 &&
           editingPhaseIndex < next.length
 
-        insertedPhaseIndex =
-          addTo === "start" && hasTargetPhase
-            ? editingPhaseIndex
-            : addTo === "below" && hasTargetPhase
-              ? editingPhaseIndex + 1
-              : next.length
+        if (phaseType) {
+          // Service ordering: Setup first, Ongoing last, Recurring before Ongoing.
+          const ongoingIdx = next.findIndex((p) => p.phaseType === "ongoing")
+          insertedPhaseIndex =
+            phaseType === "setup"
+              ? 0
+              : phaseType === "ongoing"
+                ? next.length
+                : ongoingIdx >= 0
+                  ? ongoingIdx
+                  : next.length
+        } else {
+          insertedPhaseIndex =
+            addTo === "start" && hasTargetPhase
+              ? editingPhaseIndex
+              : addTo === "below" && hasTargetPhase
+                ? editingPhaseIndex + 1
+                : next.length
+        }
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(
+          insertedPhaseIndex,
+          0,
+          phaseType === "recurring"
+            ? {
+                phaseName,
+                phaseType,
+                // Sensible defaults so the scope stays valid/saveable until
+                // the seller edits the "Recurs" chip.
+                recurrenceSchedule: "monthly",
+                recurrenceCount: 1,
+              }
+            : phaseType
+              ? { phaseName, phaseType }
+              : { phaseName }
+        )
         return next
       })
 
@@ -2822,7 +3178,7 @@ export function ScopeBuilder({
         type="multiple"
         className="flex-auto space-y-3"
       >
-        {phases.map(({ phaseName, rows }, index) => (
+        {phases.map(({ phaseName, rows, phaseType }, index) => (
           <ArrayNavigator key={index} value={phases} index={index}>
             {rows ? (
               <AccordionItem value={`item-${index}`} asChild>
@@ -2845,12 +3201,14 @@ export function ScopeBuilder({
                       )
                     }}
                   >
-                    <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                      <div className="inline-flex items-center gap-x-3.5">
+                    <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                      <div className="inline-flex items-center gap-x-3.5 min-w-0">
                         <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
 
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase {numberToWord(index)}{" "}
+                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900 min-w-0 truncate">
+                          {phaseType
+                            ? PHASE_TYPE_TITLE[phaseType]
+                            : `Phase ${numberToWord(index)}`}{" "}
                           {phaseName ? (
                             <button
                               type="button"
@@ -2884,16 +3242,21 @@ export function ScopeBuilder({
                         </span>
                       </div>
 
-                      <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          {getPhaseDayRangeLabel(phases, index)}
-                        </span>
+                      <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                        <PhaseHeaderMeta
+                          phases={phases}
+                          index={index}
+                          onRecurrenceChange={(s, c) =>
+                            updatePhaseRecurrence(index, s, c)
+                          }
+                        />
                       </div>
                     </div>
 
-                    <div className="flex gap-x-4 items-center">
+                    <div className="flex gap-x-4 items-center shrink-0">
                       <MoreDropdown
                         onSwapPhases={(to) => handleSwapPhases(index, to)}
+                        phaseType={phaseType}
                         openPhaseDialog={() =>
                           dispatch({ type: "EDIT", payload: index })
                         }
@@ -2967,12 +3330,14 @@ export function ScopeBuilder({
                       )
                     }}
                   >
-                    <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                      <div className="inline-flex items-center gap-x-3.5">
+                    <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                      <div className="inline-flex items-center gap-x-3.5 min-w-0">
                         <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
 
-                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                          Phase {numberToWord(index)}{" "}
+                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900 min-w-0 truncate">
+                          {phaseType
+                            ? PHASE_TYPE_TITLE[phaseType]
+                            : `Phase ${numberToWord(index)}`}{" "}
                           {phaseName ? (
                             <button
                               type="button"
@@ -3006,16 +3371,21 @@ export function ScopeBuilder({
                         </span>
                       </div>
 
-                      <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                        <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                          {getPhaseDayRangeLabel(phases, index)}
-                        </span>
+                      <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                        <PhaseHeaderMeta
+                          phases={phases}
+                          index={index}
+                          onRecurrenceChange={(s, c) =>
+                            updatePhaseRecurrence(index, s, c)
+                          }
+                        />
                       </div>
                     </div>
 
-                    <div className="flex gap-x-4 items-center">
+                    <div className="flex gap-x-4 items-center shrink-0">
                       <MoreDropdown
                         onSwapPhases={(to) => handleSwapPhases(index, to)}
+                        phaseType={phaseType}
                         openPhaseDialog={() =>
                           dispatch({ type: "EDIT", payload: index })
                         }
@@ -3097,6 +3467,14 @@ export function ScopeBuilder({
         open={phaseDialogState.open}
         onAddPhaseName={onAddPhaseName}
         defaultName={currentPhaseName}
+        showPhaseType={
+          scopeType === "service" && phaseDialogState.action !== "EDIT"
+        }
+        disabledTypes={
+          phases
+            .map((p) => p.phaseType)
+            .filter((t): t is PhaseType => !!t)
+        }
         placeholder={
           phaseDialogState.action === "EDIT"
             ? "Edit Phase name"

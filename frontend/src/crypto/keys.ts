@@ -161,6 +161,56 @@ async function loadPublicKeyPem(userId: string): Promise<string | null> {
 }
 
 /**
+ * Verify a private key (PKCS8) and public key (SPKI) are a matching RSA-OAEP
+ * pair via an encrypt-with-public / decrypt-with-private round-trip. Returns
+ * false on any parse or crypto failure. Used to reject a mismatched keypair
+ * before it gets persisted — a mismatch is exactly what surfaces as
+ * "Could not decrypt this conversation key".
+ */
+export async function keypairMatches(
+  privPem: string,
+  pubPem: string
+): Promise<boolean> {
+  try {
+    const pub = await importPublicKey(pubPem)
+    const priv = await importPrivateKey(privPem)
+    const probe = window.crypto.getRandomValues(new Uint8Array(16))
+    const ct = await window.crypto.subtle.encrypt(
+      { name: "RSA-OAEP" },
+      pub,
+      probe
+    )
+    const pt = new Uint8Array(
+      await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, priv, ct)
+    )
+    if (pt.length !== probe.length) return false
+    for (let i = 0; i < probe.length; i++) {
+      if (pt[i] !== probe[i]) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Re-push the current user's LOCAL public key to messaging-service. This forces
+ * the server to rewrap every conversation key to the keypair the browser
+ * actually holds (storePublicKey → rewrapConversationKeysForUser), recovering
+ * threads whose wrapped key drifted out of sync with our private key.
+ */
+export async function republishPublicKey(userId?: string): Promise<void> {
+  const resolvedUserId = userId ?? getCurrentUser()?.id
+  if (!resolvedUserId) return
+  const pubPem = await loadPublicKeyPem(resolvedUserId)
+  if (!pubPem) return
+  await apiFetch("/messaging/public-key", {
+    method: "POST",
+    body: { publicKey: pubPem },
+  })
+}
+
+/**
  * Ensures a usable RSA keypair exists for the current user in IndexedDB.
  *
  * Flow (per spec doc "Seamless Key Recovery"):
@@ -269,21 +319,37 @@ export async function ensureEncryptionKeysExist(userId?: string) {
 
       if (encryptedPrivateKey) {
         const privPem = await decryptWithKEK(encryptedPrivateKey, kek)
-        // Validate and store in IndexedDB
+        // Validate the restored private key parses
         await importPrivateKey(privPem)
-        await savePrivateKeyPem(userId, privPem)
 
-        // We can't derive public from private with WebCrypto, so fetch from server
+        // We can't derive public from private with WebCrypto, so fetch the
+        // public key messaging-service uses to wrap conversation keys.
         const { publicKey: serverPubKey } = await apiFetch<{
           publicKey: string
         }>("/messaging/get-public-key")
-        if (serverPubKey) {
-          await importPublicKey(serverPubKey)
+
+        // The private-key backup (user-keys service) and the public-key
+        // registry (messaging-service) are written independently and can
+        // drift. Persisting a mismatched pair is exactly what produces
+        // "Could not decrypt this conversation key", so only trust the
+        // restored pair if a wrap/unwrap round-trip actually succeeds.
+        const pairOk = serverPubKey
+          ? await keypairMatches(privPem, serverPubKey).catch(() => false)
+          : false
+
+        if (pairOk) {
+          await savePrivateKeyPem(userId, privPem)
           await savePublicKeyPem(userId, serverPubKey)
+          console.log("Restored encryption keys from server backup")
+          return
         }
 
-        console.log("Restored encryption keys from server backup")
-        return
+        console.warn(
+          "Restored private key does not match messaging public key (backup stores drifted); regenerating a fresh keypair to re-establish a consistent pair"
+        )
+        // fall through to fresh keypair generation below — pushing a new
+        // public key triggers a server-side rewrap of conversation keys from
+        // their stored raw AES material, recovering all 1:1 threads.
       }
     } catch (err) {
       console.warn(

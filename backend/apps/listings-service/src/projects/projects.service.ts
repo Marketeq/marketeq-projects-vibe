@@ -1,12 +1,14 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
+import { ClientProxy } from '@nestjs/microservices';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
@@ -16,15 +18,79 @@ import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
+import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+  private static readonly SUGGESTED_TTL_MS = 60 * 60 * 1000;
+  private static readonly SUGGESTED_CACHE_MAX = 500;
+  private readonly suggestedQuestionsCache = new Map<
+    string,
+    { questions: string[]; expiresAt: number }
+  >();
+
   constructor(
     @InjectRepository(Project)
     private readonly repo: Repository<Project>,
     @Inject(DELIVERABLES_ADAPTER)
     private readonly deliverablesAdapter: DeliverablesAdapter,
+    @Inject('ALGOLIA_CLIENT')
+    private readonly algoliaClient: ClientProxy,
+    @Inject(FAQ_ADAPTER)
+    private readonly faqAdapter: FaqAdapter,
   ) {}
+
+  async getSuggestedQuestions(projectId: string): Promise<string[]> {
+    const cached = this.suggestedQuestionsCache.get(projectId);
+    if (cached && cached.expiresAt > Date.now()) return cached.questions;
+
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) return [];
+
+    const scope = (project.scope ?? []).map((phase: any) => ({
+      phaseName: phase?.title ?? phase?.phaseName ?? '',
+      tasks: (phase?.tasks ?? [])
+        .map((t: any) => t?.title ?? t?.name ?? '')
+        .filter(Boolean),
+    }));
+
+    const questions = await this.faqAdapter.suggestQuestions({
+      title: project.title,
+      listingType: (project as any).listingType,
+      categories: project.categories,
+      skills: project.skills,
+      tags: project.tags,
+      durationMonths: project.durationMonths,
+      shortDescription: project.shortDescription,
+      fullDescription: project.description,
+      scope,
+    });
+
+    const result = questions.slice(0, 10);
+    this.setSuggestedCache(projectId, result);
+    return result;
+  }
+
+  private setSuggestedCache(projectId: string, questions: string[]): void {
+    const now = Date.now();
+    if (this.suggestedQuestionsCache.size >= ProjectsService.SUGGESTED_CACHE_MAX) {
+      for (const [key, value] of this.suggestedQuestionsCache) {
+        if (value.expiresAt <= now) this.suggestedQuestionsCache.delete(key);
+      }
+      while (
+        this.suggestedQuestionsCache.size >= ProjectsService.SUGGESTED_CACHE_MAX
+      ) {
+        const oldest = this.suggestedQuestionsCache.keys().next().value;
+        if (oldest === undefined) break;
+        this.suggestedQuestionsCache.delete(oldest);
+      }
+    }
+    this.suggestedQuestionsCache.set(projectId, {
+      questions,
+      expiresAt: now + ProjectsService.SUGGESTED_TTL_MS,
+    });
+  }
 
   async findAll(status = ListingStatus.Published) {
     const items = await this.repo.find({
@@ -62,10 +128,12 @@ export class ProjectsService {
 
     return {
       ...this.shapeProject(item),
+      ownerId: item.userId ? String(item.userId) : null,
       similarProjects,
       relatedCategories: this.getRelatedCategories(item),
       relatedSkills: this.getRelatedSkills(item),
       team,
+      isTemporarilyUnavailable: team.length === 0,
       projectHistoryRatings,
     };
   }
@@ -81,6 +149,16 @@ export class ProjectsService {
       : row?.userId ? [row.userId] : [];
     if (!memberIds.length) return [];
 
+    const statusRows: Array<{ userId: string; status: string }> = await this.repo.manager.query(
+      `SELECT "userId"::text, "status" FROM listings.project_members WHERE "projectId" = $1`,
+      [project.id],
+    );
+    const inactiveIds = new Set(
+      statusRows.filter((r) => r.status === 'Inactive').map((r) => r.userId),
+    );
+    const visibleIds = memberIds.filter((id) => !inactiveIds.has(id));
+    if (!visibleIds.length) return [];
+
     const [users, skillRows, langRows] = await Promise.all([
       this.repo.manager.query<Array<{
         id: string; firstName: string; lastName: string; username: string | null;
@@ -88,15 +166,15 @@ export class ProjectsService {
       }>>(
         `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location
          FROM user_service.users WHERE id = ANY($1::uuid[])`,
-        [memberIds],
+        [visibleIds],
       ),
       this.repo.manager.query<Array<{ userId: string; name: string }>>(
         `SELECT "userId"::text, name FROM user_service.skills WHERE "userId" = ANY($1::uuid[])`,
-        [memberIds],
+        [visibleIds],
       ),
       this.repo.manager.query<Array<{ userId: string; name: string }>>(
         `SELECT "userId"::text, name FROM user_service.languages WHERE "userId" = ANY($1::uuid[])`,
-        [memberIds],
+        [visibleIds],
       ),
     ]);
 
@@ -181,6 +259,7 @@ export class ProjectsService {
     });
 
     const saved = await this.repo.save(item);
+    this.emitAlgoliaUpsert(saved);
     return { ...this.shapeProject(saved), _contentType: 'project' };
   }
 
@@ -207,6 +286,7 @@ export class ProjectsService {
     });
 
     const saved = await this.repo.save(item);
+    this.emitAlgoliaUpsert(saved);
     return this.shapeProject(saved);
   }
 
@@ -234,6 +314,8 @@ export class ProjectsService {
     }
 
     await this.repo.update(id, writable);
+    const updated = await this.repo.findOne({ where: { id } });
+    if (updated) this.emitAlgoliaUpsert(updated);
     return this.findOne(id);
   }
 
@@ -242,6 +324,8 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     await this.repo.update(id, { status: ListingStatus.Published });
+    const published = await this.repo.findOne({ where: { id } });
+    if (published) this.emitAlgoliaUpsert(published);
     return this.findOne(id);
   }
 
@@ -250,12 +334,38 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     await this.repo.delete(id);
+    this.algoliaClient.emit<void>('listing.deleted', { id }).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit listing.deleted for ${id}: ${err.message}`),
+    });
   }
 
   private assertOwnership(project: Project, userId: string): void {
     if (!userId || project.createdBy !== userId) {
       throw new ForbiddenException('You do not have permission to modify this project');
     }
+  }
+
+  private emitAlgoliaUpsert(project: Project): void {
+    const payload = {
+      id: String(project.id),
+      title: project.title,
+      description: project.shortDescription ?? project.description?.substring(0, 500) ?? null,
+      category: project.category ?? project.categories?.[0] ?? null,
+      categories: project.categories ?? [],
+      subcategories: project.subcategories ?? [],
+      skills: project.skills ?? [],
+      tags: project.tags ?? [],
+      industries: project.industry ?? [],
+      budget: project.budget != null ? Number(project.budget) : null,
+      status: project.status,
+      slug: project.slug,
+    };
+    const event = project.status === ListingStatus.Published ? 'listing.updated' : 'listing.created';
+    this.algoliaClient.emit<void>(event, payload).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit ${event} for ${project.id}: ${err.message}`),
+    });
   }
 
   private normalizeRequiredText(value: unknown, message: string): string {
@@ -372,6 +482,7 @@ export class ProjectsService {
       updatedAt: project.updatedAt,
       budget,
       priceMin: budget,
+      budgetUsdCents: budget != null ? Math.round(budget * 100) : null,
       estimatedHours: project.estimatedHours ?? null,
       duration: project.duration ?? null,
       mediaUrls: this.resolveMediaUrls(project.mediaUrls, project.categories ?? project.category),

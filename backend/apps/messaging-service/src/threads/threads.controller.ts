@@ -36,8 +36,8 @@ export class ThreadsController {
   // --- Static routes (must come before /:id) ---
 
   @Get()
-  getUserThreads(@Req() req: any) {
-    return this.threadsService.getUserThreads(req.user?.id);
+  getUserThreads(@Req() req: any, @Query('projectId') projectId?: string) {
+    return this.threadsService.getUserThreads(req.user?.id, projectId);
   }
 
   @Get('ably-token')
@@ -57,6 +57,18 @@ export class ThreadsController {
     @Req() req: any,
   ) {
     return this.threadsService.create(body.participantIds, body.isGroup, body.groupName, req.user?.id);
+  }
+
+  @Post('project')
+  openProjectThread(
+    @Body() body: { projectId: string; teamMemberIds: string[] },
+    @Req() req: any,
+  ) {
+    return this.threadsService.getOrCreateProjectThread(
+      body.projectId,
+      body.teamMemberIds ?? [],
+      req.user?.id,
+    );
   }
 
   // Custom lists

@@ -34,6 +34,8 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
   private readonly logger = new Logger(DeliverablesAdapterHuggingFace.name);
   private readonly model: string;
   private readonly apiKey: string | undefined;
+  private readonly groqApiKey: string | undefined;
+  private readonly groqModel: string;
   private readonly timeoutMs: number;
 
   constructor(
@@ -45,6 +47,9 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
       configService.get<string>('HF_TEXT_GEN_MODEL') ||
       'mistralai/Mistral-7B-Instruct-v0.3';
     this.apiKey = configService.get<string>('HUGGINGFACE_API_KEY');
+    this.groqApiKey = configService.get<string>('GROQ_API_KEY');
+    this.groqModel =
+      configService.get<string>('GROQ_MODEL') || 'llama-3.1-8b-instant';
     this.timeoutMs = Number(
       configService.get<string>('DELIVERABLES_HF_TIMEOUT_MS') ?? 10000,
     );
@@ -54,7 +59,7 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
     scope: ScopePhaseInput[],
     projectContext?: ProjectContext,
   ): Promise<DeliverableGroup[]> {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.groqApiKey) {
       return this.heuristic.deriveDeliverables(scope, projectContext);
     }
 
@@ -68,15 +73,13 @@ export class DeliverablesAdapterHuggingFace extends DeliverablesAdapter {
         const items = await this.generate(prompt);
 
         if (items && items.length >= 3) {
-          // Pad to exactly 6 if model returned fewer
-          const padded = [...items];
-          while (padded.length < 6) {
-            padded.push(`${phase.phaseName} Deliverable ${padded.length + 1}`);
-          }
+          // Doc: the number of deliverables per phase is not fixed (min 3).
+          // Use the model's task-derived items as-is — never pad with the
+          // phase name.
           results.push({
             phaseLabel: `Phase ${i + 1}`,
             phaseName: phase.phaseName,
-            items: padded.slice(0, 6),
+            items: items.slice(0, 6),
           });
         } else {
           // LLM returned too few items — fall back for this phase.
@@ -143,33 +146,39 @@ Return ONLY a JSON array of 6 strings.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
+    const useGroq = !!this.groqApiKey;
+    const url = useGroq
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : `https://router.huggingface.co/hf-inference/models/${this.model}/v1/chat/completions`;
+    const apiKey = useGroq ? this.groqApiKey : this.apiKey;
+    const model = useGroq ? this.groqModel : this.model;
+
     try {
-      const res = await fetch(
-        `https://router.huggingface.co/hf-inference/models/${this.model}/v1/chat/completions`,
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${this.apiKey}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages: [
-              {
-                role: 'user',
-                content: prompt,
-              },
-            ],
-            max_tokens: 200,
-            temperature: 0.3,
-          }),
-          signal: controller.signal,
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
         },
-      );
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          max_tokens: 200,
+          temperature: 0.3,
+        }),
+        signal: controller.signal,
+      });
       clearTimeout(timer);
 
       if (!res.ok) {
-        this.logger.warn(`HF API returned ${res.status}: ${await res.text()}`);
+        this.logger.warn(
+          `${useGroq ? 'Groq' : 'HF'} API returned ${res.status}: ${await res.text()}`,
+        );
         return null;
       }
 

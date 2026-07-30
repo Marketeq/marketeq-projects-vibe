@@ -42,12 +42,13 @@ export class ScheduleService {
       return {
         scheduleId: null, isActive: true, frequency: 'weekly',
         dayOfWeek: 1, dayOfMonth: null, customIntervalDays: null,
+        startDate: null, endDate: null,
         thresholdUsd: '50.00', reserveUsd: '0.00',
         splitEnabled: false,
         primarySplitPercent: 100.00,
         secondarySplitPercent: 0,
         primaryMethod: null, secondaryMethod: null,
-        nextRunAt: null, lastRunAt: null,
+        nextRunAt: null, lastRunAt: null, updatedAt: null,
       };
     }
 
@@ -67,6 +68,8 @@ export class ScheduleService {
       dayOfWeek: schedule.dayOfWeek,
       dayOfMonth: schedule.dayOfMonth,
       customIntervalDays: schedule.customIntervalDays,
+      startDate: schedule.startDate?.toISOString() ?? null,
+      endDate: schedule.endDate?.toISOString() ?? null,
       thresholdUsd: schedule.thresholdUsd,
       reserveUsd: schedule.reserveUsd,
       splitEnabled: schedule.splitEnabled,
@@ -89,6 +92,7 @@ export class ScheduleService {
       splitDisabledAt: schedule.splitDisabledAt?.toISOString() ?? null,
       nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
       lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
+      updatedAt: schedule.updatedAt?.toISOString() ?? null,
     };
   }
 
@@ -103,6 +107,19 @@ export class ScheduleService {
       if (isNaN(threshold) || threshold < 50) {
         throw new PayoutError('Minimum threshold is $50.',
           HttpStatus.BAD_REQUEST, 'ERR_SCHEDULE_THRESHOLD_BELOW_MINIMUM');
+      }
+    }
+
+    // US-72: end date, if set, must be after start date (whichever of the
+    // two the request actually changes — falls back to whatever's already
+    // saved on the schedule for the one not being changed).
+    if (dto.startDate !== undefined || dto.endDate !== undefined) {
+      const existing = await this.scheduleRepo.findOne({ where: { contractorId } });
+      const effectiveStart = dto.startDate !== undefined ? new Date(dto.startDate) : existing?.startDate ?? null;
+      const effectiveEnd = dto.endDate !== undefined ? new Date(dto.endDate) : existing?.endDate ?? null;
+      if (effectiveStart && effectiveEnd && effectiveEnd <= effectiveStart) {
+        throw new PayoutError('End date must be after start date.',
+          HttpStatus.BAD_REQUEST, 'ERR_SCHEDULE_END_DATE_BEFORE_START');
       }
     }
 
@@ -142,6 +159,8 @@ export class ScheduleService {
     if (dto.dayOfWeek !== undefined) schedule.dayOfWeek = dto.dayOfWeek;
     if (dto.dayOfMonth !== undefined) schedule.dayOfMonth = dto.dayOfMonth;
     if (dto.customIntervalDays !== undefined) schedule.customIntervalDays = dto.customIntervalDays;
+    if (dto.startDate !== undefined) schedule.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.endDate !== undefined) schedule.endDate = dto.endDate ? new Date(dto.endDate) : null;
     if (dto.thresholdUsd !== undefined) schedule.thresholdUsd = parseFloat(dto.thresholdUsd).toFixed(8);
     if (dto.reserveUsd !== undefined) schedule.reserveUsd = parseFloat(dto.reserveUsd).toFixed(8);
     if (dto.primaryMethodId !== undefined) schedule.primaryMethodId = dto.primaryMethodId;

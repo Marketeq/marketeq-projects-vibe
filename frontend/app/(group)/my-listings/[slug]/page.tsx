@@ -4,6 +4,8 @@ import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useParams, useRouter } from "next/navigation"
+import { ProjectChatPanel } from "./project-chat-panel"
+import { RecentQuestionsManager } from "./recent-questions-manager"
 
 const ClientListingView = dynamic(
   () => import("@/app/(group)/(group)/project-details/[slug]/page"),
@@ -27,6 +29,7 @@ import {
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { useAuth } from "@/contexts/auth"
+import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import { TagsInputHiddenInput } from "@ark-ui/react"
@@ -36,6 +39,7 @@ import {
   Attachment01,
   ChartBreakoutCircle,
   Check,
+  XCircle,
   CheckCircle,
   ChevronDown,
   ChevronLeft,
@@ -135,11 +139,12 @@ import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
 import { MarketplaceFooter } from "@/components/marketplace-footer"
 import NextImage from "@/components/next-image"
+import { countryOf } from "@/lib/geo"
 import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import { RichTextEditor } from "@/components/rich-text-editor"
-import { ScopeBuilder } from "@/components/scope-builder"
+import { ScopeBuilder, estimateScopeBudgetCents } from "@/components/scope-builder"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -178,6 +183,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Favorite,
   FavoriteRoot,
@@ -388,6 +394,15 @@ const toEmbedUrl = (raw?: string | null): string => {
   const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
   if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
   return url
+}
+
+const toVideoThumb = (raw?: string | null): string => {
+  if (!raw) return ""
+  const yt = raw.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
+  return ""
 }
 
 const backendErrorMessage = (err: any): string => {
@@ -861,6 +876,27 @@ const renderProjectStaticIcon = (
       return <ShieldZap className={className} />
   }
 }
+
+// Profiles may deliver languages/skills/location as objects
+// ({ name, fluency, ... }) rather than plain strings; coerce to a display
+// string so they never get rendered as a raw object.
+const coerceName = (x: any): string =>
+  typeof x === "string" ? x : (x?.name ?? x?.label ?? x?.title ?? "")
+
+const jobTitlesOf = (m: any): string[] =>
+  Array.isArray(m?.jobTitles)
+    ? m.jobTitles
+        .map((j: any) =>
+          typeof j === "string" ? j : (j?.jobTitle ?? j?.headline ?? "")
+        )
+        .filter(Boolean)
+    : []
+
+const jobTitleOf = (m: any): string =>
+  coerceName(m?.recentJobTitle) ||
+  jobTitlesOf(m)[0] ||
+  coerceName(m?.jobTitle) ||
+  ""
 
 // Seed team data used until real team data comes from the API
 const SEED_TEAM_MEMBERS = [
@@ -1884,6 +1920,243 @@ export default function ProjectDetails() {
   const [openFaqIndex, setOpenFaqIndex] = React.useState<number | null>(null)
   const [teamTab, setTeamTab] = React.useState("Team Lead")
   const inviteWindow = useInviteWindowStore()
+  const [memberRoles, setMemberRoles] = React.useState<Record<string, string>>(
+    {}
+  )
+  const [memberStatus, setMemberStatus] = React.useState<
+    Record<string, string>
+  >({})
+  const [teamLeadId, setTeamLeadId] = React.useState<string | null>(null)
+  // The persisted lead at load, so we can show "Current" vs a pending "New" lead.
+  const [originalLeadId, setOriginalLeadId] = React.useState<string | null>(null)
+  const [teamLeadLabel, setTeamLeadLabel] = React.useState<string>("")
+  const [removeTarget, setRemoveTarget] = React.useState<any | null>(null)
+  const [leadSearch, setLeadSearch] = React.useState("")
+
+  const ownerId = String(
+    (project as any)?.userId ??
+      (project as any)?.ownerId ??
+      (user as any)?.id ??
+      ""
+  )
+
+  const isOwnerViewing =
+    !(user as any)?.id ||
+    !ownerId ||
+    ownerId === String((user as any).id)
+
+  const { isOnline } = useOnlineUsers()
+  const onlineTeam = React.useMemo(
+    () =>
+      ((project as any)?.team ?? []).filter((m: any) =>
+        isOnline(String(m.userId ?? m.id ?? ""))
+      ),
+    [project, isOnline]
+  )
+
+  const projectAssignees = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team) ? (project as any).team : []
+    const ids = Array.isArray((project as any)?.teamMemberIds)
+      ? (project as any).teamMemberIds.map(String)
+      : []
+    return team
+      .filter((m: any) => {
+        const mid = String(m.id || m.userId || "")
+        return m.role === "owner" || mid === ownerId || ids.includes(mid)
+      })
+      .map((m: any) => ({
+        id: String(m.id || m.userId || ""),
+        firstName: m.firstName || m.name || "User",
+        username: m.username || m.email?.split("@")[0] || "",
+        avatarUrl: m.avatarUrl || null,
+        jobTitle: jobTitleOf(m),
+      }))
+  }, [project, ownerId])
+
+  const currentTeam = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team) ? (project as any).team : []
+    const ids = Array.isArray((project as any)?.teamMemberIds)
+      ? (project as any).teamMemberIds.map(String)
+      : []
+    return team.filter((m: any) => {
+      const mid = String(m.id || m.userId || "")
+      return m.role === "owner" || mid === ownerId || ids.includes(mid)
+    })
+  }, [project, ownerId])
+
+  const confirmRemoveMember = async (deactivateInstead: boolean) => {
+    const target = removeTarget
+    if (!target) return
+    if (deactivateInstead) {
+      setMemberStatus((s) => ({ ...s, [target.id]: "Inactive" }))
+      setRemoveTarget(null)
+      toast({
+        title: `${target.firstName} has been deactivated`,
+        variant: "success",
+      })
+      return
+    }
+    const nextIds = (
+      Array.isArray((project as any)?.teamMemberIds)
+        ? (project as any).teamMemberIds
+        : []
+    )
+      .map(String)
+      .filter((id: string) => id !== target.id)
+    // Un-assign them from any scope tasks (persists via the scope autosave).
+    const currentScope = Array.isArray((project as any)?.scope)
+      ? (project as any).scope
+      : []
+    handleScopeChange(
+      currentScope.map((phase: any) => ({
+        ...phase,
+        rows: Array.isArray(phase.rows)
+          ? phase.rows.map((row: any) =>
+              String(row.assigneeUserId ?? row.assignedMember?.id ?? "") ===
+              String(target.id)
+                ? { ...row, assigneeUserId: null, assignedMember: null }
+                : row
+            )
+          : phase.rows,
+      }))
+    )
+    const removedWasLead = teamLeadId === target.id
+    const nextLeadId = removedWasLead ? null : teamLeadId
+    if (removedWasLead) setTeamLeadId(null)
+    const memberPayload = projectAssignees
+      .filter((m: any) => m.id !== target.id)
+      .map((m: any, i: number) => {
+        const isLead = nextLeadId
+          ? m.id === nextLeadId
+          : ownerId
+            ? m.id === ownerId
+            : i === 0
+        return {
+          userId: m.id,
+          projectRole:
+            ownerId && m.id === ownerId
+              ? "Owner"
+              : (memberRoles[m.id] ?? "Contributor"),
+          status: memberStatus[m.id] ?? "Active",
+          isLead,
+          leadLabel: isLead ? teamLeadLabel || null : null,
+        }
+      })
+    setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
+    try {
+      if ((project as any)?.id) {
+        await ProjectAPI.UpdateProjectDraft((project as any).id, {
+          teamMemberIds: nextIds,
+        } as any)
+        await ProjectAPI.SaveProjectMembers((project as any).id, memberPayload)
+      }
+    } catch {
+      // non-blocking
+    }
+    setRemoveTarget(null)
+    toast({
+      title: `${target.firstName} has been removed`,
+      variant: "success",
+    })
+  }
+
+  const addableMembers = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team)
+      ? (project as any).team
+      : []
+    const ids = new Set(
+      (Array.isArray((project as any)?.teamMemberIds)
+        ? (project as any).teamMemberIds
+        : []
+      ).map(String)
+    )
+    return team
+      .map((m: any) => ({
+        id: String(m.id || m.userId || ""),
+        firstName: m.firstName || m.name || "User",
+        username: m.username || m.email?.split("@")[0] || "",
+        avatarUrl: m.avatarUrl || null,
+      }))
+      .filter((m: any) => m.id && !ids.has(m.id))
+  }, [project])
+
+  const addMemberToProject = async (userId: string) => {
+    const ids = (
+      Array.isArray((project as any)?.teamMemberIds)
+        ? (project as any).teamMemberIds
+        : []
+    ).map(String)
+    if (ids.includes(String(userId))) return
+    const nextIds = [...ids, String(userId)]
+    setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
+    try {
+      if ((project as any)?.id)
+        await ProjectAPI.UpdateProjectDraft((project as any).id, {
+          teamMemberIds: nextIds,
+        } as any)
+    } catch {
+      // non-blocking
+    }
+    toast({ title: "Team member added to project", variant: "success" })
+  }
+
+  const saveTeamSettings = async () => {
+    const members = projectAssignees.map((m: any, i: number) => {
+      const isLead = teamLeadId
+        ? m.id === teamLeadId
+        : ownerId
+          ? m.id === ownerId
+          : i === 0
+      return {
+        userId: m.id,
+        projectRole:
+          ownerId && m.id === ownerId
+            ? "Owner"
+            : (memberRoles[m.id] ?? "Contributor"),
+        status: memberStatus[m.id] ?? "Active",
+        isLead,
+        leadLabel: isLead ? teamLeadLabel || null : null,
+      }
+    })
+    try {
+      if ((project as any)?.id)
+        await ProjectAPI.SaveProjectMembers((project as any).id, members)
+      toast({ title: "Team settings saved", variant: "success" })
+    } catch {
+      toast({
+        title: "Failed to save team settings",
+        variant: "destructive",
+      })
+    }
+    setTeamDialogOpen(false)
+  }
+
+  const hydratedMembersRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    const pid = (project as any)?.id
+    const pm = (project as any)?.projectMembers
+    if (!pid || hydratedMembersRef.current === pid) return
+    if (!Array.isArray(pm) || pm.length === 0) return
+    hydratedMembersRef.current = pid
+    const roles: Record<string, string> = {}
+    const statuses: Record<string, string> = {}
+    let leadId: string | null = null
+    let leadLabel = ""
+    for (const m of pm) {
+      const uid = String(m.userId)
+      if (m.projectRole && m.projectRole !== "Owner") roles[uid] = m.projectRole
+      if (m.status) statuses[uid] = m.status
+      if (m.isLead) {
+        leadId = uid
+        leadLabel = m.leadLabel || ""
+      }
+    }
+    setMemberRoles(roles)
+    setMemberStatus(statuses)
+    setOriginalLeadId(leadId)
+    if (leadId) setTeamLeadId(leadId)
+    if (leadLabel) setTeamLeadLabel(leadLabel)
+  }, [project])
   const [detailsLangs, setDetailsLangs] = React.useState<string[]>([])
   const [detailsTech, setDetailsTech] = React.useState<string[]>([])
   const [detailsIndustry, setDetailsIndustry] = React.useState<string[]>([])
@@ -2499,6 +2772,9 @@ export default function ProjectDetails() {
               startDay: 1,
               endDay: 30,
               order: idx,
+              phaseType: phase.phaseType ?? undefined,
+              recurrenceSchedule: phase.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase.recurrenceCount ?? undefined,
               projectId: project.id,
               tasks: (phase.rows || []).map((row: any) => ({
                 taskName: row.task || "",
@@ -2516,12 +2792,20 @@ export default function ProjectDetails() {
                     ? `${row.duration.value} ${row.duration.type}`
                     : row.duration || "1 days",
                 estimatedHours: row.estimatedHours || undefined,
-                assignedMemberId: row.assignedMember?.id || null,
+                assigneeUserId: row.assignedMember?.id || null,
                 phaseId: "",
               })),
             })
           )
-          await ProjectAPI.ReplaceProjectScope(project.id, scopePayload)
+          const scopeRes = await ProjectAPI.ReplaceProjectScope(
+            project.id,
+            scopePayload
+          )
+          const nextBudget = Number((scopeRes as any)?.data?.budgetUsdCents)
+          if (Number.isFinite(nextBudget) && nextBudget > 0) {
+            setProject((prev: any) => ({ ...prev, budgetUsdCents: nextBudget }))
+          }
+
           // Re-fetch to get updated deliverables from backend
           try {
             const res = await ProjectAPI.GetProjectDraft(project.id)
@@ -2540,7 +2824,7 @@ export default function ProjectDetails() {
         }
       }, 1500)
     },
-    [project?.id]
+    [project?.id, saveProjectFields]
   )
 
   // Cleanup scope save timer on unmount
@@ -2561,15 +2845,34 @@ export default function ProjectDetails() {
       // Matches the scope builder's getPhaseDurationInDays logic.
       let totalDays = 0
       for (const phase of phases) {
-        const taskDurations = (phase.rows ?? [])
+        const taskDurations = ((phase.rows ?? phase.tasks ?? []) as any[])
           .map((row: any) => {
             const dur = row.duration
-            if (!dur) return 0
-            const val = Number(dur.value) || 0
-            if (val <= 0) return 0
-            if (dur.type === "weeks") return val * 7
-            if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-            return val // days
+            // Object form { value, type }
+            if (dur && typeof dur === "object") {
+              const val = Number(dur.value) || 0
+              if (val > 0) {
+                if (dur.type === "weeks") return val * 7
+                if (dur.type === "months") return val * 30
+                if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+                return val // days
+              }
+            }
+            // String form, e.g. "2 weeks" (relational scope stores it this way)
+            if (typeof dur === "string" && dur.trim()) {
+              const [rv, ru] = dur.trim().split(/\s+/)
+              const v = Number(rv) || 0
+              const u = (ru || "days").toLowerCase()
+              if (v > 0) {
+                if (u.startsWith("week")) return v * 7
+                if (u.startsWith("month")) return v * 30
+                if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+                return v
+              }
+            }
+            // Fall back to estimatedHours at 40 hrs/week.
+            const hrs = Number(row.estimatedHours) || 0
+            return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
           })
           .filter((d: number) => d > 0)
         if (taskDurations.length > 0) {
@@ -2600,10 +2903,28 @@ export default function ProjectDetails() {
         }
       }
 
-      const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
+      // Budget (docs §14.7 startingPriceTotal): compute from the scope when
+      // it's populated — Σ (hours × HOURLY_RATE_BY_LEVEL) — mirroring the
+      // backend stand-in rate card. Fall back to a stored budget otherwise.
+      const storedCents =
+        Number(project.budgetAmountUsdCents) ||
+        Math.round((Number(project.budget) || 0) * 100)
+      const pricingCents = Number(project.budgetUsdCents) || 0
+      const computedCents = estimateScopeBudgetCents(phases)
+      const budgetTotalCents =
+        pricingCents > 0
+          ? pricingCents
+          : computedCents > 0
+            ? computedCents
+            : storedCents
 
       return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
-    }, [project.scope, project.budgetAmountUsdCents])
+    }, [
+      project.scope,
+      project.budgetUsdCents,
+      project.budgetAmountUsdCents,
+      project.budget,
+    ])
 
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
   const formatBudget = React.useCallback(
@@ -2760,6 +3081,7 @@ export default function ProjectDetails() {
             faqs: d.faqs ?? [],
             recentQuestions: d.recentQuestions ?? [],
             team: d.team ?? [],
+            assignedTeam: Array.isArray(d.team) ? d.team : [],
             deliverables: d.deliverables ?? [],
             scope: (() => {
               // Build team member lookup for rehydrating assignedMember
@@ -2785,12 +3107,16 @@ export default function ProjectDetails() {
                 return {
                   phaseName:
                     phase.phaseName || phase.name || phase.stageName || "",
+                  phaseType: phase.phaseType ?? undefined,
+                  recurrenceSchedule: phase.recurrenceSchedule ?? undefined,
+                  recurrenceCount: phase.recurrenceCount ?? undefined,
                   ...(rawTasks.length > 0
                     ? {
                         rows: rawTasks.map((t: any) => {
                           const taskName = t.task || t.taskName || ""
                           const taskKey = `${phaseIdx}:${taskName}`
                           const memberId =
+                            t.assigneeUserId ||
                             t.assignedMemberId ||
                             t.assignedMember?.id ||
                             savedAssignments[taskKey] ||
@@ -2808,8 +3134,8 @@ export default function ProjectDetails() {
                                   teamMate.email?.split("@")[0] ||
                                   "",
                                 avatarUrl: teamMate.avatarUrl || null,
-                                role: teamMate.role || teamMate.jobTitle || "",
-                                jobTitles: teamMate.jobTitles ?? [],
+                                role: jobTitleOf(teamMate),
+                                jobTitles: jobTitlesOf(teamMate),
                                 hourlyRate:
                                   teamMate.hourlyRate ??
                                   teamMate.rateMax ??
@@ -2912,11 +3238,11 @@ export default function ProjectDetails() {
         const fetchTeamData = async () => {
           try {
             const teamRes = await TeamsAPI.getMyTeam()
-            const teamData = teamRes?.data
-            if (!teamData?.id) return
-            const membersRes = await TeamsAPI.getTeamMembers(teamData.id)
-            const members = membersRes?.data
-            if (!Array.isArray(members) || members.length === 0) return
+            const teamData = teamRes?.data?.data ?? teamRes?.data
+            const members = Array.isArray(teamData?.members)
+              ? teamData.members
+              : []
+            if (members.length === 0) return
             // Hydrate team members with profile data
             const hydratedMembers = await Promise.all(
               members.map(async (m: any) => {
@@ -2941,19 +3267,22 @@ export default function ProjectDetails() {
                   hourlyRate: profile?.hourlyRate ?? null,
                   workSchedule: profile?.workSchedule ?? null,
                   customHoursPerWeek: profile?.customHoursPerWeek ?? null,
-                  location: profile?.location || profile?.country || null,
-                  languages: profile?.languages ?? [],
-                  skills: profile?.skills ?? [],
-                  experience: profile?.experienceLevel || profile?.experience || null,
+                  location:
+                    profile?.location || profile?.country || m.location || null,
+                  languages: (profile?.languages ?? []).map(coerceName),
+                  skills: (profile?.skills ?? []).map(coerceName),
+                  experience: coerceName(profile?.experienceLevel) || null,
                   isLead: m.role === "owner" || m.role === "lead",
                   isOnline: false,
                 }
               })
             )
-            setProject((prev: any) => ({
-              ...prev,
-              team: hydratedMembers,
-            }))
+            setProject((prev: any) => {
+              const byId = new Map<string, any>()
+              for (const m of prev.team ?? []) byId.set(m.id || m.userId, m)
+              for (const m of hydratedMembers) byId.set(m.id || m.userId, m)
+              return { ...prev, team: Array.from(byId.values()) }
+            })
           } catch {
             // team fetch failed — leave as seed/empty
           }
@@ -3837,11 +4166,7 @@ export default function ProjectDetails() {
                   }
                 >
                   <MessageTextCircle01 className="size-5" />
-                  {selected === "Live Chat"
-                    ? !(project.chats?.length > 0)
-                      ? "Close Chat"
-                      : "End Chat"
-                    : "Live Chat"}
+                  {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
                 </Button>
 
                 <div className="flex-1 flex justify-end">
@@ -3870,50 +4195,33 @@ export default function ProjectDetails() {
                 </div>
               </RadixTabs.TabsList>
               <TabsContent value="Live Chat">
-                <div className="flex flex-col items-center justify-center py-16 gap-4">
-                  <div className="relative w-[72px] h-[56px]">
-                    <svg
-                      viewBox="0 0 72 56"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="w-full h-full"
-                    >
-                      <rect
-                        x="0"
-                        y="8"
-                        width="40"
-                        height="32"
-                        rx="8"
-                        fill="#E5E7EB"
-                      />
-                      <rect
-                        x="14"
-                        y="2"
-                        width="40"
-                        height="32"
-                        rx="8"
-                        fill="#D1D5DB"
-                      />
-                      <rect
-                        x="28"
-                        y="14"
-                        width="40"
-                        height="32"
-                        rx="8"
-                        fill="#354764"
-                      />
-                    </svg>
+                {project?.id && isRealBackendId(String(project.id)) ? (
+                  <ProjectChatPanel projectId={String(project.id)} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <div className="relative w-[72px] h-[56px]">
+                      <svg
+                        viewBox="0 0 72 56"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-full h-full"
+                      >
+                        <rect x="0" y="8" width="40" height="32" rx="8" fill="#E5E7EB" />
+                        <rect x="14" y="2" width="40" height="32" rx="8" fill="#D1D5DB" />
+                        <rect x="28" y="14" width="40" height="32" rx="8" fill="#354764" />
+                      </svg>
+                    </div>
+                    <div className="flex flex-col items-center gap-1.5 text-center">
+                      <h3 className="text-base font-semibold text-dark-blue-400">
+                        You Have No Recent Chats
+                      </h3>
+                      <p className="text-sm text-dark-blue-400 max-w-[320px]">
+                        Once your project is live, chat threads will be visible
+                        here when visitors message you.
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-center gap-1.5 text-center">
-                    <h3 className="text-base font-semibold text-dark-blue-400">
-                      You Have No Recent Chats
-                    </h3>
-                    <p className="text-sm text-dark-blue-400 max-w-[320px]">
-                      Once your project is live, chat threads will be visible
-                      here when visitors message you.
-                    </p>
-                  </div>
-                </div>
+                )}
               </TabsContent>
 
               <TabsContent
@@ -3990,16 +4298,27 @@ export default function ProjectDetails() {
                         {project.featuredVideo && (
                           <div className="group/slide shrink-0 w-[calc(33.333%-8px)]">
                             <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                              <iframe
-                                src={toEmbedUrl(project.featuredVideo)}
-                                className={cn(
-                                  "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
-                                  videoHidden && "opacity-40 blur-[1px]"
-                                )}
-                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                tabIndex={-1}
-                                title="Featured video"
-                              />
+                              {toVideoThumb(project.featuredVideo) ? (
+                                <img
+                                  src={toVideoThumb(project.featuredVideo)}
+                                  alt="Featured video"
+                                  className={cn(
+                                    "absolute inset-0 w-full h-full object-cover pointer-events-none transition-all duration-300",
+                                    videoHidden && "opacity-40 blur-[1px]"
+                                  )}
+                                />
+                              ) : (
+                                <iframe
+                                  src={toEmbedUrl(project.featuredVideo)}
+                                  className={cn(
+                                    "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
+                                    videoHidden && "opacity-40 blur-[1px]"
+                                  )}
+                                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  tabIndex={-1}
+                                  title="Featured video"
+                                />
+                              )}
                               <div
                                 className={cn(
                                   "absolute inset-0 flex items-center justify-center pointer-events-none group-hover/slide:opacity-0 transition-opacity duration-200",
@@ -4007,7 +4326,19 @@ export default function ProjectDetails() {
                                 )}
                               >
                                 <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow">
-                                  <Play className="size-5 text-gray-800 ml-0.5" />
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    className="text-gray-800"
+                                    style={{
+                                      width: 29,
+                                      height: 29,
+                                      fill: "currentColor",
+                                      marginLeft: 2,
+                                    }}
+                                  >
+                                    <path d="M8 5v14l11-7z" />
+                                  </svg>
                                 </div>
                               </div>
                               {videoHidden && (
@@ -5197,8 +5528,8 @@ export default function ProjectDetails() {
                           project.team[] (Step 2 of the hybrid team model).
                           Falls back to the static design when team is empty.
                         */}
-                              {Array.isArray(project.team) &&
-                              project.team.length > 0 ? (
+                              {Array.isArray(currentTeam) &&
+                              currentTeam.length > 0 ? (
                                 (() => {
                                   type TeamMember = {
                                     firstName: string
@@ -5210,22 +5541,57 @@ export default function ProjectDetails() {
                                     isLead: boolean
                                     isOnline: boolean
                                   }
-                                  const members = project.team as TeamMember[]
+                                  const members = currentTeam as TeamMember[]
+                                  // Profiles may deliver languages/skills/location
+                                  // as objects ({ name, fluency, ... }); coerce to
+                                  // display strings before rendering.
+                                  const toName = (x: any): string =>
+                                    typeof x === "string"
+                                      ? x
+                                      : (x?.name ?? x?.label ?? x?.title ?? "")
+                                  const leadUserId = (
+                                    (project as any).projectMembers ?? []
+                                  ).find((pm: any) => pm.isLead)?.userId
+                                  const foundLead =
+                                    leadUserId != null
+                                      ? members.find(
+                                          (m: any) =>
+                                            String(
+                                              (m as any).userId ??
+                                                (m as any).id ??
+                                                ""
+                                            ) === String(leadUserId)
+                                        )
+                                      : undefined
                                   const lead =
-                                    members.find((m) => m.isLead) ?? members[0]
+                                    foundLead ??
+                                    members.find((m) => m.isLead) ??
+                                    members[0]
+                                  const showLeadBadge =
+                                    !!foundLead || !!lead?.isLead
                                   const allLocations = Array.from(
                                     new Set(
                                       members
-                                        .map((m) => m.location)
-                                        .filter((l): l is string => !!l)
+                                        .map((m) =>
+                                          countryOf(toName(m.location))
+                                        )
+                                        .filter(Boolean)
                                     )
                                   )
                                   const allLanguages = Array.from(
-                                    new Set(members.flatMap((m) => m.languages))
-                                  )
+                                    new Set(
+                                      members.flatMap((m) =>
+                                        (m.languages ?? []).map(toName)
+                                      )
+                                    )
+                                  ).filter(Boolean)
                                   const allSkills = Array.from(
-                                    new Set(members.flatMap((m) => m.skills))
-                                  )
+                                    new Set(
+                                      members.flatMap((m) =>
+                                        (m.skills ?? []).map(toName)
+                                      )
+                                    )
+                                  ).filter(Boolean)
                                   const visibleSkills = allSkills.slice(0, 5)
                                   const extraSkillCount =
                                     allSkills.length - visibleSkills.length
@@ -5255,7 +5621,7 @@ export default function ProjectDetails() {
                                               className="rounded-[4px] bg-primary-50"
                                               visual="primary"
                                             >
-                                              {lead.isLead
+                                              {showLeadBadge
                                                 ? "Project Lead"
                                                 : "Team Member"}
                                             </Badge>
@@ -5958,90 +6324,295 @@ export default function ProjectDetails() {
                                     value="Team Lead"
                                     className="pt-6 pb-6"
                                   >
-                                    <div>
-                                      <span className="text-sm font-semibold text-dark-blue-400">
-                                        Current Team Lead
-                                      </span>
-                                      <div className="mt-3 flex items-center justify-between">
-                                        <div className="flex items-center gap-x-3">
-                                          <Avatar size="md">
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Chris"
-                                            />
-                                            <AvatarFallback>C</AvatarFallback>
-                                          </Avatar>
+                                    {(() => {
+                                      const effectiveLeadId =
+                                        originalLeadId || ownerId
+                                      const currentLead =
+                                        projectAssignees.find(
+                                          (m: any) => m.id === effectiveLeadId
+                                        ) ?? projectAssignees[0]
+                                      const pendingLead =
+                                        teamLeadId &&
+                                        teamLeadId !== currentLead?.id
+                                          ? projectAssignees.find(
+                                              (m: any) => m.id === teamLeadId
+                                            )
+                                          : null
+                                      const q = leadSearch.trim().toLowerCase()
+                                      const candidates =
+                                        projectAssignees.filter(
+                                          (m: any) =>
+                                            m.id !== currentLead?.id &&
+                                            (!q ||
+                                              m.firstName
+                                                ?.toLowerCase()
+                                                .includes(q) ||
+                                              m.username
+                                                ?.toLowerCase()
+                                                .includes(q))
+                                        )
+                                      return (
+                                        <>
                                           <div>
-                                            <span className="text-sm font-bold text-dark-blue-400">
-                                              Chris
+                                            <span className="text-sm font-semibold text-dark-blue-400">
+                                              Current Team Lead
                                             </span>
-                                            <span className="text-sm font-light text-gray-500">
-                                              {" "}
-                                              @ux23isee
-                                            </span>
-                                            <p className="text-xs font-light text-dark-blue-400">
-                                              Full Stack Designer
-                                            </p>
+                                            <div className="mt-3 flex items-center justify-between">
+                                              <div className="flex items-center gap-x-3">
+                                                <Avatar size="md">
+                                                  <AvatarImage
+                                                    src={
+                                                      currentLead?.avatarUrl ||
+                                                      undefined
+                                                    }
+                                                    alt={currentLead?.firstName}
+                                                  />
+                                                  <AvatarFallback>
+                                                    {currentLead?.firstName?.charAt(
+                                                      0
+                                                    ) || "U"}
+                                                  </AvatarFallback>
+                                                </Avatar>
+                                                <div>
+                                                  <span className="text-sm font-bold text-dark-blue-400">
+                                                    {currentLead?.firstName ||
+                                                      "—"}
+                                                  </span>
+                                                  {currentLead?.username && (
+                                                    <span className="text-sm font-light text-gray-500">
+                                                      {" "}
+                                                      @{currentLead.username}
+                                                    </span>
+                                                  )}
+                                                  {currentLead?.jobTitle && (
+                                                    <p className="text-xs font-light text-dark-blue-400">
+                                                      {currentLead.jobTitle}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              {teamLeadLabel && (
+                                                <Badge
+                                                  visual="primary"
+                                                  className="rounded-[4px] bg-primary-50"
+                                                >
+                                                  {teamLeadLabel}
+                                                </Badge>
+                                              )}
+                                            </div>
                                           </div>
-                                        </div>
-                                        <Badge
-                                          visual="primary"
-                                          className="rounded-[4px] bg-primary-50"
-                                        >
-                                          Account Manager
-                                        </Badge>
-                                      </div>
-                                    </div>
 
-                                    <div className="mt-8 grid grid-cols-2 gap-x-6">
-                                      <div>
-                                        <span className="text-sm font-semibold text-dark-blue-400">
-                                          Assign Project Lead
-                                        </span>
-                                        <InputGroup className="mt-2">
-                                          <Input placeholder="Search team members" />
-                                          <InputLeftElement>
-                                            <SearchMd className="text-gray-500 h-4 w-4" />
-                                          </InputLeftElement>
-                                        </InputGroup>
-                                      </div>
-                                      <div>
-                                        <span className="text-sm font-semibold text-dark-blue-400 inline-flex items-center gap-x-1">
-                                          Select Label
-                                          <TooltipProvider>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <HelpCircle className="size-3.5 text-gray-400 cursor-help" />
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                Assign a role label to the team
-                                                lead
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        </span>
-                                        <Listbox defaultValue="">
-                                          <ListboxButton
-                                            className="mt-2 w-full"
-                                            placeholder="None selected"
-                                          />
-                                          <ListboxOptions>
-                                            <ListboxOption value="Project Lead">
-                                              Project Lead
-                                            </ListboxOption>
-                                            <ListboxOption value="Account Manager">
-                                              Account Manager
-                                            </ListboxOption>
-                                            <ListboxOption value="Technical Lead">
-                                              Technical Lead
-                                            </ListboxOption>
-                                            <ListboxOption value="Design Lead">
-                                              Design Lead
-                                            </ListboxOption>
-                                          </ListboxOptions>
-                                        </Listbox>
-                                      </div>
-                                    </div>
+                                          <div className="mt-8 grid grid-cols-2 gap-x-6">
+                                            <div>
+                                              {pendingLead ? (
+                                                <>
+                                                  <span className="text-sm font-semibold text-dark-blue-400">
+                                                    New Team Lead
+                                                  </span>
+                                                  <div className="mt-3 flex items-center justify-between">
+                                                    <div className="flex items-center gap-x-3">
+                                                      <Avatar size="md">
+                                                        <AvatarImage
+                                                          src={
+                                                            pendingLead.avatarUrl ||
+                                                            undefined
+                                                          }
+                                                          alt={
+                                                            pendingLead.firstName
+                                                          }
+                                                        />
+                                                        <AvatarFallback>
+                                                          {pendingLead.firstName?.charAt(
+                                                            0
+                                                          ) || "U"}
+                                                        </AvatarFallback>
+                                                      </Avatar>
+                                                      <div>
+                                                        <span className="text-sm font-bold text-dark-blue-400">
+                                                          {pendingLead.firstName}
+                                                        </span>
+                                                        {pendingLead.jobTitle && (
+                                                          <p className="text-xs font-light text-dark-blue-400">
+                                                            {
+                                                              pendingLead.jobTitle
+                                                            }
+                                                          </p>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                    <button
+                                                      type="button"
+                                                      className="text-sm font-semibold text-gray-700 hover:text-dark-blue-400 focus-visible:outline-none"
+                                                      onClick={() =>
+                                                        setTeamLeadId(null)
+                                                      }
+                                                    >
+                                                      Remove
+                                                    </button>
+                                                  </div>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className="text-sm font-semibold text-dark-blue-400">
+                                                    Assign Project Lead
+                                                  </span>
+                                                  <InputGroup className="mt-2">
+                                                    <Input
+                                                      placeholder="Search team members"
+                                                      value={leadSearch}
+                                                      onChange={(e) =>
+                                                        setLeadSearch(
+                                                          e.target.value
+                                                        )
+                                                      }
+                                                    />
+                                                    <InputLeftElement>
+                                                      <SearchMd className="text-gray-500 h-4 w-4" />
+                                                    </InputLeftElement>
+                                                  </InputGroup>
+                                                  {leadSearch && (
+                                                    <div className="mt-1 rounded-lg border border-gray-100 bg-white shadow-lg max-h-[240px] overflow-y-auto">
+                                                      {candidates.length > 0 ? (
+                                                        candidates.map(
+                                                          (m: any) => (
+                                                            <button
+                                                              key={m.id}
+                                                              type="button"
+                                                              className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50"
+                                                              onClick={() => {
+                                                                setTeamLeadId(
+                                                                  m.id
+                                                                )
+                                                                setLeadSearch("")
+                                                              }}
+                                                            >
+                                                              <Avatar size="sm">
+                                                                <AvatarImage
+                                                                  src={
+                                                                    m.avatarUrl ||
+                                                                    undefined
+                                                                  }
+                                                                  alt={
+                                                                    m.firstName
+                                                                  }
+                                                                />
+                                                                <AvatarFallback>
+                                                                  {m.firstName?.charAt(
+                                                                    0
+                                                                  ) || "U"}
+                                                                </AvatarFallback>
+                                                              </Avatar>
+                                                              <div>
+                                                                <span className="text-sm font-semibold text-dark-blue-400">
+                                                                  {m.firstName}
+                                                                </span>
+                                                                {m.username && (
+                                                                  <span className="text-sm font-light text-gray-500">
+                                                                    {" "}
+                                                                    @{m.username}
+                                                                  </span>
+                                                                )}
+                                                                {m.jobTitle && (
+                                                                  <p className="text-xs font-light text-dark-blue-400">
+                                                                    {m.jobTitle}
+                                                                  </p>
+                                                                )}
+                                                              </div>
+                                                            </button>
+                                                          )
+                                                        )
+                                                      ) : (
+                                                        <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                                          No matching members.
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                            <div>
+                                              <span className="text-sm font-semibold text-dark-blue-400 inline-flex items-center gap-x-1">
+                                                Select Label
+                                                <TooltipProvider>
+                                                  <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <HelpCircle className="size-3.5 text-gray-400 cursor-help" />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                      Assign a role label to the
+                                                      team lead
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                </TooltipProvider>
+                                              </span>
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                  <button
+                                                    type="button"
+                                                    className="mt-2 inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
+                                                  >
+                                                    <span
+                                                      className={
+                                                        teamLeadLabel
+                                                          ? "text-dark-blue-400"
+                                                          : "text-gray-500"
+                                                      }
+                                                    >
+                                                      {teamLeadLabel ||
+                                                        "None selected"}
+                                                    </span>
+                                                    <ChevronDown className="size-4 text-gray-500" />
+                                                  </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent
+                                                  align="start"
+                                                  style={{
+                                                    width:
+                                                      "var(--radix-dropdown-menu-trigger-width)",
+                                                  }}
+                                                >
+                                                  {[
+                                                    "Account Manager",
+                                                    "Project Manager",
+                                                    "Client Relations Manager",
+                                                    "Team Manager",
+                                                  ].map((l) => (
+                                                    <DropdownMenuItem
+                                                      key={l}
+                                                      onClick={() =>
+                                                        setTeamLeadLabel(l)
+                                                      }
+                                                    >
+                                                      {l}
+                                                    </DropdownMenuItem>
+                                                  ))}
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuItem
+                                                    onClick={() =>
+                                                      setTeamLeadLabel(
+                                                        "Use Profile Job Title"
+                                                      )
+                                                    }
+                                                  >
+                                                    Use Profile Job Title
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    onClick={() =>
+                                                      setTeamLeadLabel(
+                                                        "Create Custom Label"
+                                                      )
+                                                    }
+                                                  >
+                                                    Create Custom Label
+                                                  </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
+                                            </div>
+                                          </div>
+                                        </>
+                                      )
+                                    })()}
                                   </TabsContent>
 
                                   <TabsContent
@@ -6051,26 +6622,84 @@ export default function ProjectDetails() {
                                     <div className="flex items-start justify-between">
                                       <div>
                                         <h3 className="text-sm font-semibold text-dark-blue-400">
-                                          All assignees (10)
+                                          All assignees ({projectAssignees.length})
                                         </h3>
                                         <p className="mt-1 text-xs font-light text-dark-blue-400">
                                           View and manage all users currently
                                           assigned to this project below.
                                         </p>
                                       </div>
-                                      <Button
-                                        variant="outlined"
-                                        visual="gray"
-                                        onClick={() =>
-                                          inviteWindow.toggle(
-                                            true,
-                                            "Invite Team Members"
-                                          )
-                                        }
-                                      >
-                                        <Plus className="size-[15px]" />
-                                        Add Team Member
-                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                          >
+                                            <Plus className="size-[15px]" />
+                                            Add Team Member
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                          align="end"
+                                          className="w-[260px]"
+                                        >
+                                          {addableMembers.length > 0 ? (
+                                            addableMembers.map((m: any) => (
+                                              <DropdownMenuItem
+                                                key={m.id}
+                                                onClick={() =>
+                                                  addMemberToProject(m.id)
+                                                }
+                                              >
+                                                <div className="flex items-center gap-x-2">
+                                                  <Avatar size="sm">
+                                                    <AvatarImage
+                                                      src={
+                                                        m.avatarUrl || undefined
+                                                      }
+                                                      alt={m.firstName}
+                                                    />
+                                                    <AvatarFallback>
+                                                      {m.firstName?.charAt(0) ||
+                                                        "U"}
+                                                    </AvatarFallback>
+                                                  </Avatar>
+                                                  <div>
+                                                    <span className="text-sm font-medium text-dark-blue-400">
+                                                      {m.firstName}
+                                                    </span>
+                                                    {m.username && (
+                                                      <span className="text-xs font-light text-gray-500">
+                                                        {" "}
+                                                        @{m.username}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </DropdownMenuItem>
+                                            ))
+                                          ) : (
+                                            <DropdownMenuItem
+                                              disabled
+                                              className="text-gray-500"
+                                            >
+                                              Everyone on your team is already
+                                              added
+                                            </DropdownMenuItem>
+                                          )}
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              inviteWindow.toggle(
+                                                true,
+                                                "Invite Team Members"
+                                              )
+                                            }
+                                          >
+                                            <Plus className="size-3.5" />
+                                            Invite new member…
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
                                     </div>
 
                                     <div className="mt-6 max-h-[40vh] overflow-y-auto">
@@ -6090,132 +6719,237 @@ export default function ProjectDetails() {
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                          {[
-                                            {
-                                              name: "Chris",
-                                              username: "ux23isee",
-                                              role: "Owner",
-                                              status: "Active",
-                                              you: true,
-                                              avatar: "/man.jpg",
-                                            },
-                                            {
-                                              name: "Sarah",
-                                              username: "ux23isee",
-                                              role: "Manager",
-                                              status: "Active",
-                                              avatar: "/woman.jpg",
-                                            },
-                                            {
-                                              name: "Laura",
-                                              username: "ux23isee",
-                                              role: "Contributor",
-                                              status: "Active",
-                                              avatar: "/woman.jpg",
-                                            },
-                                            {
-                                              name: "Tina",
-                                              username: "ux23isee",
-                                              role: "Contributor",
-                                              status: "Inactive",
-                                              avatar: "/woman.jpg",
-                                            },
-                                            {
-                                              name: "Shelly",
-                                              username: "ux23isee",
-                                              role: "Contributor",
-                                              status: "Inactive",
-                                              avatar: "/woman.jpg",
-                                            },
-                                          ].map((member, mi) => (
-                                            <TableRow key={mi}>
-                                              <TableCell className="py-4">
-                                                <div className="flex items-center gap-x-3">
-                                                  <Avatar size="sm">
-                                                    <AvatarImage
-                                                      src={member.avatar}
-                                                      alt={member.name}
-                                                    />
-                                                    <AvatarFallback>
-                                                      {member.name.charAt(0)}
-                                                    </AvatarFallback>
-                                                  </Avatar>
-                                                  <div>
-                                                    <span className="text-sm font-semibold text-dark-blue-400">
-                                                      {member.name}
-                                                    </span>
-                                                    <span className="text-sm font-light text-gray-500">
-                                                      {" "}
-                                                      @{member.username}
-                                                    </span>
-                                                    {member.you && (
-                                                      <span className="text-sm font-semibold text-dark-blue-400">
-                                                        {" "}
-                                                        (You)
-                                                      </span>
+                                          {projectAssignees.map(
+                                            (member: any, mi: number) => {
+                                              const isOwner = ownerId
+                                                ? String(member.id) === ownerId
+                                                : mi === 0
+                                              const isYou =
+                                                !!user &&
+                                                (String(member.id) ===
+                                                  String((user as any).id) ||
+                                                  (!!member.username &&
+                                                    member.username ===
+                                                      (user as any).username))
+                                              const role = isOwner
+                                                ? "Owner"
+                                                : memberRoles[member.id] ??
+                                                  "Contributor"
+                                              const status =
+                                                memberStatus[member.id] ??
+                                                "Active"
+                                              return (
+                                                <TableRow key={member.id || mi}>
+                                                  <TableCell className="py-4">
+                                                    <div className="flex items-center gap-x-3">
+                                                      <Avatar size="sm">
+                                                        <AvatarImage
+                                                          src={
+                                                            member.avatarUrl ||
+                                                            undefined
+                                                          }
+                                                          alt={member.firstName}
+                                                        />
+                                                        <AvatarFallback>
+                                                          {member.firstName?.charAt(
+                                                            0
+                                                          ) || "U"}
+                                                        </AvatarFallback>
+                                                      </Avatar>
+                                                      <div>
+                                                        <span className="text-sm font-semibold text-dark-blue-400">
+                                                          {member.firstName}
+                                                        </span>
+                                                        {member.username && (
+                                                          <span className="text-sm font-light text-gray-500">
+                                                            {" "}
+                                                            @{member.username}
+                                                          </span>
+                                                        )}
+                                                        {isYou && (
+                                                          <span className="text-sm font-semibold text-dark-blue-400">
+                                                            {" "}
+                                                            (You)
+                                                          </span>
+                                                        )}
+                                                        {member.jobTitle && (
+                                                          <p className="text-xs font-light text-dark-blue-400">
+                                                            {member.jobTitle}
+                                                          </p>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  </TableCell>
+                                                  <TableCell className="py-4">
+                                                    {isOwner ? (
+                                                      <div className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                                                        Owner
+                                                        <ChevronDown className="size-4 opacity-50" />
+                                                      </div>
+                                                    ) : (
+                                                      <DropdownMenu>
+                                                        <DropdownMenuTrigger
+                                                          asChild
+                                                        >
+                                                          <button
+                                                            type="button"
+                                                            className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
+                                                          >
+                                                            {role}
+                                                            <ChevronDown className="size-4 text-gray-500" />
+                                                          </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent
+                                                          align="start"
+                                                          className="w-[288px]"
+                                                        >
+                                                          {[
+                                                            "Manager",
+                                                            "Contributor",
+                                                            "Viewer",
+                                                          ].map((r) => (
+                                                            <DropdownMenuItem
+                                                              key={r}
+                                                              className="flex flex-col items-start gap-0.5 py-2"
+                                                              onClick={() =>
+                                                                setMemberRoles(
+                                                                  (mr) => ({
+                                                                    ...mr,
+                                                                    [member.id]:
+                                                                      r,
+                                                                  })
+                                                                )
+                                                              }
+                                                            >
+                                                              <span className="flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+                                                                {role === r ? (
+                                                                  <Check className="size-4 text-primary-500" />
+                                                                ) : (
+                                                                  <span className="size-4" />
+                                                                )}
+                                                                {r}
+                                                              </span>
+                                                              <span className="pl-6 text-xs font-light text-gray-500">
+                                                                This is where the
+                                                                role&apos;s
+                                                                permissions and
+                                                                limitations are
+                                                                briefly
+                                                                explained.
+                                                              </span>
+                                                            </DropdownMenuItem>
+                                                          ))}
+                                                          <DropdownMenuSeparator />
+                                                          <DropdownMenuItem
+                                                            className="text-error-600 focus:text-error-600"
+                                                            onClick={() =>
+                                                              setRemoveTarget(
+                                                                member
+                                                              )
+                                                            }
+                                                          >
+                                                            <XCircle className="size-4" />
+                                                            Remove from project
+                                                          </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                      </DropdownMenu>
                                                     )}
-                                                    <p className="text-xs font-light text-dark-blue-400">
-                                                      Full Stack Designer
-                                                    </p>
-                                                  </div>
-                                                </div>
-                                              </TableCell>
-                                              <TableCell className="py-4">
-                                                <Listbox
-                                                  defaultValue={member.role}
-                                                >
-                                                  <ListboxButton
-                                                    className="h-[36px] w-[140px] text-sm"
-                                                    placeholder="Select role"
-                                                  />
-                                                  <ListboxOptions>
-                                                    <ListboxOption value="Owner">
-                                                      Owner
-                                                    </ListboxOption>
-                                                    <ListboxOption value="Manager">
-                                                      Manager
-                                                    </ListboxOption>
-                                                    <ListboxOption value="Contributor">
-                                                      Contributor
-                                                    </ListboxOption>
-                                                  </ListboxOptions>
-                                                </Listbox>
-                                              </TableCell>
-                                              <TableCell className="py-4">
-                                                <span
-                                                  className={cn(
-                                                    "text-sm font-semibold",
-                                                    member.status === "Active"
-                                                      ? "text-success-500"
-                                                      : "text-gray-500"
-                                                  )}
-                                                >
-                                                  {member.status}
-                                                </span>
-                                              </TableCell>
-                                              <TableCell className="py-4">
-                                                <DropdownMenu>
-                                                  <DropdownMenuTrigger asChild>
-                                                    <IconButton
-                                                      variant="ghost"
-                                                      visual="gray"
-                                                      size="sm"
+                                                  </TableCell>
+                                                  <TableCell className="py-4">
+                                                    <span
+                                                      className={cn(
+                                                        "text-sm font-semibold",
+                                                        status === "Active"
+                                                          ? "text-success-500"
+                                                          : "text-gray-500"
+                                                      )}
                                                     >
-                                                      <MoreHorizontal className="size-4" />
-                                                    </IconButton>
-                                                  </DropdownMenuTrigger>
-                                                  <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem>
-                                                      View Profile
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem>
-                                                      Remove
-                                                    </DropdownMenuItem>
-                                                  </DropdownMenuContent>
-                                                </DropdownMenu>
-                                              </TableCell>
-                                            </TableRow>
-                                          ))}
+                                                      {status}
+                                                    </span>
+                                                  </TableCell>
+                                                  <TableCell className="py-4">
+                                                    <DropdownMenu>
+                                                      <DropdownMenuTrigger
+                                                        asChild
+                                                      >
+                                                        <IconButton
+                                                          variant="ghost"
+                                                          visual="gray"
+                                                          size="sm"
+                                                        >
+                                                          <MoreHorizontal className="size-4" />
+                                                        </IconButton>
+                                                      </DropdownMenuTrigger>
+                                                      <DropdownMenuContent
+                                                        align="end"
+                                                        className="w-[200px]"
+                                                      >
+                                                        <DropdownMenuItem>
+                                                          Manage User
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                          onClick={() => {
+                                                            setTeamLeadId(
+                                                              member.id
+                                                            )
+                                                            setTeamTab(
+                                                              "Team Lead"
+                                                            )
+                                                            toast({
+                                                              title: `Project lead role assigned to ${member.firstName}`,
+                                                              variant:
+                                                                "success",
+                                                            })
+                                                          }}
+                                                        >
+                                                          Assign Team Lead
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem>
+                                                          Transfer Ownership
+                                                        </DropdownMenuItem>
+                                                        {status === "Inactive" && (
+                                                          <DropdownMenuItem
+                                                            onClick={() => {
+                                                              setMemberStatus(
+                                                                (s) => ({
+                                                                  ...s,
+                                                                  [member.id]:
+                                                                    "Active",
+                                                                })
+                                                              )
+                                                              toast({
+                                                                title: `${member.firstName} has been activated`,
+                                                                variant:
+                                                                  "success",
+                                                              })
+                                                            }}
+                                                          >
+                                                            Activate User
+                                                          </DropdownMenuItem>
+                                                        )}
+                                                        {!isOwner && (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              className="text-error-600 focus:text-error-600"
+                                                              onClick={() =>
+                                                                setRemoveTarget(
+                                                                  member
+                                                                )
+                                                              }
+                                                            >
+                                                              <XCircle className="size-4" />
+                                                              Remove from project
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        )}
+                                                      </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                  </TableCell>
+                                                </TableRow>
+                                              )
+                                            }
+                                          )}
                                         </TableBody>
                                       </Table>
                                     </div>
@@ -6233,11 +6967,59 @@ export default function ProjectDetails() {
                                   <X className="size-[15px]" />
                                   Cancel
                                 </Button>
-                                <Button
-                                  onClick={() => setTeamDialogOpen(false)}
-                                >
+                                <Button onClick={saveTeamSettings}>
                                   Save
                                 </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          <Dialog
+                            open={!!removeTarget}
+                            onOpenChange={(o) => !o && setRemoveTarget(null)}
+                          >
+                            <DialogContent className="max-w-[540px] p-0">
+                              <div className="p-6">
+                                <h3 className="text-lg font-semibold text-dark-blue-400">
+                                  Remove this user?
+                                </h3>
+                                <p className="mt-2 text-sm font-light text-gray-500">
+                                  <span className="font-semibold text-dark-blue-400">
+                                    {removeTarget?.firstName}
+                                  </span>{" "}
+                                  will no longer have access to this project,
+                                  including any tasks, files, or chat threads
+                                  previously assigned. This will not delete any
+                                  tasks, files, or comments.
+                                </p>
+                              </div>
+                              <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  visual="gray"
+                                  onClick={() => setRemoveTarget(null)}
+                                >
+                                  <X className="size-[15px]" />
+                                  Cancel
+                                </Button>
+                                <div className="flex items-center gap-x-3">
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    className="text-error-600"
+                                    onClick={() => confirmRemoveMember(true)}
+                                  >
+                                    Deactivate Instead
+                                  </Button>
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => confirmRemoveMember(false)}
+                                  >
+                                    Yes, Remove
+                                  </Button>
+                                </div>
                               </div>
                             </DialogContent>
                           </Dialog>
@@ -6275,29 +7057,81 @@ export default function ProjectDetails() {
                           {(project.faqs?.length > 0 ||
                             project.recentQuestions?.length > 0) && (
                             <>
+                              {onlineTeam.length > 0 && (
                               <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                                <Avatar size="md">
-                                  <AvatarImage src="/man.jpg" alt="Man" />
-                                  <AvatarFallback>M</AvatarFallback>
-                                </Avatar>
+                                {onlineTeam.length === 1 ? (
+                                  <>
+                                    <Avatar size="md">
+                                      <AvatarImage
+                                        src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                        alt={
+                                          onlineTeam[0].firstName || "Team member"
+                                        }
+                                      />
+                                      <AvatarFallback>
+                                        {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                      </AvatarFallback>
+                                    </Avatar>
 
-                                <div className="flex flex-col items-start gap-y-2">
-                                  <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                    Kevin{" "}
-                                    <span className="text-xs leading-none text-extralight text-gray-500">
-                                      @username
-                                    </span>
-                                  </span>
+                                    <div className="flex flex-col items-start gap-y-2">
+                                      <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                        {onlineTeam[0].firstName ||
+                                          onlineTeam[0].username}{" "}
+                                        {onlineTeam[0].username && (
+                                          <span className="text-xs leading-none text-extralight text-gray-500">
+                                            @{onlineTeam[0].username}
+                                          </span>
+                                        )}
+                                      </span>
 
-                                  <div className="flex items-center gap-x-1">
-                                    <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                    <span className="text-xs leading-none text-dark-blue-400">
-                                      Online
+                                      <div className="flex items-center gap-x-1">
+                                        <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                        <span className="text-xs leading-none text-dark-blue-400">
+                                          Online
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex flex-col items-center gap-y-2">
+                                    <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                      Live Chat
                                     </span>
+
+                                    <AvatarGroup size="sm" max={3} excess>
+                                      {onlineTeam.map((m: any, i: number) => (
+                                        <Avatar
+                                          key={m.username ?? i}
+                                          className="border-2 border-white hover:ring-0 active:ring-0"
+                                          size="sm"
+                                        >
+                                          {m.avatarUrl ? (
+                                            <AvatarImage
+                                              src={m.avatarUrl}
+                                              alt={m.firstName}
+                                            />
+                                          ) : null}
+                                          <AvatarFallback>
+                                            {(m.firstName || "?")
+                                              .charAt(0)
+                                              .toUpperCase()}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      ))}
+                                    </AvatarGroup>
+
+                                    <div className="flex items-center gap-x-1">
+                                      <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                      <span className="text-xs leading-none text-dark-blue-400">
+                                        {onlineTeam.length} team members online
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
+                              )}
 
+                              {!isOwnerViewing && (
                               <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                                 <Label
                                   className="font-semibold inline-flex items-center gap-x-2"
@@ -6404,6 +7238,7 @@ export default function ProjectDetails() {
                                   </Badge>
                                 </div>
                               </div>
+                              )}
                             </>
                           )}
 
@@ -6604,27 +7439,35 @@ export default function ProjectDetails() {
                               </TabsContent>
 
                               <TabsContent value="section-recent">
-                                {!project.recentQuestions ||
-                                project.recentQuestions.length === 0 ? (
-                                  <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6">
-                                    <h1 className="text-lg font-semibold text-dark-blue-400">
-                                      No Recent Questions
-                                    </h1>
-                                    <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                      You will see recent questions here once
-                                      your project is live in the marketplace
-                                      and visitors engage in chat with you and
-                                      your team.
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <Accordion
-                                    type="single"
-                                    className="pt-6 space-y-[15px]"
-                                    defaultValue="rq-0"
-                                  >
-                                    {(project.recentQuestions as string[]).map(
-                                      (q, idx) => (
+                                {(() => {
+                                  const publicQuestions = (
+                                    (project.recentQuestions as Array<{
+                                      question: string
+                                      answer?: string | null
+                                      answeredByName?: string | null
+                                      answeredByRole?: string | null
+                                      hidden?: boolean
+                                    }>) ?? []
+                                  ).filter((q) => q && !q.hidden)
+                                  return publicQuestions.length === 0 ? (
+                                    <div className="border-2 border-gray-200 bg-gray-25 rounded-lg p-6 mt-6">
+                                      <h1 className="text-lg font-semibold text-dark-blue-400">
+                                        No Recent Questions
+                                      </h1>
+                                      <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                        You will see recent questions here once
+                                        your project is live in the marketplace
+                                        and visitors engage in chat with you and
+                                        your team.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <Accordion
+                                      type="single"
+                                      className="pt-6 space-y-[15px]"
+                                      defaultValue="rq-0"
+                                    >
+                                      {publicQuestions.map((q, idx) => (
                                         <AccordionItem
                                           key={`rq-${idx}`}
                                           className="rounded-lg bg-white border border-gray-300"
@@ -6632,20 +7475,62 @@ export default function ProjectDetails() {
                                         >
                                           <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
                                             <span className="flex-auto text-left inline-block">
-                                              {q}
+                                              {q.question}
                                             </span>
                                             <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                           </AccordionTrigger>
+                                          {q.answer && q.answer.trim() && (
+                                            <DisclosureContent className="px-5 pb-5">
+                                              <div className="flex items-center gap-2">
+                                                <Avatar size="xs">
+                                                  <AvatarImage
+                                                    src="/man.jpg"
+                                                    alt=""
+                                                  />
+                                                  <AvatarFallback>
+                                                    {(
+                                                      q.answeredByName ?? "T"
+                                                    ).slice(0, 1)}
+                                                  </AvatarFallback>
+                                                </Avatar>
+                                                <Badge
+                                                  visual="primary"
+                                                  className="rounded-[4px] bg-primary-50 text-[10px]"
+                                                >
+                                                  {q.answeredByRole ??
+                                                    "Project Lead"}
+                                                </Badge>
+                                                <span className="text-sm font-semibold text-dark-blue-400">
+                                                  {q.answeredByName ?? "Team"}
+                                                </span>
+                                              </div>
+                                              <p
+                                                className="mt-2 text-base leading-[1.5] font-light text-dark-blue-400 break-words"
+                                                style={{
+                                                  whiteSpace: "pre-line",
+                                                }}
+                                              >
+                                                {q.answer}
+                                              </p>
+                                              <button
+                                                type="button"
+                                                className="mt-3 text-sm font-medium text-gray-500 hover:text-dark-blue-400"
+                                              >
+                                                Report Answer
+                                              </button>
+                                            </DisclosureContent>
+                                          )}
                                         </AccordionItem>
-                                      )
-                                    )}
-                                  </Accordion>
-                                )}
+                                      ))}
+                                    </Accordion>
+                                  )
+                                })()}
                               </TabsContent>
                             </Tabs>
 
-                            {(project.faqs?.length > 0 ||
-                              project.recentQuestions?.length > 0) && (
+                            {!isOwnerViewing &&
+                              (project.faqs?.length > 0 ||
+                                project.recentQuestions?.length > 0) && (
                               <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
                                 <h1 className="text-base font-semibold text-dark-blue-400 text-center">
                                   Can&apos;t find what you&apos;re looking for?
@@ -6792,9 +7677,15 @@ export default function ProjectDetails() {
 
                                         <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
                                           {faqGenLoading ? (
-                                            <p className="py-8 text-center text-sm text-gray-500">
-                                              Generating suggestions…
-                                            </p>
+                                            <div className="flex flex-col items-center justify-center gap-3 py-12">
+                                              <Spinner
+                                                size={32}
+                                                strokeWidth={4}
+                                              />
+                                              <p className="text-sm text-gray-500">
+                                                Generating suggestions…
+                                              </p>
+                                            </div>
                                           ) : faqGenError ? (
                                             <div className="py-8 text-center">
                                               <p className="text-sm text-error-500">
@@ -7119,253 +8010,7 @@ export default function ProjectDetails() {
                                 )}
 
                                 {questionsTab === "dialog-recent" && (
-                                  <Tabs
-                                    value={recentQTab}
-                                    onValueChange={setRecentQTab}
-                                    unanimated
-                                  >
-                                    <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
-                                      <TabsTrigger value="all">
-                                        All
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          8
-                                        </Badge>
-                                      </TabsTrigger>
-                                      <TabsTrigger value="awaiting">
-                                        Awaiting Response
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          5
-                                        </Badge>
-                                      </TabsTrigger>
-                                      <TabsTrigger value="answered">
-                                        Answered
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          3
-                                        </Badge>
-                                      </TabsTrigger>
-                                    </TabsList>
-
-                                    <TabsContent value="all">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                What is the expected timeline
-                                                for this project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Kevin{" "}
-                                            <span className="text-gray-400">
-                                              @usernamehere
-                                            </span>{" "}
-                                            3 weeks ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We typically complete projects
-                                                within 4-6 weeks depending on
-                                                scope. We&apos;ll provide a
-                                                detailed timeline after our
-                                                initial consultation.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                Can I request changes after the
-                                                project starts?
-                                              </p>
-                                            </div>
-                                            <IconButton
-                                              variant="ghost"
-                                              visual="gray"
-                                              size="sm"
-                                              className="rounded-full text-gray-500 hover:text-gray-800"
-                                            >
-                                              <Edit03 className="size-4" />
-                                            </IconButton>
-                                          </div>
-                                          <p className="mt-2 text-xs text-gray-500">
-                                            Asked by Sarah{" "}
-                                            <span className="text-gray-400">
-                                              @sarahdesigns
-                                            </span>{" "}
-                                            2 weeks ago
-                                          </p>
-                                        </div>
-
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                How do you handle communication
-                                                during the project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Alex{" "}
-                                            <span className="text-gray-400">
-                                              @alexdev
-                                            </span>{" "}
-                                            1 week ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We use Slack for daily updates
-                                                and have weekly video calls to
-                                                review progress. You&apos;ll
-                                                always know where things stand.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="awaiting">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <p className="text-sm font-medium text-dark-blue-400">
-                                              Can I request changes after the
-                                              project starts?
-                                            </p>
-                                            <IconButton
-                                              variant="ghost"
-                                              visual="gray"
-                                              size="sm"
-                                              className="rounded-full text-gray-500 hover:text-gray-800"
-                                            >
-                                              <Edit03 className="size-4" />
-                                            </IconButton>
-                                          </div>
-                                          <p className="mt-2 text-xs text-gray-500">
-                                            Asked by Sarah{" "}
-                                            <span className="text-gray-400">
-                                              @sarahdesigns
-                                            </span>{" "}
-                                            2 weeks ago
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="answered">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                What is the expected timeline
-                                                for this project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Kevin{" "}
-                                            <span className="text-gray-400">
-                                              @usernamehere
-                                            </span>{" "}
-                                            3 weeks ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We typically complete projects
-                                                within 4-6 weeks depending on
-                                                scope.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-                                  </Tabs>
+                                  <RecentQuestionsManager projectId={String(project.id)} />
                                 )}
                               </div>
                             </Tabs>
@@ -8996,7 +9641,9 @@ export default function ProjectDetails() {
                         </span>
                         <div className="mt-2">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {durationLabel}
+                            {project?.listingType === "service"
+                              ? "Ongoing"
+                              : durationLabel}
                           </span>
                         </div>
                       </div>
@@ -9006,25 +9653,59 @@ export default function ProjectDetails() {
 
                   <ScopeBuilder
                     embedded
+                    scopeType={
+                      project?.listingType === "service"
+                        ? "service"
+                        : "project"
+                    }
+                    onScopeTypeChange={(type) => {
+                      setProject((prev: any) => ({
+                        ...prev,
+                        listingType: type,
+                      }))
+                      setHasChanges(true)
+                      ProjectAPI.UpdateProjectDraft(project.id, {
+                        listingType: type,
+                      } as any).catch(() => {})
+                    }}
                     phases={
                       project.scope?.length > 0 ? project.scope : undefined
                     }
                     onPhasesChange={handleScopeChange}
                     teamMembers={(() => {
-                      const apiTeam = (project.team ?? []).map((m: any) => ({
-                        id: m.id || m.userId || crypto.randomUUID(),
-                        firstName: m.firstName || m.name || "User",
-                        username: m.username || m.email?.split("@")[0] || "",
-                        avatarUrl: m.avatarUrl || null,
-                        role: m.role || m.jobTitle || "",
-                        jobTitles: m.jobTitles ?? [],
-                        hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
-                        workSchedule: m.workSchedule ?? m.availability ?? null,
-                        customHoursPerWeek: m.customHoursPerWeek ?? null,
-                        location: m.location ?? m.country ?? null,
-                        experience: m.experience ?? m.experienceLevel ?? null,
-                      }))
-                      return apiTeam.length > 0 ? apiTeam : SEED_TEAM_MEMBERS
+                      const apiTeam = (project.team ?? []).map((m: any) => {
+                        return {
+                          id: m.id || m.userId || crypto.randomUUID(),
+                          firstName: m.firstName || m.name || "User",
+                          username: m.username || m.email?.split("@")[0] || "",
+                          avatarUrl: m.avatarUrl || null,
+                          role: jobTitleOf(m),
+                          jobTitles: jobTitlesOf(m),
+                          hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+                          workSchedule:
+                            m.workSchedule ?? m.availability ?? null,
+                          customHoursPerWeek: m.customHoursPerWeek ?? null,
+                          location:
+                            coerceName(m.location) ||
+                            coerceName(m.country) ||
+                            null,
+                          experience:
+                            coerceName(m.experience) ||
+                            coerceName(m.experienceLevel) ||
+                            null,
+                        }
+                      })
+                      // Scope assignees must be members ON this project
+                      // (Chris 07-28) — the owner (self) plus added members —
+                      // never the whole roster or seed members.
+                      const ids = Array.isArray(project.teamMemberIds)
+                        ? project.teamMemberIds.map(String)
+                        : []
+                      return apiTeam.filter(
+                        (m: any) =>
+                          ids.includes(String(m.id)) ||
+                          String(m.id) === ownerId
+                      )
                     })()}
                   />
                 </div>
@@ -9086,7 +9767,7 @@ export default function ProjectDetails() {
                 <div className="mt-3">
                   <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
                     {budgetTotalCents > 0
-                      ? `with an initial payment of $${Math.round((budgetTotalCents / 100) * 0.25).toLocaleString()} to kickoff`
+                      ? `with an initial payment of ${formatBudget(budgetTotalCents, budgetPeriod)} to kickoff`
                       : "with an initial payment of $0 to kickoff"}
                   </span>
                 </div>
@@ -9096,14 +9777,102 @@ export default function ProjectDetails() {
                     Current Team
                   </span>
 
-                  <Avatar size="sm" className="border-2 border-white">
-                    {user?.avatarUrl && (
-                      <AvatarImage src={user.avatarUrl} alt={user.firstName || "Owner"} />
-                    )}
-                    <AvatarFallback>
-                      {user?.firstName?.[0]?.toUpperCase() || "O"}
-                    </AvatarFallback>
-                  </Avatar>
+                  {Array.isArray(currentTeam) &&
+                  currentTeam.length > 0 ? (
+                    <div className="group relative w-fit">
+                      <div className="flex items-center -space-x-2">
+                      {currentTeam
+                        .slice(0, 5)
+                        .map((m: any, i: number) => (
+                          <Avatar
+                            key={m.userId ?? m.username ?? i}
+                            size="sm"
+                            className="border-2 border-white"
+                          >
+                            {m.avatarUrl && (
+                              <AvatarImage
+                                src={m.avatarUrl}
+                                alt={m.firstName || "Member"}
+                              />
+                            )}
+                            <AvatarFallback>
+                              {(m.firstName || "?").charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        ))}
+                      {currentTeam.length > 5 && (
+                        <span className="pl-3 text-xs font-medium text-dark-blue-400">
+                          +{currentTeam.length - 5}
+                        </span>
+                      )}
+                      </div>
+                      <div className="pointer-events-none absolute left-0 top-full z-20 pt-2 w-[300px] opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+                          <div className="flex items-center gap-x-2 text-sm font-light text-dark-blue-400">
+                            <Users03 className="size-4 shrink-0 text-primary-500" />
+                            <span>
+                              Your project currently has{" "}
+                              <span className="font-bold">
+                                {currentTeam.length} team members
+                              </span>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
+                            onClick={() => {
+                              // The team dialog lives in the "Details" tab, which
+                              // unmounts on other tabs — switch to it so the
+                              // dialog is mounted, then open it.
+                              setSelected("Details")
+                              setTeamTab("Team Members")
+                              setTeamDialogOpen(true)
+                            }}
+                          >
+                            Manage Team <span aria-hidden>→</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="group relative w-fit">
+                      <Avatar size="sm" className="border-2 border-white">
+                        {user?.avatarUrl && (
+                          <AvatarImage
+                            src={user.avatarUrl}
+                            alt={user.firstName || "Owner"}
+                          />
+                        )}
+                        <AvatarFallback>
+                          {user?.firstName?.[0]?.toUpperCase() || "O"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="pointer-events-none absolute left-0 top-full z-20 pt-2 w-[300px] opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+                          <div className="flex items-center gap-x-2 text-sm font-light text-dark-blue-400">
+                            <Users03 className="size-4 shrink-0 text-primary-500" />
+                            <span>
+                              No team members yet — just you as owner.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
+                            onClick={() => {
+                              // The team dialog lives in the "Details" tab, which
+                              // unmounts on other tabs — switch to it so the
+                              // dialog is mounted, then open it.
+                              setSelected("Details")
+                              setTeamTab("Team Members")
+                              setTeamDialogOpen(true)
+                            }}
+                          >
+                            Manage Team <span aria-hidden>→</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-6 space-y-3">
@@ -9333,7 +10102,7 @@ export default function ProjectDetails() {
                   open={publishDialogOpen}
                   onOpenChange={setPublishDialogOpen}
                 >
-                  <DialogContent className="max-w-[480px] p-0">
+                  <DialogContent className="p-0" style={{ maxWidth: 416 }}>
                     <div className="p-6">
                       <DialogTitle>
                         Publish this{" "}

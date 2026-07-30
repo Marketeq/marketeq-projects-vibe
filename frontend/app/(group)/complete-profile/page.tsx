@@ -58,7 +58,13 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import Confetti from "react-confetti"
 import CurrencyInput from "react-currency-input-field"
-import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
+import {
+  Controller,
+  DefaultValues,
+  SubmitHandler,
+  useForm,
+  useWatch,
+} from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
 import { UserProfile } from "@/types/user"
@@ -999,6 +1005,40 @@ function formatJobTitle(value: string): string {
     .split(" ")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ")
+}
+
+// Capitalize the first letter of each word, preserving numbers, punctuation and
+// existing casing (so "3M", "AT&T", "eBay" stay intact). A word that already
+// contains an uppercase letter is left alone — otherwise deliberate brand casing
+// like "eBay"/"iPhone" would be flattened to "EBay"/"IPhone".
+function capitalizeCompanyName(value?: string): string {
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+}
+
+// Real elapsed duration between two {month(1-12), year} points, LinkedIn-style
+// ("5 yrs 2 mos", "1 yr", "3 mos"). Inclusive of both endpoints.
+function formatExperienceDuration(
+  start?: { month?: number; year?: number },
+  end?: { month?: number; year?: number },
+  currentlyWorkHere?: boolean
+): string {
+  if (!start?.month || !start?.year) return ""
+  const now = new Date()
+  const endYear = currentlyWorkHere ? now.getFullYear() : end?.year
+  const endMonth = currentlyWorkHere ? now.getMonth() + 1 : end?.month
+  if (!endYear || !endMonth) return ""
+  let totalMonths = (endYear - start.year) * 12 + (endMonth - start.month) + 1
+  if (totalMonths < 1) totalMonths = 1
+  const yrs = Math.floor(totalMonths / 12)
+  const mos = totalMonths % 12
+  const parts: string[] = []
+  if (yrs > 0) parts.push(`${yrs} yr${yrs > 1 ? "s" : ""}`)
+  if (mos > 0) parts.push(`${mos} mo${mos > 1 ? "s" : ""}`)
+  return parts.join(" ")
 }
 
 const moreInfoFormSchema = z
@@ -2076,7 +2116,7 @@ const SkillsDialog = ({
       if (!res.ok) return
       const data = await res.json()
       const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
+      setFilteredSkills(entries.map((e) => ({ id: e.id ?? e.label, name: e.label })))
     } catch {}
   }, [])
 
@@ -2304,7 +2344,10 @@ const SkillsDialog = ({
               >
                 <div className="mt-3 flex gap-3 flex-wrap pr-1">
                   {skills?.map((skill) => (
-                    <Badge key={skill.id} visual="primary">
+                    <Badge
+                      key={`${skill.id}-${skill.name}`}
+                      visual="primary"
+                    >
                       {skill.name}
                       <button
                         type="button"
@@ -2312,7 +2355,7 @@ const SkillsDialog = ({
                         onClick={() => {
                           setValue(
                             "skills",
-                            skills.filter((s) => s.id !== skill.id)
+                            skills.filter((s) => s.name !== skill.name)
                           )
                           trigger()
                         }}
@@ -2504,6 +2547,14 @@ const workExperienceFormSchema = z
 
 type WorkExperienceFormValues = z.infer<typeof workExperienceFormSchema>
 
+const workExperienceFormDefaultValues = {
+  currentlyWorkHere: false,
+  jobDescription: "",
+  jobTitle: "",
+  employer: "",
+  skills: [],
+} as DefaultValues<WorkExperienceFormValues>
+
 const months = [
   { name: "January", value: 1 },
   { name: "February", value: 2 },
@@ -2570,7 +2621,7 @@ const WorkExperienceDialog = ({
       if (!res.ok) return
       const data = await res.json()
       const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
-      setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
+      setFilteredSkills(entries.map((e) => ({ id: e.id ?? e.label, name: e.label })))
     } catch {}
   }, [])
 
@@ -2631,12 +2682,8 @@ const WorkExperienceDialog = ({
     reset,
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
-    defaultValues: {
-      currentlyWorkHere: false,
-      jobDescription: "",
-      jobTitle: "",
-      employer: "",
-    },
+    mode: "onChange",
+    defaultValues: workExperienceFormDefaultValues,
   })
   const [serverError, setServerError] = useState<string | null>(null)
   const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
@@ -2692,6 +2739,7 @@ const WorkExperienceDialog = ({
   }
 
   const skillsField = useWatch({ control, name: "skills" })
+  const jobDescriptionField = useWatch({ control, name: "jobDescription" })
   const currentlyWorkHereField = useWatch({
     control,
     name: "currentlyWorkHere",
@@ -2741,7 +2789,7 @@ const WorkExperienceDialog = ({
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
-                        reset()
+                        reset(workExperienceFormDefaultValues)
                         setState("action")
                       }}
                       className="bg-white"
@@ -2823,7 +2871,11 @@ const WorkExperienceDialog = ({
 
                   {state === "default" && !profileError && !profileLoading && (
                     <Button
-                      onClick={() => setState("action")}
+                      onClick={() => {
+                        setEditingIndex(undefined)
+                        reset(workExperienceFormDefaultValues)
+                        setState("action")
+                      }}
                       className="bg-white"
                       variant="outlined"
                       visual="gray"
@@ -2900,6 +2952,12 @@ const WorkExperienceDialog = ({
                             id="employer"
                             placeholder="Acme Inc."
                             {...register("employer")}
+                            onBlur={(e) => {
+                              setValue(
+                                "employer",
+                                capitalizeCompanyName(e.target.value)
+                              )
+                            }}
                             isInvalid={hookFormHasError({
                               errors,
                               name: "employer",
@@ -2958,7 +3016,13 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="startDate.month"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Month"
                                       displayValue={(value: number) =>
@@ -3003,7 +3067,13 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="startDate.year"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Year"
                                       displayValue={(value: number) => value}
@@ -3069,7 +3139,10 @@ const WorkExperienceDialog = ({
                                   <Listbox
                                     key={`end-month-${currentlyWorkHereField}`}
                                     value={value}
-                                    onChange={onChange}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
                                   >
                                     <ListboxButton
                                       placeholder="Month"
@@ -3118,7 +3191,10 @@ const WorkExperienceDialog = ({
                                   <Listbox
                                     key={`end-year-${currentlyWorkHereField}`}
                                     value={value}
-                                    onChange={onChange}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      trigger("endDate.year")
+                                    }}
                                   >
                                     <ListboxButton
                                       placeholder="Year"
@@ -3204,13 +3280,24 @@ const WorkExperienceDialog = ({
                               name: "jobDescription",
                             })}
                           />
-                          <HookFormErrorMessage
-                            name="jobDescription"
-                            errors={errors}
-                            render={({ message }) => (
-                              <ErrorMessage size="sm">{message}</ErrorMessage>
-                            )}
-                          />
+                          <div className="flex items-start justify-between gap-x-2">
+                            <HookFormErrorMessage
+                              name="jobDescription"
+                              errors={errors}
+                              render={({ message }) => (
+                                <ErrorMessage size="sm">{message}</ErrorMessage>
+                              )}
+                            />
+                            <span
+                              className={cn(
+                                "ml-auto text-xs font-light text-gray-500",
+                                (jobDescriptionField?.length ?? 0) > 1000 &&
+                                  "text-error-600 font-medium"
+                              )}
+                            >
+                              {jobDescriptionField?.length ?? 0} / 1000
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -3304,7 +3391,10 @@ const WorkExperienceDialog = ({
 
                       <div className="mt-3 flex gap-3 flex-wrap">
                         {skillsField?.map((skill) => (
-                          <Badge key={skill.id} visual="primary">
+                          <Badge
+                            key={`${skill.id}-${skill.name}`}
+                            visual="primary"
+                          >
                             {skill.name}
                             <button
                               type="button"
@@ -3312,7 +3402,9 @@ const WorkExperienceDialog = ({
                               onClick={() => {
                                 setValue(
                                   "skills",
-                                  skillsField.filter((s) => s.id !== skill.id)
+                                  skillsField.filter(
+                                    (s) => s.name !== skill.name
+                                  )
                                 )
                                 trigger("skills")
                               }}
@@ -3573,6 +3665,13 @@ const educationFormSchema = z
 
 type EducationFormValues = z.infer<typeof educationFormSchema>
 
+const educationFormDefaultValues = {
+  currentlyAttending: false,
+  degree: "",
+  major: "",
+  schoolOrUniversity: "",
+} as EducationFormValues
+
 const EducationDialog = ({
   onFinished,
   onOpenedChange,
@@ -3611,15 +3710,12 @@ const EducationDialog = ({
     formState: { errors, isValid, isDirty },
     register,
     reset,
+    trigger,
     setValue: setFormValue,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
-    defaultValues: {
-      currentlyAttending: false,
-      degree: "",
-      major: "",
-      schoolOrUniversity: "",
-    },
+    mode: "onChange",
+    defaultValues: educationFormDefaultValues,
   })
   const [state, setState] = useState<"default" | "preview" | "action">(
     "default"
@@ -3734,7 +3830,6 @@ const EducationDialog = ({
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
-
   useEffect(() => {
     if (currentlyAttending) {
       setFormValue("endDate.month", undefined as any, {
@@ -3785,7 +3880,7 @@ const EducationDialog = ({
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
-                        reset()
+                        reset(educationFormDefaultValues)
                         setState("action")
                       }}
                       className="bg-white"
@@ -3854,7 +3949,11 @@ const EducationDialog = ({
 
                 {state === "default" && !profileError && !profileLoading && (
                   <Button
-                    onClick={() => setState("action")}
+                    onClick={() => {
+                      setEditingIndex(undefined)
+                      reset(educationFormDefaultValues)
+                      setState("action")
+                    }}
                     className="bg-white"
                     variant="outlined"
                     visual="gray"
@@ -4032,7 +4131,13 @@ const EducationDialog = ({
                               name="startDate.month"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  value={value}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) =>
                                       months.find((m) => m.value === value)
@@ -4068,7 +4173,13 @@ const EducationDialog = ({
                               name="startDate.year"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  value={value}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
                                     placeholder="Year"
@@ -4121,7 +4232,10 @@ const EducationDialog = ({
                                 <Listbox
                                   key={`edu-wiz-end-month-${currentlyAttending}`}
                                   value={value ?? null}
-                                  onChange={onChange}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
                                 >
                                   <ListboxButton
                                     displayValue={(value: number) =>
@@ -4161,7 +4275,10 @@ const EducationDialog = ({
                                 <Listbox
                                   key={`edu-wiz-end-year-${currentlyAttending}`}
                                   value={value ?? null}
-                                  onChange={onChange}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    trigger("endDate.year")
+                                  }}
                                 >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
@@ -4985,7 +5102,7 @@ const WorkExperienceCard = ({
 
           <div className="inline-flex items-center gap-x-2">
             <IconButton
-              className="text-gray-400"
+              className="text-gray-400 rounded-full"
               size="md"
               visual="gray"
               variant="ghost"
@@ -4998,7 +5115,7 @@ const WorkExperienceCard = ({
             <Dialog>
               <DialogTrigger asChild>
                 <IconButton
-                  className="text-gray-400"
+                  className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                   size="md"
                   visual="gray"
                   variant="ghost"
@@ -5037,7 +5154,7 @@ const WorkExperienceCard = ({
         </div>
         <div className="mt-1.5">
           <span className="text-[13px] leading-none text-dark-blue-400">
-            {employer}
+            {capitalizeCompanyName(employer)}
           </span>
         </div>
         <div className="mt-1.5 items-center flex gap-x-1.5">
@@ -5053,10 +5170,18 @@ const WorkExperienceCard = ({
               </>
             )}
           </span>
-          <span className="inline-block shrink-0 size-1 rounded-full bg-gray-300" />
-          <span className="text-[12px] leading-none font-semibold text-dark-blue-400">
-            5 yrs 2 mos
-          </span>
+          {formatExperienceDuration(startDate, endDate, currentlyWorkHere) && (
+            <>
+              <span className="inline-block shrink-0 size-1 rounded-full bg-gray-300" />
+              <span className="text-[12px] leading-none font-semibold text-dark-blue-400">
+                {formatExperienceDuration(
+                  startDate,
+                  endDate,
+                  currentlyWorkHere
+                )}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="mt-3 min-w-0 overflow-hidden">
@@ -5067,7 +5192,11 @@ const WorkExperienceCard = ({
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {skills?.map((skill) => (
-            <Badge key={skill.id} visual="gray" className="max-w-full break-all">
+            <Badge
+              key={`${skill.id}-${skill.name}`}
+              visual="gray"
+              className="max-w-full break-all"
+            >
               {skill.name}
             </Badge>
           ))}
@@ -5169,7 +5298,7 @@ const EducationCard = ({
 
           <div className="inline-flex items-center gap-x-2">
             <IconButton
-              className="text-gray-400"
+              className="text-gray-400 rounded-full"
               size="md"
               visual="gray"
               variant="ghost"
@@ -5182,7 +5311,7 @@ const EducationCard = ({
             <Dialog>
               <DialogTrigger asChild>
                 <IconButton
-                  className="text-gray-400"
+                  className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                   size="md"
                   visual="gray"
                   variant="ghost"
