@@ -7,6 +7,9 @@ export interface Phase {
   startDay?: number;
   endDay?: number;
   order?: number;
+  phaseType?: string | null;
+  recurrenceSchedule?: string | null;
+  recurrenceCount?: number | null;
   projectId: string;
   task?: Task[];
   createdAt: Date;

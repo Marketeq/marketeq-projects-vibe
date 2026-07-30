@@ -68,6 +68,19 @@ export function LightboxVideoPlayer({
               iv_load_policy: 3,
               disablekb: 1,
               playsinline: 1,
+              fs: 0,
+              cc_load_policy: 0,
+              showinfo: 0,
+              autohide: 1,
+            },
+          },
+          vimeo: {
+            playerOptions: {
+              controls: false,
+              title: false,
+              byline: false,
+              portrait: false,
+              dnt: true,
             },
           },
         }}
@@ -79,6 +92,18 @@ export function LightboxVideoPlayer({
         onClick={toggle}
         className="absolute inset-x-0 top-0 focus-visible:outline-none"
         style={{ bottom: 56, background: "transparent" }}
+      />
+      {/* top mask — hides the YouTube title/share overlay that appears on
+          hover (the iframe API can't remove it, so we cover it) */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0"
+        style={{
+          height: 64,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0.9), rgba(0,0,0,0.55) 55%, transparent)",
+          opacity: showBar ? 1 : 0,
+          transition: "opacity 200ms ease",
+        }}
       />
       {/* custom control bar (design frame) */}
       {/* bottom scrim so the bar stays readable on bright videos */}

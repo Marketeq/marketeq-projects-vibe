@@ -283,6 +283,11 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
           closeAuthModal()
           onClose()
           setShowSecuritySettings(true)
+          // Mirror app/sign-up/page.tsx: a brand-new signup must go through
+          // onboarding (role selection etc.), not be left on whatever page
+          // the popup happened to be opened from.
+          router.push(pendingRedirect ?? "/onboarding")
+          setPendingRedirect(null)
           reset()
         } else {
           setFormError("Something went wrong. Please try again.")
