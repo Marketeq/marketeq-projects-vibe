@@ -281,9 +281,15 @@ const JOB_TITLE_WORDS = [
 ]
 
 // Capitalize the first letter of each word, preserving numbers, punctuation and
-// existing casing (so "3M", "AT&T", "eBay" stay intact).
+// existing casing (so "3M", "AT&T", "eBay" stay intact). A word that already
+// contains an uppercase letter is left alone — otherwise deliberate brand casing
+// like "eBay"/"iPhone" would be flattened to "EBay"/"IPhone".
 function capitalizeCompanyName(value?: string): string {
-  return (value ?? "").replace(/(^|\s)([a-z])/g, (_m, lead, ch) => lead + ch.toUpperCase())
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
 }
 
 function formatJobTitle(raw: string): string {
