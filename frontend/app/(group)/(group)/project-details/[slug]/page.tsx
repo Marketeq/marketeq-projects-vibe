@@ -7,7 +7,10 @@ import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
-import { estimateScopeBudgetCents } from "@/components/scope-builder"
+import {
+  estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+} from "@/components/scope-builder"
 import {
   addFavorite,
   findFavoriteByItemId,
@@ -24,12 +27,14 @@ import {
   ArrowLeft,
   Attachment01,
   ChartBreakoutCircle,
+  Calendar,
   Check,
   CheckCircle,
   ChevronDown,
   Clock,
   FileText,
   Flag,
+  RefreshCcw05,
   HelpCircle,
   Home03,
   Image03,
@@ -71,6 +76,7 @@ import {
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { ProjectAPI } from "@/service/http/project"
+import { UserAPI } from "@/service/http/user"
 import { ChatsContextProvider } from "@/components/chat"
 import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
@@ -917,6 +923,69 @@ export default function ProjectDetails({
     (!!user?.id &&
       String((project as any)?.ownerId ?? (project as any)?.userId ?? "") ===
         String(user.id))
+  const projectOwnerId = String(
+    (project as any)?.ownerId ?? (project as any)?.userId ?? ""
+  )
+
+  const [ownerProfile, setOwnerProfile] = React.useState<any>(null)
+
+  React.useEffect(() => {
+    if (!projectOwnerId) {
+      setOwnerProfile(null)
+      return
+    }
+    let cancelled = false
+    UserAPI.getProfile(projectOwnerId)
+      .then((res) => {
+        if (cancelled) return
+        setOwnerProfile(res?.data ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerProfile(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectOwnerId])
+
+  const currentTeam = React.useMemo(() => {
+    const base = Array.isArray((project as any)?.team)
+      ? [...(project as any).team]
+      : []
+    const ownerId = projectOwnerId
+    const hasOwner = base.some((m: any) => {
+      const mid = String(m?.userId ?? m?.id ?? "")
+      return m?.role === "owner" || (!!ownerId && mid === ownerId)
+    })
+    const viewerIsOwner = !!user?.id && !!ownerId && String(user.id) === ownerId
+    const src =
+      ownerProfile ?? (viewerIsOwner ? user : null)
+    if (!hasOwner && src) {
+      const skills = Array.isArray((src as any).skills)
+        ? (src as any).skills.map((s: any) => s?.name ?? s).filter(Boolean)
+        : []
+      const languages = Array.isArray((src as any).languages)
+        ? (src as any).languages.map((l: any) => l?.name ?? l).filter(Boolean)
+        : []
+      base.unshift({
+        id: (src as any).id ?? ownerId,
+        userId: (src as any).id ?? ownerId,
+        firstName:
+          (src as any).firstName ?? (src as any).username ?? "Owner",
+        username: (src as any).username ?? "",
+        avatarUrl: (src as any).avatarUrl ?? null,
+        location:
+          (src as any).location ?? (src as any).country ?? null,
+        languages,
+        skills,
+        role: "owner",
+        isLead: true,
+        isOnline: true,
+      })
+    }
+    return base
+  }, [project, user, ownerProfile, projectOwnerId])
+
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
@@ -952,18 +1021,25 @@ export default function ProjectDetails({
         const role = row?.role ?? row?.roleName
         if (role) uniqueRoles.add(role)
         const dur = row?.duration
+        let days = 0
         if (dur && typeof dur === "object") {
           const val = Number(dur.value) || 0
           if (val > 0) {
-            const days =
+            days =
               dur.type === "weeks"
                 ? val * 7
                 : dur.type === "hours"
                   ? Math.max(1, Math.ceil(val / 24))
                   : val
-            taskDays.push(days)
           }
         }
+        // No explicit duration on the task — derive it from estimatedHours at
+        // 40 hrs/week (full-time), so duration reflects the actual scope.
+        if (days <= 0) {
+          const hrs = Number(row?.estimatedHours) || 0
+          if (hrs > 0) days = Math.max(1, Math.round((hrs * 7) / 40))
+        }
+        if (days > 0) taskDays.push(days)
       }
       if (taskDays.length > 0) totalDays += Math.max(...taskDays)
     }
@@ -976,14 +1052,21 @@ export default function ProjectDetails({
         durationWeeks = Number(project.durationMonths) * 4.33
       }
     }
-    const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
-
-    // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
-    const costPerWeek = durationWeeks > 0 ? Math.round(totalCost / durationWeeks) : 0
-    const costPerBiweek = durationWeeks > 0 ? Math.round(totalCost / (durationWeeks / 2)) : 0
-    const costPerMonth = durationMonths > 0 ? Math.round(totalCost / durationMonths) : 0
-    const costPerQuarter = durationMonths >= 3 ? Math.round(totalCost / (durationMonths / 3)) : 0
-    const costPerYear = durationMonths >= 12 ? Math.round(totalCost / (durationMonths / 12)) : 0
+    // Whole billing periods (docs: Installment Plans §04). Each installment is
+    // Total_Cost ÷ ceil(duration / period); the initial payment is one
+    // installment (the first week / 2 weeks / month), not an average spread
+    // over a fractional number of periods.
+    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
+    const installmentCost = (periodDays: number) => {
+      if (effDays <= 0 || totalCost <= 0) return 0
+      const count = Math.max(1, Math.ceil(effDays / periodDays))
+      return Math.ceil(totalCost / count)
+    }
+    const costPerWeek = installmentCost(7)
+    const costPerBiweek = installmentCost(14)
+    const costPerMonth = installmentCost(30)
+    const costPerQuarter = effDays >= 90 ? installmentCost(90) : 0
+    const costPerYear = effDays >= 360 ? installmentCost(360) : 0
 
     const periodOptions = [
       { label: "week", value: "week", cost: costPerWeek },
@@ -994,7 +1077,6 @@ export default function ProjectDetails({
     ]
 
     // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
     let formattedDuration = ""
     if (effDays > 0 && effDays < 7) {
       formattedDuration = `${effDays} day`
@@ -1140,6 +1222,34 @@ export default function ProjectDetails({
                           ? Math.max(1, Math.ceil(v / 24))
                           : v
                   }
+                  // The draft endpoint loads tasks from the relational table,
+                  // which stores `duration` (e.g. "2 weeks") but no
+                  // estimatedHours. Derive hours from duration (40 hrs/week,
+                  // 8 hrs/day) so the scope viewer shows real hours, not 0.
+                  const durHours = (dur: any): number => {
+                    if (!dur) return 0
+                    if (typeof dur === "object") {
+                      const v = Number(dur.value) || 0
+                      if (v <= 0) return 0
+                      return dur.type === "weeks"
+                        ? v * 40
+                        : dur.type === "months"
+                          ? v * 160
+                          : dur.type === "hours"
+                            ? v
+                            : v * 8
+                    }
+                    const [rv, ru] = String(dur).trim().split(/\s+/)
+                    const v = Number(rv) || 0
+                    const u = (ru || "days").toLowerCase()
+                    return u.startsWith("week")
+                      ? v * 40
+                      : u.startsWith("month")
+                        ? v * 160
+                        : u.startsWith("hour")
+                          ? v
+                          : v * 8
+                  }
                   const draftPhases: any[] = Array.isArray(d.scope)
                     ? d.scope
                     : []
@@ -1151,6 +1261,9 @@ export default function ProjectDetails({
                         ph.stageName ??
                         `Phase ${i + 1}`,
                       order: ph.order ?? i,
+                      phaseType: ph.phaseType ?? undefined,
+                      recurrenceSchedule: ph.recurrenceSchedule ?? undefined,
+                      recurrenceCount: ph.recurrenceCount ?? undefined,
                       tasks: (ph.tasks ?? ph.task ?? []).map((t: any) => ({
                         title: t.title ?? t.taskName ?? "",
                         roleName: t.roleName ?? t.role ?? "",
@@ -1165,7 +1278,12 @@ export default function ProjectDetails({
                             ? t.experience[0]
                             : t.experience) ??
                           "Medior",
-                        estimatedHours: Number(t.estimatedHours) || 0,
+                        estimatedHours:
+                          Number(t.estimatedHours) || durHours(t.duration),
+                        duration:
+                          typeof t.duration === "string"
+                            ? t.duration
+                            : undefined,
                       })),
                     })
                   )
@@ -2206,8 +2324,8 @@ export default function ProjectDetails({
                           project.team[] (Step 2 of the hybrid team model).
                           Falls back to the static design when team is empty.
                         */}
-                        {Array.isArray(project.team) &&
-                        project.team.length > 0 ? (
+                        {Array.isArray(currentTeam) &&
+                        currentTeam.length > 0 ? (
                           (() => {
                             type TeamMember = {
                               firstName: string
@@ -2220,7 +2338,7 @@ export default function ProjectDetails({
                               isLead: boolean
                               isOnline: boolean
                             }
-                            const members = project.team as TeamMember[]
+                            const members = currentTeam as TeamMember[]
                             const lead =
                               members.find((m) => m.isLead) ?? members[0]
                             const allLocations = Array.from(
@@ -4313,10 +4431,14 @@ export default function ProjectDetails({
                     location?: string | null
                     experienceLevel: string
                     estimatedHours: number
+                    duration?: string
                   }
                   type ScopePhase = {
                     phaseName: string
                     order: number
+                    phaseType?: "setup" | "recurring" | "ongoing"
+                    recurrenceSchedule?: "weekly" | "monthly" | "quarterly"
+                    recurrenceCount?: number
                     tasks: ScopeTask[]
                   }
                   const phases = (project.scope as ScopePhase[])
@@ -4332,15 +4454,49 @@ export default function ProjectDetails({
                     "Phase Seven",
                     "Phase Eight",
                   ]
+                  const recurLabelMap: Record<string, string> = {
+                    weekly: "Weekly",
+                    monthly: "Monthly",
+                    quarterly: "Quarterly",
+                  }
                   // Accumulate day ranges across phases so later phases
                   // start on day (prev end + 1).
+                  // Per-task days from hours (40 hrs/week). Tasks in a phase run
+                  // in parallel → take the MAX (matches the my-listings owner
+                  // view); phases are sequential → accumulate.
+                  const taskDays = (t: ScopeTask) => {
+                    const h = Number(t.estimatedHours) || 0
+                    return h > 0 ? Math.max(1, Math.round((h * 7) / 40)) : 0
+                  }
+                  const durationLabel = (h: number) => {
+                    if (h <= 0) return "—"
+                    const weeks = h / 40
+                    if (Number.isInteger(weeks))
+                      return `${weeks} week${weeks > 1 ? "s" : ""}`
+                    const days = Math.max(1, Math.round(h / 8))
+                    return `${days} day${days > 1 ? "s" : ""}`
+                  }
+                  // Show the duration in the UNIT the seller chose (weeks →
+                  // weeks, hours → hours, days → days). Only fall back to the
+                  // hours→weeks estimate when no explicit duration was set.
+                  const taskDurationLabel = (task: ScopeTask) => {
+                    const raw = task.duration?.trim()
+                    const m = raw?.match(/^([\d.]+)\s*([a-zA-Z]+)/)
+                    if (m) {
+                      const val = Number(m[1])
+                      const unit = m[2].toLowerCase().replace(/s$/, "")
+                      if (Number.isFinite(val) && val > 0)
+                        return `${val} ${unit}${val === 1 ? "" : "s"}`
+                    }
+                    if (raw) return raw
+                    return durationLabel(task.estimatedHours)
+                  }
                   let cursor = 1
                   const withDays = phases.map((phase) => {
-                    const phaseHours = (phase.tasks ?? []).reduce(
-                      (sum, t) => sum + (t.estimatedHours || 0),
-                      0
+                    const days = Math.max(
+                      1,
+                      ...(phase.tasks ?? []).map(taskDays)
                     )
-                    const days = Math.max(1, Math.ceil(phaseHours / 8))
                     const start = cursor
                     const end = cursor + days - 1
                     cursor = end + 1
@@ -4367,7 +4523,9 @@ export default function ProjectDetails({
                                   </div>
 
                                   <span className="text-base md:text-[18px] font-semibold leading-7 text-dark-blue-400">
-                                    {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                    {phase.phaseType
+                                      ? PHASE_TYPE_TITLE[phase.phaseType]
+                                      : (phaseLabels[pi] ?? `Phase ${pi + 1}`)}{" "}
                                     <span className="font-light">
                                       {phase.phaseName}
                                     </span>
@@ -4375,15 +4533,61 @@ export default function ProjectDetails({
                                 </div>
 
                                 <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {start}
-                                  </span>
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    -
-                                  </span>
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {end}
-                                  </span>
+                                  {phase.phaseType === "ongoing" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="size-4 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+                                      </svg>
+                                      Ongoing
+                                    </span>
+                                  ) : phase.phaseType === "recurring" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+                                      <RefreshCcw05
+                                        className="size-3.5 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                      />
+                                      Recurs:{" "}
+                                      {
+                                        recurLabelMap[
+                                          phase.recurrenceSchedule ?? "monthly"
+                                        ]
+                                      }
+                                      , {phase.recurrenceCount ?? 1} time
+                                      {(phase.recurrenceCount ?? 1) > 1
+                                        ? "s"
+                                        : ""}
+                                    </span>
+                                  ) : phase.phaseType === "setup" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] font-semibold text-dark-blue-400">
+                                      <Calendar
+                                        className="size-3.5 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                      />
+                                      Day {start} - Day {end}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        Day {start}
+                                      </span>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        -
+                                      </span>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        Day {end}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </AccordionTrigger>
@@ -4439,7 +4643,7 @@ export default function ProjectDetails({
                                       </TableCell>
                                       <TableCell className="py-4 px-6 text-right">
                                         <span className="text-sm text-nowrap text-dark-blue-400">
-                                          {task.estimatedHours} hours
+                                          {taskDurationLabel(task)}
                                         </span>
                                       </TableCell>
                                     </TableRow>
@@ -5118,12 +5322,12 @@ export default function ProjectDetails({
                   Current Team
                 </span>
 
-                {Array.isArray(project.team) && project.team.length > 0 ? (
+                {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <AvatarGroup size="sm" excess>
-                          {project.team.map((m: any, i: number) => (
+                          {currentTeam.map((m: any, i: number) => (
                             <Avatar
                               key={m.username ?? i}
                               className="border-2 border-white hover:ring-0 active:ring-0"
@@ -5153,7 +5357,7 @@ export default function ProjectDetails({
                           }
                         >
                           <div className="space-y-3 pr-5">
-                            {project.team.map((m: any, i: number) => (
+                            {currentTeam.map((m: any, i: number) => (
                               <div
                                 key={m.username ?? i}
                                 className="flex items-center gap-x-[18px]"
@@ -5283,14 +5487,7 @@ export default function ProjectDetails({
                     size="lg"
                     variant="outlined"
                     visual="gray"
-                    onClick={() => {
-                      if (
-                        typeof navigator !== "undefined" &&
-                        navigator.clipboard
-                      ) {
-                        navigator.clipboard.writeText(window.location.href)
-                      }
-                    }}
+                    onClick={() => toggleInviteWindow(true)}
                   >
                     <Share06 className="size-5" />
                   </IconButton>

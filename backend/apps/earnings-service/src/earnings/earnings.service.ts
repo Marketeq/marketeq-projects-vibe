@@ -86,7 +86,7 @@ export class EarningsService {
         throw new BadRequestException('Search term must be at least 2 characters');
       }
       rawQb.groupBy(truncFn).addGroupBy('ec.contract_id').addGroupBy('ec.status').addGroupBy('ec.entry_type')
-        .orderBy('period', 'DESC')
+        .orderBy('period', sortOrder.toUpperCase() as 'ASC' | 'DESC')
         .offset((page-1)*limit).limit(limit);
 
       const rawRows = await rawQb.getRawMany();
