@@ -594,6 +594,50 @@ export class PayoutService {
     };
   }
 
+  // ─── Export — reuses the exact same filters as listPayouts, just
+  // unpaginated and capped, so the export can never disagree with what the
+  // Payouts table shows for the same filter selection. ──────────────────
+  private static readonly EXPORT_ROW_LIMIT = 10000;
+
+  async exportPayouts(
+    contractorId: string, format: 'csv' | 'pdf', status?: string, search?: string,
+    dateRange?: string, depositMethodId?: string, contractorName?: string,
+  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    const qb = this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId });
+
+    if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
+      qb.andWhere('p.status = :status', { status });
+    }
+    const { from, to } = this.resolvePayoutDateRange(dateRange);
+    if (from) qb.andWhere('p.createdAt >= :from', { from });
+    if (to) qb.andWhere('p.createdAt < :to', { to });
+    if (depositMethodId) qb.andWhere('p.depositMethodId = :depositMethodId', { depositMethodId });
+    if (search && search.trim().length >= 2) {
+      qb.andWhere('(LOWER(dm.displayLabel) LIKE :term OR LOWER(dm.nickname) LIKE :term)',
+        { term: `%${search.trim().toLowerCase()}%` });
+    }
+
+    const rows = await qb.orderBy('p.createdAt', 'DESC')
+      .take(PayoutService.EXPORT_ROW_LIMIT)
+      .getMany();
+
+    const exportRows = rows.map(r => this.toHistoryItem(r));
+    const exportedAt = new Date();
+    const filename = `payouts-${exportedAt.toISOString().slice(0, 10)}.${format}`;
+
+    let buffer: Buffer;
+    if (format === 'pdf') {
+      const { buildPayoutPdf } = await import('../export/pdf.builder');
+      buffer = await buildPayoutPdf({ rows: exportRows, contractorName, exportedAt });
+    } else {
+      const { buildPayoutCsv } = await import('../export/csv.builder');
+      buffer = buildPayoutCsv({ rows: exportRows, contractorName, exportedAt });
+    }
+    return { buffer, filename, contentType: format === 'pdf' ? 'application/pdf' : 'text/csv' };
+  }
+
   // ─── US-28: GET /v1/payouts/:id — full detail ──────────────────
   async getPayoutDetail(contractorId: string, payoutRequestId: string) {
     const request = await this.payoutRepo.findOne({
