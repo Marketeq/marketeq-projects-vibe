@@ -11,6 +11,9 @@ export class PhaseMapper {
       startDay: raw.startDay,
       endDay: raw.endDay,
       order: raw.order,
+      phaseType: raw.phaseType,
+      recurrenceSchedule: raw.recurrenceSchedule,
+      recurrenceCount: raw.recurrenceCount,
       task: raw.tasks,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
@@ -29,6 +32,9 @@ export class PhaseMapper {
     phaseEntity.startDay = phase.startDay!;
     phaseEntity.endDay = phase.endDay!;
     phaseEntity.order = phase.order!;
+    phaseEntity.phaseType = phase.phaseType ?? null;
+    phaseEntity.recurrenceSchedule = phase.recurrenceSchedule ?? null;
+    phaseEntity.recurrenceCount = phase.recurrenceCount ?? null;
     phaseEntity.projectId = phase.projectId;
 
     // Map timestamps
