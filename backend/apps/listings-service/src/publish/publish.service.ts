@@ -843,12 +843,47 @@ export class PublishService {
     });
   }
 
+  /**
+   * Normalizes a service scope to the required shape (docs JL-07) instead of
+   * rejecting it — so autosave never fails mid-edit. Runs only when the scope
+   * carries phase types (project scopes pass through untouched):
+   *   - Setup phases first, Recurring in the middle, Ongoing last (re-ordered).
+   *   - Recurring phases get sensible recurrence defaults when missing.
+   * The frontend enforces the "one Setup / one Ongoing" UX; if extras slip
+   * through they're simply ordered by type, never dropped.
+   */
+  private normalizeServiceScope(
+    phases: CreateProjectPhaseDto[],
+  ): CreateProjectPhaseDto[] {
+    if (!phases.some((p) => p.phaseType)) return phases;
+
+    const rank = (t?: string) =>
+      t === 'setup' ? 0 : t === 'ongoing' ? 2 : 1;
+
+    return [...phases]
+      .sort((a, b) => {
+        const byType = rank(a.phaseType) - rank(b.phaseType);
+        return byType !== 0 ? byType : (a.order ?? 0) - (b.order ?? 0);
+      })
+      .map((p, index) => ({
+        ...p,
+        order: index,
+        ...(p.phaseType === 'recurring'
+          ? {
+              recurrenceSchedule: p.recurrenceSchedule ?? 'monthly',
+              recurrenceCount: p.recurrenceCount ?? 1,
+            }
+          : {}),
+      }));
+  }
+
   async replaceProjectScope(
     userId: string,
     projectId: string,
     dto: UpsertProjectScopeDto,
   ): Promise<{ scope: Phase[]; budgetUsdCents: number }> {
     await this.ensureProjectOwnership(projectId, userId);
+    const normalizedScope = this.normalizeServiceScope(dto.scope ?? []);
 
     const existingPhases = await this.phaseRepository.findAll({
       filterOptions: { projectId },
@@ -867,13 +902,16 @@ export class PublishService {
 
     const scope: Phase[] = [];
 
-    for (const phaseDto of dto.scope ?? []) {
+    for (const phaseDto of normalizedScope) {
       const phase = await this.phaseRepository.create({
         name: phaseDto.name,
         stageName: phaseDto.stageName,
         startDay: phaseDto.startDay,
         endDay: phaseDto.endDay,
         order: phaseDto.order,
+        phaseType: phaseDto.phaseType ?? null,
+        recurrenceSchedule: phaseDto.recurrenceSchedule ?? null,
+        recurrenceCount: phaseDto.recurrenceCount ?? null,
         projectId,
       });
 

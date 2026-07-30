@@ -66,6 +66,10 @@ export class PhaseRelationalRepository {
   }): Promise<Phase[]> {
     const where: FindOptionsWhere<PhaseEntity> = {};
 
+    if (filterOptions?.projectId) {
+      where.projectId = filterOptions.projectId;
+    }
+
     if (filterOptions?.phaseName) {
       where.name = filterOptions.phaseName;
     }

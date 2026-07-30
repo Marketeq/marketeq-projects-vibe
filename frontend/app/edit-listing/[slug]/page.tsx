@@ -67,6 +67,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   Clock,
+  RefreshCcw05,
   Copy,
   Edit03,
   Eye,
@@ -117,7 +118,12 @@ import {
   AddRoleDialog,
   countryFromLocation,
   estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+  PhaseHeaderMeta,
   RolePicker,
+  type PhaseType,
+  type RecurrenceSchedule,
+  type ScopeType,
   type TeamMember,
 } from "@/components/scope-builder"
 import { TeamsAPI } from "@/service/http/teams"
@@ -478,59 +484,55 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
   }
 }
 
+// Draft autosave payload. Drafts are allowed to be partial, so we send every
+// phase and every row (with fallbacks) rather than dropping incomplete ones —
+// otherwise editing a not-yet-complete task/phase produces an unchanged payload
+// and the autosave never fires. Publish-time validation is enforced separately.
 const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
   (phases ?? [])
+    // Skip the blank starter phase ({}), but keep anything the user has begun
+    // filling in (a name, a phase type, or at least one row).
+    .filter(
+      (phase) =>
+        !!phase?.phaseName?.trim() ||
+        !!phase?.phaseType ||
+        (phase?.rows?.length ?? 0) > 0
+    )
     .map((phase, phaseIndex) => {
-      const phaseName = phase?.phaseName?.trim()
-      const rows = (phase?.rows ?? [])
-        .map((row) => {
-          const taskName = row?.task?.trim()
-          const role = row?.role?.trim()
-          const locationValue = row?.location?.trim()
-          const experienceLevel = row?.experience?.trim()
-          const durationValue = row?.duration?.value
-          const durationType = row?.duration?.type
-
-          if (
-            !taskName ||
-            !role ||
-            !locationValue ||
-            !experienceLevel ||
-            durationValue === undefined ||
-            !durationType
-          ) {
-            return null
-          }
-
-          return {
-            taskName,
-            role,
-            location: [locationValue],
-            experience: [experienceLevel],
-            experienceLevel,
-            duration: `${durationValue} ${durationType}`,
-            assigneeUserId:
-              row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
-            phaseId: "temporary-required-string",
-          }
-        })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
-
-      if (!phaseName || rows.length === 0) {
-        return null
-      }
-
+    const phaseName = phase?.phaseName?.trim() || `Phase ${phaseIndex + 1}`
+    const rows = (phase?.rows ?? []).map((row) => {
+      const durationValue = row?.duration?.value
+      const durationType = row?.duration?.type
+      const experienceLevel = row?.experience?.trim() ?? ""
       return {
-        name: phaseName,
-        stageName: `Stage ${phaseIndex + 1}`,
-        startDay: 1,
-        endDay: 8,
-        order: phaseIndex + 1,
-        projectId,
-        tasks: rows,
+        taskName: row?.task?.trim() ?? "",
+        role: row?.role?.trim() ?? "",
+        location: [row?.location?.trim() ?? ""].filter(Boolean),
+        experience: [experienceLevel].filter(Boolean),
+        experienceLevel,
+        duration:
+          durationValue !== undefined && durationType
+            ? `${durationValue} ${durationType}`
+            : "1 days",
+        assigneeUserId:
+          row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
+        phaseId: "temporary-required-string",
       }
     })
-    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+
+    return {
+      name: phaseName,
+      stageName: `Stage ${phaseIndex + 1}`,
+      startDay: 1,
+      endDay: 8,
+      order: phaseIndex + 1,
+      projectId,
+      phaseType: phase?.phaseType ?? undefined,
+      recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+      recurrenceCount: phase?.recurrenceCount ?? undefined,
+      tasks: rows,
+    }
+  })
 const Empty = ({
   outcome,
   draftId,
@@ -885,49 +887,45 @@ const Sidebar = () => {
   )
 
   return (
-    <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+    <div className="sticky top-0 py-6 px-6 flex h-screen flex-col shrink-0 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+      <div className="mb-8">
+        <Logo3 className="h-[19px] w-auto" />
+      </div>
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
+        const isLast = index === stepsState.length - 1
         return (
-          <TooltipProvider key={index}>
-            <Tooltip>
-              <div className="flex flex-col">
-                <TooltipTrigger asChild>
-                  <button
-                    className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 rounded-md px-3 py-2"
-                    data-ui-state={
-                      isActive ? "active" : isValid ? "complete" : undefined
-                    }
-                    onClick={() => setStep(index)}
-                  >
-                    <span className="flex items-center gap-x-3">
-                      <span className="text-sm leading-[16.94px] font-semibold size-[25px] rounded-full shrink-0 inline-flex justify-center items-center text-white group-data-[ui-state=active]:border-2 group-data-[ui-state=active]:text-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=undefined]:bg-gray-300">
-                        {index + 1}
-                      </span>
-                      <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold">
-                        {label}
-                      </span>
-                    </span>
-                  </button>
-                </TooltipTrigger>
+          <div key={index} className="relative pb-6 last:pb-0">
+            {!isLast && (
+              <span
+                aria-hidden
+                className="absolute left-3 top-7 bottom-0 border-l-2 border-dashed border-gray-300"
+              />
+            )}
+            <button
+              type="button"
+              className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
+              data-ui-state={
+                isActive ? "active" : isValid ? "complete" : undefined
+              }
+              onClick={() => setStep(index)}
+            >
+              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500">
+                {isValid && !isActive ? (
+                  <Check className="size-3.5 text-white" />
+                ) : isActive ? (
+                  <span className="size-2 rounded-full bg-primary-500" />
+                ) : (
+                  <Plus className="size-3.5 text-gray-400" />
+                )}
+              </span>
+              <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold">
+                {label}
+              </span>
+            </button>
 
-                <TooltipContent className="max-w-[138px]">
-                  {isActive
-                    ? "Opened"
-                    : isValid
-                      ? "Click to open"
-                      : "Click to open"}
-                </TooltipContent>
-
-                <div
-                  className="pl-[25px] overflow-hidden"
-                  style={{
-                    maxHeight: isActive ? "500px" : "0px",
-                    opacity: isActive ? 1 : 0,
-                    transition:
-                      "max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms",
-                  }}
-                >
+            {isActive && (
+              <div className="mt-1 pl-9">
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
                       const isDirty = Boolean(
@@ -938,7 +936,7 @@ const Sidebar = () => {
 
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
@@ -966,7 +964,7 @@ const Sidebar = () => {
 
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
@@ -987,7 +985,7 @@ const Sidebar = () => {
                   {label === "Project Scope" &&
                     meta[label].map((field, i) => (
                       <div
-                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        className="py-1.5 flex items-center justify-between pr-3"
                         key={i}
                       >
                         {field.label === "Task Name" ? (
@@ -1037,7 +1035,7 @@ const Sidebar = () => {
                   {label === "Questions" &&
                     meta[label].map((field, i) => (
                       <div
-                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        className="py-1.5 flex items-center justify-between pr-3"
                         key={i}
                       >
                         <span className="text-sm leading-6 text-gray-500">
@@ -1045,10 +1043,9 @@ const Sidebar = () => {
                         </span>
                       </div>
                     ))}
-                </div>
               </div>
-            </Tooltip>
-          </TooltipProvider>
+            )}
+          </div>
         )
       })}
     </div>
@@ -1668,8 +1665,8 @@ const projectInfoSchema = z.object({
     .max(5, "Please do not enter more than 5 industry(s)"),
   shortDescription: z
     .string()
-    .min(50, "Please enter at least 50 character(s)")
-    .max(300, "Please do not enter more than 300 character(s)"),
+    .min(350, "Please enter at least 350 character(s)")
+    .max(450, "Please do not enter more than 450 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
@@ -1765,11 +1762,11 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 450 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 5,000 character(s)"
 
@@ -4270,13 +4267,18 @@ const PhaseNameDialog = ({
   open,
   defaultName,
   placeholder = "Enter Phase Name",
+  showPhaseType = false,
+  disabledTypes = [],
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
+  onAddPhaseName: (phaseName: string, phaseType?: PhaseType) => void
   defaultName?: string
   placeholder?: string
+  showPhaseType?: boolean
+  disabledTypes?: PhaseType[]
 }) => {
+  const [phaseType, setPhaseType] = useState<PhaseType | undefined>(undefined)
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -4297,12 +4299,15 @@ const PhaseNameDialog = ({
   useEffect(() => {
     if (isOpen) {
       reset({ name: defaultName ?? "" })
+      setPhaseType(undefined)
     }
   }, [isOpen, defaultName, reset])
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
     const { name } = values
-    onAddPhaseName(name)
+    // Services require a phase type before the phase can be created.
+    if (showPhaseType && !phaseType) return
+    onAddPhaseName(name, showPhaseType ? phaseType : undefined)
 
     toggleIsOpen(false)
   }
@@ -4327,7 +4332,14 @@ const PhaseNameDialog = ({
                 id="phase-name"
                 className="text-gray-900"
                 placeholder={placeholder}
-                {...register("name")}
+                {...register("name", {
+                  onChange: (e) => {
+                    const v = e.target.value
+                    if (v && v[0] !== v[0].toUpperCase()) {
+                      e.target.value = v.charAt(0).toUpperCase() + v.slice(1)
+                    }
+                  },
+                })}
                 isInvalid={hookFormHasError({ errors, name: "name" })}
               />
               <HookFormErrorMessage
@@ -4336,6 +4348,41 @@ const PhaseNameDialog = ({
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
+
+            {showPhaseType && (
+              <div className="space-y-1.5 mt-4">
+                <Label size="sm" className="text-dark-blue-400">
+                  Phase Type
+                </Label>
+                <Listbox value={phaseType} onChange={setPhaseType}>
+                  <ListboxButton placeholder="Select phase type">
+                    {({ value }) => (
+                      <span className="text-gray-black">
+                        {PHASE_TYPE_TITLE[value as PhaseType]}
+                      </span>
+                    )}
+                  </ListboxButton>
+                  <ListboxOptions>
+                    <ListboxOption
+                      value="setup"
+                      disabled={disabledTypes.includes("setup")}
+                    >
+                      Setup
+                    </ListboxOption>
+                    <ListboxOption value="recurring">Recurring</ListboxOption>
+                    <ListboxOption
+                      value="ongoing"
+                      disabled={disabledTypes.includes("ongoing")}
+                    >
+                      Ongoing
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                <p className="text-xs font-light text-gray-500">
+                  Helps organize tasks by timing and frequency
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="mt-8 grid gap-x-3">
               <DialogClose asChild>
@@ -4927,6 +4974,9 @@ type PhaseRow = Prettify<
 interface Phase {
   phaseName?: string
   rows?: PhaseRow[]
+  phaseType?: PhaseType
+  recurrenceSchedule?: RecurrenceSchedule
+  recurrenceCount?: number
 }
 
 const getPhaseDurationInDays = (phase?: Phase) => {
@@ -5571,13 +5621,36 @@ const ProjectScope = ({
     setTaskSearchDialogOpen,
     teamMemberIds,
     pricingBudgetCents,
+    scopeType,
+    setScopeType,
+    draftProjectId,
   } = useProjectScopeContext()
+  const isService = scopeType === "service"
+
+  const handleScopeTypeChange = (type: ScopeType) => {
+    if (type === scopeType) return
+    setScopeType(type)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        listingType: type,
+      }).catch(() => {})
+    }
+    toast({
+      variant: "success",
+      title: type === "service" ? "Switched to Service" : "Switched to Project",
+    })
+  }
+  // Scope assignees must be members ON this project (Chris 07-28) — the owner
+  // (self) plus added members — never the whole roster.
+  const scopeOwnerId = getCurrentUser()?.id
   const projectTeam = useMemo(
     () =>
-      teamMemberIds.length > 0
-        ? scopeTeam.filter((m) => teamMemberIds.includes(m.id))
-        : scopeTeam,
-    [scopeTeam, teamMemberIds]
+      scopeTeam.filter(
+        (m) =>
+          String(m.id) === String(scopeOwnerId) ||
+          teamMemberIds.includes(m.id)
+      ),
+    [scopeTeam, teamMemberIds, scopeOwnerId]
   )
   const { toggleValidation } = useStepContext()
 
@@ -5749,7 +5822,11 @@ const ProjectScope = ({
   )
 
   const onAddPhaseName = useCallback(
-    (phaseName: string) => {
+    (rawPhaseName: string, phaseType?: PhaseType) => {
+      const trimmedName = rawPhaseName.trim()
+      const phaseName = trimmedName
+        ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+        : trimmedName
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -5800,14 +5877,40 @@ const ProjectScope = ({
           editingPhaseIndex >= 0 &&
           editingPhaseIndex < next.length
 
-        insertedPhaseIndex =
-          addTo === "start" && hasTargetPhase
-            ? editingPhaseIndex
-            : addTo === "below" && hasTargetPhase
-              ? editingPhaseIndex + 1
-              : next.length
+        if (phaseType) {
+          // Service ordering: Setup first, Ongoing last, Recurring before Ongoing.
+          const ongoingIdx = next.findIndex((p) => p.phaseType === "ongoing")
+          insertedPhaseIndex =
+            phaseType === "setup"
+              ? 0
+              : phaseType === "ongoing"
+                ? next.length
+                : ongoingIdx >= 0
+                  ? ongoingIdx
+                  : next.length
+        } else {
+          insertedPhaseIndex =
+            addTo === "start" && hasTargetPhase
+              ? editingPhaseIndex
+              : addTo === "below" && hasTargetPhase
+                ? editingPhaseIndex + 1
+                : next.length
+        }
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(
+          insertedPhaseIndex,
+          0,
+          phaseType === "recurring"
+            ? {
+                phaseName,
+                phaseType,
+                recurrenceSchedule: "monthly",
+                recurrenceCount: 1,
+              }
+            : phaseType
+              ? { phaseName, phaseType }
+              : { phaseName }
+        )
         return next
       })
 
@@ -5843,6 +5946,19 @@ const ProjectScope = ({
       })
     },
     [phaseDialogState, setPhases, toast]
+  )
+
+  const updatePhaseRecurrence = useCallback(
+    (index: number, schedule: RecurrenceSchedule, count: number) => {
+      setPhases((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { ...p, recurrenceSchedule: schedule, recurrenceCount: count }
+            : p
+        )
+      )
+    },
+    [setPhases]
   )
 
   const onAddTask = useCallback(
@@ -6279,7 +6395,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      {durationLabel}
+                      {isService ? "Ongoing" : durationLabel}
                     </span>
                   </div>
                 </div>
@@ -6289,10 +6405,54 @@ const ProjectScope = ({
 
             <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
               <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                Project Scope
+                {isService ? "Service" : "Project"} Scope
               </h1>
 
               <div className="flex items-center md:gap-x-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outlined" visual="gray">
+                      <RefreshCcw05 className="size-[15px]" />
+                      {isService ? "Service" : "Project"}
+                      <ChevronDown className="size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[280px]">
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("project")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {!isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Project{!isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        One-time job with a defined duration
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("service")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Service{isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        Recurring work with consistent needs
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <div className="flex items-center">
                   <Button
                     className="border-r-0 rounded-r-none"
@@ -6342,14 +6502,16 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
+                                {isService && phases[index]?.phaseType
+                                  ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                  : `Phase ${numberToWord(index)}`}{" "}
                                 <button
                                   type="button"
                                   className="font-light hover:underline focus-visible:outline-none"
@@ -6365,14 +6527,18 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6433,15 +6599,17 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <div className="inline-flex md:flex-row gap-x-1.5 flex-col md:items-center gap-y-3 md:gap-x-5">
                                 <span className="text-base md:text-[18px] font-semibold md:font-light leading-7 text-gray-900">
-                                  Phase {numberToWord(index)}
+                                  {isService && phases[index]?.phaseType
+                                    ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                    : `Phase ${numberToWord(index)}`}
                                 </span>{" "}
                                 {phaseName ? (
                                   <button
@@ -6474,21 +6642,29 @@ const ProjectScope = ({
                                   </button>
                                 )}
                                 <div className="inline-block md:hidden">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    {getPhaseDayRangeLabel(phases, index)}
-                                  </span>
+                                  <PhaseHeaderMeta
+                                    phases={phases}
+                                    index={index}
+                                    onRecurrenceChange={(schedule, count) =>
+                                      updatePhaseRecurrence(index, schedule, count)
+                                    }
+                                  />
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6574,6 +6750,12 @@ const ProjectScope = ({
               open={phaseDialogState.open}
               onAddPhaseName={onAddPhaseName}
               defaultName={currentPhaseName}
+              showPhaseType={
+                isService && phaseDialogState.action !== "EDIT"
+              }
+              disabledTypes={phases
+                .map((p) => p.phaseType)
+                .filter((t): t is PhaseType => !!t)}
               placeholder={
                 phaseDialogState.action === "EDIT"
                   ? "Edit Phase name"
@@ -6670,6 +6852,8 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
   pricingBudgetCents: number
+  scopeType: ScopeType
+  setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
@@ -8365,6 +8549,7 @@ function PublishProject({
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
 
   const handlePublish = async () => {
@@ -8402,6 +8587,47 @@ function PublishProject({
   useEffect(() => {
     faqsRef.current = faqs
   }, [faqs])
+
+  // Sidebar step ticks: each step's form only mounts when it's the active step,
+  // so validate every step here (always mounted) — an existing/edited project
+  // shows completed steps immediately, and Team/Questions can tick too.
+  // Criteria: Project Info / Media / Project Scope pass their schema; Team has
+  // at least one member; Questions has at least one FAQ.
+  const [scopePhases] = projectScopeMethods
+  const lastStepValidRef = useRef<Record<number, boolean>>({})
+  const setStepValid = useCallback(
+    (index: number, valid: boolean) => {
+      if (lastStepValidRef.current[index] === valid) return
+      lastStepValidRef.current[index] = valid
+      toggleStepValidation(index)(valid)
+    },
+    [toggleStepValidation]
+  )
+  // useWatch re-computes on every value change — including the async reset() on
+  // load — so ticks reflect the loaded project immediately (no user edit needed).
+  const projectInfoWatch = useWatch({ control: projectInfoMethods.control })
+  const mediaWatch = useWatch({ control: mediaMethods.control })
+  useEffect(() => {
+    setStepValid(
+      0,
+      projectInfoSchema.safeParse(projectInfoMethods.getValues()).success
+    )
+  }, [projectInfoWatch, projectInfoMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(
+      1,
+      mediaFormSchema.safeParse(mediaMethods.getValues()).success
+    )
+  }, [mediaWatch, mediaMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(2, projectScopeSchema.safeParse(scopePhases))
+  }, [scopePhases, setStepValid])
+  useEffect(() => {
+    setStepValid(3, teamMemberIds.length > 0)
+  }, [teamMemberIds, setStepValid])
+  useEffect(() => {
+    setStepValid(4, faqs.length > 0)
+  }, [faqs, setStepValid])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -8465,6 +8691,7 @@ function PublishProject({
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        setScopeType(draft?.listingType === "service" ? "service" : "project")
 
         const rawCategorySelections = Array.isArray(draft?.categorySelections)
           ? draft.categorySelections
@@ -8590,6 +8817,9 @@ function PublishProject({
         const scope = Array.isArray(draft?.scope)
           ? draft.scope.map((phase: any) => ({
               phaseName: phase?.name ?? "",
+              phaseType: phase?.phaseType ?? undefined,
+              recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase?.recurrenceCount ?? undefined,
               rows: Array.isArray(phase?.task)
                 ? phase.task.map((task: any) => {
                     const durationRaw = String(task?.duration ?? "").trim()
@@ -8937,6 +9167,8 @@ function PublishProject({
       setTeamMemberIds,
       draftProjectId,
       pricingBudgetCents,
+      scopeType,
+      setScopeType,
     }),
     [
       projectScopeMethods,
@@ -8950,6 +9182,8 @@ function PublishProject({
       setTeamMemberIds,
       draftProjectId,
       pricingBudgetCents,
+      scopeType,
+      setScopeType,
     ]
   )
   //  Validate the current step when Next is clicked
