@@ -339,7 +339,7 @@ export class OAuthService {
       throw new PayoutError('Unable to complete authorization with the provider.',
         HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_TOKEN_EXCHANGE_FAILED');
     }
-    this.logger.warn(`[${provider}] token exchange response keys: ${Object.keys(data).join(',')}`);
+    this.logger.debug(`[${provider}] token exchange response keys: ${Object.keys(data).join(',')}`);
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token ?? '',
