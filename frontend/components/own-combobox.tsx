@@ -5,7 +5,6 @@ import { cn } from "@/utils/functions"
 import { useControllableState, useDeferredValue } from "@/utils/hooks"
 import { Check, ChevronDown, SearchMd } from "@blend-metrics/icons"
 import { type DialogProps } from "@radix-ui/react-dialog"
-import axios from "axios"
 import { Command as CommandPrimitive } from "cmdk"
 import { useAsync } from "react-use"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -251,15 +250,6 @@ export function OwnCombobox({
   )
 }
 
-const instance = axios.create({
-  baseURL: "https://restcountries.com/v3.1",
-})
-
-const getCountries = async <TData,>(url: string) => {
-  const { data } = await instance.get<TData>(url)
-  return data
-}
-
 export interface Country {
   flags: Flags
   name: Name
@@ -379,6 +369,18 @@ const COUNTRY_CODES: Record<string, string> = {
   Greece: "gr",
 }
 
+const STATIC_COUNTRIES: Country[] = Object.entries(COUNTRY_CODES).map(
+  ([name, code]) => ({
+    name: { common: name, official: name, nativeName: {} },
+    cca2: code.toUpperCase(),
+    flags: {
+      png: `https://flagcdn.com/w320/${code}.png`,
+      svg: `https://flagcdn.com/${code}.svg`,
+      alt: name,
+    },
+  })
+)
+
 /**
  * Flag URL for a country name that works without the countries API loaded,
  * using a static flag CDN. Falls back to the loaded-countries lookup.
@@ -433,11 +435,8 @@ export const CountriesCombobox = ({
 }) => {
   const data = useAsync(async () => {
     if (countriesCache) return countriesCache
-    const result = await getCountries<Country[]>(
-      "/all?fields=id,name,flags,cca2"
-    )
-    countriesCache = result
-    return result
+    countriesCache = STATIC_COUNTRIES
+    return countriesCache
   }, [])
 
   const [open, setOpen] = React.useState(false)
