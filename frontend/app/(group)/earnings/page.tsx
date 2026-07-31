@@ -21,6 +21,7 @@ import {
   OverviewTab,
   PAYOUT_STATUS_LABELS,
   type PayoutDepositStatus,
+  type PayoutsFilters,
   PayoutScheduleDialog,
   PayoutsTab,
 } from "@/components/transactions-comps"
@@ -67,6 +68,9 @@ export default function TransactionsPage() {
   // contractor currently has the earnings table filtered to, rather than always
   // exporting the full unfiltered dataset regardless of what's on screen.
   const [earningsFilters, setEarningsFilters] = useState<EarningsFilters>({ dateRange: "this_month", entryType: "", statusFilter: "", search: "" })
+  // Populated by PayoutsTab via onFiltersChange — same reasoning as
+  // earningsFilters above, just for the Payouts tab's own filter set.
+  const [payoutsFilters, setPayoutsFilters] = useState<PayoutsFilters>({ dateRange: "all_time", statusFilter: "", depositMethodId: "", search: "" })
   const [exporting, setExporting] = useState(false)
 
   const handleExport = useCallback(
@@ -75,11 +79,20 @@ export default function TransactionsPage() {
       try {
         // Routed through api-gateway — see service/http/earnings.ts for why
         // (access_token is HttpOnly; the gateway forwards it server-side).
-        const params = new URLSearchParams({ format, currency: "USD" })
-        if (earningsFilters.dateRange) params.set("dateRange", earningsFilters.dateRange)
-        if (earningsFilters.entryType) params.set("entryType", earningsFilters.entryType)
-        if (earningsFilters.statusFilter) params.set("status", earningsFilters.statusFilter)
-        const url = `${getPublicApiUrl()}/v1/earnings/export?${params.toString()}`
+        const isPayouts = activeTab === "payouts"
+        const params = new URLSearchParams({ format })
+        if (isPayouts) {
+          if (payoutsFilters.dateRange && payoutsFilters.dateRange !== "all_time") params.set("dateRange", payoutsFilters.dateRange)
+          if (payoutsFilters.statusFilter) params.set("status", payoutsFilters.statusFilter)
+          if (payoutsFilters.depositMethodId) params.set("depositMethodId", payoutsFilters.depositMethodId)
+          if (payoutsFilters.search) params.set("search", payoutsFilters.search)
+        } else {
+          params.set("currency", "USD")
+          if (earningsFilters.dateRange) params.set("dateRange", earningsFilters.dateRange)
+          if (earningsFilters.entryType) params.set("entryType", earningsFilters.entryType)
+          if (earningsFilters.statusFilter) params.set("status", earningsFilters.statusFilter)
+        }
+        const url = `${getPublicApiUrl()}/v1/${isPayouts ? "payouts" : "earnings"}/export?${params.toString()}`
         const res = await fetch(url, { credentials: "include" })
 
         if (res.status === 202) {
@@ -90,7 +103,7 @@ export default function TransactionsPage() {
         }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          toast({ title: "Export failed", description: data.message ?? "Could not export your earnings. Please try again.", variant: "destructive" })
+          toast({ title: "Export failed", description: data.message ?? `Could not export your ${isPayouts ? "payouts" : "earnings"}. Please try again.`, variant: "destructive" })
           return
         }
 
@@ -98,7 +111,7 @@ export default function TransactionsPage() {
         // Use the server's actual filename (date-stamped) rather than a generic guess.
         const disposition = res.headers.get("Content-Disposition") ?? ""
         const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
-        const filename = filenameMatch?.[1] ?? `earnings.${format}`
+        const filename = filenameMatch?.[1] ?? `${isPayouts ? "payouts" : "earnings"}.${format}`
         const a = document.createElement("a")
         a.href = URL.createObjectURL(blob)
         a.download = filename
@@ -111,7 +124,7 @@ export default function TransactionsPage() {
         setExporting(false)
       }
     },
-    [toast, earningsFilters]
+    [toast, earningsFilters, payoutsFilters, activeTab]
   )
 
   return (
@@ -231,33 +244,31 @@ export default function TransactionsPage() {
                     </>
                   )}
 
-                  {/* Export — only earnings-service exposes a real export endpoint;
-                      hidden on Payouts (exporting earnings data while viewing payout
-                      transactions would silently hand the contractor the wrong file). */}
-                  {activeTab !== "payouts" && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          className="bg-white"
-                          variant="outlined"
-                          visual="gray"
-                          size="sm"
-                          disabled={exporting}
-                          rightIcon={<Download className="size-4" />}
-                        >
-                          {exporting ? "Exporting…" : "Export"}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleExport("csv")}>
-                          Export CSV
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleExport("pdf")}>
-                          Export PDF
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                  {/* Export — earnings-service and payout-service (v1/payouts/export)
+                      each expose their own real export endpoint; handleExport
+                      picks the right one based on activeTab. */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        className="bg-white"
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        disabled={exporting}
+                        rightIcon={<Download className="size-4" />}
+                      >
+                        {exporting ? "Exporting…" : "Export"}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleExport("csv")}>
+                        Export CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExport("pdf")}>
+                        Export PDF
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   {/* Settings gear */}
                   <IconButton
@@ -287,7 +298,7 @@ export default function TransactionsPage() {
               </TabsContent>
 
               <TabsContent value="payouts" className="mt-5">
-                <PayoutsTab key={overviewRefreshKey} onDepositStatusChange={setDepositStatus} />
+                <PayoutsTab key={overviewRefreshKey} onDepositStatusChange={setDepositStatus} onFiltersChange={setPayoutsFilters} />
               </TabsContent>
             </Tabs>
           </div>

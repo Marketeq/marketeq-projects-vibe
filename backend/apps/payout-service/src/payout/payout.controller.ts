@@ -2,7 +2,8 @@
 // PS-02 + PS-14: Payout endpoints
 // PS-14: GET /verify-email (no auth — token IS the auth), POST /:id/resend-verification
 import { Controller, Post, Get, Delete, Body, Param, Query,
-         UseGuards, Request, HttpCode, ParseUUIDPipe } from '@nestjs/common';
+         UseGuards, Request, HttpCode, ParseUUIDPipe, Res, BadRequestException } from '@nestjs/common';
+import { Response } from 'express';
 import { PayoutService }       from './payout.service';
 import { MagicLinkService }    from '../magic-link/magic-link.service';
 import { JwtAuthGuard }        from '../guards/jwt-auth.guard';
@@ -117,6 +118,30 @@ export class PayoutController {
   @HttpCode(200)
   async summary(@Request() req: any) {
     return this.payoutService.getMonthlySummary(req.user.userId);
+  }
+
+  // Payouts tab "Export" — declared before ':id' below so the literal
+  // 'export' segment is never swallowed by the :id param route (same
+  // reasoning as 'summary' above).
+  @UseGuards(JwtAuthGuard)
+  @Get('export')
+  async export(
+    @Request() req: any, @Res() res: Response,
+    @Query('format') format?: string, @Query('status') status?: string,
+    @Query('search') search?: string, @Query('dateRange') dateRange?: string,
+    @Query('depositMethodId') depositMethodId?: string,
+  ) {
+    const fmt = format === 'pdf' ? 'pdf' : 'csv';
+    if (format && format !== 'csv' && format !== 'pdf') {
+      throw new BadRequestException('format must be csv or pdf');
+    }
+    const { buffer, filename, contentType } = await this.payoutService.exportPayouts(
+      req.user.userId, fmt, status, search, dateRange, depositMethodId, req.user.email,
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.status(200).end(buffer);
   }
 
   // US-28: full detail for a single payout request
