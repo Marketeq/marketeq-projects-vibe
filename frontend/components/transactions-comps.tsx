@@ -4934,7 +4934,14 @@ export interface PayoutDepositStatus {
   amountUsd: string | null
 }
 
-export const PayoutsTab = ({ onDepositStatusChange }: { onDepositStatusChange?: (status: PayoutDepositStatus) => void } = {}) => {
+export interface PayoutsFilters {
+  dateRange: string
+  statusFilter: string
+  depositMethodId: string
+  search: string
+}
+
+export const PayoutsTab = ({ onDepositStatusChange, onFiltersChange }: { onDepositStatusChange?: (status: PayoutDepositStatus) => void; onFiltersChange?: (filters: PayoutsFilters) => void } = {}) => {
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   // SCR-16: real, server-side status filter — replaces the previously cosmetic
@@ -5052,6 +5059,12 @@ export const PayoutsTab = ({ onDepositStatusChange }: { onDepositStatusChange?: 
   }, [currentPage, statusFilter, searchQuery, dateRange, depositMethodId])
 
   useEffect(() => { loadPayouts() }, [loadPayouts])
+
+  // Export reuses whatever the contractor currently has the Payouts table
+  // filtered to, same pattern as EarningsTab's onFiltersChange.
+  useEffect(() => {
+    onFiltersChange?.({ dateRange, statusFilter, depositMethodId, search: searchQuery.trim().length >= 2 ? searchQuery.trim() : "" })
+  }, [onFiltersChange, dateRange, statusFilter, depositMethodId, searchQuery])
 
   // AC-29.01/29.02/29.03: poll every 15s (no flicker — silent refetch) as long as
   // any row on this page hasn't reached a terminal status. No SSE/WebSocket infra
