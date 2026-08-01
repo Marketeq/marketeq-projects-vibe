@@ -53,6 +53,9 @@ const LinkedInLogin = ({
       redirect_uri: redirectUrl,
       state: "1234",
       scope: "openid profile email",
+      // Force the LinkedIn login / account chooser instead of silently reusing
+      // the browser's existing LinkedIn session after a Marketeq logout.
+      prompt: "login",
     })
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
@@ -61,7 +64,7 @@ const LinkedInLogin = ({
     popupRef.current = window.open(
       authUrl,
       "Linkedin",
-      "menubar=no,location=no,resizable=no,scrollbars=no,status=no,width=550,height=730"
+      "menubar=no,location=no,resizable=yes,scrollbars=yes,status=no,width=550,height=730"
     )
 
     stopPopupPoll()
