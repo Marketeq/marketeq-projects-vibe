@@ -30,6 +30,9 @@ const GoogleLoginButtonInner = ({
 
   const handleLoginWithGoogle = useGoogleLogin({
     scope: "openid email profile",
+    // Force the Google account chooser instead of silently reusing the last
+    // signed-in Google account after a Marketeq logout.
+    prompt: "select_account",
     onSuccess: (tokenResponse) => {
       const accessToken = tokenResponse?.access_token
 
