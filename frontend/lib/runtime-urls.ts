@@ -90,3 +90,13 @@ export const getPublicListingsUrl = (): string =>
       process.env.NEXT_PUBLIC_BACKEND_URL,
     ),
   )
+
+export const getPublicLegalUrl = (): string =>
+  normalizePublicUrl(
+    firstNonEmpty(
+      process.env.NEXT_PUBLIC_LEGAL_URL,
+      process.env.NEXT_PUBLIC_API_URL,
+      process.env.NEXT_PUBLIC_AUTH_URL,
+      process.env.NEXT_PUBLIC_BACKEND_URL,
+    ),
+  )

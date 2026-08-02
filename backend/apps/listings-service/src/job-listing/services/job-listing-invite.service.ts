@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException, HttpException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { JobListing } from '../entities/job-listing.entity';
-import { SendInvitesDto } from '../dto/send-invites.dto';
-import { JobListingEventsPublisher } from '../events/job-listing-events.publisher';
+import { Injectable, NotFoundException, HttpException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { JobListing } from "../entities/job-listing.entity";
+import { SendInvitesDto } from "../dto/send-invites.dto";
+import { JobListingEventsPublisher } from "../events/job-listing-events.publisher";
 
 @Injectable()
 export class JobListingInviteService {
@@ -16,11 +16,14 @@ export class JobListingInviteService {
   async send(listingId: string, dto: SendInvitesDto): Promise<void> {
     const listing = await this.repo.findOne({
       where: { id: listingId },
-      select: ['id', 'inviteBalance', 'invitesSent', 'clientUserId'],
+      select: ["id", "inviteBalance", "invitesSent", "clientUserId"],
     });
 
     if (!listing) {
-      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Job listing not found.' });
+      throw new NotFoundException({
+        code: "JL_NOT_FOUND",
+        message: "Job listing not found.",
+      });
     }
 
     // Deduplicate talent IDs so repeated entries do not consume balance twice
@@ -30,7 +33,10 @@ export class JobListingInviteService {
 
     if (listing.inviteBalance < count) {
       throw new HttpException(
-        { code: 'JL_INSUFFICIENT_INVITE_BALANCE', message: 'Insufficient invite balance.' },
+        {
+          code: "JL_INSUFFICIENT_INVITE_BALANCE",
+          message: "Insufficient invite balance.",
+        },
         422,
       );
     }
@@ -42,24 +48,57 @@ export class JobListingInviteService {
         inviteBalance: () => `"invite_balance" - ${count}`,
         invitesSent: () => `"invites_sent" + ${count}`,
       })
-      .where('id = :listingId', { listingId })
+      .where("id = :listingId", { listingId })
       .andWhere('"invite_balance" >= :count', { count })
       .execute();
 
     if (!updateResult.affected) {
       throw new HttpException(
-        { code: 'JL_INSUFFICIENT_INVITE_BALANCE', message: 'Insufficient invite balance.' },
+        {
+          code: "JL_INSUFFICIENT_INVITE_BALANCE",
+          message: "Insufficient invite balance.",
+        },
         422,
       );
     }
 
     for (const talentUserId of uniqueTalentUserIds) {
-      this.publisher.emit('job_listing.invite_sent', {
+      this.publisher.emit("job_listing.invite_sent", {
         listingId,
         talentUserId,
-        roleRowId:    dto.roleRowId ?? null,
+        roleRowId: dto.roleRowId ?? null,
+        roleTitle: dto.roleTitle ?? null,
         clientUserId: listing.clientUserId,
       });
     }
+  }
+
+  async creditPurchasedInvites(
+    listingId: string,
+    inviteCount: number,
+    checkoutSessionId?: string,
+  ): Promise<{ inviteBalance: number }> {
+    const listing = await this.repo.findOne({
+      where: { id: listingId },
+      select: ["id", "inviteBalance", "clientUserId"],
+    });
+
+    if (!listing) {
+      throw new NotFoundException({
+        code: "JL_NOT_FOUND",
+        message: "Job listing not found.",
+      });
+    }
+
+    await this.repo.increment({ id: listingId }, "inviteBalance", inviteCount);
+
+    this.publisher.emit("job_listing.invites_purchased", {
+      listingId,
+      inviteCount,
+      checkoutSessionId: checkoutSessionId ?? null,
+      clientUserId: listing.clientUserId,
+    });
+
+    return { inviteBalance: listing.inviteBalance + inviteCount };
   }
 }

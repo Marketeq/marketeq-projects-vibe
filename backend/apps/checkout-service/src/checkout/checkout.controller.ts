@@ -1,29 +1,37 @@
 import {
-  Controller, Post, Get, Param, Body, Req,
-  HttpCode, HttpStatus, RawBodyRequest,
-  Headers, UseGuards,
-} from '@nestjs/common';
-import { CheckoutService } from './checkout.service';
-import { StripeService } from '../stripe/stripe.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
-import { Request } from 'express';
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Req,
+  HttpCode,
+  HttpStatus,
+  RawBodyRequest,
+  Headers,
+  UseGuards,
+} from "@nestjs/common";
+import { CheckoutService } from "./checkout.service";
+import { StripeService } from "../stripe/stripe.service";
+import { JwtAuthGuard } from "../guards/jwt-auth.guard";
+import { RolesGuard } from "../guards/roles.guard";
+import { Request } from "express";
 
-import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
-import { UseWalletDto } from './dto/use-wallet.dto';
-import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
-import { CancelPaymentDto } from './dto/cancel-payment.dto';
-import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import { SplitPaymentDto } from './dto/split-payment.dto';
-import { CreateBankLinkDto } from './dto/create-bank-link.dto';
-import { AttachBankAccountDto } from './dto/attach-bank-account.dto';
-import { PayACHDto } from './dto/pay-ach.dto';
-import { ConfirmWireDto } from './dto/confirm-wire.dto';
-import { WalletTopUpDto } from './dto/wallet-topup.dto';
-import { StoreMetadataDto } from './dto/store-metadata.dto';
+import { CreateCheckoutSessionDto } from "./dto/create-checkout-session.dto";
+import { ApplyGiftCardDto } from "./dto/apply-gift-card.dto";
+import { UseWalletDto } from "./dto/use-wallet.dto";
+import { ConfirmPaymentDto } from "./dto/confirm-payment.dto";
+import { CancelPaymentDto } from "./dto/cancel-payment.dto";
+import { CreateSubscriptionDto } from "./dto/create-subscription.dto";
+import { SplitPaymentDto } from "./dto/split-payment.dto";
+import { CreateBankLinkDto } from "./dto/create-bank-link.dto";
+import { AttachBankAccountDto } from "./dto/attach-bank-account.dto";
+import { PayACHDto } from "./dto/pay-ach.dto";
+import { ConfirmWireDto } from "./dto/confirm-wire.dto";
+import { WalletTopUpDto } from "./dto/wallet-topup.dto";
+import { StoreMetadataDto } from "./dto/store-metadata.dto";
 
-@Controller('v1/checkout')
+@Controller("v1/checkout")
 export class CheckoutController {
   constructor(
     private readonly checkoutService: CheckoutService,
@@ -32,7 +40,7 @@ export class CheckoutController {
 
   // ─── Existing Endpoints (now with auth + proper DTOs) ─────────────
 
-  @Post('session')
+  @Post("session")
   @UseGuards(JwtAuthGuard)
   createSession(@Body() dto: CreateCheckoutSessionDto, @Req() req: any) {
     return this.checkoutService.createSession({
@@ -46,64 +54,72 @@ export class CheckoutController {
       giftCardCode: dto.giftCardCode,
       walletBalanceUsed: dto.walletBalanceUsed,
       totalAmount: dto.amount,
+      successUrl: dto.successUrl,
+      cancelUrl: dto.cancelUrl,
     });
   }
 
-  @Post('apply-giftcard')
+  @Post("apply-giftcard")
   @UseGuards(JwtAuthGuard)
   applyGiftCard(@Body() dto: ApplyGiftCardDto) {
     return this.checkoutService.applyGiftCard(dto.code);
   }
 
-  @Post('use-wallet')
+  @Post("use-wallet")
   @UseGuards(JwtAuthGuard)
   useWallet(@Body() dto: UseWalletDto, @Req() req: any) {
-    return this.checkoutService.useWallet(req.user.sub || dto.userId, dto.amount);
+    return this.checkoutService.useWallet(
+      req.user.sub || dto.userId,
+      dto.amount,
+    );
   }
 
-  @Post('confirm')
+  @Post("confirm")
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   confirm(@Body() dto: ConfirmPaymentDto) {
     return this.checkoutService.confirm(dto.sessionId);
   }
 
-  @Post('cancel')
+  @Post("cancel")
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   cancel(@Body() dto: CancelPaymentDto) {
     return this.checkoutService.cancel(dto.sessionId);
   }
 
-  @Get('status/:sessionId')
+  @Get("status/:sessionId")
   @UseGuards(JwtAuthGuard)
-  getStatus(@Param('sessionId') sessionId: string) {
+  getStatus(@Param("sessionId") sessionId: string) {
     return this.checkoutService.getStatus(sessionId);
   }
 
   // ─── Webhook (no auth — Stripe signs it) ──────────────────────────
 
-  @Post('webhook')
+  @Post("webhook")
   @HttpCode(HttpStatus.OK)
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('stripe-signature') signature: string,
+    @Headers("stripe-signature") signature: string,
   ) {
-    const event = this.stripeService.constructWebhookEvent(req.rawBody!, signature);
+    const event = this.stripeService.constructWebhookEvent(
+      req.rawBody!,
+      signature,
+    );
     await this.checkoutService.handleWebhookEvent(event as any);
     return { received: true };
   }
 
   // ─── Health (no auth) ─────────────────────────────────────────────
 
-  @Get('health')
+  @Get("health")
   health() {
-    return { status: 'ok', service: 'checkout-service' };
+    return { status: "ok", service: "checkout-service" };
   }
 
   // ─── New Endpoints ────────────────────────────────────────────────
 
-  @Post('subscribe')
+  @Post("subscribe")
   @UseGuards(JwtAuthGuard)
   createSubscription(@Body() dto: CreateSubscriptionDto, @Req() req: any) {
     return this.checkoutService.createSubscription({
@@ -117,7 +133,7 @@ export class CheckoutController {
     });
   }
 
-  @Post('split-payment')
+  @Post("split-payment")
   @UseGuards(JwtAuthGuard)
   processSplitPayment(@Body() dto: SplitPaymentDto, @Req() req: any) {
     return this.checkoutService.processSplitPayment({
@@ -125,9 +141,12 @@ export class CheckoutController {
       projectId: dto.projectId,
       totalAmount: dto.totalAmount,
       components: dto.payments.map((p) => ({
-        type: p.method === 'credit_card' ? 'card' as const
-          : p.method === 'bank_transfer' ? 'card' as const
-          : p.method as 'wallet' | 'gift_card',
+        type:
+          p.method === "credit_card"
+            ? ("card" as const)
+            : p.method === "bank_transfer"
+              ? ("card" as const)
+              : (p.method as "wallet" | "gift_card"),
         amount: p.amount,
         giftCardCode: p.details?.giftCardCode,
         paymentMethodId: p.details?.paymentMethodId,
@@ -136,7 +155,7 @@ export class CheckoutController {
     });
   }
 
-  @Post('bank-link')
+  @Post("bank-link")
   @UseGuards(JwtAuthGuard)
   createBankLinkSession(@Body() dto: CreateBankLinkDto) {
     return this.checkoutService.createBankLinkSession({
@@ -144,46 +163,52 @@ export class CheckoutController {
     });
   }
 
-  @Post('attach-bank')
+  @Post("attach-bank")
   @UseGuards(JwtAuthGuard)
   attachBankAccount(@Body() dto: AttachBankAccountDto, @Req() req: any) {
     return this.checkoutService.attachBankAccount({
       userId: req.user.sub,
       financialAccountId: dto.financialConnectionsAccountId,
-      bankName: 'Unknown',
-      last4: '0000',
+      bankName: "Unknown",
+      last4: "0000",
     });
   }
 
-  @Post('pay-ach')
+  @Post("pay-ach")
   @UseGuards(JwtAuthGuard)
   payWithACH(@Body() dto: PayACHDto, @Req() req: any) {
     return this.checkoutService.payWithACH({
       clientId: req.user.sub,
       customerId: dto.customerId,
       paymentMethodId: dto.paymentMethodId,
-      projectId: dto.metadata?.projectId || '',
+      projectId: dto.metadata?.projectId || "",
       contractId: dto.metadata?.contractId,
       amount: dto.amount,
     });
   }
 
-  @Get('banks/:customerId')
+  @Get("banks/:customerId")
   @UseGuards(JwtAuthGuard)
-  listBankAccounts(@Param('customerId') customerId: string) {
+  listBankAccounts(@Param("customerId") customerId: string) {
     return this.checkoutService.listBankAccounts(customerId);
   }
 
-  @Post('banks/unlink')
+  @Post("banks/unlink")
   @UseGuards(JwtAuthGuard)
-  unlinkBankAccount(@Body('paymentMethodId') paymentMethodId: string) {
+  unlinkBankAccount(@Body("paymentMethodId") paymentMethodId: string) {
     return this.checkoutService.unlinkBankAccount(paymentMethodId);
   }
 
-  @Post('wire-transfer')
+  @Post("wire-transfer")
   @UseGuards(JwtAuthGuard)
   initiateWireTransfer(
-    @Body() body: { projectId: string; contractId?: string; clientId?: string; amount: number },
+    @Body()
+    body: {
+      projectId: string;
+      contractId?: string;
+      clientId?: string;
+      amount: number;
+    },
     @Req() req: any,
   ) {
     return this.checkoutService.initiateWireTransfer({
@@ -194,8 +219,8 @@ export class CheckoutController {
     });
   }
 
-  @Post('confirm-wire')
-  @UseGuards(JwtAuthGuard, RolesGuard('admin'))
+  @Post("confirm-wire")
+  @UseGuards(JwtAuthGuard, RolesGuard("admin"))
   confirmWireTransfer(@Body() dto: ConfirmWireDto, @Req() req: any) {
     return this.checkoutService.confirmWireTransfer({
       wireTransferId: dto.wireTransferId,
@@ -203,7 +228,7 @@ export class CheckoutController {
     });
   }
 
-  @Post('wallet/topup')
+  @Post("wallet/topup")
   @UseGuards(JwtAuthGuard)
   topUpWallet(@Body() dto: WalletTopUpDto, @Req() req: any) {
     return this.checkoutService.topUpWallet({
@@ -213,27 +238,27 @@ export class CheckoutController {
     });
   }
 
-  @Get('wallet/balance')
+  @Get("wallet/balance")
   @UseGuards(JwtAuthGuard)
   getCreditBalance(@Req() req: any) {
     return this.checkoutService.getCreditBalance(req.user.sub);
   }
 
-  @Post('store-metadata')
+  @Post("store-metadata")
   @UseGuards(JwtAuthGuard)
   storeMetadata(@Body() dto: StoreMetadataDto, @Req() req: any) {
     return this.checkoutService.storeMetadata({
       stripeSessionId: dto.sessionId,
       clientId: req.user.sub,
-      projectId: dto.metadata.projectId || '',
+      projectId: dto.metadata.projectId || "",
       amount: dto.metadata.amount || 0,
-      paymentMethod: dto.metadata.paymentMethod || 'card',
-      billingType: dto.metadata.billingType || 'one_time',
+      paymentMethod: dto.metadata.paymentMethod || "card",
+      billingType: dto.metadata.billingType || "one_time",
       ...dto.metadata,
     });
   }
 
-  @Get('cooldown')
+  @Get("cooldown")
   @UseGuards(JwtAuthGuard)
   checkCooldown(@Req() req: any) {
     return this.checkoutService.checkCooldown(req.user.sub);

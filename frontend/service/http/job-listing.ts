@@ -118,7 +118,10 @@ export const JobListingAPI = {
       roles?: string[]
     }
   ) =>
-    AxiosRequest.post(jobListingUrl(`/v1/job-listings/${id}/generate-tools`), data),
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/generate-tools`),
+      data
+    ),
 
   GenerateScope: (
     id: string,
@@ -135,7 +138,10 @@ export const JobListingAPI = {
       minimalInput?: boolean
     }
   ) =>
-    AxiosRequest.post(jobListingUrl(`/v1/job-listings/${id}/generate-scope`), data),
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/generate-scope`),
+      data
+    ),
 
   GenerateRoleDescriptions: (
     id: string,
@@ -205,8 +211,21 @@ export const JobListingAPI = {
     data: {
       talentUserIds: string[]
       roleRowId?: string
+      roleTitle?: string
     }
   ) => AxiosRequest.post(jobListingUrl(`/v1/job-listings/${id}/invite`), data),
+
+  CreditInviteBalance: (
+    id: string,
+    data: {
+      inviteCount: number
+      checkoutSessionId: string
+    }
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/invite-balance/credit`),
+      data
+    ),
 
   PresignBriefUpload: (
     id: string,
@@ -299,17 +318,13 @@ export const JobListingAPI = {
     }
   ) =>
     AxiosRequest.patch(
-      jobListingUrl(
-        `/v1/job-listings/${id}/phases/${phaseId}/tasks/${taskId}`
-      ),
+      jobListingUrl(`/v1/job-listings/${id}/phases/${phaseId}/tasks/${taskId}`),
       data
     ),
 
   DeleteTask: (id: string, phaseId: string, taskId: string) =>
     AxiosRequest.del(
-      jobListingUrl(
-        `/v1/job-listings/${id}/phases/${phaseId}/tasks/${taskId}`
-      )
+      jobListingUrl(`/v1/job-listings/${id}/phases/${phaseId}/tasks/${taskId}`)
     ),
 
   CreateRoleRow: (

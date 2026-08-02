@@ -1,9 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { TalentProfile } from './entities/talent-profile.entity';
-import { TalentProfileSavedEvent } from './interfaces/talent-profile-events';
-import { User } from '../user/entities/user.entity';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { TalentProfile } from "./entities/talent-profile.entity";
+import { TalentProfileSavedEvent } from "./interfaces/talent-profile-events";
+import { User } from "../user/entities/user.entity";
 
 @Injectable()
 export class TalentProfileSyncService {
@@ -20,16 +20,16 @@ export class TalentProfileSyncService {
     const id = event.id;
     let sourceId = event.sourceId ?? null;
 
-    // For CMS-first profiles that don't have a platform user yet, generate a 
-    // sourceId so we can create a canonical user row. This ensures they are 
+    // For CMS-first profiles that don't have a platform user yet, generate a
+    // sourceId so we can create a canonical user row. This ensures they are
     // visible in the platform's user-based lists/filters.
     if (!sourceId) {
       // Use the externalId if it's a valid UUID, or generate a new one
-      sourceId = event.id.length === 36 ? event.id : null; 
+      sourceId = event.id.length === 36 ? event.id : null;
       // If we still don't have one, the underlying DB will handle it or we could generate here.
       // Actually, let's generate if still null.
       if (!sourceId) {
-        sourceId = require('crypto').randomUUID();
+        sourceId = require("crypto").randomUUID();
       }
     }
 
@@ -38,6 +38,7 @@ export class TalentProfileSyncService {
       sourceId,
       username: event.username,
       name: event.name,
+      avatarUrl: event.avatarUrl ?? null,
       availability: event.availability ?? null,
       rate: event.rate ?? null,
       jobTitles: event.jobTitles ?? [],
@@ -47,14 +48,17 @@ export class TalentProfileSyncService {
       languages: event.languages ?? [],
       certifications: event.certifications ?? [],
       education: event.education ?? [],
-      workExperience: (event.workExperience ?? []).map((w: any) => ({ ...w, skills: w.skills ?? [] })),
+      workExperience: (event.workExperience ?? []).map((w: any) => ({
+        ...w,
+        skills: w.skills ?? [],
+      })),
       portfolio: (event.portfolio ?? []).map((p) => ({
         ...p,
         thumbnailUrl: null,
       })),
       location: event.location ?? null,
       timezone: event.timezone ?? null,
-      status: event.status ?? 'active',
+      status: event.status ?? "active",
     };
 
     // Use save() which does INSERT ... ON CONFLICT UPDATE when entity has
@@ -83,7 +87,7 @@ export class TalentProfileSyncService {
       return saved;
     } catch (err: any) {
       // Handle race condition: another process inserted between find and save
-      if (err?.code === '23505') {
+      if (err?.code === "23505") {
         this.logger.warn(
           `Duplicate insert race for "${event.username}" — retrying as update`,
         );
@@ -103,9 +107,7 @@ export class TalentProfileSyncService {
     if (result.affected) {
       this.logger.log(`Deleted talent profile externalId=${externalId}`);
     } else {
-      this.logger.warn(
-        `No talent profile found for externalId=${externalId}`,
-      );
+      this.logger.warn(`No talent profile found for externalId=${externalId}`);
     }
   }
 
@@ -120,16 +122,18 @@ export class TalentProfileSyncService {
 
     let user = await this.userRepo.findOne({ where: { id: sourceId } });
     if (!user) {
-      this.logger.log(`Creating missing user for sourceId=${sourceId} (username="${event.username}")`);
+      this.logger.log(
+        `Creating missing user for sourceId=${sourceId} (username="${event.username}")`,
+      );
       user = this.userRepo.create({
         id: sourceId,
         email: `${event.username}@example.com`, // Fallback email
         isActive: true,
-        provider: 'SEED',
+        provider: "SEED",
       });
     }
 
-    user.userType = 'talent';
+    user.userType = "talent";
     user.username = event.username;
 
     // Sync name to firstName/lastName for the users table
@@ -137,7 +141,7 @@ export class TalentProfileSyncService {
       const parts = event.name.trim().split(/\s+/);
       if (parts.length > 1) {
         user.firstName = parts[0];
-        user.lastName = parts.slice(1).join(' ');
+        user.lastName = parts.slice(1).join(" ");
       } else {
         user.firstName = parts[0];
         user.lastName = undefined;
@@ -145,6 +149,7 @@ export class TalentProfileSyncService {
     }
 
     user.availability = event.availability ?? undefined;
+    user.avatarUrl = event.avatarUrl ?? user.avatarUrl;
     user.rate = event.rate ?? undefined;
     user.location = event.location ?? undefined;
 

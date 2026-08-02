@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
+  addFavorite,
+  findFavoriteByItemId,
+  removeFavorite,
+} from "@/src/lib/api/favorites"
+import {
   Check,
   Copy,
   Edit03,
@@ -12,11 +17,6 @@ import {
   Star02,
   Trash2,
 } from "@blend-metrics/icons"
-import {
-  addFavorite,
-  findFavoriteByItemId,
-  removeFavorite,
-} from "@/src/lib/api/favorites"
 import NextImage from "./next-image"
 import NextLink from "./next-link"
 import {
@@ -70,6 +70,10 @@ interface TalentSearchCardProps {
   /** When true, replaces favorite icon with an options menu (for saved/favorites views) */
   showOptionsMenu?: boolean
   onRemove?: () => void
+  variant?: "card" | "compact"
+  matchScore?: number
+  availability?: string
+  level?: string
 }
 
 /**
@@ -142,8 +146,142 @@ export const TalentSearchCard = ({
   imageLoading = "lazy",
   showOptionsMenu = false,
   onRemove,
+  variant = "card",
+  matchScore,
+  availability,
+  level,
 }: TalentSearchCardProps) => {
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
+
+  if (variant === "compact") {
+    const visibleSkills = skillsList.slice(0, 3)
+    const hiddenSkillCount = Math.max(
+      0,
+      skillsList.length - visibleSkills.length
+    )
+
+    return (
+      <article className="border-b border-gray-200 bg-white py-5">
+        <div className="grid min-w-0 grid-cols-[118px_minmax(0,1fr)_auto] items-start gap-5">
+          <div className="flex w-[118px] shrink-0 flex-col items-center justify-start">
+            <NextLink
+              href={profileHref}
+              className="relative block h-[76px] w-[76px] overflow-hidden rounded-full border-[4px] border-primary-500 bg-gray-100"
+            >
+              {photo ? (
+                <NextImage
+                  src={photo}
+                  sizes="76px"
+                  fill
+                  loading={imageLoading}
+                  className="object-cover"
+                  alt={name}
+                />
+              ) : (
+                <span className="grid h-full w-full place-items-center text-[24px] font-bold text-dark-blue-400">
+                  {name.charAt(0)}
+                </span>
+              )}
+            </NextLink>
+
+            {typeof matchScore === "number" ? (
+              <span className="mt-2 text-[11px] font-semibold leading-normal text-dark-blue-400">
+                {matchScore}% match
+              </span>
+            ) : null}
+          </div>
+
+          <div className="min-w-0">
+            <NextLink
+              href={profileHref}
+              className="flex flex-wrap items-center gap-x-1 gap-y-1 hover:underline"
+            >
+              <span className="text-[13px] font-bold leading-none text-dark-blue-400">
+                {name}
+              </span>
+              <span className="text-[13px] font-light leading-none text-gray-500">
+                {handle}
+              </span>
+            </NextLink>
+
+            <div className="mt-1 text-[12px] font-semibold leading-normal text-dark-blue-400">
+              {role}
+            </div>
+            <div className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
+              {experience}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold leading-none text-dark-blue-400">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className="size-3 fill-dark-blue-400 text-dark-blue-400"
+                  />
+                ))}
+                {rating}
+              </span>
+              <span className="text-[11px] font-semibold leading-none text-dark-blue-400">
+                {projects} projects
+              </span>
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                Top Match
+              </span>
+              {availability ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  {availability}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+              <span className="shrink-0 whitespace-nowrap text-dark-blue-400">
+                <span className="text-[18px] font-bold leading-none">
+                  {rate.split("-")[0]?.trim() || rate}
+                </span>
+                <span className="text-[12px] font-light leading-none">/hr</span>
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-[12px] font-semibold leading-normal text-dark-blue-400">
+                {skillsList.length} Matching Skills
+              </span>
+              {visibleSkills.map((skill, index) => (
+                <span
+                  key={`${skill}-${index}`}
+                  className="shrink-0 whitespace-nowrap rounded-full bg-gray-100 px-2.5 py-0.5 text-[12px] font-semibold leading-5 text-gray-500"
+                >
+                  {skill}
+                </span>
+              ))}
+              {hiddenSkillCount > 0 ? (
+                <span className="flex basis-full">
+                  <NextLink
+                    href={profileHref ? `${profileHref}#skills` : "#"}
+                    className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-[12px] font-semibold leading-5 text-dark-blue-400 hover:underline"
+                  >
+                    + {hiddenSkillCount} More...
+                  </NextLink>
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-1 flex shrink-0 items-center gap-2">
+            {level ? (
+              <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                {level}
+              </span>
+            ) : null}
+            <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+              {country}
+            </span>
+          </div>
+        </div>
+      </article>
+    )
+  }
 
   return (
     <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col">
@@ -225,8 +363,7 @@ export const TalentSearchCard = ({
           <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
             <MarkerPin02 className="size-3" />
             <p className="text-[10px] leading-5 font-semibold">
-              {country}{" "}
-              <span className="font-light">({localTime})</span>
+              {country} <span className="font-light">({localTime})</span>
             </p>
           </div>
 
@@ -320,7 +457,15 @@ export const TalentSearchCard = ({
           <span
             key={index}
             className="text-xs leading-5 font-semibold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap"
-            style={index >= visibleCount ? { position: "absolute", visibility: "hidden", pointerEvents: "none" } : undefined}
+            style={
+              index >= visibleCount
+                ? {
+                    position: "absolute",
+                    visibility: "hidden",
+                    pointerEvents: "none",
+                  }
+                : undefined
+            }
           >
             {skill}
           </span>

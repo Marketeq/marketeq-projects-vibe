@@ -27,8 +27,8 @@ import {
   type CheckoutPaymentMethod,
 } from "@/service/http/checkout"
 import {
-  getContractsForClient,
   type ContractDTO,
+  getContractsForClient,
 } from "@/service/http/contracts"
 import {
   JobListingAPI,
@@ -42,6 +42,7 @@ import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
   cn,
+  convertToKbOrMb,
   debounce,
   getId,
   getIsNotEmpty,
@@ -76,6 +77,7 @@ import {
   Copy,
   Edit03,
   Eye,
+  File as FileIcon,
   HelpCircle,
   Home03,
   Lightbulb05,
@@ -90,6 +92,7 @@ import {
   Trash01,
   Trash2,
   Type,
+  UploadCloud,
   UserCircle,
   Users,
   X,
@@ -141,6 +144,7 @@ import {
 import { util, z } from "zod"
 import { Prettify } from "@/types/core"
 import { CreateProjectType } from "@/types/project"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 import { Network } from "@/components/icons/network"
 import { Network1 } from "@/components/icons/network-1"
@@ -230,6 +234,7 @@ import {
   TooltipTrigger,
   useToast,
 } from "@/components/ui"
+import { InviteTalentFlow } from "@/app/invite-talent/page"
 
 type ProgressProps = {
   setProgress?: (val: number) => void
@@ -243,7 +248,10 @@ type SmartAssistantEditableField =
   | "benefits"
   | "responsibilities"
 
-const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<SmartAssistantEditableField, number> = {
+const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
+  SmartAssistantEditableField,
+  number
+> = {
   title: 100,
   overview: 100,
   benefits: 100,
@@ -260,7 +268,9 @@ const clampSmartAssistantFieldValue = (
 
   const truncated = normalized.slice(0, maxLength).trim()
   const lastSpaceIndex = truncated.lastIndexOf(" ")
-  return lastSpaceIndex > 0 ? truncated.slice(0, lastSpaceIndex).trim() : truncated
+  return lastSpaceIndex > 0
+    ? truncated.slice(0, lastSpaceIndex).trim()
+    : truncated
 }
 
 type ExistingListingOption = {
@@ -512,6 +522,7 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
     subCategories,
     categorySelections,
     industries: projectInfo.industry,
+    languages: projectInfo.languages,
     tags: projectInfo.tags,
     skills: projectInfo.skills,
     shortDescription: projectInfo.shortDescription,
@@ -791,9 +802,7 @@ const Empty = ({
         <div className="mx-auto grid max-w-[1180px] gap-6 xl:grid-cols-[minmax(0,1fr)_322px]">
           <div className="min-w-0 space-y-5">
             <div className="flex items-center justify-between gap-4">
-              <h1 className="text-xl font-bold text-dark-blue-400">
-                My Jobs
-              </h1>
+              <h1 className="text-xl font-bold text-dark-blue-400">My Jobs</h1>
               <Button onClick={() => router.push("/job-listing")}>
                 Create Job
               </Button>
@@ -822,14 +831,23 @@ const Empty = ({
                   <span className="font-semibold text-gray-black">
                     8 applicants
                   </span>
-                  <Badge visual="gray" className="bg-primary-50 text-primary-500">
+                  <Badge
+                    visual="gray"
+                    className="bg-primary-50 text-primary-500"
+                  >
                     3 new
                   </Badge>
                   <Button
                     className="h-auto px-0 text-primary-500"
                     variant="link"
                     visual="primary"
-                    onClick={() => router.push("/invite-talent")}
+                    onClick={() =>
+                      router.push(
+                        outcome?.projectId
+                          ? `/invite-talent?jobListingId=${outcome.projectId}`
+                          : "/invite-talent"
+                      )
+                    }
                   >
                     30 matching profiles
                   </Button>
@@ -865,11 +883,7 @@ const Empty = ({
                   </div>
                 ))}
               </div>
-              <Button
-                className="mt-6 w-full"
-                variant="outlined"
-                visual="gray"
-              >
+              <Button className="mt-6 w-full" variant="outlined" visual="gray">
                 View More Tutorials
               </Button>
             </div>
@@ -879,6 +893,10 @@ const Empty = ({
     )
 
     if (inviteStep === "select") {
+      return <InviteTalentFlow embedded jobListingId={outcome?.projectId} />
+    }
+
+    if (false && inviteStep === "select") {
       return (
         <div className="flex flex-auto flex-col bg-white">
           <div className="border-b border-gray-200 px-8 py-6">
@@ -925,19 +943,23 @@ const Empty = ({
                 <span className="font-semibold text-gray-black">
                   Selected Role:
                 </span>
-                {["Product Designer", "Location", "Experience Level", "Work Schedule", "Hourly Rate"].map(
-                  (filter) => (
-                    <Button
-                      key={filter}
-                      className="h-9 rounded-full"
-                      variant="outlined"
-                      visual="gray"
-                    >
-                      {filter}
-                      <ChevronDown className="ml-2 size-4" />
-                    </Button>
-                  )
-                )}
+                {[
+                  "Product Designer",
+                  "Location",
+                  "Experience Level",
+                  "Work Schedule",
+                  "Hourly Rate",
+                ].map((filter) => (
+                  <Button
+                    key={filter}
+                    className="h-9 rounded-full"
+                    variant="outlined"
+                    visual="gray"
+                  >
+                    {filter}
+                    <ChevronDown className="ml-2 size-4" />
+                  </Button>
+                ))}
               </div>
               <div className="mt-6 divide-y divide-gray-200">
                 {JOB_INVITE_MATCHES.map((talent) => {
@@ -1024,22 +1046,24 @@ const Empty = ({
                   </div>
                   <Progress className="mt-3" value={0} />
                 </div>
-                {["Product Designer", "Full-stack Developer", "Q/A Engineer"].map(
-                  (role) => (
-                    <div
-                      key={role}
-                      className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-gray-black">
-                          {role}
-                        </p>
-                        <p className="mt-2 text-xs text-gray-500">Unfiltered</p>
-                      </div>
-                      <span className="size-5 rounded-full border border-gray-300" />
+                {[
+                  "Product Designer",
+                  "Full-stack Developer",
+                  "Q/A Engineer",
+                ].map((role) => (
+                  <div
+                    key={role}
+                    className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-black">
+                        {role}
+                      </p>
+                      <p className="mt-2 text-xs text-gray-500">Unfiltered</p>
                     </div>
-                  )
-                )}
+                    <span className="size-5 rounded-full border border-gray-300" />
+                  </div>
+                ))}
               </div>
               <div className="mt-8 rounded-[8px] border border-gray-200 p-5">
                 <p className="text-[24px] font-bold leading-8 text-dark-blue-400">
@@ -1870,6 +1894,7 @@ const meta = {
     { label: "Title", name: "title" },
     { label: "Category", name: "category" },
     { label: "Industry(s)", name: "industry" },
+    { label: "Language(s)", name: "languages" },
     { label: "Short Description", name: "shortDescription" },
     { label: "Full Description", name: "fullDescription" },
     { label: "Tags", name: "tags" },
@@ -2237,11 +2262,7 @@ const Sidebar = () => {
   )
 }
 
-const Header = ({
-  onSaveExit,
-}: {
-  onSaveExit?: () => void
-}) => {
+const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
       <div>
@@ -2391,7 +2412,7 @@ const BottomBar = ({
           title,
           jobType: workType ?? undefined,
           industries: projectInfo.industry ?? [],
-          languages: [],
+          languages: projectInfo.languages ?? [],
         })
 
         const existingListingResponse = await JobListingAPI.Get(listingId)
@@ -2442,9 +2463,7 @@ const BottomBar = ({
                   experienceLevel: row.experience?.trim() || undefined,
                   workSchedule: row.workSchedule ?? "full_time",
                   customHours:
-                    row.workSchedule === "custom"
-                      ? row.customHours
-                      : undefined,
+                    row.workSchedule === "custom" ? row.customHours : undefined,
                   customFrequency:
                     row.workSchedule === "custom"
                       ? row.customFrequency
@@ -2601,7 +2620,9 @@ const BottomBar = ({
         if (projectId && typeof window !== "undefined") {
           const urlParams = new URLSearchParams(window.location.search)
           const type = urlParams.get("type") ?? "project"
-          const nextPath = isJobListingFlow ? "/job-listing" : "/publish-project"
+          const nextPath = isJobListingFlow
+            ? "/job-listing"
+            : "/publish-project"
           window.history.replaceState(
             window.history.state,
             "",
@@ -2992,7 +3013,8 @@ const ProjectInfoTip = ({
                 <strong>Create new contract</strong>
               </>,
               <>
-                If you want to <strong>add more jobs to a project or service</strong>{" "}
+                If you want to{" "}
+                <strong>add more jobs to a project or service</strong>{" "}
                 you&apos;ve already started, choose{" "}
                 <strong>Add to existing contract</strong>
               </>,
@@ -3005,9 +3027,7 @@ const ProjectInfoTip = ({
         ).map((item, index) => (
           <div className="flex items-start gap-x-3 py-1" key={index}>
             <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-            <span className="text-sm leading-5 text-dark-blue-400">
-              {item}
-            </span>
+            <span className="text-sm leading-5 text-dark-blue-400">{item}</span>
           </div>
         ))}
       </div>
@@ -3025,7 +3045,7 @@ const projectInfoSchema = z.object({
       "Title can only contain letters, numbers, spaces, and hyphens."
     )
     .min(10, "Please enter at least 10 character(s)")
-    .max(120, "Please do not enter more than 120 character(s)"),
+    .max(100, "Please do not enter more than 100 character(s)"),
   category: z
     .array(
       z
@@ -3067,6 +3087,7 @@ const projectInfoSchema = z.object({
     })
     .min(1, "Please enter at least 1 industry(s)")
     .max(5, "Please do not enter more than 5 industry(s)"),
+  languages: z.array(z.string()).max(10).default([]),
   shortDescription: z
     .string()
     .min(50, "Please enter at least 50 character(s)")
@@ -3180,7 +3201,7 @@ const scrollToPublishField = (targetId: string) => {
   })
 }
 
-const TITLE_MAX_LENGTH = 120
+const TITLE_MAX_LENGTH = 100
 const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 
@@ -3203,7 +3224,7 @@ const getPublishRoleRows = (phases: Phase[] | undefined) => {
 
   return Array.from(roles.values())
 }
-const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
+const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 100 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
@@ -3240,6 +3261,18 @@ const FALLBACK_INDUSTRY_OPTIONS = [
   "Real Estate",
   "Energy",
   "Transportation",
+]
+const FALLBACK_LANGUAGE_OPTIONS = [
+  "English",
+  "Spanish",
+  "Japanese",
+  "French",
+  "German",
+  "Portuguese",
+  "Hindi",
+  "Mandarin",
+  "Arabic",
+  "Korean",
 ]
 const FALLBACK_TAG_OPTIONS = [
   "Web App",
@@ -3376,6 +3409,9 @@ const ProjectInfo = ({
   const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([])
   const [industryOptions, setIndustryOptions] = useState<string[]>(
     FALLBACK_INDUSTRY_OPTIONS
+  )
+  const [languageOptions, setLanguageOptions] = useState<string[]>(
+    FALLBACK_LANGUAGE_OPTIONS
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
@@ -3862,10 +3898,7 @@ const ProjectInfo = ({
     if (!query) return sourceOptions
 
     return sourceOptions.filter((option) =>
-      [option.title, ...option.badges]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
+      [option.title, ...option.badges].join(" ").toLowerCase().includes(query)
     )
   }, [apiExistingListingOptions, contractSearchValue])
 
@@ -3902,7 +3935,8 @@ const ProjectInfo = ({
     }
 
     const currentSelectionIsVisible = apiExistingListingOptions.some(
-      (option) => option.id === selectedExistingListing && !option.disabledReason
+      (option) =>
+        option.id === selectedExistingListing && !option.disabledReason
     )
 
     if (currentSelectionIsVisible) return
@@ -3983,7 +4017,8 @@ const ProjectInfo = ({
 
                 <div className="mt-8 space-y-4">
                   <p className="text-base leading-6 font-semibold text-dark-blue-400">
-                    Are you adding team members to a new contract or an existing one?
+                    Are you adding team members to a new contract or an existing
+                    one?
                   </p>
 
                   <RadioGroup
@@ -3993,9 +4028,7 @@ const ProjectInfo = ({
                       const nextChoice = value as "new" | "existing"
 
                       setContractChoice(nextChoice)
-                      onExistingContractFlowChange?.(
-                        nextChoice === "existing"
-                      )
+                      onExistingContractFlowChange?.(nextChoice === "existing")
                       if (nextChoice === "existing") {
                         setScopeChoice(null)
                         onNoScopeFlowChange?.(false)
@@ -4016,7 +4049,10 @@ const ProjectInfo = ({
                   >
                     {[
                       { value: "new", label: "Create new contract" },
-                      { value: "existing", label: "Add to an existing contract" },
+                      {
+                        value: "existing",
+                        label: "Add to an existing contract",
+                      },
                     ].map((option) => (
                       <HeadlessRadioGroupItem
                         key={option.value}
@@ -4037,7 +4073,8 @@ const ProjectInfo = ({
                   <div className="mt-12 space-y-5">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <p className="text-base leading-6 font-semibold text-dark-blue-400">
-                        Choose project, service, or team which you want to add jobs
+                        Choose project, service, or team which you want to add
+                        jobs
                       </p>
 
                       <div className="md:w-[223px]">
@@ -4060,9 +4097,10 @@ const ProjectInfo = ({
                       className="space-y-2"
                       value={selectedExistingListing ?? ""}
                       onValueChange={(value) => {
-                        const selectedOption = visibleExistingListingOptions.find(
-                          (option) => option.id === value
-                        )
+                        const selectedOption =
+                          visibleExistingListingOptions.find(
+                            (option) => option.id === value
+                          )
 
                         if (!selectedOption || selectedOption.disabledReason) {
                           return
@@ -4179,9 +4217,7 @@ const ProjectInfo = ({
                                 | "unknown"
                                 | "none"
                               setScopeChoice(nextScopeChoice)
-                              onNoScopeFlowChange?.(
-                                nextScopeChoice === "none"
-                              )
+                              onNoScopeFlowChange?.(nextScopeChoice === "none")
                               if (nextScopeChoice === "none") {
                                 setWorkTypeChoice(null)
                                 setHiringModeChoice("team")
@@ -4257,60 +4293,63 @@ const ProjectInfo = ({
                         </RadioGroup>
                       </div>
                     ) : scopeChoice ? (
-                  <div className="mt-12 space-y-5">
-                    <p className="text-base leading-6 font-semibold text-dark-blue-400">
-                      What type of work is this?
-                    </p>
+                      <div className="mt-12 space-y-5">
+                        <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                          What type of work is this?
+                        </p>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {[
-                        {
-                          value: "project",
-                          label: "Project",
-                          description: "One-time job with a defined scope",
-                          icon: <Copy className="size-5" />,
-                        },
-                        {
-                          value: "service",
-                          label: "Service",
-                          description: "Recurring work with consistent needs",
-                          icon: <RefreshCcw05 className="size-5" />,
-                        },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={cn(
-                            "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                            workTypeChoice === option.value &&
-                              "border-primary-500"
-                          )}
-                          onClick={() =>
-                            setWorkTypeChoice(option.value as WorkTypeChoice)
-                          }
-                        >
-                          <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                            {option.icon}
-                          </span>
-                          <span className="min-w-0 flex-auto">
-                            <span className="block text-base leading-6 font-semibold text-dark-blue-400">
-                              {option.label}
-                            </span>
-                            <span className="mt-0.5 block text-sm leading-5 text-dark-blue-400">
-                              {option.description}
-                            </span>
-                          </span>
-                          <span
-                            className={cn(
-                              "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                              workTypeChoice === option.value &&
-                                "border-[5px] border-primary-500"
-                            )}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {[
+                            {
+                              value: "project",
+                              label: "Project",
+                              description: "One-time job with a defined scope",
+                              icon: <Copy className="size-5" />,
+                            },
+                            {
+                              value: "service",
+                              label: "Service",
+                              description:
+                                "Recurring work with consistent needs",
+                              icon: <RefreshCcw05 className="size-5" />,
+                            },
+                          ].map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              className={cn(
+                                "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                                workTypeChoice === option.value &&
+                                  "border-primary-500"
+                              )}
+                              onClick={() =>
+                                setWorkTypeChoice(
+                                  option.value as WorkTypeChoice
+                                )
+                              }
+                            >
+                              <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                {option.icon}
+                              </span>
+                              <span className="min-w-0 flex-auto">
+                                <span className="block text-base leading-6 font-semibold text-dark-blue-400">
+                                  {option.label}
+                                </span>
+                                <span className="mt-0.5 block text-sm leading-5 text-dark-blue-400">
+                                  {option.description}
+                                </span>
+                              </span>
+                              <span
+                                className={cn(
+                                  "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                                  workTypeChoice === option.value &&
+                                    "border-[5px] border-primary-500"
+                                )}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ) : null}
                   </>
                 )}
@@ -4318,1131 +4357,1228 @@ const ProjectInfo = ({
             </div>
 
             {false ? (
-            <div className="hidden">
-            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-              Describe your project
-            </h1>
+              <div className="hidden">
+                <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+                  Describe your project
+                </h1>
 
-            <div
-              id="publish-project-title-field"
-              className="space-y-1.5 mt-6 mb-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="title"
+                <div
+                  id="publish-project-title-field"
+                  className="space-y-1.5 mt-6 mb-6"
                 >
-                  What do you want to accomplish with this project?
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Give us a short project summary so we can match the right
-                    roles to your needs.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {Math.min(titleCharacterCount, 100)}/100
-                  </span>
-                </div>
-              </div>
-
-              <Textarea
-                id="title"
-                placeholder="I need help building a new website for my e-commerce store..."
-                value={projectInfoValues.title ?? ""}
-                maxLength={100}
-                onChange={(event) => {
-                  methods.setValue(
-                    "title",
-                    event.target.value.slice(0, 100),
-                    {
-                      shouldDirty: true,
-                      shouldTouch: true,
-                      shouldValidate: false,
-                    }
-                  )
-                  if (titleHasError && get(errors, "title.type") === "manual") {
-                    methods.clearErrors("title")
-                  }
-                }}
-                onBlur={() => void methods.trigger("title")}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      projectInfoValues.title?.length || 0,
-                      100
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "title",
-                      "Please do not enter more than 100 character(s)"
-                    )
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      projectInfoValues.title?.length || 0,
-                      100
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "title",
-                      "Please do not enter more than 100 character(s)"
-                    )
-                  }
-                }}
-                isInvalid={titleHasError}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="title"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div className="space-y-1.5 mt-6 mb-6">
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="job-project-budget"
-                >
-                  What&apos;s your estimated budget for this project?
-                </Label>
-              </div>
-
-              <div className="max-w-[260px]">
-                <Label
-                  className="text-sm leading-5 text-dark-blue-400 font-semibold"
-                  htmlFor="job-project-budget"
-                >
-                  Amount
-                </Label>
-                <InputGroup className="mt-1">
-                  <InputLeftElement className="text-gray-500">
-                    $
-                  </InputLeftElement>
-                  <Input
-                    id="job-project-budget"
-                    className="pl-8"
-                    defaultValue="500.00"
-                    inputMode="decimal"
-                  />
-                </InputGroup>
-                <span className="mt-1 block text-xs leading-[18px] text-gray-500">
-                  per week
-                </span>
-              </div>
-            </div>
-
-            <div id="publish-project-category-field" className="hidden">
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="email"
-                  asChild
-                >
-                  <span>Category</span>
-                </Label>
-
-                <HelperText size="sm">
-                  Select categories that best fit your project scope for easier
-                  discovery.
-                </HelperText>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  1
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.0.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(0, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(0)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(0, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.0.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.0.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  options={subCategoryOptions}
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px] "
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(0, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(0)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[0]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.0.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.0.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.0.category.message") ||
-                        get(errors, "category.0.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  2
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.1.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(1, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(1)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(1, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.1.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.1.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl
-                                className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px]
-                               border border-gray-300 px-[14px] py-[10px] m-0"
-                              >
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  options={subCategoryOptions}
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px]"
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(1, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(1)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[1]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.1.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.1.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.1.category.message") ||
-                        get(errors, "category.1.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  3
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.2.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(2, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(2)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(2, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.2.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.2.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl
-                                className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px]
-                               border border-gray-300 px-[14px] py-[10px] m-0"
-                              >
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  options={subCategoryOptions}
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px]"
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(2, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(2)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[2]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.2.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.2.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.2.category.message") ||
-                        get(errors, "category.2.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {showSuggestions && (
-              <div className="mt-6 space-y-1.5">
-                <span className="block text-xs leading-5 text-dark-blue-400">
-                  Suggested Categories
-                </span>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForDisplay.map(({ category, subCategory }) => (
-                    <Badge
-                      size="md"
-                      className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
-                      visual="primary"
-                      asChild
-                      key={category}
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="title"
                     >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const indexToUpdate = activeCategoryIndex
+                      What do you want to accomplish with this project?
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Give us a short project summary so we can match the
+                        right roles to your needs.
+                      </HelperText>
 
-                          // write values and mark as user-driven so Sidebar shows the checkmark
-                          setValue(
-                            `category.${indexToUpdate}.category`,
-                            category,
-                            {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            }
-                          )
-                          setValue(
-                            `category.${indexToUpdate}.subCategories`,
-                            [subCategory],
-                            {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            }
-                          )
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {Math.min(titleCharacterCount, 100)}/100
+                      </span>
+                    </div>
+                  </div>
 
-                          // validate that slot
-                          trigger(`category.${indexToUpdate}`)
+                  <Textarea
+                    id="title"
+                    placeholder="I need help building a new website for my e-commerce store..."
+                    value={projectInfoValues.title ?? ""}
+                    maxLength={100}
+                    onChange={(event) => {
+                      methods.setValue(
+                        "title",
+                        event.target.value.slice(0, 100),
+                        {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: false,
+                        }
+                      )
+                      if (
+                        titleHasError &&
+                        get(errors, "title.type") === "manual"
+                      ) {
+                        methods.clearErrors("title")
+                      }
+                    }}
+                    onBlur={() => void methods.trigger("title")}
+                    onKeyDown={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          projectInfoValues.title?.length || 0,
+                          100
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "title",
+                          "Please do not enter more than 100 character(s)"
+                        )
+                      }
+                    }}
+                    onPaste={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          projectInfoValues.title?.length || 0,
+                          100
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "title",
+                          "Please do not enter more than 100 character(s)"
+                        )
+                      }
+                    }}
+                    isInvalid={titleHasError}
+                  />
 
-                          // keep suggestions visible for subsequent category slots
-                        }}
-                      >
-                        {category} / {subCategory}
-                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                      </button>
-                    </Badge>
-                  ))}
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="title"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
                 </div>
-              </div>
-            )}
-            <div className="space-y-3 mt-6">
-              <Label
-                className="leading-9 text-dark-blue-400 font-semibold"
-                size="lg"
-              >
-                How long do you expect this job to last?
-              </Label>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                {[
-                  {
-                    label: "3 months",
-                    description: "Launch a page, test a prototype, or run a campaign",
-                  },
-                  {
-                    label: "6 months",
-                    description: "Build an MVP or redesign a website",
-                  },
-                  {
-                    label: "12 months",
-                    description: "Platform builds or long product cycles",
-                  },
-                  {
-                    label: "24 months",
-                    description: "Ongoing design, dev support, or multi-phase work",
-                  },
-                ].map((option) => (
+                <div className="space-y-1.5 mt-6 mb-6">
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="job-project-budget"
+                    >
+                      What&apos;s your estimated budget for this project?
+                    </Label>
+                  </div>
+
+                  <div className="max-w-[260px]">
+                    <Label
+                      className="text-sm leading-5 text-dark-blue-400 font-semibold"
+                      htmlFor="job-project-budget"
+                    >
+                      Amount
+                    </Label>
+                    <InputGroup className="mt-1">
+                      <InputLeftElement className="text-gray-500">
+                        $
+                      </InputLeftElement>
+                      <Input
+                        id="job-project-budget"
+                        className="pl-8"
+                        defaultValue="500.00"
+                        inputMode="decimal"
+                      />
+                    </InputGroup>
+                    <span className="mt-1 block text-xs leading-[18px] text-gray-500">
+                      per week
+                    </span>
+                  </div>
+                </div>
+
+                <div id="publish-project-category-field" className="hidden">
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="email"
+                      asChild
+                    >
+                      <span>Category</span>
+                    </Label>
+
+                    <HelperText size="sm">
+                      Select categories that best fit your project scope for
+                      easier discovery.
+                    </HelperText>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      1
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.0.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(0, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(0)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(0, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.0.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field } }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.0.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      options={subCategoryOptions}
+                                      allowCreateOption
+                                      className="flex-1 min-w-[100px] "
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(0, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(0)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[0]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.0.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.0.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.0.category.message") ||
+                            get(errors, "category.0.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      2
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.1.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(1, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(1)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(1, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.1.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field } }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.1.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className="relative pr-[28px] flex flex-wrap !justify-start
+                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px]
+                               border border-gray-300 px-[14px] py-[10px] m-0"
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      options={subCategoryOptions}
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      allowCreateOption
+                                      className="flex-1 min-w-[100px]"
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(1, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(1)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[1]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.1.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.1.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.1.category.message") ||
+                            get(errors, "category.1.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      3
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.2.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(2, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(2)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(2, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.2.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field } }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.2.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className="relative pr-[28px] flex flex-wrap !justify-start
+                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px]
+                               border border-gray-300 px-[14px] py-[10px] m-0"
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      options={subCategoryOptions}
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      allowCreateOption
+                                      className="flex-1 min-w-[100px]"
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(2, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(2)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[2]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.2.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.2.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.2.category.message") ||
+                            get(errors, "category.2.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {showSuggestions && (
+                  <div className="mt-6 space-y-1.5">
+                    <span className="block text-xs leading-5 text-dark-blue-400">
+                      Suggested Categories
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                      {suggestedForDisplay.map(({ category, subCategory }) => (
+                        <Badge
+                          size="md"
+                          className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
+                          visual="primary"
+                          asChild
+                          key={category}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const indexToUpdate = activeCategoryIndex
+
+                              // write values and mark as user-driven so Sidebar shows the checkmark
+                              setValue(
+                                `category.${indexToUpdate}.category`,
+                                category,
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+                              setValue(
+                                `category.${indexToUpdate}.subCategories`,
+                                [subCategory],
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+
+                              // validate that slot
+                              trigger(`category.${indexToUpdate}`)
+
+                              // keep suggestions visible for subsequent category slots
+                            }}
+                          >
+                            {category} / {subCategory}
+                            <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-3 mt-6">
+                  <Label
+                    className="leading-9 text-dark-blue-400 font-semibold"
+                    size="lg"
+                  >
+                    How long do you expect this job to last?
+                  </Label>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {[
+                      {
+                        label: "3 months",
+                        description:
+                          "Launch a page, test a prototype, or run a campaign",
+                      },
+                      {
+                        label: "6 months",
+                        description: "Build an MVP or redesign a website",
+                      },
+                      {
+                        label: "12 months",
+                        description: "Platform builds or long product cycles",
+                      },
+                      {
+                        label: "24 months",
+                        description:
+                          "Ongoing design, dev support, or multi-phase work",
+                      },
+                    ].map((option) => (
+                      <button
+                        key={option.label}
+                        className="rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none"
+                        type="button"
+                      >
+                        <span className="block text-sm leading-5 font-semibold text-dark-blue-400">
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-xs leading-[18px] text-gray-500">
+                          {option.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
                   <button
-                    key={option.label}
-                    className="rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none"
+                    className="text-sm leading-5 font-semibold text-primary-500 focus-visible:outline-none"
                     type="button"
                   >
-                    <span className="block text-sm leading-5 font-semibold text-dark-blue-400">
-                      {option.label}
-                    </span>
-                    <span className="mt-1 block text-xs leading-[18px] text-gray-500">
-                      {option.description}
-                    </span>
+                    Other
                   </button>
-                ))}
-              </div>
-
-              <button
-                className="text-sm leading-5 font-semibold text-primary-500 focus-visible:outline-none"
-                type="button"
-              >
-                Other
-              </button>
-            </div>
-
-            <div
-              id="publish-project-industry-field"
-              className="hidden"
-            >
-              <Controller
-                name="industry"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 5) {
-                        methods.setError("industry", {
-                          type: "manual",
-                          message: "You can only add up to 5 industries",
-                        })
-                        return
-                      }
-                      methods.clearErrors("industry")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Industry
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                Add up to 5 industries that aligns with your
-                                project scope for targeted visibility.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.industry?.length || 0}/5
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={industryOptions}
-                              placeholder="Add Industries"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "industries",
-                                  value,
-                                  setIndustryOptions
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="industry"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div
-              id="publish-project-short-description-field"
-              className="hidden"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="short-description"
-                >
-                  Short Description
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Provide a brief overview of your project scope.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.shortDescription?.length || 0}/
-                    {SHORT_DESCRIPTION_MAX_LENGTH}
-                  </span>
                 </div>
-              </div>
 
-              <Textarea
-                id="short-description"
-                placeholder="Enter a short Description"
-                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
-                {...shortDescriptionField}
-                onChange={(event) => {
-                  shortDescriptionField.onChange(event)
-                  if (
-                    shortDescriptionHasError &&
-                    get(errors, "shortDescription.type") === "manual"
-                  ) {
-                    methods.clearErrors("shortDescription")
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      SHORT_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "shortDescription",
-                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      SHORT_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "shortDescription",
-                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                isInvalid={shortDescriptionHasError}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="shortDescription"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div
-              id="publish-project-full-description-field"
-              className="hidden"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="full-description"
-                >
-                  Full Description
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Provide a comprehensive description of this project,
-                    including its purpose and features.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {fullDescriptionCharacterCount}/
-                    {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <Controller
-                name="fullDescription"
-                control={methods.control}
-                render={({ field }) => (
-                  <RichTextEditor
-                    defaultValue={field.value ?? ""}
-                    placeholder="<p class='text-gray-400'>Enter a full Description</p>"
-                    allowFullscreen
-                    className={cn(
-                      "rounded-lg border bg-white transition-colors",
-                      fullDescriptionHasError
-                        ? "border-error-500"
-                        : "border-gray-300 focus-within:border-primary-500"
-                    )}
-                    toolbarClassName="left-4"
-                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
-                    onUpdate={(html) => {
-                      field.onChange(html)
-
-                      const contentLength = getRichTextCharacterCount(html)
-                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                        triggerMaxLengthError(
-                          "fullDescription",
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
-                        return
-                      }
-
-                      if (
-                        fullDescriptionHasError &&
-                        get(errors, "fullDescription.message") ===
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                      ) {
-                        methods.clearErrors("fullDescription")
-                      }
-                    }}
-                    onBlur={(html) => {
-                      field.onBlur()
-
-                      const contentLength = getRichTextCharacterCount(html)
-                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                        triggerMaxLengthError(
-                          "fullDescription",
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
-                        return
-                      }
-
-                      if (
-                        fullDescriptionHasError &&
-                        get(errors, "fullDescription.message") ===
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                      ) {
-                        methods.clearErrors("fullDescription")
-                      }
-
-                      void trigger("fullDescription")
-                    }}
-                  />
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="fullDescription"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div id="publish-project-tags-field" className="hidden">
-              <Controller
-                name="tags"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 10) {
-                        methods.setError("tags", {
-                          type: "manual",
-                          message: "You can only add up to 10 tags",
-                        })
-                        return
-                      }
-                      methods.clearErrors("tags")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Tags
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                Add up to 10 tags that best describe your
-                                project. Use relevant keywords to highlight its
-                                features and make it easier to find.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.tags?.length || 0}/10
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={tagOptions}
-                              placeholder="Add Tags"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "search_keywords",
-                                  value,
-                                  setTagOptions
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="tags"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div id="publish-project-skills-field" className="hidden">
-              <Controller
-                name="skills"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 10) {
-                        methods.setError("skills", {
-                          type: "manual",
-                          message: "You can only add up to 10 skills",
-                        })
-                        return
-                      }
-                      methods.clearErrors("skills")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Skills
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                List up to 10 key skills or proficiencies
-                                required to implement this project effectively.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.skills?.length || 0}/10
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={skills}
-                              placeholder="Add Skills"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "skills",
-                                  value,
-                                  setSkills
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="skills"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            {getIsNotEmpty(suggestedSkillsForDisplay) ? (
-              <div className="hidden">
-                <span className="block text-xs leading-5 text-dark-blue-400">
-                  Suggested Skills
-                </span>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedSkillsForDisplay.map((suggestedSkill, index) => (
-                    <Badge
-                      size="md"
-                      className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
-                      visual="primary"
-                      key={index}
-                      asChild
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = projectInfoValues.skills
-                            ? [...projectInfoValues.skills, suggestedSkill]
-                            : [suggestedSkill]
-
-                          // tell RHF this field changed and should be validated
-                          setValue("skills", next, {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                          })
+                <div id="publish-project-industry-field" className="hidden">
+                  <Controller
+                    name="industry"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 5) {
+                            methods.setError("industry", {
+                              type: "manual",
+                              message: "You can only add up to 5 industries",
+                            })
+                            return
+                          }
+                          methods.clearErrors("industry")
+                          onChange(details.value)
                         }}
+                        {...field}
+                        className="space-y-1.5"
                       >
-                        {suggestedSkill}
-                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                      </button>
-                    </Badge>
-                  ))}
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Industry
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    Add up to 5 industries that aligns with your
+                                    project scope for targeted visibility.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.industry?.length || 0}/5
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={industryOptions}
+                                  placeholder="Add Industries"
+                                  allowCreateOption
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "industries",
+                                      value,
+                                      setIndustryOptions
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="industry"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
                 </div>
+
+                <div id="publish-project-language-field" className="hidden">
+                  <Controller
+                    name="languages"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          onChange(getUniqueOptions(details.value).slice(0, 10))
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <TagsInputControl className="relative pr-[28px]">
+                              {tagsInput.value.map((value, index) => (
+                                <TagsInputItem
+                                  key={index}
+                                  index={index}
+                                  value={value}
+                                >
+                                  <TagsInputItemPreview
+                                    visual="primary"
+                                    size="md"
+                                    className="pr-2 text-primary-500 bg-primary-50"
+                                  >
+                                    <TagsInputItemText>
+                                      {value}
+                                    </TagsInputItemText>
+                                    <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                      <X2 className="size-3" />
+                                    </TagsInputItemDeleteTrigger>
+                                  </TagsInputItemPreview>
+                                  <TagsInputItemInput />
+                                </TagsInputItem>
+                              ))}
+                              <TagsInputInput
+                                options={languageOptions}
+                                placeholder="Add Languages"
+                                allowCreateOption
+                                onInputValueChange={(value) => {
+                                  fetchTypeAutocomplete(
+                                    "languages",
+                                    value,
+                                    setLanguageOptions
+                                  )
+                                }}
+                              />
+
+                              <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                            </TagsInputControl>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+                </div>
+
+                <div
+                  id="publish-project-short-description-field"
+                  className="hidden"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="short-description"
+                    >
+                      Short Description
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Provide a brief overview of your project scope.
+                      </HelperText>
+
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {projectInfoValues.shortDescription?.length || 0}/
+                        {SHORT_DESCRIPTION_MAX_LENGTH}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Textarea
+                    id="short-description"
+                    placeholder="Enter a short Description"
+                    maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                    {...shortDescriptionField}
+                    onChange={(event) => {
+                      shortDescriptionField.onChange(event)
+                      if (
+                        shortDescriptionHasError &&
+                        get(errors, "shortDescription.type") === "manual"
+                      ) {
+                        methods.clearErrors("shortDescription")
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          event.currentTarget.value.length,
+                          SHORT_DESCRIPTION_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "shortDescription",
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                      }
+                    }}
+                    onPaste={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          event.currentTarget.value.length,
+                          SHORT_DESCRIPTION_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "shortDescription",
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                      }
+                    }}
+                    isInvalid={shortDescriptionHasError}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="shortDescription"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div
+                  id="publish-project-full-description-field"
+                  className="hidden"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="full-description"
+                    >
+                      Full Description
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Provide a comprehensive description of this project,
+                        including its purpose and features.
+                      </HelperText>
+
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {fullDescriptionCharacterCount}/
+                        {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Controller
+                    name="fullDescription"
+                    control={methods.control}
+                    render={({ field }) => (
+                      <RichTextEditor
+                        defaultValue={field.value ?? ""}
+                        placeholder="<p class='text-gray-400'>Enter a full Description</p>"
+                        allowFullscreen
+                        className={cn(
+                          "rounded-lg border bg-white transition-colors",
+                          fullDescriptionHasError
+                            ? "border-error-500"
+                            : "border-gray-300 focus-within:border-primary-500"
+                        )}
+                        toolbarClassName="left-4"
+                        editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                        onUpdate={(html) => {
+                          field.onChange(html)
+
+                          const contentLength = getRichTextCharacterCount(html)
+                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                            triggerMaxLengthError(
+                              "fullDescription",
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            )
+                            return
+                          }
+
+                          if (
+                            fullDescriptionHasError &&
+                            get(errors, "fullDescription.message") ===
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                          ) {
+                            methods.clearErrors("fullDescription")
+                          }
+                        }}
+                        onBlur={(html) => {
+                          field.onBlur()
+
+                          const contentLength = getRichTextCharacterCount(html)
+                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                            triggerMaxLengthError(
+                              "fullDescription",
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            )
+                            return
+                          }
+
+                          if (
+                            fullDescriptionHasError &&
+                            get(errors, "fullDescription.message") ===
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                          ) {
+                            methods.clearErrors("fullDescription")
+                          }
+
+                          void trigger("fullDescription")
+                        }}
+                      />
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="fullDescription"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div id="publish-project-tags-field" className="hidden">
+                  <Controller
+                    name="tags"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 10) {
+                            methods.setError("tags", {
+                              type: "manual",
+                              message: "You can only add up to 10 tags",
+                            })
+                            return
+                          }
+                          methods.clearErrors("tags")
+                          onChange(details.value)
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Tags
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    Add up to 10 tags that best describe your
+                                    project. Use relevant keywords to highlight
+                                    its features and make it easier to find.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.tags?.length || 0}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={tagOptions}
+                                  placeholder="Add Tags"
+                                  allowCreateOption
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "search_keywords",
+                                      value,
+                                      setTagOptions
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="tags"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div id="publish-project-skills-field" className="hidden">
+                  <Controller
+                    name="skills"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 10) {
+                            methods.setError("skills", {
+                              type: "manual",
+                              message: "You can only add up to 10 skills",
+                            })
+                            return
+                          }
+                          methods.clearErrors("skills")
+                          onChange(details.value)
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Skills
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    List up to 10 key skills or proficiencies
+                                    required to implement this project
+                                    effectively.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.skills?.length || 0}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={skills}
+                                  placeholder="Add Skills"
+                                  allowCreateOption
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "skills",
+                                      value,
+                                      setSkills
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="skills"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                {getIsNotEmpty(suggestedSkillsForDisplay) ? (
+                  <div className="hidden">
+                    <span className="block text-xs leading-5 text-dark-blue-400">
+                      Suggested Skills
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                      {suggestedSkillsForDisplay.map(
+                        (suggestedSkill, index) => (
+                          <Badge
+                            size="md"
+                            className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
+                            visual="primary"
+                            key={index}
+                            asChild
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = projectInfoValues.skills
+                                  ? [
+                                      ...projectInfoValues.skills,
+                                      suggestedSkill,
+                                    ]
+                                  : [suggestedSkill]
+
+                                // tell RHF this field changed and should be validated
+                                setValue("skills", next, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                })
+                              }}
+                            >
+                              {suggestedSkill}
+                              <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                            </button>
+                          </Badge>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            </div>
             ) : null}
           </div>
           <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
@@ -6869,6 +7005,17 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
+
+const createDefaultPhaseRow = (seed = getId()): PhaseRow => ({
+  id: `phase-task-${seed}`,
+  task: "New Task",
+  role: "Specialist",
+  location: "USA",
+  experience: "Junior",
+  duration: { value: 10, type: "hours" },
+  workSchedule: "full_time",
+})
+
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -7463,7 +7610,11 @@ const ProjectScope = ({
               ? editingPhaseIndex + 1
               : next.length
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(insertedPhaseIndex, 0, {
+          phaseName,
+          phaseType: "setup",
+          rows: [createDefaultPhaseRow()],
+        })
         return next
       })
 
@@ -7806,25 +7957,19 @@ const ProjectScope = ({
                         {formatDurationUnit(
                           Number(selectedDurationValue) || 0,
                           "days"
-                        ).replace(/^./, (character) =>
-                          character.toUpperCase()
-                        )}
+                        ).replace(/^./, (character) => character.toUpperCase())}
                       </SelectItem>
                       <SelectItem value="weeks">
                         {formatDurationUnit(
                           Number(selectedDurationValue) || 0,
                           "weeks"
-                        ).replace(/^./, (character) =>
-                          character.toUpperCase()
-                        )}
+                        ).replace(/^./, (character) => character.toUpperCase())}
                       </SelectItem>
                       <SelectItem value="hours">
                         {formatDurationUnit(
                           Number(selectedDurationValue) || 0,
                           "hours"
-                        ).replace(/^./, (character) =>
-                          character.toUpperCase()
-                        )}
+                        ).replace(/^./, (character) => character.toUpperCase())}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -7913,6 +8058,7 @@ const ProjectScope = ({
                     className="border-r-0 rounded-r-none"
                     variant="outlined"
                     visual="gray"
+                    type="button"
                     onClick={expandAll}
                   >
                     <ChevronsDown className="size-[15px]" /> Expand All
@@ -7921,6 +8067,7 @@ const ProjectScope = ({
                     className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
                     variant="outlined"
                     visual="gray"
+                    type="button"
                     onClick={collapseAll}
                   >
                     <ChevronsUp className="size-[15px]" /> Collapse All
@@ -7931,6 +8078,7 @@ const ProjectScope = ({
                   className="border-l-0 rounded-l-none md:border-l md:rounded-l-[5px]"
                   variant="outlined"
                   visual="gray"
+                  type="button"
                   onClick={() => dispatch({ type: "TOGGLE" })}
                 >
                   <Plus className="size-[15px]" /> Add Phase
@@ -8156,6 +8304,7 @@ const ProjectScope = ({
                               <div className="mt-6 flex justify-center">
                                 <Button
                                   className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
+                                  type="button"
                                   onClick={() => handleOpenTaskDialog(index)}
                                 >
                                   <Plus className="size-[15px]" />
@@ -8176,6 +8325,7 @@ const ProjectScope = ({
               className="mt-5"
               variant="ghost"
               visual="gray"
+              type="button"
               onClick={() => dispatch({ type: "TOGGLE" })}
             >
               <Plus className="size-[15px]" /> Add Phase
@@ -8306,8 +8456,7 @@ const DescribeProjectStep = ({
 }) => {
   const { toggleValidation } = useStepContext()
   const { toast } = useToast()
-  const { setDetails: setJobListingDraftDetails } =
-    useJobListingDraftContext()
+  const { setDetails: setJobListingDraftDetails } = useJobListingDraftContext()
   const isService = workType === "service"
   const [description, setDescription] = useState("")
   const [deliverables, setDeliverables] = useState("")
@@ -8325,6 +8474,7 @@ const DescribeProjectStep = ({
   const [scopeUploadError, setScopeUploadError] = useState("")
   const [isScopeDropActive, setIsScopeDropActive] = useState(false)
   const scopeUploadTimerRef = useRef<number | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const clearScopeUploadTimer = useCallback(() => {
     if (scopeUploadTimerRef.current) {
       window.clearInterval(scopeUploadTimerRef.current)
@@ -8487,24 +8637,29 @@ const DescribeProjectStep = ({
         "What the end result should look like",
         "Any tools or skills that are important",
       ]
+  const selectedDurationOption = durationOptions.find(
+    (option, index) => `${option.value}-${option.unit}-${index}` === duration
+  )
+  const isCustomDurationSelected = selectedDurationOption?.value === "Other"
+  const customDurationAmount = Number(customDuration)
+  const hasValidCustomDuration =
+    !isCustomDurationSelected ||
+    (Number.isFinite(customDurationAmount) && customDurationAmount > 0)
   const isValid =
     description.trim().length > 0 &&
     deliverables.trim().length > 0 &&
     (isService || successCriteria.trim().length > 0) &&
-    Number(budget.replace(/,/g, "")) >= 0
+    Number(budget.replace(/,/g, "")) >= 0 &&
+    (isService || hasValidCustomDuration)
   const budgetAmount = Number(budget.replace(/,/g, "")) || 0
   const budgetFrequency =
     budgetUnit === "per month" ? ("per_month" as const) : ("per_week" as const)
-  const selectedDurationOption = durationOptions.find(
-    (option, index) => `${option.value}-${option.unit}-${index}` === duration
-  )
   const durationMonths =
     selectedDurationOption?.unit === "months"
       ? Number(selectedDurationOption.value)
-      : customDurationUnit === "months"
-        ? Number(customDuration) || undefined
+      : isCustomDurationSelected && customDurationUnit === "months"
+        ? customDurationAmount || undefined
         : undefined
-
   useIsomorphicLayoutEffect(() => {
     toggleValidation(isValid)
   }, [isValid])
@@ -8544,7 +8699,9 @@ const DescribeProjectStep = ({
     resetScopeFile()
     setDuration("3-months-0")
     setCustomDuration("")
-    const viewport = document.querySelector("[data-radix-scroll-area-viewport]")
+    const viewport = contentRef.current?.closest(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null
     viewport?.scrollTo({ top: 0 })
   }, [isService, resetScopeFile])
 
@@ -8554,7 +8711,10 @@ const DescribeProjectStep = ({
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-6 px-5 md:px-10 min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-8 min-[1024px]:gap-x-[41.45px]">
+      <div
+        ref={contentRef}
+        className="px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-8 min-[1024px]:gap-x-[41.45px]"
+      >
         <div className="min-w-0 flex-auto min-[1024px]:max-w-[720px]">
           <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
             {isService ? "Describe your service" : "Describe your project"}
@@ -8616,57 +8776,90 @@ const DescribeProjectStep = ({
               </p>
             </div>
             {scopeFile ? (
-              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <div className="flex items-center justify-between gap-x-4">
-                  <div>
-                    <p className="text-xs leading-[18px] font-semibold text-dark-blue-400">
+              <div
+                className={cn(
+                  "rounded-lg border border-gray-200 bg-white px-4 py-3",
+                  scopeUploadStatus === "error" &&
+                    "border-error-300 bg-error-25"
+                )}
+              >
+                <div className="flex items-start gap-x-3">
+                  <div
+                    className={cn(
+                      "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
+                      scopeUploadStatus === "error" &&
+                        "border-error-50 bg-error-100 text-error-500"
+                    )}
+                  >
+                    {scopeUploadStatus === "error" ? (
+                      <AlertCircle className="size-5" />
+                    ) : (
+                      <FileIcon className="size-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-auto">
+                    <p
+                      className={cn(
+                        "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
+                        scopeUploadStatus === "error" && "text-error-500"
+                      )}
+                    >
                       {scopeFile.name}
                     </p>
-                    <p className="text-xs leading-[18px] text-gray-500">
-                      {Math.max(1, Math.round(scopeFile.size / 1024))} KB
+                    <p
+                      className={cn(
+                        "text-xs leading-[18px] text-gray-500",
+                        scopeUploadStatus === "error" && "text-error-500"
+                      )}
+                    >
+                      {convertToKbOrMb(scopeFile.size)}
                     </p>
                   </div>
-                  <Button
+                  <IconButton
+                    className="size-8 text-gray-500"
                     type="button"
-                    variant="outlined"
-                    visual="gray"
-                    className="h-8"
+                    variant="ghost"
+                    visual={scopeUploadStatus === "error" ? "error" : "gray"}
                     onClick={resetScopeFile}
                   >
                     <X className="size-4" />
-                  </Button>
+                  </IconButton>
                 </div>
+
                 {scopeUploadStatus === "uploading" ? (
-                  <div className="mt-2 flex items-center gap-x-2">
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className="h-full rounded-full bg-primary-500"
-                        style={{ width: `${scopeUploadProgress}%` }}
-                      />
-                    </div>
-                    <span className="text-xs leading-[18px] text-gray-500">
+                  <div className="mt-2 flex items-center gap-x-3 pl-12">
+                    <Progress value={scopeUploadProgress} />
+                    <span className="text-xs leading-[18px] font-semibold text-gray-700">
                       {scopeUploadProgress}%
                     </span>
                   </div>
                 ) : null}
-                {scopeUploadStatus === "complete" ? (
-                  <div className="mt-2 flex items-center gap-x-1.5 text-xs leading-[18px] text-success-500">
-                    <Check className="size-4" />
-                    <span>Upload complete</span>
-                  </div>
-                ) : null}
                 {scopeUploadStatus === "error" && scopeUploadError ? (
-                  <div className="mt-2 flex items-center gap-x-1.5 text-xs leading-[18px] text-error-500">
-                    <AlertCircle className="size-4" />
-                    <span>{scopeUploadError}</span>
+                  <div className="mt-2 flex items-center justify-between gap-x-3 pl-12">
+                    <span className="text-xs leading-[18px] text-error-500">
+                      {scopeUploadError}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      visual="error"
+                      onClick={() => {
+                        const contentType = getScopeFileContentType(scopeFile)
+                        if (contentType) {
+                          void uploadScopeFile(scopeFile, contentType)
+                        }
+                      }}
+                    >
+                      Try again
+                    </Button>
                   </div>
                 ) : null}
               </div>
             ) : (
               <label
                 className={cn(
-                  "block cursor-pointer rounded-lg border border-dashed bg-white p-4 text-center",
-                  isScopeDropActive ? "border-primary-500" : "border-gray-300"
+                  "flex h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center focus-within:ring-2 focus-within:ring-primary-500",
+                  isScopeDropActive && "border-primary-500"
                 )}
                 onDragEnter={(event) => {
                   event.preventDefault()
@@ -8690,21 +8883,28 @@ const DescribeProjectStep = ({
                   className="sr-only"
                   type="file"
                   accept=".pdf,.docx"
-                  onChange={(event) =>
+                  onChange={(event) => {
                     acceptScopeFile(event.target.files?.[0])
-                  }
+                    event.target.value = ""
+                  }}
                 />
-                <span className="block text-sm leading-5 font-semibold text-primary-500">
-                  Drag and drop your {isService ? "service" : "project"} scope
-                  or choose a file
+                <span className="inline-flex size-10 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100">
+                  <UploadCloud className="size-5 text-gray-500" />
                 </span>
-                <span className="mt-1 block text-xs leading-[18px] text-gray-500">
+                <span className="mt-3 text-xs leading-5 text-gray-600">
+                  Drag and drop your {isService ? "service" : "project"} scope
+                  or{" "}
+                  <span className="font-semibold text-primary-500">
+                    Choose a file
+                  </span>
+                </span>
+                <span className="mt-1 max-w-[408px] text-xs leading-[14.52px] text-gray-500">
                   Upload a scope document to help clients understand your
                   {isService ? " service" : " project"} details and allow us to
                   generate accurate suggestions.
                 </span>
-                <span className="mt-3 block text-xs leading-[18px] text-gray-500">
-                  Recommended format: PDF or DOCX
+                <span className="mt-3 text-xs leading-[14.52px] text-gray-500">
+                  Recommended Format: PDF or DOCX
                 </span>
               </label>
             )}
@@ -8733,13 +8933,15 @@ const DescribeProjectStep = ({
                 </InputGroup>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button
+                    <Button
                       type="button"
-                      className="inline-flex h-8 min-w-[100px] items-center justify-between gap-x-2 rounded-[5px] border border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-xs focus-visible:outline-none"
+                      variant="outlined"
+                      visual="gray"
+                      className="h-8 min-w-[100px] justify-between px-3 text-xs leading-[18px] font-normal text-dark-blue-400"
                     >
                       {budgetUnit}
                       <ChevronDown className="size-4 text-gray-500" />
-                    </button>
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-[100px]">
                     {["per week", "per month"].map((unit) => (
@@ -8762,86 +8964,92 @@ const DescribeProjectStep = ({
                 <Label className="text-base leading-6 font-semibold text-dark-blue-400">
                   How long do you expect this job to last?
                 </Label>
-                <div className="grid gap-3 md:grid-cols-2">
+                <RadioGroup
+                  value={duration}
+                  onValueChange={setDuration}
+                  className="grid gap-3 md:grid-cols-2"
+                >
                   {durationOptions.map((option, index) => {
                     const id = `${option.value}-${option.unit}-${index}`
                     const selected = duration === id
                     const isOther = option.value === "Other"
                     return (
-                      <button
-                        key={id}
-                        type="button"
-                        className={cn(
-                          "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                          selected && "border-primary-500"
-                        )}
-                        onClick={() => setDuration(id)}
-                      >
-                        <span className="flex items-center justify-between gap-x-4">
-                          <span className="text-base leading-6 font-semibold text-dark-blue-400">
-                            {option.value}
-                            {option.unit ? (
-                              <span className="ml-1 text-sm leading-5 font-normal text-gray-500">
-                                {" "}
-                                {option.unit}
-                              </span>
-                            ) : null}
-                          </span>
-                          <span
-                            className={cn(
-                              "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                              selected && "border-[5px] border-primary-500"
-                            )}
-                          />
-                        </span>
-                        {option.label ? (
-                          <span className="mt-2 block text-sm leading-5 text-gray-500">
-                            {option.label}
-                          </span>
-                        ) : null}
-                        {isOther && selected ? (
-                          <div className="mt-3 flex items-center gap-x-2">
-                            <Input
-                              className="h-8 text-xs"
-                              placeholder="Enter duration"
-                              value={customDuration}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={(event) =>
-                                setCustomDuration(event.target.value)
-                              }
-                            />
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <span
-                                  className="inline-flex h-8 min-w-[92px] items-center justify-between gap-x-2 rounded-[5px] border border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-xs"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  {customDurationUnit}
-                                  <ChevronDown className="size-4 text-gray-500" />
+                      <HeadlessRadioGroupItem key={id} value={id} asChild>
+                        <div
+                          className={cn(
+                            "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                            selected && "border-primary-500"
+                          )}
+                        >
+                          <span className="flex items-center justify-between gap-x-4">
+                            <span className="text-base leading-6 font-semibold text-dark-blue-400">
+                              {option.value}
+                              {option.unit ? (
+                                <span className="ml-1 text-sm leading-5 font-normal text-gray-500">
+                                  {" "}
+                                  {option.unit}
                                 </span>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="start"
-                                className="min-w-[92px]"
-                              >
-                                {projectDurationUnits.map((unit) => (
-                                  <DropdownMenuItem
-                                    key={unit}
-                                    onSelect={() =>
-                                      setCustomDurationUnit(unit)
-                                    }
+                              ) : null}
+                            </span>
+                            <span
+                              className={cn(
+                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                                selected && "border-[5px] border-primary-500"
+                              )}
+                            />
+                          </span>
+                          {option.label ? (
+                            <span className="mt-2 block text-sm leading-5 text-gray-500">
+                              {option.label}
+                            </span>
+                          ) : null}
+                          {isOther && selected ? (
+                            <div className="mt-3 flex items-center gap-x-2">
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Enter duration"
+                                value={customDuration}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) =>
+                                  setCustomDuration(event.target.value)
+                                }
+                              />
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outlined"
+                                    visual="gray"
+                                    className="h-8 min-w-[92px] justify-between px-3 text-xs leading-[18px] font-normal text-dark-blue-400"
+                                    onClick={(event) => event.stopPropagation()}
                                   >
-                                    {unit}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        ) : null}
-                      </button>
+                                    {customDurationUnit}
+                                    <ChevronDown className="size-4 text-gray-500" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="start"
+                                  className="min-w-[92px]"
+                                >
+                                  {projectDurationUnits.map((unit) => (
+                                    <DropdownMenuItem
+                                      key={unit}
+                                      onSelect={() =>
+                                        setCustomDurationUnit(unit)
+                                      }
+                                    >
+                                      {unit}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          ) : null}
+                        </div>
+                      </HeadlessRadioGroupItem>
                     )
                   })}
-                </div>
+                </RadioGroup>
               </div>
 
               <div className="mt-5 space-y-2">
@@ -9136,8 +9344,7 @@ const serviceScopePhases = [
     status: "2 weeks",
     statusKind: "one-time",
     phaseType: "setup" as const,
-    note:
-      "One-time starting work that begins on Day X and will not repeat again.",
+    note: "One-time starting work that begins on Day X and will not repeat again.",
     rows: [
       {
         task: "Account Setup",
@@ -9163,8 +9370,7 @@ const serviceScopePhases = [
     phaseType: "recurring" as const,
     recurrenceSchedule: "monthly",
     recurrenceCount: 3,
-    note:
-      "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set.",
+    note: "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set.",
     rows: [
       {
         task: "Content Writing",
@@ -9229,7 +9435,9 @@ const serviceScopePhaseTypeOptions = [
   },
 ]
 
-const createServicePhasesFromGeneratedScope = (scope: any): ServiceScopePhase[] => {
+const createServicePhasesFromGeneratedScope = (
+  scope: any
+): ServiceScopePhase[] => {
   const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : []
 
   return generatedPhases
@@ -9251,14 +9459,17 @@ const createServicePhasesFromGeneratedScope = (scope: any): ServiceScopePhase[] 
             : "2 weeks"
 
       return {
-        name: String(phase?.phaseName ?? phaseOption?.label ?? `Phase ${phaseIndex + 1}`),
+        name: String(
+          phase?.phaseName ?? phaseOption?.label ?? `Phase ${phaseIndex + 1}`
+        ),
         customName: "",
         status,
         statusKind: phaseType === "setup" ? "one-time" : phaseType,
         phaseType,
         recurrenceSchedule:
           phaseType === "recurring" ? recurrenceSchedule : undefined,
-        recurrenceCount: phaseType === "recurring" ? recurrenceCount : undefined,
+        recurrenceCount:
+          phaseType === "recurring" ? recurrenceCount : undefined,
         note:
           phaseType === "ongoing"
             ? "Continuous work starting on Day X with no set end date."
@@ -9283,6 +9494,130 @@ const createServicePhasesFromGeneratedScope = (scope: any): ServiceScopePhase[] 
       }
     })
     .filter((phase: ServiceScopePhase) => phase.name && phase.rows.length > 0)
+}
+
+const getServicePhaseDisplayParts = (
+  phaseType: ServiceScopePhase["phaseType"],
+  phaseName: string,
+  phaseIndex: number
+) => {
+  if (phaseType === "ongoing") {
+    return {
+      name: "Ongoing",
+      customName: phaseName.replace(/^Ongoing\s*/i, "").trim(),
+    }
+  }
+
+  if (phaseType === "recurring") {
+    const recurringNameMatch = phaseName.match(/^Recurring(?:\s+\d+)?/i)
+    const name = recurringNameMatch?.[0] ?? `Recurring ${phaseIndex + 1}`
+
+    return {
+      name,
+      customName: phaseName.replace(name, "").trim(),
+    }
+  }
+
+  return {
+    name: "Setup",
+    customName: phaseName.replace(/^Setup\s*/i, "").trim(),
+  }
+}
+
+const createServicePhasesFromPersistedJobListing = (
+  phases: any
+): ServiceScopePhase[] => {
+  const persistedPhases = Array.isArray(phases) ? phases : []
+
+  return persistedPhases
+    .map((phase: any, phaseIndex: number) => {
+      const phaseType: ServiceScopePhase["phaseType"] =
+        phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
+          ? phase.phaseType
+          : "setup"
+      const phaseName = String(
+        phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`
+      )
+      const { name, customName } = getServicePhaseDisplayParts(
+        phaseType,
+        phaseName,
+        phaseIndex
+      )
+      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly"
+      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3
+      const sourceRows = Array.isArray(phase?.rows)
+        ? phase.rows
+        : Array.isArray(phase?.tasks)
+          ? phase.tasks
+          : []
+      const rows = sourceRows.map((row: any) => {
+        const durationValue =
+          typeof row?.duration === "object"
+            ? Number(row.duration?.value)
+            : Number(row?.estimatedHours ?? row?.durationHours)
+        const durationType =
+          typeof row?.duration === "object" && row.duration?.type
+            ? String(row.duration.type)
+            : "hours"
+
+        return {
+          task: String(row?.task ?? row?.taskName ?? "New Task"),
+          role: String(row?.role ?? row?.roleTitle ?? "Specialist"),
+          location: String(row?.location ?? "USA"),
+          experience: String(
+            row?.experience ?? row?.experienceLevel ?? "Junior"
+          ),
+          duration: `${durationValue || 10} ${durationType}`,
+          workSchedule:
+            row?.workSchedule === "part_time"
+              ? "part_time"
+              : row?.workSchedule === "custom"
+                ? "custom"
+                : "full_time",
+          customHours:
+            row?.workSchedule === "custom"
+              ? Number(row?.customHours) || undefined
+              : undefined,
+          customFrequency:
+            row?.workSchedule === "custom"
+              ? (row?.customFrequency ?? undefined)
+              : undefined,
+        }
+      })
+
+      return {
+        name,
+        customName,
+        status:
+          phaseType === "ongoing"
+            ? "Ongoing"
+            : phaseType === "recurring"
+              ? `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
+              : "2 weeks",
+        statusKind:
+          phaseType === "setup"
+            ? "one-time"
+            : phaseType === "ongoing"
+              ? "ongoing"
+              : "recurring",
+        phaseType,
+        recurrenceSchedule:
+          phaseType === "recurring" ? recurrenceSchedule : undefined,
+        recurrenceCount:
+          phaseType === "recurring" ? recurrenceCount : undefined,
+        note:
+          phaseType === "ongoing"
+            ? "Continuous work starting on Day X with no set end date."
+            : phaseType === "recurring"
+              ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
+              : "One-time starting work that begins on Day X and will not repeat again.",
+        rows,
+      }
+    })
+    .filter(
+      (phase: ServiceScopePhase) =>
+        phase.name && phase.customName !== undefined && phase.rows.length > 0
+    )
 }
 
 const projectScopeEditPhases = [
@@ -9364,7 +9699,7 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
             task: trimmedDescription,
             role: "Front-End Developer",
             location: "USA",
-          experience: "Junior" as ExperienceLevel,
+            experience: "Junior" as ExperienceLevel,
             duration: { value: 40, type: "hours" },
             workSchedule: "full_time",
           },
@@ -9465,8 +9800,9 @@ const NoScopeRoleInfoStep = ({
   const [roleDescription, setRoleDescription] = useState("")
   const [headcount, setHeadcount] = useState(isTeamMode ? "2" : "1")
   const [budget, setBudget] = useState("500.00")
-  const [budgetFrequency, setBudgetFrequency] =
-    useState<"per_week" | "per_month">("per_week")
+  const [budgetFrequency, setBudgetFrequency] = useState<
+    "per_week" | "per_month"
+  >("per_week")
   const [durationChoice, setDurationChoice] = useState("Other")
   const [customDuration, setCustomDuration] = useState("")
   const [customDurationUnit, setCustomDurationUnit] = useState("months")
@@ -9566,7 +9902,9 @@ const NoScopeRoleInfoStep = ({
         <div className="flex flex-col gap-8 min-[1180px]:flex-row">
           <div className="min-w-0 flex-auto max-w-[890px]">
             <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-              {isTeamMode ? "Describe roles you need" : "Describe role you need"}
+              {isTeamMode
+                ? "Describe roles you need"
+                : "Describe role you need"}
             </h1>
 
             <div className="mt-8">
@@ -9718,7 +10056,9 @@ const NoScopeRoleInfoStep = ({
                       className="w-[180px]"
                       placeholder="Enter duration"
                       value={customDuration}
-                      onChange={(event) => setCustomDuration(event.target.value)}
+                      onChange={(event) =>
+                        setCustomDuration(event.target.value)
+                      }
                     />
                     <Select
                       value={customDurationUnit}
@@ -9811,7 +10151,7 @@ const createPhaseRowFromGeneratedTask = (
   task: any,
   idSuffix: string
 ): PhaseRow => ({
-  id: `generated-scope-${idSuffix}-${getId()}`,
+  id: String(task?.id ?? `generated-scope-${idSuffix}-${getId()}`),
   task: String(task?.taskName ?? task?.task ?? "New Task"),
   role: String(task?.roleTitle ?? task?.role ?? "Specialist"),
   location: String(task?.location ?? "USA"),
@@ -9826,6 +10166,14 @@ const createPhaseRowFromGeneratedTask = (
       : task?.workSchedule === "custom"
         ? "custom"
         : "full_time",
+  customHours:
+    task?.workSchedule === "custom"
+      ? Number(task?.customHours) || undefined
+      : undefined,
+  customFrequency:
+    task?.workSchedule === "custom"
+      ? (task?.customFrequency ?? undefined)
+      : undefined,
 })
 
 const createPhasesFromGeneratedScope = (scope: any): Phase[] => {
@@ -9850,6 +10198,30 @@ const createPhasesFromGeneratedScope = (scope: any): Phase[] => {
     .filter((phase: Phase) => phase.phaseName && (phase.rows ?? []).length > 0)
 }
 
+const createPhasesFromPersistedJobListing = (phases: any): Phase[] => {
+  const persistedPhases = Array.isArray(phases) ? phases : []
+
+  return persistedPhases
+    .map((phase: any, phaseIndex: number) => {
+      const tasks = Array.isArray(phase?.tasks) ? phase.tasks : []
+      const rows = tasks.map((task: any, taskIndex: number) =>
+        createPhaseRowFromGeneratedTask(task, `${phaseIndex}-${taskIndex}`)
+      )
+
+      return {
+        phaseName: String(phase?.phaseName ?? `Phase ${phaseIndex + 1}`),
+        phaseType: phase?.phaseType,
+        recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+        recurrenceCount:
+          typeof phase?.recurrenceCount === "number"
+            ? phase.recurrenceCount
+            : undefined,
+        rows,
+      }
+    })
+    .filter((phase: Phase) => phase.phaseName && (phase.rows ?? []).length > 0)
+}
+
 const createProjectScopePhase = (
   phaseName: string,
   phaseIndex: number
@@ -9867,7 +10239,7 @@ const ProjectScopeEditStep = ({
 }: ProgressProps & { jobListingId?: string | null }) => {
   const { toggleValidation } = useStepContext()
   const { projectScopeMethods } = useProjectScopeContext()
-  const [, setProjectScopeState] = projectScopeMethods
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods
   const [phases, setPhases] = useState<Phase[]>(() =>
     projectScopeEditPhases.map((phase, phaseIndex) =>
       createProjectScopePhase(phase, phaseIndex)
@@ -9887,6 +10259,7 @@ const ProjectScopeEditStep = ({
   const [assistantResult, setAssistantResult] = useState("")
   const [isAssistantLoading, setIsAssistantLoading] = useState(false)
   const didGenerateInitialScopeRef = useRef(false)
+  const didApplyPersistedScopeRef = useRef(false)
   const [budgetAmount, setBudgetAmount] = useState(5000)
   const [projectTimelineMonths, setProjectTimelineMonths] = useState(3)
   const [budgetFrequency, setBudgetFrequency] = useState("week")
@@ -9914,6 +10287,27 @@ const ProjectScopeEditStep = ({
   const isScopeValid = phases.some(
     (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0
   )
+
+  useEffect(() => {
+    if (didApplyPersistedScopeRef.current) return
+
+    const persistedPhases = Array.isArray(projectScopeState)
+      ? projectScopeState.filter(
+          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0
+        )
+      : []
+
+    if (persistedPhases.length === 0) return
+
+    didApplyPersistedScopeRef.current = true
+    didGenerateInitialScopeRef.current = true
+    setPhases(persistedPhases)
+    setExpandedPhaseNames(
+      persistedPhases
+        .map((phase) => phase.phaseName)
+        .filter((name): name is string => Boolean(name))
+    )
+  }, [projectScopeState])
 
   useEffect(() => {
     if (!jobListingId || didGenerateInitialScopeRef.current) return
@@ -10183,7 +10577,9 @@ const ProjectScopeEditStep = ({
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
         applyProjectAssistantFallback(message)
-        setAssistantResult(data.message ?? "Smart Assistant is temporarily unavailable.")
+        setAssistantResult(
+          data.message ?? "Smart Assistant is temporarily unavailable."
+        )
         return
       }
 
@@ -10285,7 +10681,23 @@ const ProjectScopeEditStep = ({
                 <div>
                   <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
                     Budget Calculator
-                    <HelpCircle className="size-4" />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Show budget calculator details"
+                            className="inline-flex focus-visible:outline-none"
+                          >
+                            <HelpCircle className="size-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Estimated budget updates from scope, schedule, and
+                          role details.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
                     <span className="text-2xl leading-8 font-semibold">
@@ -10322,7 +10734,22 @@ const ProjectScopeEditStep = ({
                 <div>
                   <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
                     Project Timeline Calculator
-                    <HelpCircle className="size-4" />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Show timeline calculator details"
+                            className="inline-flex focus-visible:outline-none"
+                          >
+                            <HelpCircle className="size-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Timeline updates from phase and task durations.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
                     {projectTimelineMonths}{" "}
@@ -10403,6 +10830,11 @@ const ProjectScopeEditStep = ({
                       <div className="flex min-w-0 items-center gap-x-4">
                         <button
                           type="button"
+                          aria-label={
+                            isExpanded
+                              ? `Collapse ${phaseName}`
+                              : `Expand ${phaseName}`
+                          }
                           className="focus-visible:outline-none"
                           onClick={() => togglePhase(phaseName)}
                         >
@@ -10430,7 +10862,11 @@ const ProjectScopeEditStep = ({
                         </span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <IconButton variant="ghost" visual="gray">
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              aria-label={`Open actions for ${phaseName}`}
+                            >
                               <MoreHorizontal className="size-4" />
                             </IconButton>
                           </DropdownMenuTrigger>
@@ -10440,7 +10876,9 @@ const ProjectScopeEditStep = ({
                             >
                               {isExpanded ? "Collapse Phase" : "Expand Phase"}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => addTask(phaseName)}>
+                            <DropdownMenuItem
+                              onSelect={() => addTask(phaseName)}
+                            >
                               Add Task
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -10455,6 +10893,7 @@ const ProjectScopeEditStep = ({
                         <IconButton
                           variant="outlined"
                           visual="gray"
+                          aria-label={`Add task to ${phaseName}`}
                           onClick={() => addTask(phaseName)}
                         >
                           <Plus className="size-4" />
@@ -10464,7 +10903,7 @@ const ProjectScopeEditStep = ({
 
                     {isExpanded ? (
                       <>
-                        <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
+                        <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] gap-x-6 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
                           <span>Task Name</span>
                           <span>Role</span>
                           <span>Location</span>
@@ -10478,7 +10917,7 @@ const ProjectScopeEditStep = ({
                           return (
                             <div
                               key={row.id}
-                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center border-b border-gray-200 px-6 py-4 last:border-b-0"
+                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center gap-x-6 border-b border-gray-200 px-6 py-4 last:border-b-0"
                             >
                               <Input
                                 className="h-8 border-0 bg-transparent px-0 text-sm leading-5 font-semibold text-gray-black shadow-none"
@@ -10607,9 +11046,25 @@ const ProjectScopeEditStep = ({
                                   </div>
                                   {draftSchedule === "custom" ? (
                                     <div className="mt-4">
-                                      <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                        Estimated hours
-                                      </Label>
+                                      <div className="flex items-center justify-between gap-x-3">
+                                        <Label className="text-xs leading-[18px] text-dark-blue-400">
+                                          Estimated hours
+                                        </Label>
+                                        <IconButton
+                                          className="size-7 text-gray-500"
+                                          type="button"
+                                          variant="ghost"
+                                          visual="gray"
+                                          aria-label="Clear custom schedule"
+                                          onClick={() => {
+                                            setDraftCustomHours("")
+                                            setDraftCustomFrequency("per_week")
+                                            setDraftSchedule("full_time")
+                                          }}
+                                        >
+                                          <X className="size-4" />
+                                        </IconButton>
+                                      </div>
                                       <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
                                         <Input
                                           className="h-9 rounded-r-none text-sm leading-5"
@@ -10680,6 +11135,11 @@ const ProjectScopeEditStep = ({
                   </div>
                 )
               })}
+              {visiblePhases.length === 0 ? (
+                <div className="rounded-lg border border-gray-200 bg-white px-6 py-8 text-center text-sm leading-5 text-gray-500 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                  No phase or task found.
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -10856,8 +11316,9 @@ const NdaPreviewDialog = ({
         </DialogHeader>
         <div className="max-h-[640px] overflow-y-auto bg-gray-100 px-8 py-6">
           {isLoading ? (
-            <div className="flex h-[520px] items-center justify-center rounded-lg bg-white text-sm text-gray-500">
-              Loading NDA preview...
+            <div className="flex h-[520px] flex-col items-center justify-center gap-3 rounded-lg bg-white text-sm text-gray-500">
+              <Spinner size={32} strokeWidth={4} />
+              <span>Loading NDA preview...</span>
             </div>
           ) : pdfUrl ? (
             <iframe
@@ -11143,7 +11604,9 @@ const useFinalReviewSmartAssistant = ({
         }
 
         if (data.aiStatus === "AI_UNAVAILABLE") {
-          setResult(data.message ?? "Smart Assistant is temporarily unavailable.")
+          setResult(
+            data.message ?? "Smart Assistant is temporarily unavailable."
+          )
           return
         }
 
@@ -11180,6 +11643,30 @@ const useFinalReviewSmartAssistant = ({
     isLoading,
     run,
   }
+}
+
+const resolveFinalReviewAssistantField = (
+  command: string
+): SmartAssistantEditableField => {
+  const normalized = command.toLowerCase()
+
+  if (
+    /\b(title|project title|service title|headline|name)\b/.test(normalized)
+  ) {
+    return "title"
+  }
+
+  if (
+    /\b(overview|summary|description|intro|introduction)\b/.test(normalized)
+  ) {
+    return "overview"
+  }
+
+  if (/\b(benefit|benefits|why join|value proposition)\b/.test(normalized)) {
+    return "benefits"
+  }
+
+  return "responsibilities"
 }
 
 const useRoleDescriptionPersistence = ({
@@ -11303,6 +11790,203 @@ const useRoleDescriptionPersistence = ({
   ])
 }
 
+const ReviewEditableTags = ({
+  fieldName,
+  label,
+  addLabel,
+  autocompleteType,
+  fallbackOptions,
+  max,
+}: {
+  fieldName: "industry" | "languages"
+  label: string
+  addLabel: string
+  autocompleteType: string
+  fallbackOptions: string[]
+  max: number
+}) => {
+  const methods = useProjectInfoContext()
+  const values = useWatch({ control: methods.control, name: fieldName }) ?? []
+  const [isEditing, setIsEditing] = useState(false)
+  const [options, setOptions] = useState<string[]>(fallbackOptions)
+  const requestRef = useRef(0)
+
+  const updateValues = useCallback(
+    (nextValues: string[]) => {
+      methods.setValue(fieldName, getUniqueOptions(nextValues).slice(0, max), {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      })
+      methods.clearErrors(fieldName)
+      void methods.trigger(fieldName)
+    },
+    [fieldName, max, methods]
+  )
+
+  const removeValue = useCallback(
+    (value: string) => {
+      updateValues(values.filter((item) => item !== value))
+    },
+    [updateValues, values]
+  )
+
+  const loadOptions = useCallback(
+    async (query: string) => {
+      const requestId = requestRef.current + 1
+      requestRef.current = requestId
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          autocompleteType,
+          query
+        )
+        if (requestRef.current !== requestId) return
+
+        const nextOptions = Array.isArray(response?.data)
+          ? getUniqueOptions(
+              response.data
+                .map((item: AutocompleteTypeSuggestion) =>
+                  normalizeAutocompleteLabel(item)
+                )
+                .filter(Boolean)
+            )
+          : []
+
+        setOptions(nextOptions.length ? nextOptions : fallbackOptions)
+      } catch {
+        if (requestRef.current === requestId) {
+          setOptions(fallbackOptions)
+        }
+      }
+    },
+    [autocompleteType, fallbackOptions]
+  )
+
+  return (
+    <div>
+      <Label className="text-sm leading-5 text-gray-500">{label}</Label>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {values.length ? (
+          values.map((item) => (
+            <Badge
+              key={item}
+              size="md"
+              visual="gray"
+              className="gap-1 border border-gray-200 bg-white pr-1"
+            >
+              {item}
+              <button
+                type="button"
+                className="inline-flex size-4 items-center justify-center rounded-full text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                aria-label={`Remove ${item}`}
+                onClick={() => removeValue(item)}
+              >
+                <X2 className="size-3" />
+              </button>
+            </Badge>
+          ))
+        ) : (
+          <span className="text-sm leading-5 text-gray-400">None added</span>
+        )}
+        <Button
+          className="h-7"
+          variant="outlined"
+          visual="gray"
+          type="button"
+          onClick={() => setIsEditing((current) => !current)}
+        >
+          {addLabel}
+        </Button>
+      </div>
+      {isEditing && (
+        <TagsInputRoot
+          className="mt-2 space-y-1.5"
+          value={values}
+          onValueChange={(details) => updateValues(details.value)}
+        >
+          <TagsInputContext>
+            {(tagsInput) => (
+              <TagsInputControl className="relative min-h-11 w-full rounded-[5px] border border-gray-300 px-[14px] py-[10px] pr-[34px] focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500">
+                {tagsInput.value.map((value, index) => (
+                  <TagsInputItem key={value} index={index} value={value}>
+                    <TagsInputItemPreview
+                      visual="primary"
+                      size="md"
+                      className="pr-2 text-primary-500 bg-primary-50"
+                    >
+                      <TagsInputItemText>{value}</TagsInputItemText>
+                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                        <X2 className="size-3" />
+                      </TagsInputItemDeleteTrigger>
+                    </TagsInputItemPreview>
+                    <TagsInputItemInput />
+                  </TagsInputItem>
+                ))}
+                <TagsInputInput
+                  options={options}
+                  placeholder={
+                    values.length >= max ? `${max}/${max}` : addLabel
+                  }
+                  disabled={values.length >= max}
+                  allowCreateOption
+                  onFocus={() => void loadOptions("")}
+                  onInputValueChange={(value) => void loadOptions(value)}
+                />
+                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+              </TagsInputControl>
+            )}
+          </TagsInputContext>
+          <TagsInputHiddenInput />
+        </TagsInputRoot>
+      )}
+    </div>
+  )
+}
+
+const ReviewEditableTitle = ({ label }: { label: string }) => {
+  const methods = useProjectInfoContext()
+  const value = useWatch({ control: methods.control, name: "title" }) ?? ""
+  const titleHasError = methods.getFieldState("title").invalid
+
+  const updateTitle = useCallback(
+    (nextTitle: string) => {
+      methods.setValue("title", nextTitle.slice(0, 100), {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: false,
+      })
+      if (methods.getFieldState("title").error?.type === "manual") {
+        methods.clearErrors("title")
+      }
+    },
+    [methods]
+  )
+
+  return (
+    <div>
+      <Label className="text-sm leading-5 text-gray-500">{label}</Label>
+      <Input
+        className="mt-1.5"
+        value={value}
+        maxLength={100}
+        onChange={(event) => updateTitle(event.target.value)}
+        onBlur={() => void methods.trigger("title")}
+        isInvalid={titleHasError}
+      />
+      <HookFormErrorMessage
+        errors={methods.formState.errors}
+        name="title"
+        render={({ message }) => (
+          <ErrorMessage className="mt-1" size="sm">
+            {message}
+          </ErrorMessage>
+        )}
+      />
+    </div>
+  )
+}
+
 const FinalServiceReviewStep = ({
   setProgress,
   ndaDocumentId,
@@ -11315,6 +11999,7 @@ const FinalServiceReviewStep = ({
 }) => {
   const { toggleValidation } = useStepContext()
   const { details, setDetails } = useJobListingDraftContext()
+  const projectInfoMethods = useProjectInfoContext()
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
   )
@@ -11325,16 +12010,28 @@ const FinalServiceReviewStep = ({
     useDynamicFinalReviewSkills()
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
+      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
       if (field === "overview") return details.description ?? ""
       if (field === "benefits") return details.successCriteria ?? ""
       if (field === "responsibilities") return responsibilities
       return ""
     },
-    [details.description, details.successCriteria, responsibilities]
+    [
+      details.description,
+      details.successCriteria,
+      projectInfoMethods,
+      responsibilities,
+    ]
   )
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
-      if (field === "overview") {
+      if (field === "title") {
+        projectInfoMethods.setValue("title", value.slice(0, 100), {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: true,
+        })
+      } else if (field === "overview") {
         setDetails((current) => ({ ...current, description: value }))
       } else if (field === "benefits") {
         setDetails((current) => ({ ...current, successCriteria: value }))
@@ -11342,7 +12039,7 @@ const FinalServiceReviewStep = ({
         setResponsibilities(value)
       }
     },
-    [setDetails]
+    [projectInfoMethods, setDetails]
   )
   const serviceAssistant = useFinalReviewSmartAssistant({
     jobListingId,
@@ -11475,16 +12172,7 @@ const FinalServiceReviewStep = ({
                 Basic Information
               </h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Service Title
-                  </Label>
-                  <Input
-                    className="mt-1.5"
-                    value="The Ultimate Mobile App Experience"
-                    readOnly
-                  />
-                </div>
+                <ReviewEditableTitle label="Service Title" />
                 <div>
                   <Label className="text-sm leading-5 text-gray-500">
                     Job Type
@@ -11493,46 +12181,22 @@ const FinalServiceReviewStep = ({
                 </div>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Industries
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["E-commerce", "Fintech"].map((item) => (
-                      <Badge
-                        key={item}
-                        size="md"
-                        visual="gray"
-                        className="border border-gray-200 bg-white"
-                      >
-                        {item}
-                      </Badge>
-                    ))}
-                    <Button className="h-7" variant="outlined" visual="gray">
-                      Add Industry
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Languages
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["English", "Spanish", "Japanese"].map((item) => (
-                      <Badge
-                        key={item}
-                        size="md"
-                        visual="gray"
-                        className="border border-gray-200 bg-white"
-                      >
-                        {item}
-                      </Badge>
-                    ))}
-                    <Button className="h-7" variant="outlined" visual="gray">
-                      Add Language
-                    </Button>
-                  </div>
-                </div>
+                <ReviewEditableTags
+                  fieldName="industry"
+                  label="Industries"
+                  addLabel="Add Industry"
+                  autocompleteType="industries"
+                  fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
+                  max={5}
+                />
+                <ReviewEditableTags
+                  fieldName="languages"
+                  label="Languages"
+                  addLabel="Add Language"
+                  autocompleteType="languages"
+                  fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
+                  max={10}
+                />
               </div>
             </div>
 
@@ -11742,6 +12406,7 @@ const FinalServiceReviewStep = ({
                   <RefreshCcw05 className="size-4 text-gray-400" />
                   <Button
                     className="size-8 rounded-full p-0"
+                    type="button"
                     disabled={
                       serviceAssistant.isLoading ||
                       !serviceAssistant.message.trim()
@@ -11749,7 +12414,9 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         serviceAssistant.message,
-                        "responsibilities"
+                        resolveFinalReviewAssistantField(
+                          serviceAssistant.message
+                        )
                       )
                     }
                   >
@@ -11777,6 +12444,7 @@ const FinalProjectReviewStep = ({
 }) => {
   const { toggleValidation } = useStepContext()
   const { details, setDetails } = useJobListingDraftContext()
+  const projectInfoMethods = useProjectInfoContext()
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
   )
@@ -11787,16 +12455,28 @@ const FinalProjectReviewStep = ({
     useDynamicFinalReviewSkills()
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
+      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
       if (field === "overview") return details.description ?? ""
       if (field === "benefits") return details.successCriteria ?? ""
       if (field === "responsibilities") return responsibilities
       return ""
     },
-    [details.description, details.successCriteria, responsibilities]
+    [
+      details.description,
+      details.successCriteria,
+      projectInfoMethods,
+      responsibilities,
+    ]
   )
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
-      if (field === "overview") {
+      if (field === "title") {
+        projectInfoMethods.setValue("title", value.slice(0, 100), {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: true,
+        })
+      } else if (field === "overview") {
         setDetails((current) => ({ ...current, description: value }))
       } else if (field === "benefits") {
         setDetails((current) => ({ ...current, successCriteria: value }))
@@ -11804,7 +12484,7 @@ const FinalProjectReviewStep = ({
         setResponsibilities(value)
       }
     },
-    [setDetails]
+    [projectInfoMethods, setDetails]
   )
   const projectAssistant = useFinalReviewSmartAssistant({
     jobListingId,
@@ -11937,16 +12617,7 @@ const FinalProjectReviewStep = ({
                 Basic Information
               </h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Project Title
-                  </Label>
-                  <Input
-                    className="mt-1.5"
-                    value="The Ultimate Mobile App Experience"
-                    readOnly
-                  />
-                </div>
+                <ReviewEditableTitle label="Project Title" />
                 <div>
                   <Label className="text-sm leading-5 text-gray-500">
                     Job Type
@@ -11955,46 +12626,22 @@ const FinalProjectReviewStep = ({
                 </div>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Industries
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["E-commerce", "Fintech"].map((item) => (
-                      <Badge
-                        key={item}
-                        size="md"
-                        visual="gray"
-                        className="border border-gray-200 bg-white"
-                      >
-                        {item}
-                      </Badge>
-                    ))}
-                    <Button className="h-7" variant="outlined" visual="gray">
-                      Add Industry
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Languages
-                  </Label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["English", "Spanish", "Japanese"].map((item) => (
-                      <Badge
-                        key={item}
-                        size="md"
-                        visual="gray"
-                        className="border border-gray-200 bg-white"
-                      >
-                        {item}
-                      </Badge>
-                    ))}
-                    <Button className="h-7" variant="outlined" visual="gray">
-                      Add Language
-                    </Button>
-                  </div>
-                </div>
+                <ReviewEditableTags
+                  fieldName="industry"
+                  label="Industries"
+                  addLabel="Add Industry"
+                  autocompleteType="industries"
+                  fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
+                  max={5}
+                />
+                <ReviewEditableTags
+                  fieldName="languages"
+                  label="Languages"
+                  addLabel="Add Language"
+                  autocompleteType="languages"
+                  fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
+                  max={10}
+                />
               </div>
             </div>
 
@@ -12204,6 +12851,7 @@ const FinalProjectReviewStep = ({
                   <RefreshCcw05 className="size-4 text-gray-400" />
                   <Button
                     className="size-8 rounded-full p-0"
+                    type="button"
                     disabled={
                       projectAssistant.isLoading ||
                       !projectAssistant.message.trim()
@@ -12211,7 +12859,9 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         projectAssistant.message,
-                        "responsibilities"
+                        resolveFinalReviewAssistantField(
+                          projectAssistant.message
+                        )
                       )
                     }
                   >
@@ -12233,7 +12883,7 @@ const ServiceScopeEditStep = ({
 }: ProgressProps & { jobListingId?: string | null }) => {
   const { toggleValidation } = useStepContext()
   const { projectScopeMethods } = useProjectScopeContext()
-  const [, setProjectScopeState] = projectScopeMethods
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods
   const [phases, setPhases] = useState<ServiceScopePhase[]>(() =>
     serviceScopePhases.map((phase) => ({
       ...phase,
@@ -12267,6 +12917,7 @@ const ServiceScopeEditStep = ({
   const [draftServiceCustomHours, setDraftServiceCustomHours] = useState("15")
   const [draftServiceCustomFrequency, setDraftServiceCustomFrequency] =
     useState("per_week")
+  const didApplyPersistedScopeRef = useRef(false)
   const normalizedSearchValue = normalizeSearchText(searchValue)
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
@@ -12288,6 +12939,20 @@ const ServiceScopeEditStep = ({
         return phaseText.includes(normalizedSearchValue)
       })
     : phases
+
+  useEffect(() => {
+    if (didApplyPersistedScopeRef.current) return
+
+    const persistedPhases =
+      createServicePhasesFromPersistedJobListing(projectScopeState)
+
+    if (persistedPhases.length === 0) return
+
+    didApplyPersistedScopeRef.current = true
+    didGenerateInitialScopeRef.current = true
+    setPhases(persistedPhases)
+    setExpandedPhaseNames(persistedPhases.map((phase) => phase.name))
+  }, [projectScopeState])
 
   useEffect(() => {
     if (!jobListingId || didGenerateInitialScopeRef.current) return
@@ -12345,10 +13010,7 @@ const ServiceScopeEditStep = ({
     return "Full-time"
   }
 
-  const openServiceRoleEditor = (
-    phaseName: string,
-    row: ServiceScopeRow
-  ) => {
+  const openServiceRoleEditor = (phaseName: string, row: ServiceScopeRow) => {
     const key = `${phaseName}-${row.task}`
     const [durationValue] = row.duration.split(/\s+/)
 
@@ -12367,8 +13029,7 @@ const ServiceScopeEditStep = ({
     updateRow(phaseName, taskName, {
       role: draftServiceRole.trim() || "Specialist",
       workSchedule: draftServiceSchedule,
-      customHours:
-        draftServiceSchedule === "custom" ? nextHours : undefined,
+      customHours: draftServiceSchedule === "custom" ? nextHours : undefined,
       customFrequency:
         draftServiceSchedule === "custom"
           ? draftServiceCustomFrequency
@@ -12405,7 +13066,8 @@ const ServiceScopeEditStep = ({
     recurrenceSchedule?: string
     recurrenceCount?: number
   }) => {
-    const scheduleLabel = phase.recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"
+    const scheduleLabel =
+      phase.recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"
     const count = phase.recurrenceCount ?? 3
 
     return `${scheduleLabel}, ${count} ${count === 1 ? "time" : "times"}`
@@ -12416,6 +13078,11 @@ const ServiceScopeEditStep = ({
   ) =>
     phaseType !== "recurring" &&
     phases.some((phase) => phase.phaseType === phaseType)
+
+  const getFirstAvailablePhaseType = () =>
+    serviceScopePhaseTypeOptions.find(
+      (option) => !isPhaseTypeUnavailable(option.value)
+    )?.value ?? "recurring"
 
   const selectedPhaseTypeLabel =
     serviceScopePhaseTypeOptions.find((option) => option.value === newPhaseType)
@@ -12428,7 +13095,7 @@ const ServiceScopeEditStep = ({
 
   const openAddPhaseDialog = () => {
     setNewPhaseName("")
-    setNewPhaseType("")
+    setNewPhaseType(getFirstAvailablePhaseType())
     setAddPhaseDialogOpen(true)
   }
 
@@ -12457,8 +13124,7 @@ const ServiceScopeEditStep = ({
             status: "2 weeks",
             statusKind: "one-time",
             phaseType: "setup" as const,
-            note:
-              "One-time starting work that begins on Day X and will not repeat again.",
+            note: "One-time starting work that begins on Day X and will not repeat again.",
             rows: [
               {
                 task: "New Task",
@@ -12495,8 +13161,7 @@ const ServiceScopeEditStep = ({
               phaseType: "recurring" as const,
               recurrenceSchedule: "monthly",
               recurrenceCount: 1,
-              note:
-                "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set.",
+              note: "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set.",
               rows: [
                 {
                   task: "New Task",
@@ -12508,10 +13173,7 @@ const ServiceScopeEditStep = ({
               ],
             }
 
-    setPhases((currentPhases) => [
-      ...currentPhases,
-      nextPhase,
-    ])
+    setPhases((currentPhases) => [...currentPhases, nextPhase])
     setExpandedPhaseNames((currentNames) => [...currentNames, nextName])
     setAddPhaseDialogOpen(false)
     setNewPhaseName("")
@@ -12528,7 +13190,7 @@ const ServiceScopeEditStep = ({
               rows: [
                 ...phase.rows,
                 {
-                  task: "New Task",
+                  task: `New Task ${phase.rows.length + 1}`,
                   role: "Specialist",
                   location: "USA",
                   experience: "Junior",
@@ -12679,8 +13341,7 @@ const ServiceScopeEditStep = ({
               : phaseType === "ongoing"
                 ? "Ongoing"
                 : `Recurs: ${formatServiceRecurringStatus({
-                    recurrenceSchedule:
-                      phase?.recurrenceSchedule ?? "monthly",
+                    recurrenceSchedule: phase?.recurrenceSchedule ?? "monthly",
                     recurrenceCount: phase?.recurrenceCount ?? 3,
                   })}`,
           statusKind:
@@ -12692,7 +13353,7 @@ const ServiceScopeEditStep = ({
           phaseType,
           recurrenceSchedule:
             phaseType === "recurring"
-              ? phase?.recurrenceSchedule ?? "monthly"
+              ? (phase?.recurrenceSchedule ?? "monthly")
               : undefined,
           recurrenceCount:
             phaseType === "recurring"
@@ -12746,7 +13407,9 @@ const ServiceScopeEditStep = ({
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
         applyServiceAssistantFallback(message)
-        setAssistantResult(data.message ?? "Smart Assistant is temporarily unavailable.")
+        setAssistantResult(
+          data.message ?? "Smart Assistant is temporarily unavailable."
+        )
         return
       }
 
@@ -12822,6 +13485,9 @@ const ServiceScopeEditStep = ({
             role: row.role,
             location: row.location,
             experience: row.experience as ExperienceLevel,
+            workSchedule: row.workSchedule ?? "full_time",
+            customHours: row.customHours,
+            customFrequency: row.customFrequency,
             duration: {
               value: Number(durationValue) || 1,
               type: durationType as (typeof DURATION_TYPE)[number],
@@ -12834,637 +13500,652 @@ const ServiceScopeEditStep = ({
 
   return (
     <>
-    <ScrollArea
-      className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
-      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
-      scrollBar={<ScrollBar className="w-4 p-1" />}
-    >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-          <div className="min-w-0 flex-auto max-w-[790px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-              Edit your scope
-            </h1>
-            <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-              Modify the table as needed manually or with the help of Smart
-              Assistant, your project plan will adjust accordingly.
-            </p>
+      <ScrollArea
+        className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+        scrollBar={<ScrollBar className="w-4 p-1" />}
+      >
+        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+          <div className="flex flex-col gap-8 min-[1180px]:flex-row">
+            <div className="min-w-0 flex-auto max-w-[790px]">
+              <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+                Edit your scope
+              </h1>
+              <p className="mt-4 text-sm leading-5 text-dark-blue-400">
+                Modify the table as needed manually or with the help of Smart
+                Assistant, your project plan will adjust accordingly.
+              </p>
 
-            <div className="mt-8 grid overflow-hidden rounded-[5px] border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] md:grid-cols-2">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-[22px] md:border-b-0 md:border-r">
-                <div>
-                  <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                    Budget Calculator
-                    <HelpCircle className="size-4" />
+              <div className="mt-8 grid overflow-hidden rounded-[5px] border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] md:grid-cols-2">
+                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-[22px] md:border-b-0 md:border-r">
+                  <div>
+                    <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
+                      Budget Calculator
+                      <HelpCircle className="size-4" />
+                    </div>
+                    <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
+                      <span className="text-2xl leading-8 font-semibold">
+                        ${budgetAmount.toLocaleString()}
+                      </span>
+                      <span className="text-sm leading-5">per</span>
+                      <Select
+                        value={budgetFrequency}
+                        onValueChange={setBudgetFrequency}
+                      >
+                        <SelectTrigger className="h-8 gap-x-1 border-gray-200 px-3 text-sm leading-5 font-medium text-dark-blue-400">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="w-32">
+                          {["week", "month"].map((frequency) => (
+                            <SelectItem key={frequency} value={frequency}>
+                              {frequency}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
-                    <span className="text-2xl leading-8 font-semibold">
-                      ${budgetAmount.toLocaleString()}
-                    </span>
-                    <span className="text-sm leading-5">per</span>
-                    <Select
-                      value={budgetFrequency}
-                      onValueChange={setBudgetFrequency}
+                  <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
+                    <img
+                      src="/job-listing/money-bag.png"
+                      alt=""
+                      aria-hidden="true"
+                      className="size-6"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between px-5 py-[22px]">
+                  <div>
+                    <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
+                      Duration
+                      <HelpCircle className="size-4" />
+                    </div>
+                    <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
+                      Ongoing
+                    </p>
+                  </div>
+                  <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
+                    <img
+                      src="/job-listing/timeline.png"
+                      alt=""
+                      aria-hidden="true"
+                      className="size-14 rounded-[6px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="inline-flex rounded-[5px] border border-gray-300 bg-white shadow-xs">
+                  <Button
+                    className="h-10 rounded-r-none border-0"
+                    variant="outlined"
+                    visual="gray"
+                    type="button"
+                    onClick={() =>
+                      setExpandedPhaseNames(phases.map((phase) => phase.name))
+                    }
+                  >
+                    <ChevronDown className="size-4" />
+                    Expand All
+                  </Button>
+                  <Button
+                    className="h-10 rounded-l-none border-y-0 border-r-0"
+                    variant="outlined"
+                    visual="gray"
+                    type="button"
+                    onClick={() => setExpandedPhaseNames([])}
+                  >
+                    <ChevronDown className="size-4 rotate-180" />
+                    Collapse All
+                  </Button>
+                </div>
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <div className="relative w-full md:w-[250px]">
+                    <SearchMd className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      className="h-10 pl-9"
+                      placeholder="Find a phase or task"
+                      value={searchValue}
+                      onChange={(event) => setSearchValue(event.target.value)}
+                    />
+                  </div>
+                  <Button
+                    className="h-10"
+                    variant="outlined"
+                    visual="gray"
+                    type="button"
+                    onClick={openAddPhaseDialog}
+                  >
+                    <Plus className="size-4" />
+                    Add Phase
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {visiblePhases.map((phase) => {
+                  const isExpanded = expandedPhaseNames.includes(phase.name)
+                  const phaseIndex = phases.findIndex(
+                    (candidate) =>
+                      candidate.name === phase.name &&
+                      candidate.customName === phase.customName
+                  )
+                  const shouldShowPhaseNote =
+                    phaseIndex > -1 &&
+                    phases.findIndex(
+                      (candidate) => candidate.phaseType === phase.phaseType
+                    ) === phaseIndex
+
+                  return (
+                    <div
+                      key={phase.name}
+                      className="relative rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
                     >
-                      <SelectTrigger className="h-8 gap-x-1 border-gray-200 px-3 text-sm leading-5 font-medium text-dark-blue-400">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="w-32">
-                        {["week", "month"].map((frequency) => (
-                          <SelectItem
-                            key={frequency}
-                            value={frequency}
+                      <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                        <div className="flex min-w-0 items-center gap-x-4">
+                          <button
+                            type="button"
+                            className="focus-visible:outline-none"
+                            onClick={() => togglePhase(phase.name)}
                           >
-                            {frequency}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
-                  <img
-                    src="/job-listing/money-bag.png"
-                    alt=""
-                    aria-hidden="true"
-                    className="size-6"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-between px-5 py-[22px]">
-                <div>
-                  <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                    Duration
-                    <HelpCircle className="size-4" />
-                  </div>
-                  <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
-                    Ongoing
-                  </p>
-                </div>
-                <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
-                  <img
-                    src="/job-listing/timeline.png"
-                    alt=""
-                    aria-hidden="true"
-                    className="size-14 rounded-[6px]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="inline-flex rounded-[5px] border border-gray-300 bg-white shadow-xs">
-                <Button
-                  className="h-10 rounded-r-none border-0"
-                  variant="outlined"
-                  visual="gray"
-                  onClick={() =>
-                    setExpandedPhaseNames(phases.map((phase) => phase.name))
-                  }
-                >
-                  <ChevronDown className="size-4" />
-                  Expand All
-                </Button>
-                <Button
-                  className="h-10 rounded-l-none border-y-0 border-r-0"
-                  variant="outlined"
-                  visual="gray"
-                  onClick={() => setExpandedPhaseNames([])}
-                >
-                  <ChevronDown className="size-4 rotate-180" />
-                  Collapse All
-                </Button>
-              </div>
-              <div className="flex flex-col gap-3 md:flex-row">
-                <div className="relative w-full md:w-[250px]">
-                  <SearchMd className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    className="h-10 pl-9"
-                    placeholder="Find a phase or task"
-                    value={searchValue}
-                    onChange={(event) => setSearchValue(event.target.value)}
-                  />
-                </div>
-                <Button
-                  className="h-10"
-                  variant="outlined"
-                  visual="gray"
-                  onClick={openAddPhaseDialog}
-                >
-                  <Plus className="size-4" />
-                  Add Phase
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-3">
-              {visiblePhases.map((phase) => {
-                const isExpanded = expandedPhaseNames.includes(phase.name)
-                const phaseIndex = phases.findIndex(
-                  (candidate) =>
-                    candidate.name === phase.name &&
-                    candidate.customName === phase.customName
-                )
-                const shouldShowPhaseNote =
-                  phaseIndex > -1 &&
-                  phases.findIndex(
-                    (candidate) => candidate.phaseType === phase.phaseType
-                  ) === phaseIndex
-
-                return (
-                <div
-                  key={phase.name}
-                  className="relative rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                >
-                  <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                    <div className="flex min-w-0 items-center gap-x-4">
-                      <button
-                        type="button"
-                        className="focus-visible:outline-none"
-                        onClick={() => togglePhase(phase.name)}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            "size-5 text-gray-500",
-                            isExpanded && "rotate-180"
-                          )}
-                        />
-                      </button>
-                      <h2 className="text-lg leading-7 font-semibold text-gray-black">
-                        {phase.name}{" "}
-                        <span className="font-normal text-gray-500">
-                          {phase.customName}
-                        </span>
-                      </h2>
-                    </div>
-                    <div className="flex items-center gap-x-3">
-                      {phase.statusKind === "recurring" ? (
-                        <div className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 md:inline-flex">
-                          <RefreshCcw05 className="size-4 text-success-500" />
-                          <span>Recurs:</span>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-8 rounded-[5px] border border-gray-200 bg-primary-50 px-3 text-sm font-semibold text-dark-blue-400 hover:bg-primary-50"
-                                onClick={() => toggleServicePhaseNote(phase.name)}
-                              >
-                                {formatServiceRecurringStatus(phase)}
-                                <ChevronDown className="ml-2 size-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              {[
-                                {
-                                  label: "Monthly, 1 time",
-                                  recurrenceSchedule: "monthly" as const,
-                                  recurrenceCount: 1,
-                                },
-                                {
-                                  label: "Monthly, 3 times",
-                                  recurrenceSchedule: "monthly" as const,
-                                  recurrenceCount: 3,
-                                },
-                                {
-                                  label: "Weekly, 4 times",
-                                  recurrenceSchedule: "weekly" as const,
-                                  recurrenceCount: 4,
-                                },
-                                {
-                                  label: "Weekly, 8 times",
-                                  recurrenceSchedule: "weekly" as const,
-                                  recurrenceCount: 8,
-                                },
-                              ].map((option) => (
-                                <DropdownMenuItem
-                                  key={option.label}
-                                  onSelect={() =>
-                                    updatePhaseRecurrence(
-                                      phase.name,
-                                      option.recurrenceSchedule,
-                                      option.recurrenceCount
-                                    )
-                                  }
-                                >
-                                  {option.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            <ChevronDown
+                              className={cn(
+                                "size-5 text-gray-500",
+                                isExpanded && "rotate-180"
+                              )}
+                            />
+                          </button>
+                          <h2 className="text-lg leading-7 font-semibold text-gray-black">
+                            {phase.name}{" "}
+                            <span className="font-normal text-gray-500">
+                              {phase.customName}
+                            </span>
+                          </h2>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none md:inline-flex"
-                          onClick={() => toggleServicePhaseNote(phase.name)}
-                        >
-                          {phase.statusKind === "ongoing" ? (
-                            <RefreshCcw05 className="size-4 text-success-500" />
-                          ) : (
-                            <Clock className="size-4 text-success-500" />
-                          )}
-                          {phase.status}
-                        </button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <IconButton variant="ghost" visual="gray">
-                            <MoreHorizontal className="size-4" />
-                          </IconButton>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() => togglePhase(phase.name)}
-                          >
-                            {isExpanded ? "Collapse Phase" : "Expand Phase"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => addTask(phase.name)}>
-                            Add Task
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            visual="destructive"
-                            onSelect={() => removePhase(phase.name)}
-                          >
-                            Remove Phase
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <IconButton
-                        variant="outlined"
-                        visual="gray"
-                        onClick={() => addTask(phase.name)}
-                      >
-                        <Plus className="size-4" />
-                      </IconButton>
-                    </div>
-                  </div>
-
-                  {isExpanded ? (
-                    <>
-                      <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
-                        <span>Task Name</span>
-                        <span>Role</span>
-                        <span>Location</span>
-                        <span>Experience</span>
-                        <span>Duration</span>
-                      </div>
-                      {phase.rows.map((row) => (
-                        <div
-                          key={`${phase.name}-${row.task}`}
-                          className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center border-b border-gray-200 px-6 py-4 last:border-b-0"
-                        >
-                          <span className="text-sm leading-5 font-semibold text-gray-black">
-                            {row.task}
-                          </span>
-                          <div>
-                            <button
-                              type="button"
-                              className="text-left text-sm leading-5 text-gray-600 focus-visible:outline-none"
-                              onClick={() =>
-                                openServiceRoleEditor(phase.name, row)
-                              }
-                            >
-                              {row.role}
-                            </button>
-                            <p className="text-xs leading-[18px] text-gray-400">
-                              {formatServiceRowSchedule(row)}
-                            </p>
-                          </div>
-                          <CountriesCombobox
-                            value={row.location}
-                            onValueChange={(location) =>
-                              updateRow(phase.name, row.task, { location })
-                            }
-                            placeholder="Location"
-                            triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
-                          />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                className="inline-flex h-7 w-max items-center gap-x-1 rounded-[5px] border border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700 focus-visible:outline-none"
-                              >
-                                {row.experience}
-                                <ChevronDown className="size-3" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              {EXPERIENCE_LEVELS.map((experience) => (
-                                <DropdownMenuItem
-                                  key={experience}
-                                  onSelect={() =>
-                                    updateRow(phase.name, row.task, {
-                                      experience,
-                                    })
-                                  }
+                        <div className="flex items-center gap-x-3">
+                          {phase.statusKind === "recurring" ? (
+                            <div className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 md:inline-flex">
+                              <RefreshCcw05 className="size-4 text-success-500" />
+                              <span>Recurs:</span>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-8 rounded-[5px] border border-gray-200 bg-primary-50 px-3 text-sm font-semibold text-dark-blue-400 hover:bg-primary-50"
+                                    onClick={() =>
+                                      toggleServicePhaseNote(phase.name)
+                                    }
+                                  >
+                                    {formatServiceRecurringStatus(phase)}
+                                    <ChevronDown className="ml-2 size-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  className="w-48"
                                 >
-                                  {experience}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          <span className="text-sm leading-5 text-gray-500">
-                            {row.duration}
-                          </span>
-
-                          {activeServiceRoleKey === `${phase.name}-${row.task}` ? (
-                            <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
-                              <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                Role
-                              </Label>
-                              <Input
-                                className="mt-1.5 h-9 text-sm leading-5"
-                                value={draftServiceRole}
-                                onChange={(event) =>
-                                  setDraftServiceRole(event.target.value)
-                                }
-                              />
-                              <div className="mt-4">
-                                <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                  Work Schedule
-                                </Label>
-                                <Select
-                                  value={draftServiceSchedule}
-                                  onValueChange={(value) =>
-                                    setDraftServiceSchedule(
-                                      value as JobListingWorkSchedule
-                                    )
-                                  }
-                                >
-                                  <SelectTrigger className="mt-1.5 h-9 w-full px-3 text-sm leading-5 text-gray-700">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="w-[248px]">
-                                    {[
-                                      {
-                                        value: "full_time" as const,
-                                        label: "Full-time",
-                                      },
-                                      {
-                                        value: "part_time" as const,
-                                        label: "Part-time",
-                                      },
-                                      {
-                                        value: "custom" as const,
-                                        label: "Custom",
-                                      },
-                                    ].map((schedule) => (
-                                      <SelectItem
-                                        key={schedule.value}
-                                        value={schedule.value}
-                                      >
-                                        {schedule.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              {draftServiceSchedule === "custom" ? (
-                                <div className="mt-4">
-                                  <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                    Estimated hours
-                                  </Label>
-                                  <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
-                                    <Input
-                                      className="h-9 rounded-r-none text-sm leading-5"
-                                      value={draftServiceCustomHours}
-                                      onChange={(event) =>
-                                        setDraftServiceCustomHours(
-                                          event.target.value
+                                  {[
+                                    {
+                                      label: "Monthly, 1 time",
+                                      recurrenceSchedule: "monthly" as const,
+                                      recurrenceCount: 1,
+                                    },
+                                    {
+                                      label: "Monthly, 3 times",
+                                      recurrenceSchedule: "monthly" as const,
+                                      recurrenceCount: 3,
+                                    },
+                                    {
+                                      label: "Weekly, 4 times",
+                                      recurrenceSchedule: "weekly" as const,
+                                      recurrenceCount: 4,
+                                    },
+                                    {
+                                      label: "Weekly, 8 times",
+                                      recurrenceSchedule: "weekly" as const,
+                                      recurrenceCount: 8,
+                                    },
+                                  ].map((option) => (
+                                    <DropdownMenuItem
+                                      key={option.label}
+                                      onSelect={() =>
+                                        updatePhaseRecurrence(
+                                          phase.name,
+                                          option.recurrenceSchedule,
+                                          option.recurrenceCount
                                         )
                                       }
-                                    />
-                                    <span className="inline-flex h-9 items-center justify-center border-y border-gray-300 bg-white text-sm leading-5 text-gray-500">
-                                      hours
-                                    </span>
-                                    <Select
-                                      value={draftServiceCustomFrequency}
-                                      onValueChange={
-                                        setDraftServiceCustomFrequency
+                                    >
+                                      {option.label}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none md:inline-flex"
+                              onClick={() => toggleServicePhaseNote(phase.name)}
+                            >
+                              {phase.statusKind === "ongoing" ? (
+                                <RefreshCcw05 className="size-4 text-success-500" />
+                              ) : (
+                                <Clock className="size-4 text-success-500" />
+                              )}
+                              {phase.status}
+                            </button>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton variant="ghost" visual="gray">
+                                <MoreHorizontal className="size-4" />
+                              </IconButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onSelect={() => togglePhase(phase.name)}
+                              >
+                                {isExpanded ? "Collapse Phase" : "Expand Phase"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => addTask(phase.name)}
+                              >
+                                Add Task
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                visual="destructive"
+                                onSelect={() => removePhase(phase.name)}
+                              >
+                                Remove Phase
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <IconButton
+                            variant="outlined"
+                            visual="gray"
+                            type="button"
+                            onClick={() => addTask(phase.name)}
+                          >
+                            <Plus className="size-4" />
+                          </IconButton>
+                        </div>
+                      </div>
+
+                      {isExpanded ? (
+                        <>
+                          <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] gap-x-6 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
+                            <span>Task Name</span>
+                            <span>Role</span>
+                            <span>Location</span>
+                            <span>Experience</span>
+                            <span>Duration</span>
+                          </div>
+                          {phase.rows.map((row) => (
+                            <div
+                              key={`${phase.name}-${row.task}`}
+                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center gap-x-6 border-b border-gray-200 px-6 py-4 last:border-b-0"
+                            >
+                              <span className="text-sm leading-5 font-semibold text-gray-black">
+                                {row.task}
+                              </span>
+                              <div>
+                                <button
+                                  type="button"
+                                  className="text-left text-sm leading-5 text-gray-600 focus-visible:outline-none"
+                                  onClick={() =>
+                                    openServiceRoleEditor(phase.name, row)
+                                  }
+                                >
+                                  {row.role}
+                                </button>
+                                <p className="text-xs leading-[18px] text-gray-400">
+                                  {formatServiceRowSchedule(row)}
+                                </p>
+                              </div>
+                              <CountriesCombobox
+                                value={row.location}
+                                onValueChange={(location) =>
+                                  updateRow(phase.name, row.task, { location })
+                                }
+                                placeholder="Location"
+                                triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
+                              />
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-7 w-max items-center gap-x-1 rounded-[5px] border border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700 focus-visible:outline-none"
+                                  >
+                                    {row.experience}
+                                    <ChevronDown className="size-3" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start">
+                                  {EXPERIENCE_LEVELS.map((experience) => (
+                                    <DropdownMenuItem
+                                      key={experience}
+                                      onSelect={() =>
+                                        updateRow(phase.name, row.task, {
+                                          experience,
+                                        })
                                       }
                                     >
-                                      <SelectTrigger className="h-9 min-w-[112px] rounded-l-none px-3 text-sm leading-5 text-dark-blue-400">
+                                      {experience}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                              <span className="text-sm leading-5 text-gray-500">
+                                {row.duration}
+                              </span>
+
+                              {activeServiceRoleKey ===
+                              `${phase.name}-${row.task}` ? (
+                                <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
+                                  <Label className="text-xs leading-[18px] text-dark-blue-400">
+                                    Role
+                                  </Label>
+                                  <Input
+                                    className="mt-1.5 h-9 text-sm leading-5"
+                                    value={draftServiceRole}
+                                    onChange={(event) =>
+                                      setDraftServiceRole(event.target.value)
+                                    }
+                                  />
+                                  <div className="mt-4">
+                                    <Label className="text-xs leading-[18px] text-dark-blue-400">
+                                      Work Schedule
+                                    </Label>
+                                    <Select
+                                      value={draftServiceSchedule}
+                                      onValueChange={(value) =>
+                                        setDraftServiceSchedule(
+                                          value as JobListingWorkSchedule
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="mt-1.5 h-9 w-full px-3 text-sm leading-5 text-gray-700">
                                         <SelectValue />
                                       </SelectTrigger>
-                                      <SelectContent className="min-w-[112px]">
+                                      <SelectContent className="w-[248px]">
                                         {[
-                                          "per_day",
-                                          "per_week",
-                                          "per_month",
-                                          "per_quarter",
-                                          "per_year",
-                                        ].map((frequency) => (
+                                          {
+                                            value: "full_time" as const,
+                                            label: "Full-time",
+                                          },
+                                          {
+                                            value: "part_time" as const,
+                                            label: "Part-time",
+                                          },
+                                          {
+                                            value: "custom" as const,
+                                            label: "Custom",
+                                          },
+                                        ].map((schedule) => (
                                           <SelectItem
-                                            key={frequency}
-                                            value={frequency}
+                                            key={schedule.value}
+                                            value={schedule.value}
                                           >
-                                            {frequency.replace("_", " ")}
+                                            {schedule.label}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
                                   </div>
+                                  {draftServiceSchedule === "custom" ? (
+                                    <div className="mt-4">
+                                      <Label className="text-xs leading-[18px] text-dark-blue-400">
+                                        Estimated hours
+                                      </Label>
+                                      <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
+                                        <Input
+                                          className="h-9 rounded-r-none text-sm leading-5"
+                                          value={draftServiceCustomHours}
+                                          onChange={(event) =>
+                                            setDraftServiceCustomHours(
+                                              event.target.value
+                                            )
+                                          }
+                                        />
+                                        <span className="inline-flex h-9 items-center justify-center border-y border-gray-300 bg-white text-sm leading-5 text-gray-500">
+                                          hours
+                                        </span>
+                                        <Select
+                                          value={draftServiceCustomFrequency}
+                                          onValueChange={
+                                            setDraftServiceCustomFrequency
+                                          }
+                                        >
+                                          <SelectTrigger className="h-9 min-w-[112px] rounded-l-none px-3 text-sm leading-5 text-dark-blue-400">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent className="min-w-[112px]">
+                                            {[
+                                              "per_day",
+                                              "per_week",
+                                              "per_month",
+                                              "per_quarter",
+                                              "per_year",
+                                            ].map((frequency) => (
+                                              <SelectItem
+                                                key={frequency}
+                                                value={frequency}
+                                              >
+                                                {frequency.replace("_", " ")}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  <div className="mt-4 grid grid-cols-2 gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="outlined"
+                                      visual="gray"
+                                      onClick={() =>
+                                        setActiveServiceRoleKey(null)
+                                      }
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      onClick={() =>
+                                        saveServiceRoleEditor(
+                                          phase.name,
+                                          row.task
+                                        )
+                                      }
+                                    >
+                                      Done
+                                    </Button>
+                                  </div>
                                 </div>
                               ) : null}
-                              <div className="mt-4 grid grid-cols-2 gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outlined"
-                                  visual="gray"
-                                  onClick={() => setActiveServiceRoleKey(null)}
-                                >
-                                  Cancel
-                                </Button>
-                                <Button
-                                  type="button"
-                                  onClick={() =>
-                                    saveServiceRoleEditor(phase.name, row.task)
-                                  }
-                                >
-                                  Done
-                                </Button>
-                              </div>
                             </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </>
-                  ) : null}
+                          ))}
+                        </>
+                      ) : null}
 
-                  {phase.note &&
-                  shouldShowPhaseNote &&
-                  activeServicePhaseNote === phase.name ? (
-                    <div
-                      className={cn(
-                        "pointer-events-none absolute hidden w-[230px] rounded-[5px] bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400 shadow-xs min-[1180px]:block",
-                        phase.phaseType === "recurring"
-                          ? "left-[38%] top-[-22px]"
-                          : "left-[52%] top-[-16px]"
-                      )}
-                    >
-                      {phase.note}
-                      <span className="absolute right-[-12px] top-1/2 size-6 -translate-y-1/2 rotate-45 bg-primary-50" />
-                    </div>
-                  ) : null}
-                </div>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Smart Assistant
-              </h2>
-              <Copy className="size-5 text-gray-400" />
-            </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
-                {["Reduce the budget", "Improve scope quality"].map((item) => (
-                  <Button
-                    key={item}
-                    className="h-10 rounded-full"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={() => runServiceAssistant(item)}
-                  >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
-                  </Button>
-                ))}
-              </div>
-              {assistantResult ? (
-                <p className="mt-4 rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
-                  {assistantResult}
-                </p>
-              ) : null}
-              <div className="mt-[310px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
-                <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
-                  placeholder="I want to change..."
-                  value={assistantMessage}
-                  onChange={(event) => setAssistantMessage(event.target.value)}
-                />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
-                  <Button
-                    className="size-8 rounded-full p-0"
-                    disabled={!assistantMessage.trim() || isAssistantLoading}
-                    onClick={() => runServiceAssistant(assistantMessage)}
-                  >
-                    <ArrowUp className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </ScrollArea>
-    <Dialog
-      open={isAddPhaseDialogOpen}
-      onOpenChange={setAddPhaseDialogOpen}
-    >
-      <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-        <DialogHeader>
-          <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-            Add Phase
-          </DialogTitle>
-        </DialogHeader>
-        <div className="mt-2 space-y-5">
-          <div>
-            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-              Phase Name
-            </Label>
-            <Input
-              className="mt-2 h-11"
-              placeholder="Enter phase name"
-              value={newPhaseName}
-              onChange={(event) => setNewPhaseName(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-              Phase Type
-            </Label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "mt-2 flex h-11 w-full items-center justify-between rounded-[5px] border border-gray-300 bg-white px-3 text-left text-sm leading-5 shadow-xs focus-visible:outline-none",
-                    newPhaseType ? "text-dark-blue-400" : "text-gray-400"
-                  )}
-                >
-                  {selectedPhaseTypeLabel}
-                  <ChevronDown className="size-4 text-gray-500" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-[360px]">
-                {serviceScopePhaseTypeOptions.map((option) => {
-                  const isUnavailable = isPhaseTypeUnavailable(option.value)
-
-                  return (
-                    <DropdownMenuItem
-                      key={option.value}
-                      disabled={isUnavailable}
-                      onSelect={() => {
-                        if (!isUnavailable) {
-                          setNewPhaseType(option.value)
-                        }
-                      }}
-                    >
-                      <div>
-                        <p
+                      {phase.note &&
+                      shouldShowPhaseNote &&
+                      activeServicePhaseNote === phase.name ? (
+                        <div
                           className={cn(
-                            "text-sm leading-5 font-semibold",
-                            isUnavailable
-                              ? "text-gray-400"
-                              : "text-dark-blue-400"
+                            "pointer-events-none absolute hidden w-[230px] rounded-[5px] bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400 shadow-xs min-[1180px]:block",
+                            phase.phaseType === "recurring"
+                              ? "left-[38%] top-[-22px]"
+                              : "left-[52%] top-[-16px]"
                           )}
                         >
-                          {option.label}
-                        </p>
-                        <p className="text-xs leading-[18px] text-gray-500">
-                          {isUnavailable
-                            ? "Phase type already included"
-                            : option.description}
-                        </p>
-                      </div>
-                    </DropdownMenuItem>
+                          {phase.note}
+                          <span className="absolute right-[-12px] top-1/2 size-6 -translate-y-1/2 rotate-45 bg-primary-50" />
+                        </div>
+                      ) : null}
+                    </div>
                   )
                 })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <p className="mt-2 text-sm leading-5 text-gray-500">
-              Helps organize tasks by timing and frequency
-            </p>
+              </div>
+            </div>
+
+            <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
+              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+                  Smart Assistant
+                </h2>
+                <Copy className="size-5 text-gray-400" />
+              </div>
+              <div className="p-5">
+                <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="text-sm leading-5 text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+                <div className="mt-4 space-y-3">
+                  {["Reduce the budget", "Improve scope quality"].map(
+                    (item) => (
+                      <Button
+                        key={item}
+                        className="h-10 rounded-full"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => runServiceAssistant(item)}
+                      >
+                        <Copy className="size-4 text-gray-400" />
+                        {item}
+                      </Button>
+                    )
+                  )}
+                </div>
+                {assistantResult ? (
+                  <p className="mt-4 rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
+                    {assistantResult}
+                  </p>
+                ) : null}
+                <div className="mt-[310px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+                  <Textarea
+                    className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
+                    placeholder="I want to change..."
+                    value={assistantMessage}
+                    onChange={(event) =>
+                      setAssistantMessage(event.target.value)
+                    }
+                  />
+                  <div className="flex items-center justify-between">
+                    <RefreshCcw05 className="size-4 text-gray-400" />
+                    <Button
+                      className="size-8 rounded-full p-0"
+                      disabled={!assistantMessage.trim() || isAssistantLoading}
+                      onClick={() => runServiceAssistant(assistantMessage)}
+                    >
+                      <ArrowUp className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
-          <Button
-            type="button"
-            variant="outlined"
-            visual="gray"
-            onClick={() => setAddPhaseDialogOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button type="button" disabled={!canCreatePhase} onClick={addPhase}>
-            Done
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </ScrollArea>
+      <Dialog open={isAddPhaseDialogOpen} onOpenChange={setAddPhaseDialogOpen}>
+        <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
+          <DialogHeader>
+            <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
+              Add Phase
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-2 space-y-5">
+            <div>
+              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+                Phase Name
+              </Label>
+              <Input
+                className="mt-2 h-11"
+                placeholder="Enter phase name"
+                value={newPhaseName}
+                onChange={(event) => setNewPhaseName(event.target.value)}
+              />
+            </div>
+            <div>
+              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+                Phase Type
+              </Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "mt-2 flex h-11 w-full items-center justify-between rounded-[5px] border border-gray-300 bg-white px-3 text-left text-sm leading-5 shadow-xs focus-visible:outline-none",
+                      newPhaseType ? "text-dark-blue-400" : "text-gray-400"
+                    )}
+                  >
+                    {selectedPhaseTypeLabel}
+                    <ChevronDown className="size-4 text-gray-500" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[360px]">
+                  {serviceScopePhaseTypeOptions.map((option) => {
+                    const isUnavailable = isPhaseTypeUnavailable(option.value)
+
+                    return (
+                      <DropdownMenuItem
+                        key={option.value}
+                        disabled={isUnavailable}
+                        onSelect={() => {
+                          if (!isUnavailable) {
+                            setNewPhaseType(option.value)
+                          }
+                        }}
+                      >
+                        <div>
+                          <p
+                            className={cn(
+                              "text-sm leading-5 font-semibold",
+                              isUnavailable
+                                ? "text-gray-400"
+                                : "text-dark-blue-400"
+                            )}
+                          >
+                            {option.label}
+                          </p>
+                          <p className="text-xs leading-[18px] text-gray-500">
+                            {isUnavailable
+                              ? "Phase type already included"
+                              : option.description}
+                          </p>
+                        </div>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <p className="mt-2 text-sm leading-5 text-gray-500">
+                Helps organize tasks by timing and frequency
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              onClick={() => setAddPhaseDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={!canCreatePhase} onClick={addPhase}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -13509,10 +14190,7 @@ const ExistingContractFinalReviewStep = ({
     onApply: applyAssistantValue,
   })
   const loadSavedRoleDescription = useCallback(
-    (draft: {
-      responsibilities?: string
-      skills?: string[]
-    }) => {
+    (draft: { responsibilities?: string; skills?: string[] }) => {
       if (draft.responsibilities !== undefined) {
         setResponsibilities(draft.responsibilities)
       }
@@ -13620,8 +14298,8 @@ const ExistingContractFinalReviewStep = ({
               ) : (
                 <>
                   <p className="mt-2 text-sm leading-5 text-dark-blue-400">
-                    We&apos;ll generate one with your company name. Each team member
-                    will receive and sign it before starting the project.
+                    We&apos;ll generate one with your company name. Each team
+                    member will receive and sign it before starting the project.
                   </p>
                   <RadioGroup
                     className="mt-5 flex flex-wrap gap-2"
@@ -13657,8 +14335,8 @@ const ExistingContractFinalReviewStep = ({
                     <div className="mt-6 flex flex-col gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 md:flex-row md:items-center">
                       <AlertCircle className="size-5 shrink-0 text-primary-500" />
                       <p className="min-w-0 flex-auto text-sm leading-5">
-                        Your Non-Disclosure Agreement (NDA) has been created. Feel
-                        free to review it.
+                        Your Non-Disclosure Agreement (NDA) has been created.
+                        Feel free to review it.
                       </p>
                       {renderNdaPreviewDialog(
                         <Button
@@ -13778,9 +14456,7 @@ const ExistingContractFinalReviewStep = ({
                     variant="outlined"
                     visual="gray"
                     disabled={roleAssistant.isLoading}
-                    onClick={() =>
-                      roleAssistant.run(item, "responsibilities")
-                    }
+                    onClick={() => roleAssistant.run(item, "responsibilities")}
                   >
                     {item}
                   </Button>
@@ -13805,8 +14481,7 @@ const ExistingContractFinalReviewStep = ({
                   <Button
                     className="size-8 rounded-full p-0"
                     disabled={
-                      roleAssistant.isLoading ||
-                      !roleAssistant.message.trim()
+                      roleAssistant.isLoading || !roleAssistant.message.trim()
                     }
                     onClick={() =>
                       roleAssistant.run(
@@ -13946,8 +14621,7 @@ const TeamRoles = ({
       ...previous,
       headcount: rows.length,
       budgetAmount: previous.budgetAmount ?? 5000,
-      budgetFrequency:
-        budgetFrequency === "month" ? "per_month" : "per_week",
+      budgetFrequency: budgetFrequency === "month" ? "per_month" : "per_week",
       durationMonths: isExistingProject ? 6 : previous.durationMonths,
       isOngoing: isExistingProject ? previous.isOngoing : true,
     }))
@@ -13984,320 +14658,316 @@ const TeamRoles = ({
 
   return (
     <>
-    <ScrollArea
-      className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
-      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
-      scrollBar={<ScrollBar className="w-4 p-1" />}
-    >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-          {isIndividualMode ? "Customize your role" : "Customize your team"}
-        </h1>
-        <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-          {isIndividualMode
-            ? "Add the role, location, and experience level you're looking for—we'll estimate pay rates and help you get ready to hire."
-            : "Add the roles, locations, and experience levels you're looking for—we'll estimate pay rates and help you build the right team faster."}
-        </p>
+      <ScrollArea
+        className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+        scrollBar={<ScrollBar className="w-4 p-1" />}
+      >
+        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+          <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+            {isIndividualMode ? "Customize your role" : "Customize your team"}
+          </h1>
+          <p className="mt-4 text-sm leading-5 text-dark-blue-400">
+            {isIndividualMode
+              ? "Add the role, location, and experience level you're looking for—we'll estimate pay rates and help you get ready to hire."
+              : "Add the roles, locations, and experience levels you're looking for—we'll estimate pay rates and help you build the right team faster."}
+          </p>
 
-        <div className="mt-8 flex flex-col gap-8 min-[1024px]:flex-row">
-          <div className="min-w-0 flex-auto rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                {isIndividualMode ? "Role" : "Team Members"}
-              </h2>
-              <Button
-                className="h-8"
-                variant="outlined"
-                visual="gray"
-                onClick={openAddRoleDialog}
-              >
-                <Plus className="size-4" />
-                {isIndividualMode ? "Add Role" : "Add Team Member"}
-              </Button>
-            </div>
+          <div className="mt-8 flex flex-col gap-8 min-[1024px]:flex-row">
+            <div className="min-w-0 flex-auto rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
+                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+                  {isIndividualMode ? "Role" : "Team Members"}
+                </h2>
+                <Button
+                  className="h-8"
+                  variant="outlined"
+                  visual="gray"
+                  onClick={openAddRoleDialog}
+                >
+                  <Plus className="size-4" />
+                  {isIndividualMode ? "Add Role" : "Add Team Member"}
+                </Button>
+              </div>
 
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {[
-                      "Role",
-                      "Location",
-                      "Experience",
-                      "Schedule",
-                      "Contract Length",
-                      "Hourly est.",
-                      "",
-                    ].map((head) => (
-                      <TableHead key={head}>{head}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row, index) => (
-                    <TableRow key={`${row.role}-${index}`}>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm leading-5 font-semibold text-dark-blue-400">
-                            {row.role}
-                          </p>
-                          <p className="text-sm leading-5 text-gray-500">
-                            {row.assignee}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {row.editable ? (
-                          <CountriesCombobox
-                            value={row.location}
-                            onValueChange={(location) =>
-                              updateRow(index, { location })
-                            }
-                            placeholder="Select country"
-                            triggerClassName="h-7 rounded-full border-solid border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400"
-                          />
-                        ) : (
-                          <Badge
-                            size="sm"
-                            visual="gray"
-                            className="border border-gray-200 bg-white"
-                          >
-                            {renderLocationOptionLabel(row.location)}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.editable ? (
-                          <Select
-                            value={row.experience}
-                            onValueChange={(experience) =>
-                              updateRow(index, {
-                                experience: experience as ExperienceLevel,
-                              })
-                            }
-                          >
-                            <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {EXPERIENCE_LEVELS.map((experience) => (
-                                <SelectItem
-                                  key={experience}
-                                  value={experience}
-                                >
-                                  {experience}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge
-                            size="sm"
-                            visual="gray"
-                            className="border border-gray-200 bg-white"
-                          >
-                            {row.experience}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.editable ? (
-                          <Select
-                            value={row.schedule}
-                            onValueChange={(schedule) =>
-                              updateRow(index, {
-                                schedule: schedule as TeamRoleRow["schedule"],
-                              })
-                            }
-                          >
-                            <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {teamRoleScheduleOptions.map((schedule) => (
-                                <SelectItem
-                                  key={schedule}
-                                  value={schedule}
-                                >
-                                  {schedule}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge
-                            size="sm"
-                            visual="gray"
-                            className="border border-gray-200 bg-white"
-                          >
-                            {row.schedule}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.editable ? (
-                          <Select
-                            value={row.length}
-                            onValueChange={(length) =>
-                              updateRow(index, { length })
-                            }
-                          >
-                            <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {teamRoleLengthOptions.map((length) => (
-                                <SelectItem
-                                  key={length}
-                                  value={length}
-                                >
-                                  {length}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge
-                            size="sm"
-                            visual="gray"
-                            className="border border-gray-200 bg-white"
-                          >
-                            {row.length}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm leading-5 text-gray-600">
-                          {row.estimate}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {row.editable ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <IconButton variant="ghost" visual="gray">
-                                <MoreHorizontal className="size-4" />
-                              </IconButton>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onSelect={() => openRenameRoleDialog(index)}
-                              >
-                                Rename role
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() => duplicateRow(index)}
-                              >
-                                Duplicate role
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => removeRow(index)}>
-                                Remove role
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {[
+                        "Role",
+                        "Location",
+                        "Experience",
+                        "Schedule",
+                        "Contract Length",
+                        "Hourly est.",
+                        "",
+                      ].map((head) => (
+                        <TableHead key={head}>{head}</TableHead>
+                      ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row, index) => (
+                      <TableRow key={`${row.role}-${index}`}>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm leading-5 font-semibold text-dark-blue-400">
+                              {row.role}
+                            </p>
+                            <p className="text-sm leading-5 text-gray-500">
+                              {row.assignee}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {row.editable ? (
+                            <CountriesCombobox
+                              value={row.location}
+                              onValueChange={(location) =>
+                                updateRow(index, { location })
+                              }
+                              placeholder="Select country"
+                              triggerClassName="h-7 rounded-full border-solid border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400"
+                            />
+                          ) : (
+                            <Badge
+                              size="sm"
+                              visual="gray"
+                              className="border border-gray-200 bg-white"
+                            >
+                              {renderLocationOptionLabel(row.location)}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.editable ? (
+                            <Select
+                              value={row.experience}
+                              onValueChange={(experience) =>
+                                updateRow(index, {
+                                  experience: experience as ExperienceLevel,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {EXPERIENCE_LEVELS.map((experience) => (
+                                  <SelectItem
+                                    key={experience}
+                                    value={experience}
+                                  >
+                                    {experience}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge
+                              size="sm"
+                              visual="gray"
+                              className="border border-gray-200 bg-white"
+                            >
+                              {row.experience}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.editable ? (
+                            <Select
+                              value={row.schedule}
+                              onValueChange={(schedule) =>
+                                updateRow(index, {
+                                  schedule: schedule as TeamRoleRow["schedule"],
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {teamRoleScheduleOptions.map((schedule) => (
+                                  <SelectItem key={schedule} value={schedule}>
+                                    {schedule}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge
+                              size="sm"
+                              visual="gray"
+                              className="border border-gray-200 bg-white"
+                            >
+                              {row.schedule}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.editable ? (
+                            <Select
+                              value={row.length}
+                              onValueChange={(length) =>
+                                updateRow(index, { length })
+                              }
+                            >
+                              <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {teamRoleLengthOptions.map((length) => (
+                                  <SelectItem key={length} value={length}>
+                                    {length}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge
+                              size="sm"
+                              visual="gray"
+                              className="border border-gray-200 bg-white"
+                            >
+                              {row.length}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm leading-5 text-gray-600">
+                            {row.estimate}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {row.editable ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <IconButton variant="ghost" visual="gray">
+                                  <MoreHorizontal className="size-4" />
+                                </IconButton>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onSelect={() => openRenameRoleDialog(index)}
+                                >
+                                  Rename role
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onSelect={() => duplicateRow(index)}
+                                >
+                                  Duplicate role
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onSelect={() => removeRow(index)}
+                                >
+                                  Remove role
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
-          </div>
 
-          <div className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
-            <p className="text-sm leading-5 font-semibold text-gray-400">
-              Estimated Budget
-            </p>
-            <div className="mt-2 flex items-center gap-x-1 text-dark-blue-400">
-              <span className="text-2xl leading-8 font-semibold">$5,000</span>
-              <span className="text-sm leading-5">per</span>
-              <Select
-                value={budgetFrequency}
-                onValueChange={setBudgetFrequency}
-              >
-                <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-white px-2 py-1 text-sm leading-5 text-dark-blue-400">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["week", "month"].map((frequency) => (
-                    <SelectItem key={frequency} value={frequency}>
-                      {frequency}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="mt-5 space-y-2">
-              <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
-                <Clock className="size-4 text-primary-500" />
-                {isExistingProject
-                  ? "6 month project"
-                  : isIndividualMode
-                    ? rows[0]?.length ?? "3 months"
-                    : "Ongoing"}
+            <div className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
+              <p className="text-sm leading-5 font-semibold text-gray-400">
+                Estimated Budget
+              </p>
+              <div className="mt-2 flex items-center gap-x-1 text-dark-blue-400">
+                <span className="text-2xl leading-8 font-semibold">$5,000</span>
+                <span className="text-sm leading-5">per</span>
+                <Select
+                  value={budgetFrequency}
+                  onValueChange={setBudgetFrequency}
+                >
+                  <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-white px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["week", "month"].map((frequency) => (
+                      <SelectItem key={frequency} value={frequency}>
+                        {frequency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
-                <Copy className="size-4 text-primary-500" />
-                {rows.length} {isIndividualMode ? "role" : "team members"}
+              <div className="mt-5 space-y-2">
+                <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
+                  <Clock className="size-4 text-primary-500" />
+                  {isExistingProject
+                    ? "6 month project"
+                    : isIndividualMode
+                      ? (rows[0]?.length ?? "3 months")
+                      : "Ongoing"}
+                </div>
+                <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
+                  <Copy className="size-4 text-primary-500" />
+                  {rows.length} {isIndividualMode ? "role" : "team members"}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </ScrollArea>
-    <Dialog
-      open={roleDialogMode !== null}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) {
-          closeRoleDialog()
-        }
-      }}
-    >
-      <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-        <DialogHeader>
-          <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-            {roleDialogMode === "rename"
-              ? "Rename Role"
-              : isIndividualMode
-                ? "Add Role"
-                : "Add Team Member"}
-          </DialogTitle>
-          <DialogDescription className="text-sm leading-5 text-gray-500">
-            Enter the role title to show in this job setup.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-2">
-          <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-            Role title
-          </Label>
-          <Input
-            className="mt-2 h-11"
-            placeholder="e.g. Front-End Developer"
-            value={draftRoleTitle}
-            onChange={(event) => setDraftRoleTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                saveRoleDialog()
-              }
-            }}
-          />
-        </div>
-        <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
-          <Button
-            type="button"
-            variant="outlined"
-            visual="gray"
-            onClick={closeRoleDialog}
-          >
-            Cancel
-          </Button>
-          <Button type="button" onClick={saveRoleDialog}>
-            {roleDialogMode === "rename" ? "Save" : "Add"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </ScrollArea>
+      <Dialog
+        open={roleDialogMode !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            closeRoleDialog()
+          }
+        }}
+      >
+        <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
+          <DialogHeader>
+            <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
+              {roleDialogMode === "rename"
+                ? "Rename Role"
+                : isIndividualMode
+                  ? "Add Role"
+                  : "Add Team Member"}
+            </DialogTitle>
+            <DialogDescription className="text-sm leading-5 text-gray-500">
+              Enter the role title to show in this job setup.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+              Role title
+            </Label>
+            <Input
+              className="mt-2 h-11"
+              placeholder="e.g. Front-End Developer"
+              value={draftRoleTitle}
+              onChange={(event) => setDraftRoleTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  saveRoleDialog()
+                }
+              }}
+            />
+          </div>
+          <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              onClick={closeRoleDialog}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={saveRoleDialog}>
+              {roleDialogMode === "rename" ? "Save" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -14362,6 +15032,12 @@ function PublishProject({
   projectScope?: React.ReactElement<ProgressProps>
   teamRoles?: React.ReactElement<ProgressProps>
 }) {
+  const initialStep = useMemo(() => {
+    if (typeof window === "undefined") return undefined
+
+    const urlParams = new URLSearchParams(window.location.search)
+    return urlParams.get("edit") === "1" ? 1 : undefined
+  }, [])
   const {
     nextStep,
     prevStep,
@@ -14371,6 +15047,7 @@ function PublishProject({
     stepsState,
   } = useStepper({
     steps,
+    currentStep: initialStep,
   })
 
   const stepperValue = useMemo(
@@ -14399,6 +15076,7 @@ function PublishProject({
         { category: "Marketing", subCategories: ["E-commerce"] },
       ],
       industry: ["E-commerce"],
+      languages: ["English", "Spanish", "Japanese"],
       shortDescription:
         "This project needs support defining the scope, expected deliverables, and team requirements for a successful launch.",
       fullDescription:
@@ -14420,8 +15098,7 @@ function PublishProject({
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [jobListingDraftDetails, setJobListingDraftDetails] =
     useState<JobListingDraftDetails>({})
-  const [selectedWorkType, setSelectedWorkType] =
-    useState<WorkTypeChoice>(null)
+  const [selectedWorkType, setSelectedWorkType] = useState<WorkTypeChoice>(null)
   const [selectedHiringMode, setSelectedHiringMode] =
     useState<HiringModeChoice>(null)
   const [isExistingContractFlow, setIsExistingContractFlow] = useState(false)
@@ -14441,6 +15118,7 @@ function PublishProject({
   const lastScopePayloadRef = useRef<string>("")
   const lastMediaPayloadRef = useRef<string>("")
   const didInitializeLocalJobListingRef = useRef(false)
+  const didApplyEditResumeFallbackRef = useRef(false)
   const ensureJobListingDraftPromiseRef = useRef<Promise<string | null> | null>(
     null
   )
@@ -14457,8 +15135,9 @@ function PublishProject({
     const hydrateDraft = async () => {
       const urlParams = new URLSearchParams(window.location.search)
       const existingDraftId = urlParams.get("draftId")
-      const storedJobListingId =
-        window.sessionStorage.getItem("marketeq-job-listing-id")
+      const storedJobListingId = window.sessionStorage.getItem(
+        "marketeq-job-listing-id"
+      )
       const existingJobListingId =
         urlParams.get("jobListingId") ??
         existingDraftId ??
@@ -14466,7 +15145,9 @@ function PublishProject({
           ? storedJobListingId
           : null)
       const type = urlParams.get("type") ?? "project"
-      const isJobListingFlow = window.location.pathname.startsWith("/job-listing")
+      const shouldResumeExistingListing = urlParams.get("edit") === "1"
+      const isJobListingFlow =
+        window.location.pathname.startsWith("/job-listing")
 
       try {
         if (isJobListingFlow) {
@@ -14510,6 +15191,9 @@ function PublishProject({
               industry: Array.isArray(basicInformation?.industries)
                 ? basicInformation.industries
                 : currentProjectInfo.industry,
+              languages: Array.isArray(basicInformation?.languages)
+                ? basicInformation.languages
+                : currentProjectInfo.languages,
               shortDescription:
                 listing?.description ?? currentProjectInfo.shortDescription,
               fullDescription:
@@ -14563,6 +15247,13 @@ function PublishProject({
                 ? listing.ndaDocumentId
                 : null,
           })
+          const persistedJobListingScope =
+            listing?.workType === "service"
+              ? createServicePhasesFromPersistedJobListing(listing?.phases)
+              : createPhasesFromPersistedJobListing(listing?.phases)
+          if (persistedJobListingScope.length > 0) {
+            projectScopeMethods[1](persistedJobListingScope as Phase[])
+          }
 
           lastDraftPayloadRef.current = ""
           lastScopePayloadRef.current = ""
@@ -14571,11 +15262,14 @@ function PublishProject({
             additionalImages: [],
             featuredVideo: "",
           })
-          if (
-            typeof listing?.lastCompletedStep === "number" &&
-            listing.lastCompletedStep > 0
-          ) {
-            setStep(Math.min(listing.lastCompletedStep, totalSteps - 1))
+          const lastCompletedStep =
+            typeof listing?.lastCompletedStep === "number"
+              ? listing.lastCompletedStep
+              : null
+          if (lastCompletedStep && lastCompletedStep > 0) {
+            setStep(Math.min(lastCompletedStep, totalSteps - 1))
+          } else if (shouldResumeExistingListing) {
+            setStep(Math.min(1, totalSteps - 1))
           }
           setIsDraftBootstrapping(false)
           return
@@ -14589,7 +15283,9 @@ function PublishProject({
           response = await ProjectAPI.CreateProjectDraft({})
           const nextDraftId = String(response?.data?.id ?? "")
           if (nextDraftId) {
-            const nextPath = isJobListingFlow ? "/job-listing" : "/publish-project"
+            const nextPath = isJobListingFlow
+              ? "/job-listing"
+              : "/publish-project"
             const nextUrl = `${nextPath}?type=${encodeURIComponent(
               type
             )}&draftId=${encodeURIComponent(nextDraftId)}`
@@ -14622,6 +15318,12 @@ function PublishProject({
               ? draft.industries
               : shouldKeepCurrentDefaults
                 ? (currentProjectInfo.industry ?? [])
+                : [],
+          languages:
+            Array.isArray(draft?.languages) && draft.languages.length > 0
+              ? draft.languages
+              : shouldKeepCurrentDefaults
+                ? (currentProjectInfo.languages ?? [])
                 : [],
           shortDescription:
             shouldKeepCurrentDefaults && !draft?.shortDescription
@@ -14748,7 +15450,29 @@ function PublishProject({
     return () => {
       cancelled = true
     }
-  }, [mediaMethods, projectInfoMethods, projectScopeMethods, setStep, totalSteps])
+  }, [
+    mediaMethods,
+    projectInfoMethods,
+    projectScopeMethods,
+    setStep,
+    totalSteps,
+  ])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (isDraftBootstrapping) return
+    if (didApplyEditResumeFallbackRef.current) return
+
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get("edit") !== "1") return
+
+    didApplyEditResumeFallbackRef.current = true
+    if (currentStep === 0) {
+      window.setTimeout(() => {
+        setStep(Math.min(1, totalSteps - 1))
+      }, 0)
+    }
+  }, [currentStep, isDraftBootstrapping, setStep, totalSteps])
 
   const ensureJobListingDraft = useCallback(async () => {
     if (jobListingId) return jobListingId
@@ -14847,7 +15571,7 @@ function PublishProject({
         title: info.title ?? "",
         jobType: selectedWorkType ?? undefined,
         industries: info.industry ?? [],
-        languages: [],
+        languages: info.languages ?? [],
       }
       const textSignature = JSON.stringify({
         title: basicInfoPayload.title,
@@ -14923,6 +15647,7 @@ function PublishProject({
         title: info.title ?? "",
         category: info.category ?? [],
         industry: info.industry ?? [],
+        languages: info.languages ?? [],
         tags: info.tags ?? [],
         skills: info.skills ?? [],
         shortDescription: info.shortDescription ?? "",
@@ -15210,11 +15935,6 @@ function PublishProject({
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
-      <div className="h-[70px] border-b border-gray-200 flex items-center pr-[17px] pl-8">
-        <h1 className="text-base leading-[19.36px] font-semibold text-dark-blue-400">
-          {isJobListingRoute ? "Job Creation" : "Create a Project"}
-        </h1>
-      </div>
       <Empty
         outcome={submissionOutcome ?? undefined}
         draftId={draftProjectId ?? undefined}
@@ -15229,152 +15949,152 @@ function PublishProject({
               <JobListingDraftProvider value={jobListingDraftValue}>
                 <ProjectScopeProvider value={projectScopeValue}>
                   <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
-                  <Header onSaveExit={toggleIsSaveExitDialogOpen} />
-                  <SaveExitDialog
-                    open={isSaveExitDialogOpen}
-                    onOpenChange={toggleIsSaveExitDialogOpen}
-                    onConfirm={handleSaveExit}
-                  />
-                  <StepControl className="contents">
-                    {/*  Wrap steps to inject progress setter props */}
-                    <Step className="contents">
-                      {projectInfo && React.isValidElement(projectInfo)
-                        ? React.cloneElement(projectInfo, {
-                            setProgress: setProjectInfoProgress, // <-- inject progress
-                            selectedWorkType,
-                            onSelectedWorkTypeChange: setSelectedWorkType,
-                            selectedHiringMode,
-                            onSelectedHiringModeChange: setSelectedHiringMode,
-                            onNoScopeFlowChange: setIsNoScopeFlow,
-                            onExistingContractFlowChange:
-                              setIsExistingContractFlow,
-                            onExistingContractSelectionChange:
-                              setSelectedExistingContractId,
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      {isExistingContractFlow ? (
-                        <ExistingContractRoleInfoStep
-                          setProgress={setMediaProgress}
-                        />
-                      ) : isNoScopeFlow ? (
-                        <NoScopeRoleInfoStep
-                          setProgress={setMediaProgress}
-                          hiringMode={selectedHiringMode}
-                        />
-                      ) : media && React.isValidElement(media)
-                        ? React.cloneElement(media, {
+                    <Header onSaveExit={toggleIsSaveExitDialogOpen} />
+                    <SaveExitDialog
+                      open={isSaveExitDialogOpen}
+                      onOpenChange={toggleIsSaveExitDialogOpen}
+                      onConfirm={handleSaveExit}
+                    />
+                    <StepControl className="contents">
+                      {/*  Wrap steps to inject progress setter props */}
+                      <Step className="contents">
+                        {projectInfo && React.isValidElement(projectInfo)
+                          ? React.cloneElement(projectInfo, {
+                              setProgress: setProjectInfoProgress, // <-- inject progress
+                              selectedWorkType,
+                              onSelectedWorkTypeChange: setSelectedWorkType,
+                              selectedHiringMode,
+                              onSelectedHiringModeChange: setSelectedHiringMode,
+                              onNoScopeFlowChange: setIsNoScopeFlow,
+                              onExistingContractFlowChange:
+                                setIsExistingContractFlow,
+                              onExistingContractSelectionChange:
+                                setSelectedExistingContractId,
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        {isExistingContractFlow ? (
+                          <ExistingContractRoleInfoStep
+                            setProgress={setMediaProgress}
+                          />
+                        ) : isNoScopeFlow ? (
+                          <NoScopeRoleInfoStep
+                            setProgress={setMediaProgress}
+                            hiringMode={selectedHiringMode}
+                          />
+                        ) : media && React.isValidElement(media) ? (
+                          React.cloneElement(media, {
                             setProgress: setMediaProgress,
                             workType: selectedWorkType,
                             jobListingId,
                           })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      <ReviewToolsTechnologiesStep
-                        setProgress={setProjectScopeProgress}
-                        jobListingId={jobListingId}
-                        source={
-                          isNoScopeFlow
-                            ? "roles"
-                            : selectedWorkType === "service"
-                              ? "service"
-                              : "project"
-                        }
-                      />
-                    </Step>
-                    <Step className="contents">
-                      {isExistingContractFlow ? (
-                        <TeamRoles
-                          setProgress={setTeamRolesProgress}
-                          initialValid
-                          existingContractId={selectedExistingContractId}
-                          hiringMode={selectedHiringMode}
-                        />
-                      ) : isNoScopeFlow ? (
-                        <TeamRoles
-                          setProgress={setTeamRolesProgress}
-                          initialValid
-                          hiringMode={selectedHiringMode}
-                        />
-                      ) : selectedWorkType === "service" ? (
-                        <ServiceScopeEditStep
-                          setProgress={setTeamRolesProgress}
+                        ) : null}
+                      </Step>
+                      <Step className="contents">
+                        <ReviewToolsTechnologiesStep
+                          setProgress={setProjectScopeProgress}
                           jobListingId={jobListingId}
-                        />
-                      ) : selectedWorkType === "project" ? (
-                        <ProjectScopeEditStep
-                          setProgress={setTeamRolesProgress}
-                          jobListingId={jobListingId}
-                        />
-                      ) : teamRoles && React.isValidElement(teamRoles) ? (
-                        React.cloneElement(teamRoles, {
-                          setProgress: setTeamRolesProgress,
-                        })
-                      ) : null}
-                    </Step>
-                    <Step className="contents">
-                      {isExistingContractFlow ? (
-                        <ExistingContractFinalReviewStep
-                          setProgress={setFinalReviewProgress}
-                          ndaDocumentId={
-                            jobListingDraftDetails.ndaDocumentId ??
-                            submissionOutcome?.ndaDocumentId ??
-                            null
+                          source={
+                            isNoScopeFlow
+                              ? "roles"
+                              : selectedWorkType === "service"
+                                ? "service"
+                                : "project"
                           }
-                          inheritedNda
-                          jobListingId={jobListingId}
-                          ensureJobListingDraft={ensureJobListingDraft}
                         />
-                      ) : isNoScopeFlow ? (
-                        <ExistingContractFinalReviewStep
-                          setProgress={setFinalReviewProgress}
-                          ndaDocumentId={
-                            jobListingDraftDetails.ndaDocumentId ??
-                            submissionOutcome?.ndaDocumentId ??
-                            null
-                          }
-                          jobListingId={jobListingId}
-                          ensureJobListingDraft={ensureJobListingDraft}
-                        />
-                      ) : selectedWorkType === "service" ? (
-                        <FinalServiceReviewStep
-                          setProgress={setFinalReviewProgress}
-                          ndaDocumentId={
-                            jobListingDraftDetails.ndaDocumentId ??
-                            submissionOutcome?.ndaDocumentId ??
-                            null
-                          }
-                          jobListingId={jobListingId}
-                          ensureJobListingDraft={ensureJobListingDraft}
-                        />
-                      ) : selectedWorkType === "project" ? (
-                        <FinalProjectReviewStep
-                          setProgress={setFinalReviewProgress}
-                          ndaDocumentId={
-                            jobListingDraftDetails.ndaDocumentId ??
-                            submissionOutcome?.ndaDocumentId ??
-                            null
-                          }
-                          jobListingId={jobListingId}
-                          ensureJobListingDraft={ensureJobListingDraft}
-                        />
-                      ) : null}
-                    </Step>
-                  </StepControl>
-                  {/* Single BottomBar with global progress */}
-                  <BottomBar
-                    progressValue={overallProgress}
-                    onNextClick={validateCurrentStep}
-                    workType={selectedWorkType}
-                    jobListingId={jobListingId}
-                    selectedHiringMode={selectedHiringMode}
-                    isNoScopeFlow={isNoScopeFlow}
-                    isExistingContractFlow={isExistingContractFlow}
-                    selectedExistingContractId={selectedExistingContractId}
-                  />{" "}
-                  {/* <-- moved here */}
+                      </Step>
+                      <Step className="contents">
+                        {isExistingContractFlow ? (
+                          <TeamRoles
+                            setProgress={setTeamRolesProgress}
+                            initialValid
+                            existingContractId={selectedExistingContractId}
+                            hiringMode={selectedHiringMode}
+                          />
+                        ) : isNoScopeFlow ? (
+                          <TeamRoles
+                            setProgress={setTeamRolesProgress}
+                            initialValid
+                            hiringMode={selectedHiringMode}
+                          />
+                        ) : selectedWorkType === "service" ? (
+                          <ServiceScopeEditStep
+                            setProgress={setTeamRolesProgress}
+                            jobListingId={jobListingId}
+                          />
+                        ) : selectedWorkType === "project" ? (
+                          <ProjectScopeEditStep
+                            setProgress={setTeamRolesProgress}
+                            jobListingId={jobListingId}
+                          />
+                        ) : teamRoles && React.isValidElement(teamRoles) ? (
+                          React.cloneElement(teamRoles, {
+                            setProgress: setTeamRolesProgress,
+                          })
+                        ) : null}
+                      </Step>
+                      <Step className="contents">
+                        {isExistingContractFlow ? (
+                          <ExistingContractFinalReviewStep
+                            setProgress={setFinalReviewProgress}
+                            ndaDocumentId={
+                              jobListingDraftDetails.ndaDocumentId ??
+                              submissionOutcome?.ndaDocumentId ??
+                              null
+                            }
+                            inheritedNda
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
+                          />
+                        ) : isNoScopeFlow ? (
+                          <ExistingContractFinalReviewStep
+                            setProgress={setFinalReviewProgress}
+                            ndaDocumentId={
+                              jobListingDraftDetails.ndaDocumentId ??
+                              submissionOutcome?.ndaDocumentId ??
+                              null
+                            }
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
+                          />
+                        ) : selectedWorkType === "service" ? (
+                          <FinalServiceReviewStep
+                            setProgress={setFinalReviewProgress}
+                            ndaDocumentId={
+                              jobListingDraftDetails.ndaDocumentId ??
+                              submissionOutcome?.ndaDocumentId ??
+                              null
+                            }
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
+                          />
+                        ) : selectedWorkType === "project" ? (
+                          <FinalProjectReviewStep
+                            setProgress={setFinalReviewProgress}
+                            ndaDocumentId={
+                              jobListingDraftDetails.ndaDocumentId ??
+                              submissionOutcome?.ndaDocumentId ??
+                              null
+                            }
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
+                          />
+                        ) : null}
+                      </Step>
+                    </StepControl>
+                    {/* Single BottomBar with global progress */}
+                    <BottomBar
+                      progressValue={overallProgress}
+                      onNextClick={validateCurrentStep}
+                      workType={selectedWorkType}
+                      jobListingId={jobListingId}
+                      selectedHiringMode={selectedHiringMode}
+                      isNoScopeFlow={isNoScopeFlow}
+                      isExistingContractFlow={isExistingContractFlow}
+                      selectedExistingContractId={selectedExistingContractId}
+                    />{" "}
+                    {/* <-- moved here */}
                   </div>
                 </ProjectScopeProvider>
               </JobListingDraftProvider>

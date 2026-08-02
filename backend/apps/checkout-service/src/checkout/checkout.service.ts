@@ -3,40 +3,50 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
-import { ClientProxy } from '@nestjs/microservices';
-import { Inject, Optional } from '@nestjs/common';
-import { CheckoutSession } from './entities/checkout-session.entity';
-import { Wallet } from './entities/wallet.entity';
-import { GiftCard } from './entities/gift-card.entity';
-import { InstallmentPayment } from './entities/installment-payment.entity';
-import { SavedBankAccount } from './entities/saved-bank-account.entity';
-import { WireTransfer } from './entities/wire-transfer.entity';
-import { StripeMetadata } from './entities/stripe-metadata.entity';
-import { PaymentFailure } from './entities/payment-failure.entity';
-import { WalletTransaction } from './entities/wallet-transaction.entity';
-import { StripeService } from '../stripe/stripe.service';
-import { randomBytes } from 'crypto';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, DataSource } from "typeorm";
+import { ClientProxy } from "@nestjs/microservices";
+import { Inject, Optional } from "@nestjs/common";
+import { CheckoutSession } from "./entities/checkout-session.entity";
+import { Wallet } from "./entities/wallet.entity";
+import { GiftCard } from "./entities/gift-card.entity";
+import { InstallmentPayment } from "./entities/installment-payment.entity";
+import { SavedBankAccount } from "./entities/saved-bank-account.entity";
+import { WireTransfer } from "./entities/wire-transfer.entity";
+import { StripeMetadata } from "./entities/stripe-metadata.entity";
+import { PaymentFailure } from "./entities/payment-failure.entity";
+import { WalletTransaction } from "./entities/wallet-transaction.entity";
+import { StripeService } from "../stripe/stripe.service";
+import { randomBytes } from "crypto";
 
 @Injectable()
 export class CheckoutService {
   private readonly logger = new Logger(CheckoutService.name);
 
   constructor(
-    @InjectRepository(CheckoutSession) private readonly sessionRepo: Repository<CheckoutSession>,
+    @InjectRepository(CheckoutSession)
+    private readonly sessionRepo: Repository<CheckoutSession>,
     @InjectRepository(Wallet) private readonly walletRepo: Repository<Wallet>,
-    @InjectRepository(GiftCard) private readonly giftCardRepo: Repository<GiftCard>,
-    @InjectRepository(InstallmentPayment) private readonly installmentRepo: Repository<InstallmentPayment>,
-    @InjectRepository(SavedBankAccount) private readonly bankAccountRepo: Repository<SavedBankAccount>,
-    @InjectRepository(WireTransfer) private readonly wireTransferRepo: Repository<WireTransfer>,
-    @InjectRepository(StripeMetadata) private readonly stripeMetadataRepo: Repository<StripeMetadata>,
-    @InjectRepository(PaymentFailure) private readonly paymentFailureRepo: Repository<PaymentFailure>,
-    @InjectRepository(WalletTransaction) private readonly walletTransactionRepo: Repository<WalletTransaction>,
+    @InjectRepository(GiftCard)
+    private readonly giftCardRepo: Repository<GiftCard>,
+    @InjectRepository(InstallmentPayment)
+    private readonly installmentRepo: Repository<InstallmentPayment>,
+    @InjectRepository(SavedBankAccount)
+    private readonly bankAccountRepo: Repository<SavedBankAccount>,
+    @InjectRepository(WireTransfer)
+    private readonly wireTransferRepo: Repository<WireTransfer>,
+    @InjectRepository(StripeMetadata)
+    private readonly stripeMetadataRepo: Repository<StripeMetadata>,
+    @InjectRepository(PaymentFailure)
+    private readonly paymentFailureRepo: Repository<PaymentFailure>,
+    @InjectRepository(WalletTransaction)
+    private readonly walletTransactionRepo: Repository<WalletTransaction>,
     private readonly stripeService: StripeService,
     private readonly dataSource: DataSource,
-    @Optional() @Inject('RABBITMQ_CLIENT') private readonly rabbitClient: ClientProxy | null,
+    @Optional()
+    @Inject("RABBITMQ_CLIENT")
+    private readonly rabbitClient: ClientProxy | null,
   ) {}
 
   // ─── Existing Methods ───────────────────────────────────────────────
@@ -52,6 +62,8 @@ export class CheckoutService {
     giftCardCode?: string;
     walletBalanceUsed?: number;
     totalAmount: number;
+    successUrl?: string;
+    cancelUrl?: string;
   }) {
     let amount = dto.totalAmount;
     let giftCardAmountUsed = 0;
@@ -62,29 +74,34 @@ export class CheckoutService {
       const giftCard = await this.giftCardRepo.findOne({
         where: { code: dto.giftCardCode, isActive: true },
       });
-      if (!giftCard) throw new BadRequestException('Invalid or expired gift card');
+      if (!giftCard)
+        throw new BadRequestException("Invalid or expired gift card");
       giftCardAmountUsed = Math.min(giftCard.remainingAmount, amount);
       amount -= giftCardAmountUsed;
     }
 
     // Apply wallet
     if (walletAmountUsed > 0) {
-      const wallet = await this.walletRepo.findOne({ where: { userId: dto.clientId } });
+      const wallet = await this.walletRepo.findOne({
+        where: { userId: dto.clientId },
+      });
       if (!wallet || wallet.balance < walletAmountUsed) {
-        throw new BadRequestException('Insufficient wallet balance');
+        throw new BadRequestException("Insufficient wallet balance");
       }
       amount -= walletAmountUsed;
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const stripeSession = await this.stripeService.createCheckoutSession({
       clientId: dto.clientId,
       amount: Math.max(amount, 0),
       paymentMethod: dto.paymentMethod,
       projectId: dto.projectId,
       contractId: dto.contractId,
-      successUrl: `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${frontendUrl}/checkout/cancel`,
+      successUrl:
+        dto.successUrl ??
+        `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: dto.cancelUrl ?? `${frontendUrl}/checkout/cancel`,
     });
 
     const session = this.sessionRepo.create({
@@ -99,16 +116,18 @@ export class CheckoutService {
       giftCardCode: dto.giftCardCode,
       splitPaymentEnabled: dto.splitPaymentEnabled,
       initialPaymentAmount: dto.initialPaymentAmount,
-      installmentPlan: (dto.installmentPlanOption as any) || 'full',
+      installmentPlan: (dto.installmentPlanOption as any) || "full",
     });
 
     await this.sessionRepo.save(session);
 
-    return { checkoutUrl: stripeSession.url };
+    return { checkoutUrl: stripeSession.url, sessionId: stripeSession.id };
   }
 
   async applyGiftCard(code: string) {
-    const giftCard = await this.giftCardRepo.findOne({ where: { code, isActive: true } });
+    const giftCard = await this.giftCardRepo.findOne({
+      where: { code, isActive: true },
+    });
     if (!giftCard) return { valid: false, amount: 0 };
     return { valid: true, amount: giftCard.remainingAmount };
   }
@@ -116,7 +135,7 @@ export class CheckoutService {
   async useWallet(userId: string, amount: number) {
     const wallet = await this.walletRepo.findOne({ where: { userId } });
     if (!wallet || wallet.balance < amount) {
-      throw new BadRequestException('Insufficient wallet balance');
+      throw new BadRequestException("Insufficient wallet balance");
     }
     const remaining = wallet.balance - amount;
     await this.walletRepo.update(wallet.id, { balance: remaining });
@@ -125,36 +144,56 @@ export class CheckoutService {
 
   async confirm(sessionId: string) {
     const stripeSession = await this.stripeService.retrieveSession(sessionId);
-    const session = await this.sessionRepo.findOne({ where: { stripeSessionId: sessionId } });
+    const session = await this.sessionRepo.findOne({
+      where: { stripeSessionId: sessionId },
+    });
 
-    if (session && stripeSession.payment_status === 'paid') {
-      await this.sessionRepo.update(session.id, { status: 'success', paymentVerified: true });
+    if (session && stripeSession.payment_status === "paid") {
+      await this.sessionRepo.update(session.id, {
+        status: "success",
+        paymentVerified: true,
+      });
     }
 
     return { status: stripeSession.payment_status };
   }
 
   async cancel(sessionId: string) {
-    await this.sessionRepo.update({ stripeSessionId: sessionId }, { status: 'cancelled' });
+    await this.sessionRepo.update(
+      { stripeSessionId: sessionId },
+      { status: "cancelled" },
+    );
   }
 
   async getStatus(sessionId: string) {
-    const session = await this.sessionRepo.findOne({ where: { stripeSessionId: sessionId } });
-    if (!session) throw new NotFoundException('Session not found');
+    const session = await this.sessionRepo.findOne({
+      where: { stripeSessionId: sessionId },
+    });
+    if (!session) throw new NotFoundException("Session not found");
     return session;
   }
 
   async handlePaymentSuccess(stripeSessionId: string) {
-    const session = await this.sessionRepo.findOne({ where: { stripeSessionId } });
+    const session = await this.sessionRepo.findOne({
+      where: { stripeSessionId },
+    });
     if (session) {
-      await this.sessionRepo.update(session.id, { status: 'success', paymentVerified: true });
+      await this.sessionRepo.update(session.id, {
+        status: "success",
+        paymentVerified: true,
+      });
     }
   }
 
   async handlePaymentFailed(stripeSessionId: string) {
-    const session = await this.sessionRepo.findOne({ where: { stripeSessionId } });
+    const session = await this.sessionRepo.findOne({
+      where: { stripeSessionId },
+    });
     if (session) {
-      await this.sessionRepo.update(session.id, { status: 'failed', paymentVerified: false });
+      await this.sessionRepo.update(session.id, {
+        status: "failed",
+        paymentVerified: false,
+      });
     }
   }
 
@@ -165,15 +204,18 @@ export class CheckoutService {
     customerId: string;
     projectId: string;
     contractId?: string;
-    frequency: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+    frequency: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
     installmentAmount: number;
     totalPayments: number;
   }) {
-    this.logger.log(`Creating subscription for client ${dto.clientId}, project ${dto.projectId}`);
+    this.logger.log(
+      `Creating subscription for client ${dto.clientId}, project ${dto.projectId}`,
+    );
 
-    const interval: 'week' | 'month' = dto.frequency === 'weekly' || dto.frequency === 'biweekly'
-      ? 'week'
-      : 'month';
+    const interval: "week" | "month" =
+      dto.frequency === "weekly" || dto.frequency === "biweekly"
+        ? "week"
+        : "month";
 
     const subscription = await this.stripeService.createSubscription({
       customerId: dto.customerId,
@@ -182,15 +224,24 @@ export class CheckoutService {
       metadata: {
         clientId: dto.clientId,
         projectId: dto.projectId,
-        contractId: dto.contractId || '',
+        contractId: dto.contractId || "",
       },
     });
 
     const nextPaymentDate = new Date();
-    if (interval === 'week') {
-      nextPaymentDate.setDate(nextPaymentDate.getDate() + (dto.frequency === 'biweekly' ? 14 : 7));
+    if (interval === "week") {
+      nextPaymentDate.setDate(
+        nextPaymentDate.getDate() + (dto.frequency === "biweekly" ? 14 : 7),
+      );
     } else {
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + (dto.frequency === 'quarterly' ? 3 : dto.frequency === 'yearly' ? 12 : 1));
+      nextPaymentDate.setMonth(
+        nextPaymentDate.getMonth() +
+          (dto.frequency === "quarterly"
+            ? 3
+            : dto.frequency === "yearly"
+              ? 12
+              : 1),
+      );
     }
 
     const installment = this.installmentRepo.create({
@@ -202,7 +253,7 @@ export class CheckoutService {
       totalPayments: dto.totalPayments,
       completedPayments: 0,
       nextPaymentDue: nextPaymentDate,
-      status: 'active',
+      status: "active",
     });
 
     await this.installmentRepo.save(installment);
@@ -222,14 +273,16 @@ export class CheckoutService {
     contractId?: string;
     totalAmount: number;
     components: Array<{
-      type: 'wallet' | 'gift_card' | 'card';
+      type: "wallet" | "gift_card" | "card";
       amount: number;
       giftCardCode?: string;
       paymentMethodId?: string;
       customerId?: string;
     }>;
   }) {
-    this.logger.log(`Processing split payment for client ${dto.clientId}, total: ${dto.totalAmount}`);
+    this.logger.log(
+      `Processing split payment for client ${dto.clientId}, total: ${dto.totalAmount}`,
+    );
 
     const componentTotal = dto.components.reduce((sum, c) => sum + c.amount, 0);
     if (Math.abs(componentTotal - dto.totalAmount) > 0.01) {
@@ -242,66 +295,83 @@ export class CheckoutService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
-    const results: Array<{ type: string; amount: number; status: string; reference?: string }> = [];
+    const results: Array<{
+      type: string;
+      amount: number;
+      status: string;
+      reference?: string;
+    }> = [];
 
     try {
       for (const component of dto.components) {
         switch (component.type) {
-          case 'wallet': {
+          case "wallet": {
             const wallet = await queryRunner.manager.findOne(Wallet, {
               where: { userId: dto.clientId },
             });
             if (!wallet || wallet.balance < component.amount) {
-              throw new BadRequestException('Insufficient wallet balance for split payment');
+              throw new BadRequestException(
+                "Insufficient wallet balance for split payment",
+              );
             }
             await queryRunner.manager.update(Wallet, wallet.id, {
               balance: wallet.balance - component.amount,
             });
             const txn = queryRunner.manager.create(WalletTransaction, {
               userId: dto.clientId,
-              type: 'payment',
+              type: "payment",
               amount: component.amount,
-              status: 'completed',
+              status: "completed",
               reason: `Split payment for project ${dto.projectId}`,
             });
             await queryRunner.manager.save(txn);
-            results.push({ type: 'wallet', amount: component.amount, status: 'completed' });
+            results.push({
+              type: "wallet",
+              amount: component.amount,
+              status: "completed",
+            });
             break;
           }
 
-          case 'gift_card': {
+          case "gift_card": {
             if (!component.giftCardCode) {
-              throw new BadRequestException('Gift card code is required for gift_card component');
+              throw new BadRequestException(
+                "Gift card code is required for gift_card component",
+              );
             }
             const giftCard = await queryRunner.manager.findOne(GiftCard, {
               where: { code: component.giftCardCode, isActive: true },
             });
             if (!giftCard || giftCard.remainingAmount < component.amount) {
-              throw new BadRequestException('Insufficient gift card balance');
+              throw new BadRequestException("Insufficient gift card balance");
             }
             await queryRunner.manager.update(GiftCard, giftCard.id, {
               remainingAmount: giftCard.remainingAmount - component.amount,
               isActive: giftCard.remainingAmount - component.amount > 0,
             });
-            results.push({ type: 'gift_card', amount: component.amount, status: 'completed' });
+            results.push({
+              type: "gift_card",
+              amount: component.amount,
+              status: "completed",
+            });
             break;
           }
 
-          case 'card': {
+          case "card": {
             const intent = await this.stripeService.createPaymentIntent({
               amount: component.amount,
               customerId: component.customerId,
               paymentMethodId: component.paymentMethodId,
-              paymentMethodTypes: ['card'],
+              paymentMethodTypes: ["card"],
               confirm: true,
               metadata: {
                 clientId: dto.clientId,
                 projectId: dto.projectId,
-                splitPayment: 'true',
+                splitPayment: "true",
               },
             });
             results.push({
-              type: 'card',
+              type: "card",
               amount: component.amount,
               status: intent.status,
               reference: intent.id,
@@ -310,7 +380,9 @@ export class CheckoutService {
           }
 
           default:
-            throw new BadRequestException(`Unknown payment component type: ${component.type}`);
+            throw new BadRequestException(
+              `Unknown payment component type: ${component.type}`,
+            );
         }
       }
 
@@ -320,15 +392,15 @@ export class CheckoutService {
         clientId: dto.clientId,
         projectId: dto.projectId,
         contractId: dto.contractId,
-        paymentMethod: 'card',
+        paymentMethod: "card",
         totalAmount: dto.totalAmount,
         splitPaymentEnabled: true,
-        status: 'success',
+        status: "success",
         paymentVerified: true,
       });
       await this.sessionRepo.save(session);
 
-      this.emitEvent('checkout.split_payment.completed', {
+      this.emitEvent("checkout.split_payment.completed", {
         clientId: dto.clientId,
         projectId: dto.projectId,
         totalAmount: dto.totalAmount,
@@ -338,7 +410,10 @@ export class CheckoutService {
       return { success: true, components: results };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Split payment failed for client ${dto.clientId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Split payment failed for client ${dto.clientId}: ${error.message}`,
+        error.stack,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -348,11 +423,13 @@ export class CheckoutService {
   // ─── 3. Create Bank Link Session (ACH) ─────────────────────────────
 
   async createBankLinkSession(dto: { customerId: string }) {
-    this.logger.log(`Creating bank link session for customer ${dto.customerId}`);
+    this.logger.log(
+      `Creating bank link session for customer ${dto.customerId}`,
+    );
 
     const session = await this.stripeService.createFinancialConnectionsSession({
       customerId: dto.customerId,
-      permissions: ['payment_method', 'balances'],
+      permissions: ["payment_method", "balances"],
     });
 
     return { clientSecret: session.client_secret };
@@ -368,9 +445,10 @@ export class CheckoutService {
   }) {
     this.logger.log(`Attaching bank account for user ${dto.userId}`);
 
-    const paymentMethod = await this.stripeService.createPaymentMethodFromFinancialAccount(
-      dto.financialAccountId,
-    );
+    const paymentMethod =
+      await this.stripeService.createPaymentMethodFromFinancialAccount(
+        dto.financialAccountId,
+      );
 
     const bankAccount = this.bankAccountRepo.create({
       userId: dto.userId,
@@ -397,19 +475,21 @@ export class CheckoutService {
     contractId?: string;
     amount: number;
   }) {
-    this.logger.log(`Processing ACH payment for client ${dto.clientId}, amount: ${dto.amount}`);
+    this.logger.log(
+      `Processing ACH payment for client ${dto.clientId}, amount: ${dto.amount}`,
+    );
 
     const intent = await this.stripeService.createPaymentIntent({
       amount: dto.amount,
       customerId: dto.customerId,
       paymentMethodId: dto.paymentMethodId,
-      paymentMethodTypes: ['us_bank_account'],
+      paymentMethodTypes: ["us_bank_account"],
       confirm: true,
       metadata: {
         clientId: dto.clientId,
         projectId: dto.projectId,
-        contractId: dto.contractId || '',
-        paymentType: 'ach',
+        contractId: dto.contractId || "",
+        paymentType: "ach",
       },
     });
 
@@ -418,9 +498,9 @@ export class CheckoutService {
       projectId: dto.projectId,
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
-      paymentMethod: 'ach',
+      paymentMethod: "ach",
       totalAmount: dto.amount,
-      status: 'pending',
+      status: "pending",
     });
 
     await this.sessionRepo.save(session);
@@ -457,7 +537,7 @@ export class CheckoutService {
       where: { stripePaymentMethodId: paymentMethodId },
     });
     if (!account) {
-      throw new NotFoundException('Bank account not found');
+      throw new NotFoundException("Bank account not found");
     }
 
     await this.bankAccountRepo.remove(account);
@@ -473,9 +553,11 @@ export class CheckoutService {
     contractId?: string;
     amount: number;
   }) {
-    this.logger.log(`Initiating wire transfer for client ${dto.clientId}, amount: ${dto.amount}`);
+    this.logger.log(
+      `Initiating wire transfer for client ${dto.clientId}, amount: ${dto.amount}`,
+    );
 
-    const referenceCode = `MKT-WIRE-${randomBytes(6).toString('hex').toUpperCase()}`;
+    const referenceCode = `MKT-WIRE-${randomBytes(6).toString("hex").toUpperCase()}`;
 
     const wireTransfer = this.wireTransferRepo.create({
       clientId: dto.clientId,
@@ -483,7 +565,7 @@ export class CheckoutService {
       contractId: dto.contractId || null,
       referenceCode,
       amount: dto.amount,
-      status: 'pending',
+      status: "pending",
     });
 
     await this.wireTransferRepo.save(wireTransfer);
@@ -492,9 +574,9 @@ export class CheckoutService {
       clientId: dto.clientId,
       projectId: dto.projectId,
       contractId: dto.contractId,
-      paymentMethod: 'wire',
+      paymentMethod: "wire",
       totalAmount: dto.amount,
-      status: 'pending',
+      status: "pending",
     });
     await this.sessionRepo.save(session);
 
@@ -503,12 +585,12 @@ export class CheckoutService {
       referenceCode,
       amount: dto.amount,
       wireInstructions: {
-        bankName: process.env.WIRE_BANK_NAME || 'Marketeq Inc. Bank',
-        routingNumber: process.env.WIRE_ROUTING_NUMBER || 'XXXXXXXXX',
-        accountNumber: process.env.WIRE_ACCOUNT_NUMBER || 'XXXXXXXXX',
-        swiftCode: process.env.WIRE_SWIFT_CODE || 'XXXXXXXXX',
+        bankName: process.env.WIRE_BANK_NAME || "Marketeq Inc. Bank",
+        routingNumber: process.env.WIRE_ROUTING_NUMBER || "XXXXXXXXX",
+        accountNumber: process.env.WIRE_ACCOUNT_NUMBER || "XXXXXXXXX",
+        swiftCode: process.env.WIRE_SWIFT_CODE || "XXXXXXXXX",
         reference: referenceCode,
-        beneficiary: 'Marketeq Inc.',
+        beneficiary: "Marketeq Inc.",
       },
     };
   }
@@ -519,20 +601,24 @@ export class CheckoutService {
     wireTransferId: string;
     confirmedBy: string;
   }) {
-    this.logger.log(`Confirming wire transfer ${dto.wireTransferId} by ${dto.confirmedBy}`);
+    this.logger.log(
+      `Confirming wire transfer ${dto.wireTransferId} by ${dto.confirmedBy}`,
+    );
 
     const wireTransfer = await this.wireTransferRepo.findOne({
       where: { id: dto.wireTransferId },
     });
     if (!wireTransfer) {
-      throw new NotFoundException('Wire transfer not found');
+      throw new NotFoundException("Wire transfer not found");
     }
-    if (wireTransfer.status !== 'pending') {
-      throw new BadRequestException(`Wire transfer is already ${wireTransfer.status}`);
+    if (wireTransfer.status !== "pending") {
+      throw new BadRequestException(
+        `Wire transfer is already ${wireTransfer.status}`,
+      );
     }
 
     await this.wireTransferRepo.update(wireTransfer.id, {
-      status: 'verified',
+      status: "verified",
       wireConfirmedBy: dto.confirmedBy,
       wireConfirmedAt: new Date(),
     });
@@ -542,15 +628,18 @@ export class CheckoutService {
       where: {
         clientId: wireTransfer.clientId,
         projectId: wireTransfer.projectId,
-        paymentMethod: 'wire',
-        status: 'pending' as any,
+        paymentMethod: "wire",
+        status: "pending" as any,
       },
     });
     if (session) {
-      await this.sessionRepo.update(session.id, { status: 'success', paymentVerified: true });
+      await this.sessionRepo.update(session.id, {
+        status: "success",
+        paymentVerified: true,
+      });
     }
 
-    this.emitEvent('checkout.wire_transfer.verified', {
+    this.emitEvent("checkout.wire_transfer.verified", {
       wireTransferId: wireTransfer.id,
       clientId: wireTransfer.clientId,
       projectId: wireTransfer.projectId,
@@ -558,7 +647,7 @@ export class CheckoutService {
       referenceCode: wireTransfer.referenceCode,
     });
 
-    return { success: true, status: 'verified' };
+    return { success: true, status: "verified" };
   }
 
   // ─── 10. Top Up Wallet ──────────────────────────────────────────────
@@ -568,24 +657,26 @@ export class CheckoutService {
     customerId: string;
     amount: number;
   }) {
-    this.logger.log(`Wallet top-up for user ${dto.userId}, amount: ${dto.amount}`);
+    this.logger.log(
+      `Wallet top-up for user ${dto.userId}, amount: ${dto.amount}`,
+    );
 
     const intent = await this.stripeService.createPaymentIntent({
       amount: dto.amount,
       customerId: dto.customerId,
-      paymentMethodTypes: ['card'],
+      paymentMethodTypes: ["card"],
       metadata: {
         userId: dto.userId,
-        type: 'wallet_topup',
+        type: "wallet_topup",
       },
     });
 
     const txn = this.walletTransactionRepo.create({
       userId: dto.userId,
-      type: 'topup',
+      type: "topup",
       amount: dto.amount,
-      status: 'pending',
-      reason: 'Wallet top-up via card',
+      status: "pending",
+      reason: "Wallet top-up via card",
     });
     await this.walletTransactionRepo.save(txn);
 
@@ -609,9 +700,9 @@ export class CheckoutService {
     cutoff.setHours(cutoff.getHours() - 72);
 
     const failures = await this.paymentFailureRepo
-      .createQueryBuilder('pf')
-      .where('pf.userId = :userId', { userId })
-      .andWhere('pf.lastFailureAt >= :cutoff', { cutoff })
+      .createQueryBuilder("pf")
+      .where("pf.userId = :userId", { userId })
+      .andWhere("pf.lastFailureAt >= :cutoff", { cutoff })
       .getMany();
 
     const totalFailures = failures.reduce((sum, f) => sum + f.failureCount, 0);
@@ -621,7 +712,9 @@ export class CheckoutService {
         (latest, f) => (f.lastFailureAt > latest ? f.lastFailureAt : latest),
         new Date(0),
       );
-      const cooldownEnds = new Date(latestFailure.getTime() + 72 * 60 * 60 * 1000);
+      const cooldownEnds = new Date(
+        latestFailure.getTime() + 72 * 60 * 60 * 1000,
+      );
       return {
         onCooldown: true,
         failureCount: totalFailures,
@@ -636,7 +729,9 @@ export class CheckoutService {
   // ─── 13. Record Payment Failure ─────────────────────────────────────
 
   async recordFailure(userId: string, paymentMethodId: string) {
-    this.logger.warn(`Recording payment failure for user ${userId}, method ${paymentMethodId}`);
+    this.logger.warn(
+      `Recording payment failure for user ${userId}, method ${paymentMethodId}`,
+    );
 
     const existing = await this.paymentFailureRepo.findOne({
       where: { userId, paymentMethodId },
@@ -699,8 +794,10 @@ export class CheckoutService {
         paidAt: dto.paidAt ?? existing.paidAt,
         expiresAt: dto.expiresAt ?? existing.expiresAt,
         paymentStatus: dto.paymentStatus ?? existing.paymentStatus,
-        verificationStatus: dto.verificationStatus ?? existing.verificationStatus,
-        wireTransferConfirmed: dto.wireTransferConfirmed ?? existing.wireTransferConfirmed,
+        verificationStatus:
+          dto.verificationStatus ?? existing.verificationStatus,
+        wireTransferConfirmed:
+          dto.wireTransferConfirmed ?? existing.wireTransferConfirmed,
       });
       return { updated: true };
     }
@@ -713,14 +810,14 @@ export class CheckoutService {
       projectId: dto.projectId,
       contractId: dto.contractId || null,
       amount: dto.amount,
-      currency: dto.currency || 'USD',
+      currency: dto.currency || "USD",
       paymentMethod: dto.paymentMethod,
       billingType: dto.billingType,
       subscriptionId: dto.subscriptionId || null,
       paidAt: dto.paidAt || null,
       expiresAt: dto.expiresAt || null,
-      paymentStatus: dto.paymentStatus || 'pending',
-      verificationStatus: dto.verificationStatus || 'unverified',
+      paymentStatus: dto.paymentStatus || "pending",
+      verificationStatus: dto.verificationStatus || "unverified",
       wireTransferConfirmed: dto.wireTransferConfirmed || false,
     });
 
@@ -735,9 +832,9 @@ export class CheckoutService {
     const obj = event.data.object;
 
     switch (event.type) {
-      case 'checkout.session.completed': {
+      case "checkout.session.completed": {
         await this.handlePaymentSuccess(obj.id);
-        this.emitEvent('checkout.payment.completed', {
+        this.emitEvent("checkout.payment.completed", {
           sessionId: obj.id,
           clientId: obj.metadata?.clientId,
           projectId: obj.metadata?.projectId,
@@ -746,9 +843,9 @@ export class CheckoutService {
         break;
       }
 
-      case 'checkout.session.async_payment_succeeded': {
+      case "checkout.session.async_payment_succeeded": {
         await this.handlePaymentSuccess(obj.id);
-        this.emitEvent('checkout.async_payment.succeeded', {
+        this.emitEvent("checkout.async_payment.succeeded", {
           sessionId: obj.id,
           clientId: obj.metadata?.clientId,
           projectId: obj.metadata?.projectId,
@@ -756,21 +853,24 @@ export class CheckoutService {
         break;
       }
 
-      case 'checkout.session.async_payment_failed': {
+      case "checkout.session.async_payment_failed": {
         await this.handlePaymentFailed(obj.id);
         if (obj.metadata?.clientId) {
-          await this.recordFailure(obj.metadata.clientId, obj.payment_intent || 'unknown');
+          await this.recordFailure(
+            obj.metadata.clientId,
+            obj.payment_intent || "unknown",
+          );
         }
-        this.emitEvent('checkout.async_payment.failed', {
+        this.emitEvent("checkout.async_payment.failed", {
           sessionId: obj.id,
           clientId: obj.metadata?.clientId,
         });
         break;
       }
 
-      case 'payment_intent.succeeded': {
+      case "payment_intent.succeeded": {
         // Handle wallet top-up completion
-        if (obj.metadata?.type === 'wallet_topup' && obj.metadata?.userId) {
+        if (obj.metadata?.type === "wallet_topup" && obj.metadata?.userId) {
           const wallet = await this.walletRepo.findOne({
             where: { userId: obj.metadata.userId },
           });
@@ -788,11 +888,11 @@ export class CheckoutService {
           }
           // Mark wallet transaction as completed
           await this.walletTransactionRepo.update(
-            { userId: obj.metadata.userId, type: 'topup', status: 'pending' },
-            { status: 'completed' },
+            { userId: obj.metadata.userId, type: "topup", status: "pending" },
+            { status: "completed" },
           );
         }
-        this.emitEvent('checkout.payment_intent.succeeded', {
+        this.emitEvent("checkout.payment_intent.succeeded", {
           paymentIntentId: obj.id,
           amount: obj.amount / 100,
           metadata: obj.metadata,
@@ -800,19 +900,22 @@ export class CheckoutService {
         break;
       }
 
-      case 'payment_intent.payment_failed': {
+      case "payment_intent.payment_failed": {
         const clientId = obj.metadata?.clientId;
         if (clientId) {
-          await this.recordFailure(clientId, obj.payment_method || 'unknown');
+          await this.recordFailure(clientId, obj.payment_method || "unknown");
         }
         // Update session if linked
         const failedSession = await this.sessionRepo.findOne({
           where: { stripePaymentIntentId: obj.id },
         });
         if (failedSession) {
-          await this.sessionRepo.update(failedSession.id, { status: 'failed', paymentVerified: false });
+          await this.sessionRepo.update(failedSession.id, {
+            status: "failed",
+            paymentVerified: false,
+          });
         }
-        this.emitEvent('checkout.payment_intent.failed', {
+        this.emitEvent("checkout.payment_intent.failed", {
           paymentIntentId: obj.id,
           clientId,
           error: obj.last_payment_error?.message,
@@ -820,7 +923,7 @@ export class CheckoutService {
         break;
       }
 
-      case 'invoice.payment_succeeded': {
+      case "invoice.payment_succeeded": {
         // Handle installment payment success
         const subscriptionId = obj.subscription;
         if (subscriptionId) {
@@ -832,7 +935,7 @@ export class CheckoutService {
             if (completed >= installment.totalPayments) {
               await this.installmentRepo.update(installment.id, {
                 completedPayments: completed,
-                status: 'canceled' as const,
+                status: "canceled" as const,
               });
               await this.stripeService.cancelSubscription(subscriptionId);
             } else {
@@ -842,7 +945,7 @@ export class CheckoutService {
             }
           }
         }
-        this.emitEvent('checkout.invoice.payment_succeeded', {
+        this.emitEvent("checkout.invoice.payment_succeeded", {
           invoiceId: obj.id,
           subscriptionId,
           amountPaid: obj.amount_paid / 100,
@@ -850,7 +953,7 @@ export class CheckoutService {
         break;
       }
 
-      case 'invoice.payment_failed': {
+      case "invoice.payment_failed": {
         const subId = obj.subscription;
         if (subId) {
           const installment = await this.installmentRepo.findOne({
@@ -860,27 +963,29 @@ export class CheckoutService {
             await this.recordFailure(installment.clientId, subId);
           }
         }
-        this.emitEvent('checkout.invoice.payment_failed', {
+        this.emitEvent("checkout.invoice.payment_failed", {
           invoiceId: obj.id,
           subscriptionId: subId,
         });
         break;
       }
 
-      case 'customer.subscription.deleted': {
+      case "customer.subscription.deleted": {
         const installment = await this.installmentRepo.findOne({
           where: { stripeSubscriptionId: obj.id },
         });
         if (installment) {
-          await this.installmentRepo.update(installment.id, { status: 'canceled' });
+          await this.installmentRepo.update(installment.id, {
+            status: "canceled",
+          });
         }
-        this.emitEvent('checkout.subscription.deleted', {
+        this.emitEvent("checkout.subscription.deleted", {
           subscriptionId: obj.id,
         });
         break;
       }
 
-      case 'customer.bank_account.verified': {
+      case "customer.bank_account.verified": {
         const bankAccount = await this.bankAccountRepo.findOne({
           where: { stripePaymentMethodId: obj.id },
         });
@@ -890,7 +995,7 @@ export class CheckoutService {
             verifiedAt: new Date(),
           });
         }
-        this.emitEvent('checkout.bank_account.verified', {
+        this.emitEvent("checkout.bank_account.verified", {
           paymentMethodId: obj.id,
         });
         break;
@@ -908,7 +1013,9 @@ export class CheckoutService {
       this.rabbitClient.emit(pattern, data);
       this.logger.log(`Emitted RabbitMQ event: ${pattern}`);
     } else {
-      this.logger.warn(`RabbitMQ client not available, skipping event: ${pattern}`);
+      this.logger.warn(
+        `RabbitMQ client not available, skipping event: ${pattern}`,
+      );
     }
   }
 }
