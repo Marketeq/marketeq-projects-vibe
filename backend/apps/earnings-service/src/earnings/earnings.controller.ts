@@ -8,11 +8,24 @@ import { EarningsQueryDto } from './dto/earnings-query.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../guards/current-user.decorator';
 import { GeoService } from '../geo/geo.service';
+import { AblyService } from '../publishers/ably.service';
 
 @Controller('earnings')
 @UseGuards(JwtAuthGuard)
 export class EarningsController {
-  constructor(private readonly svc: EarningsService, private readonly geo: GeoService) {}
+  constructor(
+    private readonly svc: EarningsService,
+    private readonly geo: GeoService,
+    private readonly ably: AblyService,
+  ) {}
+
+  // US-91–94: Ably token scoped to this contractor's own
+  // private:{contractorId}:earnings channel, subscribe-only.
+  @Get('ably-token')
+  @HttpCode(200)
+  async getAblyToken(@CurrentUser() user: any) {
+    return this.ably.createTokenRequest(user.id);
+  }
 
   @Get('summary')
   @HttpCode(200)
