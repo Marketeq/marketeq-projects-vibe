@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { decryptAES, encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
@@ -17,6 +18,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  ToastAction,
 } from "@/components/ui"
 import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 
@@ -107,6 +109,7 @@ export function ForwardMessageDialog({
   privateKey,
 }: ForwardMessageDialogProps) {
   const { toast } = useToast()
+  const router = useRouter()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState("")
@@ -365,10 +368,20 @@ export function ForwardMessageDialog({
         })
       }
 
+      const firstThreadId = selectedContacts[0]?.threadId
       onOpenChange(false)
       toast({
         title: "Message Forwarded",
         variant: "success",
+        action: firstThreadId ? (
+          <ToastAction
+            altText="View Message"
+            className="h-auto p-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none text-sm font-semibold"
+            onClick={() => router.push(`/inbox?threadId=${firstThreadId}`)}
+          >
+            View Message
+          </ToastAction>
+        ) : undefined,
       })
     } catch (err) {
       console.error("[ForwardDialog] Send failed", err)
