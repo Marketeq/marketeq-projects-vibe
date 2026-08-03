@@ -12,6 +12,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
+import { UserAPI } from "@/service/http/user"
 import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import {
@@ -204,6 +205,16 @@ const customScheduleFrequencies = [
   { value: "month", label: "Per Month" },
 ] as const
 
+// Local copy of the shimmer pattern from talent-profile/page.tsx:531 — not
+// extracted to components/ui, that's a separate PR.
+const Shimmer = ({ className }: { className?: string }) => (
+  <div
+    className={cn("relative overflow-hidden rounded bg-gray-100", className)}
+  >
+    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+  </div>
+)
+
 const getInitialOfferState = (mode: "create" | "edit") => ({
   schedule: mode === "edit" ? "full-time" : "",
   search: "",
@@ -259,19 +270,61 @@ export function OfferDialog({
   const [customHours, setCustomHours] = React.useState("")
   // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
   const [customFrequency, setCustomFrequency] = React.useState("")
+  const [isFetchingTalent, setIsFetchingTalent] = React.useState(false)
+  const [fetchedProfile, setFetchedProfile] = React.useState<UserProfile | null>(
+    null
+  )
 
-  const displayName =
-    profile?.username ||
-    `${profile?.firstName || ""}${profile?.lastName || ""}`.trim() ||
-    ""
+  const getDisplayName = (p?: Partial<UserProfile> | null) =>
+    p?.username || `${p?.firstName || ""}${p?.lastName || ""}`.trim() || ""
+
+  const seedDisplayName = getDisplayName(profile)
+  const fetchedDisplayName = getDisplayName(fetchedProfile)
+  // `||` not `??`: a resolved-but-nameless fetch yields "", which should
+  // still defer to the seed name rather than display blank.
+  const displayName = fetchedDisplayName || seedDisplayName
+
   // Independent of displayName so a missing name can't also break the
-  // checkout URL. `profile?.id` is a stronger guarantee than a fabricated
-  // name ever was, though `profile` is typed Partial<UserProfile> | null
-  // here, so `id` is still technically optional at the type level.
-  const checkoutSlug = encodeURIComponent(profile?.username || profile?.id || "")
-  const jobTitle = getDefaultJobTitle(profile, { fallback: null })
-  const experienceLabel = getExperienceLabel(profile, { fallback: null })
-  const locationLabel = profile?.location || null
+  // checkout URL. Fetched wins over seed, same precedence as every other
+  // field below. Neither is a hard guarantee — `profile` is typed
+  // Partial<UserProfile> | null, and a fetch can fail — so `id` is still
+  // technically optional at the type level either way.
+  const checkoutSlug = encodeURIComponent(
+    fetchedProfile?.username ||
+      profile?.username ||
+      fetchedProfile?.id ||
+      profile?.id ||
+      ""
+  )
+
+  const seedJobTitle = getDefaultJobTitle(profile, { fallback: null })
+  const fetchedJobTitle = fetchedProfile
+    ? getDefaultJobTitle(fetchedProfile, { fallback: null })
+    : null
+  // `??` not `||`: an empty job title is still "no title" either way, so
+  // only a genuine null/undefined (fetch pending or found nothing) should
+  // fall through to the seed — never let a legitimately-empty result get
+  // silently overridden.
+  const jobTitle = fetchedJobTitle ?? seedJobTitle
+
+  const seedExperienceLabel = getExperienceLabel(profile, { fallback: null })
+  const fetchedExperienceLabel = fetchedProfile
+    ? getExperienceLabel(fetchedProfile, { fallback: null })
+    : null
+  const experienceLabel = fetchedExperienceLabel ?? seedExperienceLabel
+
+  const seedLocationLabel = profile?.location || null
+  // `||` not `??`: confirmation/page.tsx:1365 seeds location with a
+  // deliberate "United States" placeholder rather than null. If the fetch
+  // resolves with an empty string (not just null/undefined), `??` would
+  // let that empty value win and blank a row that call site chose to keep
+  // populated — `||` correctly defers to the seed in that case too.
+  const locationLabel = fetchedProfile?.location || seedLocationLabel
+
+  const seedAvatarUrl = profile?.avatarUrl || undefined
+  // Same reasoning as locationLabel — an empty string from the fetch must
+  // not override a seed that already has something to show.
+  const avatarUrl = fetchedProfile?.avatarUrl || seedAvatarUrl
   const filteredContracts = existingContracts.filter((contract) =>
     contract.title.toLowerCase().includes(search.toLowerCase())
   )
@@ -360,6 +413,8 @@ export function OfferDialog({
     setCustomScheduleOpen(false)
     setCustomHours("")
     setCustomFrequency("")
+    setIsFetchingTalent(false)
+    setFetchedProfile(null)
   }, [initialState])
 
   const tryConfirmCustomSchedule = (hours: string, frequency: string) => {
@@ -378,6 +433,29 @@ export function OfferDialog({
   React.useEffect(() => {
     if (open) resetFlow()
   }, [open, resetFlow])
+
+  React.useEffect(() => {
+    if (!open || !profile?.username) return
+
+    let isActive = true
+    setIsFetchingTalent(true)
+
+    UserAPI.getByUsername(profile.username)
+      .then((res: { data?: UserProfile }) => {
+        if (isActive && res?.data) setFetchedProfile(res.data)
+      })
+      .catch(() => {
+        // T1-4 owns the visible error/retry UI. For now, fail silently
+        // and fall back to the seed rather than leave the skeleton stuck.
+      })
+      .finally(() => {
+        if (isActive) setIsFetchingTalent(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [open, profile?.username])
 
   return (
     <Dialog
@@ -467,7 +545,7 @@ export function OfferDialog({
                         )}
                       >
                         <AvatarImage
-                          src={profile?.avatarUrl || undefined}
+                          src={avatarUrl}
                           alt={displayName}
                         />
                         <AvatarFallback
@@ -506,50 +584,62 @@ export function OfferDialog({
                   ) : (
                     <>
                       {!isEditMode && currentScreen === "select-schedule" ? (
-                        <div className="flex items-center gap-4">
-                          <Avatar
-                            className={cn(
-                              "size-[90px] shrink-0",
-                              staticAvatarClassName
-                            )}
-                          >
-                            <AvatarImage
-                              src={profile?.avatarUrl || undefined}
-                              alt={displayName}
-                            />
-                            <AvatarFallback
-                              className={staticAvatarFallbackClassName}
-                            >
-                              {displayName.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-
-                          <div className="min-w-0">
-                            <p className="text-[14px] font-light leading-normal text-dark-blue-400">
-                              Hire{" "}
-                              <span className="font-semibold">
-                                {displayName}
-                              </span>{" "}
-                              for a new contract
-                            </p>
-                            {jobTitle && (
-                              <p className="text-[12px] font-medium leading-normal text-dark-blue-400">
-                                {jobTitle}
-                              </p>
-                            )}
-                            {experienceLabel && (
-                              <p className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
-                                {experienceLabel}
-                              </p>
-                            )}
-                            {locationLabel && (
-                              <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-light leading-normal text-gray-500">
-                                <MapPin className="size-3.5 text-dark-blue-400" />
-                                <span>{locationLabel}</span>
-                              </div>
-                            )}
+                        isFetchingTalent && !fetchedProfile ? (
+                          <div className="flex items-center gap-4">
+                            <Shimmer className="size-[90px] shrink-0 rounded-full" />
+                            <div className="min-w-0 flex-auto space-y-2">
+                              <Shimmer className="h-4 w-40" />
+                              <Shimmer className="h-3 w-32" />
+                              <Shimmer className="h-3 w-36" />
+                              <Shimmer className="h-3 w-28" />
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-4">
+                            <Avatar
+                              className={cn(
+                                "size-[90px] shrink-0",
+                                staticAvatarClassName
+                              )}
+                            >
+                              <AvatarImage
+                                src={avatarUrl}
+                                alt={displayName}
+                              />
+                              <AvatarFallback
+                                className={staticAvatarFallbackClassName}
+                              >
+                                {displayName.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+
+                            <div className="min-w-0">
+                              <p className="text-[14px] font-light leading-normal text-dark-blue-400">
+                                Hire{" "}
+                                <span className="font-semibold">
+                                  {displayName}
+                                </span>{" "}
+                                for a new contract
+                              </p>
+                              {jobTitle && (
+                                <p className="text-[12px] font-medium leading-normal text-dark-blue-400">
+                                  {jobTitle}
+                                </p>
+                              )}
+                              {experienceLabel && (
+                                <p className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
+                                  {experienceLabel}
+                                </p>
+                              )}
+                              {locationLabel && (
+                                <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-light leading-normal text-gray-500">
+                                  <MapPin className="size-3.5 text-dark-blue-400" />
+                                  <span>{locationLabel}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
                       ) : null}
 
                       {isStepTwo ? (
