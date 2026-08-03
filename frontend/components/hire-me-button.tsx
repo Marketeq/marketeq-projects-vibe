@@ -36,17 +36,39 @@ import {
   Textarea,
 } from "@/components/ui"
 
-export const getDefaultJobTitle = (profile?: Partial<UserProfile> | null) => {
+export function getDefaultJobTitle(profile?: Partial<UserProfile> | null): string
+export function getDefaultJobTitle(
+  profile: Partial<UserProfile> | null | undefined,
+  options: { fallback: string | null }
+): string | null
+export function getDefaultJobTitle(
+  profile?: Partial<UserProfile> | null,
+  options?: { fallback?: string | null }
+): string | null {
   const jobTitles = (profile as any)?.jobTitles
+  // `options?.fallback ?? "Full Stack Developer"` would defeat an explicit
+  // `{ fallback: null }` — `??` falls through on `null` too, so it can't
+  // distinguish "no options passed" from "caller wants null". Check
+  // `undefined` specifically instead.
+  const fallback =
+    options?.fallback !== undefined ? options.fallback : "Full Stack Developer"
   return (
     jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
     profile?.role ||
-    "Full Stack Developer"
+    fallback
   )
 }
 
-export const getExperienceLabel = (profile?: Partial<UserProfile> | null) => {
+export function getExperienceLabel(profile?: Partial<UserProfile> | null): string
+export function getExperienceLabel(
+  profile: Partial<UserProfile> | null | undefined,
+  options: { fallback: string | null }
+): string | null
+export function getExperienceLabel(
+  profile?: Partial<UserProfile> | null,
+  options?: { fallback?: string | null }
+): string | null {
   const dates: Date[] = []
   const endDates: Date[] = []
 
@@ -56,7 +78,12 @@ export const getExperienceLabel = (profile?: Partial<UserProfile> | null) => {
     else endDates.push(new Date())
   })
 
-  if (dates.length === 0) return "10 years of experience"
+  if (dates.length === 0) {
+    // See getDefaultJobTitle above for why this isn't `options?.fallback ?? "..."`.
+    return options?.fallback !== undefined
+      ? options.fallback
+      : "10 years of experience"
+  }
 
   const earliest = dates.reduce((a, b) => (a < b ? a : b))
   const latest = endDates.reduce((a, b) => (a > b ? a : b))
@@ -221,11 +248,15 @@ export function OfferDialog({
   const displayName =
     profile?.username ||
     `${profile?.firstName || ""}${profile?.lastName || ""}`.trim() ||
-    "CodZen21"
-  const checkoutSlug = encodeURIComponent(profile?.username || displayName)
-  const jobTitle = getDefaultJobTitle(profile)
-  const experienceLabel = getExperienceLabel(profile)
-  const locationLabel = profile?.location || "Jersey City, NJ, United States"
+    ""
+  // Independent of displayName so a missing name can't also break the
+  // checkout URL. `profile?.id` is a stronger guarantee than a fabricated
+  // name ever was, though `profile` is typed Partial<UserProfile> | null
+  // here, so `id` is still technically optional at the type level.
+  const checkoutSlug = encodeURIComponent(profile?.username || profile?.id || "")
+  const jobTitle = getDefaultJobTitle(profile, { fallback: null })
+  const experienceLabel = getExperienceLabel(profile, { fallback: null })
+  const locationLabel = profile?.location || null
   const filteredContracts = existingContracts.filter((contract) =>
     contract.title.toLowerCase().includes(search.toLowerCase())
   )
@@ -400,7 +431,7 @@ export function OfferDialog({
                         )}
                       >
                         <AvatarImage
-                          src={profile?.avatarUrl || "/woman.jpg"}
+                          src={profile?.avatarUrl || undefined}
                           alt={displayName}
                         />
                         <AvatarFallback
@@ -447,7 +478,7 @@ export function OfferDialog({
                             )}
                           >
                             <AvatarImage
-                              src={profile?.avatarUrl || "/woman.jpg"}
+                              src={profile?.avatarUrl || undefined}
                               alt={displayName}
                             />
                             <AvatarFallback
@@ -465,16 +496,22 @@ export function OfferDialog({
                               </span>{" "}
                               for a new contract
                             </p>
-                            <p className="text-[12px] font-medium leading-normal text-dark-blue-400">
-                              {jobTitle}
-                            </p>
-                            <p className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
-                              {experienceLabel}
-                            </p>
-                            <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-light leading-normal text-gray-500">
-                              <MapPin className="size-3.5 text-dark-blue-400" />
-                              <span>{locationLabel}</span>
-                            </div>
+                            {jobTitle && (
+                              <p className="text-[12px] font-medium leading-normal text-dark-blue-400">
+                                {jobTitle}
+                              </p>
+                            )}
+                            {experienceLabel && (
+                              <p className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
+                                {experienceLabel}
+                              </p>
+                            )}
+                            {locationLabel && (
+                              <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-light leading-normal text-gray-500">
+                                <MapPin className="size-3.5 text-dark-blue-400" />
+                                <span>{locationLabel}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ) : null}
