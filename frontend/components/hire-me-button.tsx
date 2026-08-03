@@ -33,6 +33,11 @@ import {
   SearchField,
   SearchFieldButton,
   SearchFieldInput,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Textarea,
 } from "@/components/ui"
 
@@ -193,6 +198,12 @@ const durations = [
   "Ongoing",
 ]
 
+const customScheduleFrequencies = [
+  { value: "day", label: "Per Day" },
+  { value: "week", label: "Per Week" },
+  { value: "month", label: "Per Month" },
+] as const
+
 const getInitialOfferState = (mode: "create" | "edit") => ({
   schedule: mode === "edit" ? "full-time" : "",
   search: "",
@@ -244,6 +255,10 @@ export function OfferDialog({
   const [message, setMessage] = React.useState(initialState.message)
   const [offerSent, setOfferSent] = React.useState(initialState.offerSent)
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
+  const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
+  const [customHours, setCustomHours] = React.useState("")
+  // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
+  const [customFrequency, setCustomFrequency] = React.useState("")
 
   const displayName =
     profile?.username ||
@@ -270,7 +285,12 @@ export function OfferDialog({
   const isStepTwo = Boolean(schedule) && !selectedContract && !creatingContract
   const isStepThree = Boolean(schedule) && Boolean(selectedContract)
   const isStepFour = Boolean(schedule) && creatingContract
-  const scheduleLabel = schedule === "part-time" ? "part-time" : "full-time"
+  const scheduleLabel =
+    schedule === "part-time"
+      ? "part-time"
+      : schedule === "custom"
+        ? "custom" // Figma has no Offer Sent copy for a custom schedule — guessing here.
+        : "full-time"
   const isEditMode = mode === "edit"
   const currentScreen = offerSent
     ? "offer-sent"
@@ -337,7 +357,23 @@ export function OfferDialog({
     setMessage(initialState.message)
     setOfferSent(initialState.offerSent)
     setShowValidationErrors(false)
+    setCustomScheduleOpen(false)
+    setCustomHours("")
+    setCustomFrequency("")
   }, [initialState])
+
+  const tryConfirmCustomSchedule = (hours: string, frequency: string) => {
+    const parsedHours = Number(hours)
+    if (
+      hours.trim() !== "" &&
+      Number.isFinite(parsedHours) &&
+      parsedHours > 0 &&
+      frequency
+    ) {
+      setSchedule("custom")
+      setCustomScheduleOpen(false)
+    }
+  }
 
   React.useEffect(() => {
     if (open) resetFlow()
@@ -811,8 +847,11 @@ export function OfferDialog({
                           </h2>
 
                           <RadioGroup
-                            value={schedule}
-                            onValueChange={setSchedule}
+                            value={customScheduleOpen ? "" : schedule}
+                            onValueChange={(value) => {
+                              setSchedule(value)
+                              setCustomScheduleOpen(false)
+                            }}
                             className="mt-4 grid grid-cols-2 gap-3"
                           >
                             <RadioGroupItemSelector
@@ -846,12 +885,67 @@ export function OfferDialog({
                             </RadioGroupItemSelector>
                           </RadioGroup>
 
+                          {customScheduleOpen ? (
+                            <div className="mt-3 flex gap-3">
+                              <Input
+                                autoFocus
+                                className="flex-1"
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="Enter total hours"
+                                value={customHours}
+                                onChange={(event) =>
+                                  setCustomHours(event.target.value)
+                                }
+                                onBlur={() =>
+                                  tryConfirmCustomSchedule(
+                                    customHours,
+                                    customFrequency
+                                  )
+                                }
+                              />
+                              <Select
+                                value={customFrequency}
+                                onValueChange={(value) => {
+                                  setCustomFrequency(value)
+                                  tryConfirmCustomSchedule(customHours, value)
+                                }}
+                              >
+                                <SelectTrigger className="w-[140px] shrink-0 text-left">
+                                  <SelectValue placeholder="Select frequency" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {customScheduleFrequencies.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : null}
+
                           <Button
                             variant="link"
                             visual="gray"
                             className="mt-4 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                            onMouseDown={(event) => {
+                              if (customScheduleOpen) event.preventDefault()
+                            }}
+                            onClick={() => {
+                              if (customScheduleOpen) {
+                                setCustomScheduleOpen(false)
+                                setCustomHours("")
+                                setCustomFrequency("")
+                              } else {
+                                setCustomScheduleOpen(true)
+                              }
+                            }}
                           >
-                            Custom Work Schedule
+                            {customScheduleOpen ? "Cancel" : "Custom Work Schedule"}
                           </Button>
                         </div>
                       ) : null}
