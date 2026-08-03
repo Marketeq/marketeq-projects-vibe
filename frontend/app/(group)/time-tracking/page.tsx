@@ -3590,8 +3590,6 @@ export default function TimeTrackingPage() {
         open={showManualTimeDialog}
         onOpenChange={setShowManualTimeDialog}
         onSaved={() => { fetchScreenshots(); fetchManualTime() }}
-        // US-76: only active contracts can have time logged against them.
-        contracts={realContracts.filter(c => c.status === "active").map(c => ({ id: c.id, title: c.title }))}
       />
 
       <TransferTimeDialog

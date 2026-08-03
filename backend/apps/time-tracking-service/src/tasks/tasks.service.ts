@@ -14,16 +14,18 @@ export class TasksService {
 
   async getTasksByContract(contractId: string): Promise<ContractTask[]> {
     return this.taskRepo.find({
-      where: { contractId, archived: 0 },
+      where: { contractId, archived: false },
       order: { name: 'ASC' },
     });
   }
 
   async createTask(dto: CreateContractTaskDto): Promise<ContractTask> {
+    // id is a real uuid column with a gen_random_uuid() default — let
+    // Postgres/TypeORM generate it rather than building a fake text id.
     const task = this.taskRepo.create({
-      id: `task-${dto.contractId}-${Date.now()}`,
       contractId: dto.contractId,
       name: dto.name,
+      createdBy: dto.createdBy,
     });
     return this.taskRepo.save(task);
   }
@@ -42,7 +44,7 @@ export class TasksService {
   async deleteTask(id: string): Promise<void> {
     const task = await this.taskRepo.findOne({ where: { id } });
     if (!task) throw new NotFoundException('Task not found');
-    task.archived = 1;
+    task.archived = true;
     await this.taskRepo.save(task);
   }
 }
