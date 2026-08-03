@@ -741,7 +741,7 @@ export default function TalentProfilePage() {
 }
 
 function Default() {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
   const handleShareProfile = () => {
@@ -1076,6 +1076,7 @@ function Default() {
   const isOwnProfile = Boolean(
     user?.id && profile?.id && user.id === profile.id
   )
+  const canHire = !isAuthLoading && Boolean(user?.id)
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
@@ -1735,7 +1736,7 @@ function Default() {
                           </>
                         ) : (
                           <>
-                            <HireMeButton profile={profile} />
+                            {canHire && <HireMeButton profile={profile} />}
 
                             <SaveTalentButton userId={profile?.id} />
                           </>
@@ -2042,7 +2043,7 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        <HireMeButton profile={profile} />
+                        {canHire && <HireMeButton profile={profile} />}
 
                         <SaveTalentButton userId={profile?.id} />
                       </>
