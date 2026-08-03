@@ -11,7 +11,13 @@ import { TasksService } from './tasks.service';
 import { CreateContractTaskDto } from './dto/create-task.dto';
 import { UpdateContractTaskDto } from './dto/update-task.dto';
 
-@Controller('api/tasks')
+// main.ts sets a global 'api' prefix on this service — every sibling
+// controller (manual-time, sessions, screenshots, ...) relies on that alone
+// and declares its own bare path. This one redundantly baked 'api/' into
+// its own path too, so its real mounted route was /api/api/tasks/... —
+// inconsistent with the rest of the service and the actual cause of every
+// GET /tasks/contract/:id call 404ing/400ing from the frontend.
+@Controller('tasks')
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
