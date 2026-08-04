@@ -548,6 +548,12 @@ export function OfferDialog({
       <DialogContent
         accessibilityTitle="Hire Me"
         className={`flex ${dialogContentClass} max-w-[520px] flex-col overflow-hidden rounded-[12px] p-0 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.2)]`}
+        // AC-3.2: only the X button or a CTA may dismiss. Deliberately
+        // onPointerDownOutside, not onInteractOutside — the AC is about
+        // clicks, not focus moving outside, and blocking focus-outside
+        // too risks fighting the frequency Select's own portaled focus
+        // handling. Escape is left untouched; see T1-7 checklist notes.
+        onPointerDownOutside={(event) => event.preventDefault()}
       >
         <div
           className={`relative flex ${dialogBodyClass} flex-1 flex-col overflow-hidden`}
