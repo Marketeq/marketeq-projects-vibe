@@ -13,6 +13,7 @@ import {
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
 import { UserAPI } from "@/service/http/user"
+import { logHireFlowInitiated } from "@/service/http/contracts"
 import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import {
@@ -296,6 +297,11 @@ export function OfferDialog({
   // the later screens' CTA press, this field's trigger is its own blur.
   const [customHoursTouched, setCustomHoursTouched] = React.useState(false)
   const [isFetchingTalent, setIsFetchingTalent] = React.useState(false)
+  // FR-11: guards the audit-log effect below against firing twice for the
+  // same open — reset only when the effect itself observes open === false,
+  // not via a cleanup return, so it survives React StrictMode's dev-only
+  // mount/cleanup/remount without double-posting.
+  const hireInitiatedFiredRef = React.useRef(false)
   const [fetchedProfile, setFetchedProfile] = React.useState<UserProfile | null>(
     null
   )
@@ -566,6 +572,29 @@ export function OfferDialog({
       isActive = false
     }
   }, [open, profile?.username, retryToken])
+
+  // FR-11: audit entry when the Hire Me flow is initiated. Create mode only
+  // — reopening an existing offer (checkout confirmation's Edit Offer) isn't
+  // initiating a hire flow, and that seed has no `id` at all (only
+  // username/firstName/avatarUrl/location/experience), so a resolved
+  // talentId is required too: a missing id is a no-op, not a 400 swallowed
+  // forever by the catch below. Deliberately separate from the self-fetch
+  // effect above — that one's deps include `retryToken` and re-runs on
+  // every ERR-005 retry, which isn't a new flow initiation.
+  React.useEffect(() => {
+    if (!open) {
+      hireInitiatedFiredRef.current = false
+      return
+    }
+    if (mode !== "create") return
+    if (hireInitiatedFiredRef.current) return
+
+    const talentId = fetchedProfile?.id || profile?.id
+    if (!talentId) return
+
+    hireInitiatedFiredRef.current = true
+    logHireFlowInitiated(talentId).catch(() => {})
+  }, [open, mode, fetchedProfile, profile?.id])
 
   return (
     <Dialog
