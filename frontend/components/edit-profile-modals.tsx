@@ -2336,6 +2336,7 @@ export const WorkExperienceDialog = ({
     handleSubmit,
     formState: { errors, isValid, isDirty, isSubmitting },
     trigger,
+    getValues,
     setValue,
     register,
     reset,
@@ -2647,7 +2648,8 @@ export const WorkExperienceDialog = ({
                               value={value ?? null}
                               onChange={(v) => {
                                 onChange(v)
-                                trigger("endDate.year")
+                                if (getValues("endDate.year"))
+                                  trigger("endDate.year")
                               }}
                             >
                               <ListboxButton
@@ -2697,7 +2699,8 @@ export const WorkExperienceDialog = ({
                               value={value ?? null}
                               onChange={(v) => {
                                 onChange(v)
-                                trigger("endDate.year")
+                                if (getValues("endDate.year"))
+                                  trigger("endDate.year")
                               }}
                             >
                               <ListboxButton
