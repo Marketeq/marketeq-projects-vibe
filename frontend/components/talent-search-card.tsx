@@ -187,7 +187,7 @@ export const TalentSearchCard = ({
                 sizes="25vw"
                 fill
                 loading={imageLoading}
-                className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                className="object-cover"
                 alt={name}
               />
             </div>
@@ -318,7 +318,7 @@ export const TalentSearchCard = ({
 
       <div
         ref={containerRef}
-        className="mt-auto px-4 py-2.5 flex flex-wrap gap-x-2 gap-y-1 border-t border-gray-200 bg-[#122A4B]/[.02] items-center"
+        className="relative overflow-hidden mt-auto px-4 py-2.5 flex flex-wrap gap-x-2 gap-y-1 border-t border-gray-200 bg-[#122A4B]/[.02] items-center"
       >
         {skillsList.map((skill, index) => (
           <span
@@ -327,7 +327,12 @@ export const TalentSearchCard = ({
             style={
               index >= visibleCount
                 ? {
+                    // Kept mounted (off-flow) purely so useVisibleSkills can
+                    // measure them. Pinned to the container's top-left so they
+                    // never extend past it and widen the page.
                     position: "absolute",
+                    left: 0,
+                    top: 0,
                     visibility: "hidden",
                     pointerEvents: "none",
                   }
