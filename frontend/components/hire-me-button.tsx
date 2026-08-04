@@ -277,6 +277,9 @@ export function OfferDialog({
   const [customHours, setCustomHours] = React.useState("")
   // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
   const [customFrequency, setCustomFrequency] = React.useState("")
+  // Blur-triggered, not CTA-triggered — showValidationErrors is scoped to
+  // the later screens' CTA press, this field's trigger is its own blur.
+  const [customHoursTouched, setCustomHoursTouched] = React.useState(false)
   const [isFetchingTalent, setIsFetchingTalent] = React.useState(false)
   const [fetchedProfile, setFetchedProfile] = React.useState<UserProfile | null>(
     null
@@ -376,19 +379,27 @@ export function OfferDialog({
     ? "max-h-[calc(100dvh-200px)]"
     : "max-h-[calc(100vh-24px)]"
   const isOfferDetailsStep = isStepThree || isStepFour
-  const isOfferReady = isStepThree
-    ? Boolean(
-        schedule &&
-        selectedContractId &&
-        selectedRate &&
-        selectedDuration &&
-        selectedStartDateAction
-      )
-    : isStepFour
+  // Reopening the custom row mid-edit visually deselects the tiles (T1-5's
+  // derived RadioGroup value) but leaves `schedule` at whatever it was
+  // last set to, so isOfferReady alone can't see an invalid draft sitting
+  // in the still-open row. This closes that gap for mode="edit", where the
+  // CTA and the row can be on screen at the same time.
+  const isCustomScheduleIncomplete =
+    customScheduleOpen && !(Number(customHours) > 0 && customFrequency)
+  const isOfferReady =
+    (isStepThree
       ? Boolean(
-          schedule && contractTitle.trim() && selectedRate && selectedDuration
+          schedule &&
+          selectedContractId &&
+          selectedRate &&
+          selectedDuration &&
+          selectedStartDateAction
         )
-      : false
+      : isStepFour
+        ? Boolean(
+            schedule && contractTitle.trim() && selectedRate && selectedDuration
+          )
+        : false) && !isCustomScheduleIncomplete
   const contractTitleError =
     showValidationErrors && isStepFour && !contractTitle.trim()
       ? "Please enter a contract title."
@@ -405,6 +416,17 @@ export function OfferDialog({
     showValidationErrors && isStepThree && !selectedStartDateAction
       ? "Please confirm or change the start date."
       : null
+  // Blur-triggered (customHoursTouched), not CTA-triggered like the four
+  // errors above. EC-004's "reject non-numeric characters" is fully
+  // handled by the keystroke filter on the input itself — a non-numeric
+  // character can never reach this state, so there's nothing to check for
+  // it here. Only empty (EC-003) and zero-or-less (EC-005) remain.
+  const customHoursError =
+    customHoursTouched && customHours.trim() === ""
+      ? "Please enter the number of hours."
+      : customHoursTouched && !(Number(customHours) > 0)
+        ? "Hours must be greater than 0."
+        : null
   const staticAvatarClassName = "hover:ring-0 active:ring-0"
   const staticAvatarFallbackClassName = "hover:bg-primary-25"
 
@@ -424,6 +446,7 @@ export function OfferDialog({
     setCustomScheduleOpen(false)
     setCustomHours("")
     setCustomFrequency("")
+    setCustomHoursTouched(false)
     setIsFetchingTalent(false)
     setFetchedProfile(null)
     setFetchError(null)
@@ -1077,45 +1100,65 @@ export function OfferDialog({
                           </RadioGroup>
 
                           {customScheduleOpen ? (
-                            <div className="mt-3 flex gap-3">
-                              <Input
-                                autoFocus
-                                className="flex-1"
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="Enter total hours"
-                                value={customHours}
-                                onChange={(event) =>
-                                  setCustomHours(event.target.value)
-                                }
-                                onBlur={() =>
-                                  tryConfirmCustomSchedule(
-                                    customHours,
-                                    customFrequency
-                                  )
-                                }
-                              />
-                              <Select
-                                value={customFrequency}
-                                onValueChange={(value) => {
-                                  setCustomFrequency(value)
-                                  tryConfirmCustomSchedule(customHours, value)
-                                }}
-                              >
-                                <SelectTrigger className="w-[140px] shrink-0 text-left">
-                                  <SelectValue placeholder="Select frequency" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {customScheduleFrequencies.map((option) => (
-                                    <SelectItem
-                                      key={option.value}
-                                      value={option.value}
-                                    >
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                            <div className="mt-3">
+                              <div className="flex gap-3">
+                                <Input
+                                  autoFocus
+                                  className="flex-1"
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder="Enter total hours"
+                                  value={customHours}
+                                  onChange={(event) => {
+                                    // Reject the whole keystroke rather than
+                                    // stripping invalid characters out — a
+                                    // rejected value never differs from the
+                                    // last one, so there's no length/shape
+                                    // change for the caret to be wrong
+                                    // relative to. AC-2.4/EC-004: integers
+                                    // only, decimals flagged as an open
+                                    // question for the lead, not built.
+                                    if (/^\d*$/.test(event.target.value)) {
+                                      setCustomHours(event.target.value)
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    setCustomHoursTouched(true)
+                                    tryConfirmCustomSchedule(
+                                      customHours,
+                                      customFrequency
+                                    )
+                                  }}
+                                />
+                                <Select
+                                  value={customFrequency}
+                                  onValueChange={(value) => {
+                                    setCustomFrequency(value)
+                                    tryConfirmCustomSchedule(customHours, value)
+                                  }}
+                                >
+                                  <SelectTrigger className="w-[140px] shrink-0 text-left">
+                                    <SelectValue placeholder="Select frequency" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {customScheduleFrequencies.map(
+                                      (option) => (
+                                        <SelectItem
+                                          key={option.value}
+                                          value={option.value}
+                                        >
+                                          {option.label}
+                                        </SelectItem>
+                                      )
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {customHoursError ? (
+                                <ErrorMessage className="mt-2">
+                                  {customHoursError}
+                                </ErrorMessage>
+                              ) : null}
                             </div>
                           ) : null}
 
@@ -1131,6 +1174,7 @@ export function OfferDialog({
                                 setCustomScheduleOpen(false)
                                 setCustomHours("")
                                 setCustomFrequency("")
+                                setCustomHoursTouched(false)
                               } else {
                                 setCustomScheduleOpen(true)
                               }
