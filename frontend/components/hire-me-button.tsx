@@ -248,6 +248,21 @@ export function OfferDialog({
   const { toast } = useToast()
   const initialState = React.useMemo(() => getInitialOfferState(mode), [mode])
   const [schedule, setSchedule] = React.useState(initialState.schedule)
+  // T1-11: setting `schedule` unmounts the tile screen in the same render
+  // pass (isStepTwo/currentScreen derive from it), so there is no frame
+  // where a tile can be both mounted and shown selected. pendingSchedule
+  // holds the click's value for a short, deliberately perceptible delay so
+  // the highlight renders before schedule commits and the screen advances.
+  const [pendingSchedule, setPendingSchedule] = React.useState("")
+  const scheduleCommitTimeoutRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
+  const clearScheduleCommitTimeout = React.useCallback(() => {
+    if (scheduleCommitTimeoutRef.current) {
+      clearTimeout(scheduleCommitTimeoutRef.current)
+      scheduleCommitTimeoutRef.current = null
+    }
+  }, [])
   const [search, setSearch] = React.useState(initialState.search)
   const [showAllContracts, setShowAllContracts] = React.useState(
     initialState.showAllContracts
@@ -458,7 +473,9 @@ export function OfferDialog({
     setFetchedProfile(null)
     setFetchError(null)
     setRetryToken(0)
-  }, [initialState])
+    clearScheduleCommitTimeout()
+    setPendingSchedule("")
+  }, [initialState, clearScheduleCommitTimeout])
 
   const tryConfirmCustomSchedule = (hours: string, frequency: string) => {
     const parsedHours = Number(hours)
@@ -476,6 +493,14 @@ export function OfferDialog({
   React.useEffect(() => {
     if (open) resetFlow()
   }, [open, resetFlow])
+
+  // Belt-and-suspenders on top of resetFlow's close/reopen coverage: if
+  // OfferDialog itself unmounts without ever going through onOpenChange
+  // (e.g. the parent page navigates away), this still cancels a pending
+  // commit rather than leaving a stray timeout to fire against nothing.
+  React.useEffect(() => {
+    return () => clearScheduleCommitTimeout()
+  }, [clearScheduleCommitTimeout])
 
   React.useEffect(() => {
     if (!open || !profile?.username) return
@@ -1074,10 +1099,30 @@ export function OfferDialog({
                           </h2>
 
                           <RadioGroup
-                            value={customScheduleOpen ? "" : schedule}
+                            value={
+                              customScheduleOpen
+                                ? ""
+                                : pendingSchedule || schedule
+                            }
                             onValueChange={(value) => {
-                              setSchedule(value)
+                              clearScheduleCommitTimeout()
                               setCustomScheduleOpen(false)
+                              if (isEditMode) {
+                                // No screen to wait for here — selectedContractId
+                                // is prefilled, so isStepThree is already true and
+                                // stays true regardless of which tile is picked.
+                                // Nothing unmounts on commit, so a delay would
+                                // only add latency for no benefit.
+                                setPendingSchedule("")
+                                setSchedule(value)
+                                return
+                              }
+                              setPendingSchedule(value)
+                              scheduleCommitTimeoutRef.current = setTimeout(() => {
+                                setSchedule(value)
+                                setPendingSchedule("")
+                                scheduleCommitTimeoutRef.current = null
+                              }, 200)
                             }}
                             className="mt-4 grid grid-cols-2 gap-3"
                           >
@@ -1189,6 +1234,14 @@ export function OfferDialog({
                                 setCustomFrequency("")
                                 setCustomHoursTouched(false)
                               } else {
+                                // A tile click may have a commit in flight
+                                // (T1-11's 200ms delay). Without cancelling
+                                // it here, it would fire while this row is
+                                // open, flip currentScreen, and unmount the
+                                // row the user just opened out from under
+                                // them — the exact T1-5 bug this prevents.
+                                clearScheduleCommitTimeout()
+                                setPendingSchedule("")
                                 setCustomScheduleOpen(true)
                               }
                             }}
