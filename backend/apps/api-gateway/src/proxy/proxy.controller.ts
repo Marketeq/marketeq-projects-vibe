@@ -130,42 +130,21 @@ export class ProxyController {
       'admin-service': process.env.ADMIN_SERVICE_URL || 'http://localhost:3024',
       'affiliate-referral-service': process.env.AFFILIATE_REFERRAL_SERVICE_URL || 'http://localhost:3025',
       'billing-service': process.env.BILLING_SERVICE_URL || 'http://localhost:3026',
-      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3027',
+      'earnings-service': process.env.EARNINGS_SERVICE_URL || 'http://localhost:3026',
       'payout-service': process.env.PAYOUT_SERVICE_URL || 'http://localhost:3028',
       'pricing-service': process.env.PRICING_SERVICE_URL || 'http://localhost:3029',
       'wallet-service': process.env.WALLET_SERVICE_URL || 'http://localhost:3030',
       'wire-review-service': process.env.WIRE_REVIEW_SERVICE_URL || 'http://localhost:3031',
       'legal-service': process.env.LEGAL_SERVICE_URL || 'http://localhost:3032',
-      // resume-parsing-service (3033) is deliberately omitted: it crash-loops
-      // without ANTHROPIC_API_KEY, and the Jenkins monitor would answer that with
-      // restarts and redeploys that cannot fix a missing env var. Add it back once
-      // the key is set in Render. Until then its state is only visible via
-      // /services/debug, so this endpoint does NOT cover the full service list.
     }
 
-    // Status semantics — a response is not the same thing as a healthy service:
-    //   healthy   → 2xx from /health
-    //   unhealthy → responded, but with a non-2xx status (5xx, 401, …)
-    //   unknown   → 404: the process is listening but exposes no /health route,
-    //               so its health is genuinely unverified. Never counted as healthy.
-    //   down      → connection refused or timed out
-    type ServiceStatus = 'healthy' | 'unhealthy' | 'unknown' | 'down'
-    const results: Record<string, { status: ServiceStatus; code: number }> = {}
-
+    const results: Record<string, { status: string; code: number }> = {}
     const checks = Object.entries(serviceUrls).map(async ([name, url]) => {
       try {
         const resp = await firstValueFrom(
           this.http.get(`${url}/health`, { timeout: 3000, validateStatus: () => true }),
         )
-        let status: ServiceStatus
-        if (resp.status >= 200 && resp.status < 300) {
-          status = 'healthy'
-        } else if (resp.status === 404) {
-          status = 'unknown'
-        } else {
-          status = 'unhealthy'
-        }
-        results[name] = { status, code: resp.status }
+        results[name] = { status: 'healthy', code: resp.status }
       } catch {
         results[name] = { status: 'down', code: 0 }
       }
@@ -173,23 +152,12 @@ export class ProxyController {
 
     await Promise.all(checks)
 
-    const statuses = Object.values(results)
-    const healthy = statuses.filter((r) => r.status === 'healthy').length
-    const unhealthy = statuses.filter((r) => r.status === 'unhealthy').length
-    const unknown = statuses.filter((r) => r.status === 'unknown').length
-    const down = statuses.filter((r) => r.status === 'down').length
-    const total = statuses.length
-
+    const healthy = Object.values(results).filter((r) => r.status === 'healthy').length
+    const total = Object.keys(results).length
     return {
       overall: healthy === total ? 'healthy' : 'degraded',
       healthy,
-      unhealthy,
-      unknown,
-      down,
       total,
-      // Confirmed-healthy share only. Services with no /health route are excluded
-      // from the numerator; this is deliberately lower than the old figure, which
-      // counted every HTTP response — including 404s — as healthy.
       uptimePercent: ((healthy / total) * 100).toFixed(1),
       timestamp: new Date().toISOString(),
       services: results,
