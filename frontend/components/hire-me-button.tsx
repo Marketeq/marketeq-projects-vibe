@@ -40,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  useToast,
 } from "@/components/ui"
 
 export function getDefaultJobTitle(profile?: Partial<UserProfile> | null): string
@@ -215,6 +216,11 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
+// Same module-level guard as transfer-funds/page.tsx:69 — module scope, not
+// component state, so concurrent 401s (e.g. two effects racing on
+// close-and-reopen) can't stack navigations. Only one redirect ever fires.
+let sessionExpiredRedirecting = false
+
 const getInitialOfferState = (mode: "create" | "edit") => ({
   schedule: mode === "edit" ? "full-time" : "",
   search: "",
@@ -239,6 +245,7 @@ export function OfferDialog({
   onSaveOffer,
 }: OfferDialogProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const initialState = React.useMemo(() => getInitialOfferState(mode), [mode])
   const [schedule, setSchedule] = React.useState(initialState.schedule)
   const [search, setSearch] = React.useState(initialState.search)
@@ -274,6 +281,10 @@ export function OfferDialog({
   const [fetchedProfile, setFetchedProfile] = React.useState<UserProfile | null>(
     null
   )
+  // "data" covers ERR-005 (5xx or network failure) — offline is its own
+  // ERR-025 toast and never sets this. See the fetch effect below.
+  const [fetchError, setFetchError] = React.useState<"data" | null>(null)
+  const [retryToken, setRetryToken] = React.useState(0)
 
   const getDisplayName = (p?: Partial<UserProfile> | null) =>
     p?.username || `${p?.firstName || ""}${p?.lastName || ""}`.trim() || ""
@@ -415,6 +426,8 @@ export function OfferDialog({
     setCustomFrequency("")
     setIsFetchingTalent(false)
     setFetchedProfile(null)
+    setFetchError(null)
+    setRetryToken(0)
   }, [initialState])
 
   const tryConfirmCustomSchedule = (hours: string, frequency: string) => {
@@ -437,16 +450,58 @@ export function OfferDialog({
   React.useEffect(() => {
     if (!open || !profile?.username) return
 
+    // Checked, and returned on, BEFORE setIsFetchingTalent(true) — and with
+    // no isActive/cleanup needed, because nothing async has started yet.
+    // Flipping the flag first and early-returning here would pin the
+    // skeleton forever with nothing left to clear it: the exact bug this
+    // effect's own .finally exists to prevent, reopened through a new door.
+    // ERR-025: offline is a toast, never the inline error state.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast({
+        variant: "destructive",
+        description:
+          "You appear to be offline. Please check your connection and try again.",
+        // Doc 08 §2/§11 want 5s; the Provider defaults to 3000
+        // (toaster.tsx:18). Root's own `duration` prop overrides the
+        // Provider per-toast — a call-site override, not a shared-file edit.
+        duration: 5000,
+      })
+      return
+    }
+
     let isActive = true
     setIsFetchingTalent(true)
+    setFetchError(null)
 
     UserAPI.getByUsername(profile.username)
       .then((res: { data?: UserProfile }) => {
         if (isActive && res?.data) setFetchedProfile(res.data)
       })
-      .catch(() => {
-        // T1-4 owns the visible error/retry UI. For now, fail silently
-        // and fall back to the seed rather than leave the skeleton stuck.
+      .catch((error) => {
+        if (!isActive) return
+
+        if (error?.response?.status === 401) {
+          // Structurally unreachable through this endpoint today —
+          // getUserByUsername is @Public() at both the gateway and
+          // user-service, neither can produce a 401 for it — but built to
+          // match ERR-026 in case that ever changes, and because this
+          // branch mirrors the shape every other authenticated call in
+          // the app already hits against the same interceptor.
+          if (!sessionExpiredRedirecting) {
+            sessionExpiredRedirecting = true
+            const returnTo = `${window.location.pathname}${window.location.search}`
+            window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
+          }
+          return
+        }
+
+        // ERR-005 covers "5xx OR network failure" in one bucket, and doc
+        // 08 has no row for a 404 at all — so a bad identifier (e.g.
+        // confirmation/page.tsx:360 handing this fetch an id-shaped slug
+        // like user_550c209b against a username endpoint) lands here too,
+        // by elimination, not by spec. Retry can't fix a wrong identifier,
+        // but the ticket gives no other copy to show instead.
+        setFetchError("data")
       })
       .finally(() => {
         if (isActive) setIsFetchingTalent(false)
@@ -455,7 +510,7 @@ export function OfferDialog({
     return () => {
       isActive = false
     }
-  }, [open, profile?.username])
+  }, [open, profile?.username, retryToken])
 
   return (
     <Dialog
@@ -584,7 +639,7 @@ export function OfferDialog({
                   ) : (
                     <>
                       {!isEditMode && currentScreen === "select-schedule" ? (
-                        isFetchingTalent && !fetchedProfile ? (
+                        isFetchingTalent && !fetchedProfile && !fetchError ? (
                           <div className="flex items-center gap-4">
                             <Shimmer className="size-[90px] shrink-0 rounded-full" />
                             <div className="min-w-0 flex-auto space-y-2">
@@ -592,6 +647,52 @@ export function OfferDialog({
                               <Shimmer className="h-3 w-32" />
                               <Shimmer className="h-3 w-36" />
                               <Shimmer className="h-3 w-28" />
+                            </div>
+                          </div>
+                        ) : fetchError && !fetchedProfile ? (
+                          <div className="flex items-center gap-4">
+                            <Avatar
+                              className={cn(
+                                "size-[90px] shrink-0",
+                                staticAvatarClassName
+                              )}
+                            >
+                              <AvatarImage
+                                src={avatarUrl}
+                                alt={displayName}
+                              />
+                              <AvatarFallback
+                                className={staticAvatarFallbackClassName}
+                              >
+                                {displayName.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+
+                            <div className="min-w-0">
+                              <p className="text-[14px] font-light leading-normal text-dark-blue-400">
+                                Hire{" "}
+                                <span className="font-semibold">
+                                  {displayName}
+                                </span>{" "}
+                                for a new contract
+                              </p>
+                              {/* Data-load failure, not a validation error and not
+                                  T1-2's empty-profile case: this is the only place in
+                                  the modal an ErrorMessage is paired with a Retry
+                                  button, and it only ever shows here, alongside the
+                                  avatar/name, never alongside a form field. */}
+                              <ErrorMessage className="mt-1">
+                                We couldn&apos;t load this talent&apos;s
+                                details. Please try again.
+                              </ErrorMessage>
+                              <Button
+                                visual="gray"
+                                variant="outlined"
+                                className="mt-2"
+                                onClick={() => setRetryToken((t) => t + 1)}
+                              >
+                                Retry
+                              </Button>
                             </div>
                           </div>
                         ) : (
