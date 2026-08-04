@@ -3,7 +3,9 @@
 // on staging at 100% health. Auto-remediates failures.
 //
 // Trigger: Every 5 minutes via cron
-// Benchmark: 28 services + gateway = 100% healthy at all times
+// Benchmark: no service reporting 'down' or 'unhealthy'. Services reporting
+// 'unknown' (listening, but no /health route) are surfaced but not remediated —
+// a restart cannot fix a missing route.
 
 pipeline {
     agent any
@@ -21,7 +23,7 @@ pipeline {
     environment {
         BACKEND_URL        = 'https://marketeq-backend.onrender.com'
         RENDER_SERVICE_ID  = 'srv-d76r48nafjfc73e1djf0'
-        EXPECTED_SERVICES  = '28'
+        EXPECTED_SERVICES  = '29'
         HEALTH_LOG         = '/var/jenkins_home/health-metrics/staging-health.jsonl'
         ALERT_THRESHOLD    = '3' // consecutive failures before alert
     }
@@ -78,15 +80,23 @@ try:
     healthy = data.get('healthy', 0)
     total = data.get('total', 0)
     pct = data.get('uptimePercent', '0')
+    # Only 'down' (unreachable) and 'unhealthy' (responding with an error) are
+    # actionable. 'unknown' means the process is listening but exposes no /health
+    # route — restarting it would not change the reading, so it must never drive
+    # remediation. Older payloads without these fields fall back to the old rule.
     down = []
+    unknown = []
     for name, info in data.get('services', {}).items():
-        if info.get('status') != 'healthy':
+        status = info.get('status')
+        if status in ('down', 'unhealthy'):
+            down.append(name)
+        elif status == 'unknown':
+            unknown.append(name)
+        elif status != 'healthy':
             down.append(name)
     print(f'{healthy}/{total} ({pct}%)')
-    if down:
-        print('DOWN:' + ','.join(down))
-    else:
-        print('DOWN:none')
+    print('DOWN:' + (','.join(down) if down else 'none'))
+    print('UNKNOWN:' + (','.join(unknown) if unknown else 'none'))
 except Exception as e:
     print(f'PARSE_ERROR:{e}')
 "
@@ -109,10 +119,19 @@ except Exception as e:
                         def downLine = lines.size() > 1 ? lines[1] : 'DOWN:none'
                         def downStr = downLine.replace('DOWN:', '')
 
+                        def unknownLine = lines.size() > 2 ? lines[2] : 'UNKNOWN:none'
+                        def unknownStr = unknownLine.replace('UNKNOWN:', '')
+                        env.UNKNOWN_SERVICES = unknownStr == 'none' ? '' : unknownStr
+
+                        if (unknownStr != 'none') {
+                            def unknownList = unknownStr.split(',')
+                            echo "NOTE: ${unknownList.size()} service(s) expose no /health route — health unverified, not remediated: ${unknownStr}"
+                        }
+
                         if (downStr == 'none') {
                             env.HEALTH_STATUS = 'healthy'
                             env.DOWN_SERVICES = ''
-                            echo "ALL SERVICES HEALTHY - 100% uptime benchmark met"
+                            echo "No services down or erroring."
                         } else {
                             env.HEALTH_STATUS = 'degraded'
                             env.DOWN_SERVICES = downStr
@@ -275,6 +294,9 @@ print(f'{pct:.1f}')
                     echo "║  24h Uptime:  ${(uptime + '%').padRight(31)}║"
                     if (env.DOWN_SERVICES?.trim()) {
                         echo "║  Down:        ${env.DOWN_SERVICES.take(31).padRight(31)}║"
+                    }
+                    if (env.UNKNOWN_SERVICES?.trim()) {
+                        echo "║  No /health:  ${env.UNKNOWN_SERVICES.take(31).padRight(31)}║"
                     }
                     echo "╚══════════════════════════════════════════════╝"
 
