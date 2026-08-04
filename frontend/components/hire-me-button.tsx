@@ -372,12 +372,19 @@ export function OfferDialog({
     duration: 0.26,
     ease: [0.22, 1, 0.36, 1] as const,
   }
+  // Both modes use dvh now, not just edit mode. 100vh ignores the mobile
+  // browser's address bar, so the bottom of the modal could render under
+  // browser chrome; dvh tracks the actually-visible viewport. Desktop is
+  // unaffected — with no collapsing toolbar, dvh and vh resolve
+  // identically there. This is a straight swap, not a fallback pair: cn's
+  // twMerge collapses a vh+dvh max-h pair down to whichever is last, it
+  // doesn't cascade the way plain CSS would.
   const dialogContentClass = isEditMode
     ? "!top-[100px] !-translate-y-0 max-h-[calc(100dvh-200px)]"
-    : "max-h-[calc(100vh-24px)]"
+    : "max-h-[calc(100dvh-24px)]"
   const dialogBodyClass = isEditMode
     ? "max-h-[calc(100dvh-200px)]"
-    : "max-h-[calc(100vh-24px)]"
+    : "max-h-[calc(100dvh-24px)]"
   const isOfferDetailsStep = isStepThree || isStepFour
   // Reopening the custom row mid-edit visually deselects the tiles (T1-5's
   // derived RadioGroup value) but leaves `schedule` at whatever it was
