@@ -40,6 +40,10 @@ export class Project {
   videoUrl?: string | null;
   faqs?: { question: string; answer: string; is_ai_generated?: boolean }[];
 
+  publishedSnapshot?: Record<string, any> | null;
+
+  scope?: any;
+
   createdAt?: Date;
   updatedAt?: Date;
   deletedAt?: Date | null;

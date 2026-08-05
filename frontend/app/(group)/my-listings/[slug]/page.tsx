@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, usePathname, useRouter } from "next/navigation"
 import { ProjectChatPanel } from "./project-chat-panel"
 import { RecentQuestionsManager } from "./recent-questions-manager"
 
@@ -1355,7 +1355,13 @@ function SortableGalleryItem({
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const pathname = usePathname()
+  const { user, isLoading: isAuthLoading } = useAuth()
+  React.useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
+    }
+  }, [isAuthLoading, user, router, pathname])
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -2837,6 +2843,16 @@ export default function ProjectDetails() {
   // ── Budget & Duration computed from scope ──────────────────────────────────
   const [budgetPeriod, setBudgetPeriod] = React.useState("week")
 
+  const isServiceListing =
+    project?.listingType === "service" ||
+    (Array.isArray(project?.scope) &&
+      project.scope.some(
+        (p: any) =>
+          p?.phaseType === "setup" ||
+          p?.phaseType === "recurring" ||
+          p?.phaseType === "ongoing"
+      ))
+
   const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
@@ -3058,12 +3074,7 @@ export default function ProjectDetails() {
             role: d.category || d.categories?.[0] || "Software Development",
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
-            featuredImage:
-              featuredImage ||
-              d.featuredImage ||
-              galleryUrls[0] ||
-              d.mediaUrls?.[0] ||
-              null,
+            featuredImage: featuredImage || d.featuredImage || null,
             featuredVideo:
               featuredVideo || d.featuredVideo || d.videoUrl || null,
             mediaUrls: finalGallery,
@@ -3423,15 +3434,19 @@ export default function ProjectDetails() {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
 
+  if (!isAuthLoading && !user) {
+    return null
+  }
+
   if (loading) {
     return (
       <div className="px-[100px] pb-[100px] relative bg-white">
-        <div className="max-w-[1240px] flex items-start gap-x-8">
+        <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
           <div className="max-w-[818px] flex-auto">
             {/* gray header area */}
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
+                <div className="absolute w-screen left-[min(-100px,calc(620px-50vw))] top-0 bottom-0 bg-gray-50" />
                 {/* breadcrumb */}
                 <div className="flex items-center gap-x-2 relative">
                   <Shimmer className="size-[18px] rounded" />
@@ -3599,11 +3614,11 @@ export default function ProjectDetails() {
   return (
     <>
       <div className="px-[100px] pb-[100px] relative bg-white">
-        <div className="max-w-[1240px] flex items-start gap-x-8">
+        <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
           <div className="max-w-[818px] flex-auto">
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
+                <div className="absolute w-screen left-[min(-100px,calc(620px-50vw))] top-0 bottom-0 bg-gray-50" />
 
                 <div className="flex items-center gap-x-2 relative">
                   <NextLink href="/">
@@ -4058,6 +4073,7 @@ export default function ProjectDetails() {
                           )
                           setInfoSummary(project.summary || "")
                           setInfoTab("Categories")
+                          setSelected("Details")
                           setProjectInfoOpen(true)
                         }}
                       >
@@ -4087,6 +4103,7 @@ export default function ProjectDetails() {
                       )
                       setInfoSummary(project.summary || "")
                       setInfoTab("Basic Info")
+                      setSelected("Details")
                       setProjectInfoOpen(true)
                     }}
                   >
@@ -4099,6 +4116,7 @@ export default function ProjectDetails() {
                   onClick={() => {
                     setInfoTab("Basic Info")
                     setFocusSummaryOnOpen(true)
+                    setSelected("Details")
                     setProjectInfoOpen(true)
                   }}
                 >
@@ -9641,9 +9659,7 @@ export default function ProjectDetails() {
                         </span>
                         <div className="mt-2">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {project?.listingType === "service"
-                              ? "Ongoing"
-                              : durationLabel}
+                            {isServiceListing ? "Ongoing" : durationLabel}
                           </span>
                         </div>
                       </div>
@@ -9879,23 +9895,25 @@ export default function ProjectDetails() {
                   <div className="flex items-center gap-x-[6.4px]">
                     <Clock className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {durationDays > 0
-                        ? `Starting from a ${durationValue} ${durationUnit} duration`
-                        : "Add a scope to see duration"}
+                      {isServiceListing
+                        ? "Ongoing duration"
+                        : durationDays > 0
+                          ? `Starting from a ${durationValue} ${durationUnit} duration`
+                          : "Add a scope to see duration"}
                     </span>
                   </div>
                   <div className="flex items-center gap-x-[6.4px]">
                     <Users03 className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
                       {(() => {
-                        const roles = new Set<string>()
+                        let memberSlots = 0
                         for (const phase of project.scope ?? []) {
                           for (const row of phase.rows ?? []) {
-                            if (row.role) roles.add(row.role)
+                            if (row.role || row.task) memberSlots++
                           }
                         }
-                        return roles.size > 0
-                          ? `Minimum ${roles.size} team member${roles.size !== 1 ? "s" : ""}`
+                        return memberSlots > 0
+                          ? `Minimum ${memberSlots} team member${memberSlots !== 1 ? "s" : ""}`
                           : "Add a scope to see team members"
                       })()}
                     </span>

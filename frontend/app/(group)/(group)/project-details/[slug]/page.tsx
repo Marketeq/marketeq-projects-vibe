@@ -310,7 +310,7 @@ const Chats = ({
   const [state, setState] = React.useState<CircularProgressDropzoneState>()
   const [open, toggle] = useToggle(false)
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
 
   const { onChatChange, chat } = useEditContext()
@@ -427,9 +427,8 @@ const Chats = ({
   const handleSend = React.useCallback(async () => {
     const text = (textareaValue ?? "").trim()
     if (!text) return
-    // Doc 15: login required before a message is sent.
     if (!myId) {
-      router.push("/sign-in")
+      openAuthModal("sign-in")
       return
     }
     setTextareaValue("")
@@ -449,7 +448,7 @@ const Chats = ({
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       )
     }
-  }, [textareaValue, myId, ensureThread, router, setTextareaValue])
+  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue])
 
   return (
     <div
@@ -846,7 +845,7 @@ export default function ProjectDetails({
 } = {}) {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, openAuthModal } = useAuth()
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
@@ -881,12 +880,24 @@ export default function ProjectDetails({
     return items
   }, [project])
 
-  const openLiveChat = React.useCallback((question?: string) => {
-    if (question !== undefined) setPendingQuestion(question)
-    setSelected("Live Chat")
-  }, [])
+  const openLiveChat = React.useCallback(
+    (question?: string) => {
+      if (!user?.id) {
+        openAuthModal("sign-in")
+        return
+      }
+      if (question !== undefined) setPendingQuestion(question)
+      setSelected("Live Chat")
+    },
+    [user?.id, openAuthModal]
+  )
 
   const handleAsk = React.useCallback(() => {
+    if (!user?.id) {
+      setAskModalOpen(false)
+      openAuthModal("sign-in")
+      return
+    }
     if (pendingQuestion.trim()) {
       setAskModalOpen(false)
       openLiveChat()
@@ -894,7 +905,7 @@ export default function ProjectDetails({
       setAskErrored(true)
       setShowAskErrorMsg(true)
     }
-  }, [pendingQuestion, openLiveChat])
+  }, [user?.id, pendingQuestion, openLiveChat, openAuthModal])
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
     DEFAULT_SUGGESTED_QUESTIONS
@@ -1012,14 +1023,14 @@ export default function ProjectDetails({
     // Derive duration + roles from scope (matches edit mode). Handles both the
     // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
     const scopeArr = Array.isArray(project.scope) ? project.scope : []
-    const uniqueRoles = new Set<string>()
+    let memberSlots = 0
     let totalDays = 0
     for (const phase of scopeArr) {
       const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
       const taskDays: number[] = []
       for (const row of rows) {
         const role = row?.role ?? row?.roleName
-        if (role) uniqueRoles.add(role)
+        if (role || row?.task || row?.taskName) memberSlots++
         const dur = row?.duration
         let days = 0
         if (dur && typeof dur === "object") {
@@ -1086,7 +1097,22 @@ export default function ProjectDetails({
       formattedDuration = `${Math.max(1, Math.ceil(effDays / 30))} month`
     }
 
-    return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
+    const isServiceScope =
+      project.listingType === "service" ||
+      scopeArr.some(
+        (p: any) =>
+          p?.phaseType === "setup" ||
+          p?.phaseType === "recurring" ||
+          p?.phaseType === "ongoing"
+      )
+
+    return {
+      totalCost,
+      periodOptions,
+      minTeamMembers: memberSlots,
+      formattedDuration,
+      isServiceScope,
+    }
   }, [project])
 
 
@@ -1518,7 +1544,7 @@ export default function ProjectDetails({
         <div className="flex-auto min-w-0">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
-              <div className="absolute top-0 bottom-px bg-gray-50 w-[100vw] left-[calc(50%-50vw)]" />
+              <div className="absolute top-0 bottom-px bg-gray-50 w-screen left-[min(-100px,calc(620px-50vw))]" />
 
               <div className="flex items-center gap-x-2 relative">
                 <NextLink href="/">
@@ -1725,9 +1751,10 @@ export default function ProjectDetails({
               <Button
                 variant="link"
                 className="!text-primary-500 shrink-0"
-                onClick={() =>
-                  setSelected(selected === "Live Chat" ? "Details" : "Live Chat")
-                }
+                onClick={() => {
+                  if (selected === "Live Chat") setSelected("Details")
+                  else openLiveChat()
+                }}
               >
                 <MessageTextCircle01 className="size-5" />
                 {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
@@ -2865,7 +2892,13 @@ export default function ProjectDetails({
                                 <Button
                                   variant="outlined"
                                   visual="gray"
-                                  onClick={() => setAskModalOpen(true)}
+                                  onClick={() => {
+                                    if (!user?.id) {
+                                      openAuthModal("sign-in")
+                                      return
+                                    }
+                                    setAskModalOpen(true)
+                                  }}
                                 >
                                   Ask a question
                                 </Button>
@@ -5422,9 +5455,11 @@ export default function ProjectDetails({
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    {sidebarPricing?.formattedDuration
-                      ? `Starting from a ${sidebarPricing.formattedDuration} duration`
-                      : "Duration: TBD"}
+                    {sidebarPricing?.isServiceScope
+                      ? "Ongoing duration"
+                      : sidebarPricing?.formattedDuration
+                        ? `Starting from a ${sidebarPricing.formattedDuration} duration`
+                        : "Duration: TBD"}
                   </span>
                 </div>
                 {(sidebarPricing?.minTeamMembers ?? 0) > 0 && (
@@ -5444,6 +5479,12 @@ export default function ProjectDetails({
                       size="lg"
                       className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
                       variant="outlined"
+                      onClick={(e) => {
+                        if (!user?.id) {
+                          e.preventDefault()
+                          openAuthModal("sign-in")
+                        }
+                      }}
                     >
                       Start Project
                     </Button>

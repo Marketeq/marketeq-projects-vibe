@@ -35,6 +35,7 @@ export class ProjectMapper {
     project.teamMemberIds = raw.teamMemberIds ?? [];
     project.videoUrl = raw.videoUrl ?? null;
     project.faqs = raw.faqs ?? [];
+    project.scope = raw.scope ?? null;
     if (raw.media) {
       project.media = raw.media;
     }
@@ -73,6 +74,9 @@ export class ProjectMapper {
     projectEntity.teamMemberIds = project.teamMemberIds ?? [];
     projectEntity.videoUrl = project.videoUrl ?? undefined;
     projectEntity.faqs = project.faqs ?? [];
+    if (project.publishedSnapshot !== undefined) {
+      projectEntity.publishedSnapshot = project.publishedSnapshot;
+    }
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;
