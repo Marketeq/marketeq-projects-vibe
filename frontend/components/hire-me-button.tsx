@@ -265,6 +265,12 @@ export function OfferDialog({
     }
   }, [])
   const [search, setSearch] = React.useState(initialState.search)
+  // FR-4/AC-5.2: 200ms debounce. `search` stays immediate (drives the input
+  // itself); filtering, the empty-state check, and the "View all" gate all
+  // read this instead, so they can never disagree with each other mid-typing.
+  const [debouncedSearch, setDebouncedSearch] = React.useState(
+    initialState.search
+  )
   const [showAllContracts, setShowAllContracts] = React.useState(
     initialState.showAllContracts
   )
@@ -320,6 +326,17 @@ export function OfferDialog({
   // `||` not `??`: a resolved-but-nameless fetch yields "", which should
   // still defer to the seed name rather than display blank.
   const displayName = fetchedDisplayName || seedDisplayName
+  // AC-1.3: the header wants "@handle", not a name with "@" glued on —
+  // "Hire @John Smith" is wrong. displayName already prefers username over
+  // firstName+lastName (:322), so it can't tell the header which one it got.
+  // This checks the username fields directly, same fetched-over-seed
+  // precedence as displayName, and falls back to the plain name only when
+  // neither profile has a username at all. Header-only — every other
+  // displayName use (avatar fallback/alt, Offer Sent) is untouched.
+  const headerName =
+    fetchedProfile?.username || profile?.username
+      ? `@${fetchedProfile?.username || profile?.username}`
+      : displayName
 
   // Independent of displayName so a missing name can't also break the
   // checkout URL. Fetched wins over seed, same precedence as every other
@@ -363,10 +380,10 @@ export function OfferDialog({
   // not override a seed that already has something to show.
   const avatarUrl = fetchedProfile?.avatarUrl || seedAvatarUrl
   const filteredContracts = existingContracts.filter((contract) =>
-    contract.title.toLowerCase().includes(search.toLowerCase())
+    contract.title.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
   const visibleContracts =
-    search || showAllContracts
+    debouncedSearch || showAllContracts
       ? filteredContracts
       : filteredContracts.slice(0, MAX_VISIBLE_CONTRACTS)
   const selectedContract =
@@ -463,6 +480,7 @@ export function OfferDialog({
   const resetFlow = React.useCallback(() => {
     setSchedule(initialState.schedule)
     setSearch(initialState.search)
+    setDebouncedSearch(initialState.search)
     setShowAllContracts(initialState.showAllContracts)
     setSelectedContractId(initialState.selectedContractId)
     setCreatingContract(initialState.creatingContract)
@@ -501,6 +519,14 @@ export function OfferDialog({
   React.useEffect(() => {
     if (open) resetFlow()
   }, [open, resetFlow])
+
+  // FR-4/AC-5.2: 200ms debounce. Same cleanup handles both cases — clears
+  // the previous timer on every keystroke (a new one is scheduled below),
+  // and clears it on unmount since React runs the last cleanup then too.
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => setDebouncedSearch(search), 200)
+    return () => clearTimeout(timeoutId)
+  }, [search])
 
   // Belt-and-suspenders on top of resetFlow's close/reopen coverage: if
   // OfferDialog itself unmounts without ever going through onOpenChange
@@ -764,7 +790,7 @@ export function OfferDialog({
                               <p className="text-[14px] font-light leading-normal text-dark-blue-400">
                                 Hire{" "}
                                 <span className="font-semibold">
-                                  {displayName}
+                                  {headerName}
                                 </span>{" "}
                                 for a new contract
                               </p>
@@ -810,7 +836,7 @@ export function OfferDialog({
                               <p className="text-[14px] font-light leading-normal text-dark-blue-400">
                                 Hire{" "}
                                 <span className="font-semibold">
-                                  {displayName}
+                                  {headerName}
                                 </span>{" "}
                                 for a new contract
                               </p>
@@ -915,7 +941,29 @@ export function OfferDialog({
                             ))}
                           </div>
 
-                          {!search &&
+                          {/* FR-5/AC-5.3, doc 05 EC-008: verbatim copy, not
+                          quoted — trimmed only so leading/trailing spaces in
+                          the query don't make the rendered string ambiguous. */}
+                          {debouncedSearch && filteredContracts.length === 0 ? (
+                            <div className="mt-3 text-center">
+                              <p className="text-[13px] font-light leading-normal text-gray-500">
+                                No contracts found for {debouncedSearch.trim()}.
+                              </p>
+                              <Button
+                                variant="link"
+                                visual="gray"
+                                className="mt-1 px-0 text-[12px] font-medium leading-normal text-primary-500"
+                                onClick={() => {
+                                  setSearch("")
+                                  setDebouncedSearch("")
+                                }}
+                              >
+                                Clear search
+                              </Button>
+                            </div>
+                          ) : null}
+
+                          {!debouncedSearch &&
                           filteredContracts.length > MAX_VISIBLE_CONTRACTS ? (
                             <Button
                               variant="link"
@@ -1246,11 +1294,11 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {/* {customHoursError ? (
+                              {customHoursError ? (
                                 <ErrorMessage className="mt-2">
                                   {customHoursError}
                                 </ErrorMessage>
-                              ) : null} */}
+                              ) : null}
                             </div>
                           ) : null}
 
