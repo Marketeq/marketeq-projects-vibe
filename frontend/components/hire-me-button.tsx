@@ -292,7 +292,9 @@ export function OfferDialog({
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
   // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
-  const [customFrequency, setCustomFrequency] = React.useState("")
+  // Figma rests on "Per day", not an empty placeholder — canonical over doc
+  // 06 §3.1's `customFrequency: null`.
+  const [customFrequency, setCustomFrequency] = React.useState("day")
   // Blur-triggered, not CTA-triggered — showValidationErrors is scoped to
   // the later screens' CTA press, this field's trigger is its own blur.
   const [customHoursTouched, setCustomHoursTouched] = React.useState(false)
@@ -473,7 +475,7 @@ export function OfferDialog({
     setShowValidationErrors(false)
     setCustomScheduleOpen(false)
     setCustomHours("")
-    setCustomFrequency("")
+    setCustomFrequency("day")
     setCustomHoursTouched(false)
     setIsFetchingTalent(false)
     setFetchedProfile(null)
@@ -1225,7 +1227,10 @@ export function OfferDialog({
                                   }}
                                 >
                                   <SelectTrigger className="w-[140px] shrink-0 text-left">
-                                    <SelectValue placeholder="Select frequency" />
+                                    {/* No placeholder: customFrequency
+                                    defaults to "day" and is never empty, so
+                                    SelectValue's placeholder can never render. */}
+                                    <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {customScheduleFrequencies.map(
@@ -1241,11 +1246,11 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {customHoursError ? (
+                              {/* {customHoursError ? (
                                 <ErrorMessage className="mt-2">
                                   {customHoursError}
                                 </ErrorMessage>
-                              ) : null}
+                              ) : null} */}
                             </div>
                           ) : null}
 
@@ -1260,7 +1265,11 @@ export function OfferDialog({
                               if (customScheduleOpen) {
                                 setCustomScheduleOpen(false)
                                 setCustomHours("")
-                                setCustomFrequency("")
+                                // Not named in the ticket, but the same "day"
+                                // default applies here too — otherwise Cancel
+                                // then reopening the row would show a blank
+                                // Select now that its placeholder is gone.
+                                setCustomFrequency("day")
                                 setCustomHoursTouched(false)
                               } else {
                                 // A tile click may have a commit in flight
