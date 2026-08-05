@@ -68,7 +68,8 @@ export class SyncService {
       tags: listing.tags ?? [],
       industry: listing.industry,
       rating: listing.rating,
-      created_at: listing.createdAt,
+      created_at: new Date(listing.createdAt).getTime(),
+      media_url: listing.mediaUrls?.[0] ?? null,
     }
 
     const record = isService
@@ -79,6 +80,10 @@ export class SyncService {
           category: listing.category,
           pricing_model: listing.pricingModel,
           delivery_time: listing.deliveryTime,
+          // Team Size is hidden on the Services sidebar, and no service
+          // publisher ever set `teamSizeRange` — this only ever wrote
+          // undefined. Restore alongside the sidebar control if it comes back.
+          // team_size_range: listing.teamSizeRange,
           price_range: listing.priceMin ?? listing.priceMax,
           price_min: listing.priceMin,
           price_max: listing.priceMax,
@@ -115,11 +120,14 @@ export class SyncService {
       record: {
         name: user.name,
         username: user.username,
+        created_at: user.createdAt ? new Date(user.createdAt).getTime() : null,
         headline: user.headline,
         job_title: user.headline,
         skills: user.skills ?? [],
         location: user.location,
         industries: user.industries ?? [],
+        categories: user.categories ?? [],
+        subcategories: user.subcategories ?? [],
         hourly_rate: user.hourlyRateMin,
         hourly_rate_min: user.hourlyRateMin,
         hourly_rate_max: user.hourlyRateMax,
@@ -132,6 +140,22 @@ export class SyncService {
         rating: user.rating,
         avatar_url: user.avatarUrl,
         project_highlights: user.projectHighlights ?? [],
+        // Stats behind the Talent sidebar's numeric filters and the result
+        // card. Explicitly null rather than omitted when unknown, so a
+        // re-sync clears a stale value instead of leaving it behind.
+        country: user.country ?? null,
+        timezone: user.timezone ?? null,
+        // Weekly capacity as a number. `availability` itself is stored and
+        // faceted as a string ("40"), and Algolia numeric comparisons only
+        // work on real numbers — so the sidebar's Availability buckets, which
+        // range over capacity, need this parallel numeric attribute.
+        availability_hours: Number.isFinite(Number(user.availability))
+          ? Number(user.availability)
+          : null,
+        projects_completed: user.projectsCompleted ?? null,
+        reviews_count: user.reviewsCount ?? null,
+        client_success_rate: user.clientSuccessRate ?? null,
+        years_of_experience: user.yearsOfExperience ?? null,
       },
     })
   }
@@ -143,6 +167,7 @@ export class SyncService {
       objectID: team.id,
       record: {
         team_name: team.teamName,
+        created_at: team.createdAt ? new Date(team.createdAt).getTime() : null,
         username: team.username,
         category: team.category,
         services: team.services ?? [],

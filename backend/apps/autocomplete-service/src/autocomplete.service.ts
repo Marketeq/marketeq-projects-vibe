@@ -37,6 +37,7 @@ const JSON_DATA_TYPES = new Set([
   "search_keywords",
   "companies",
   "universities",
+  "locations",
 ]);
 
 function resolveAutocompleteDataPath(type: string): string | null {

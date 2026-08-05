@@ -77,6 +77,11 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: Number, nullable: true })
   durationMonths: number;
 
+  // Generated column — derived from scope roles. See the projects entity and
+  // the AddProjectTeamSizeDerived migration.
+  @Column({ type: Number, nullable: true, insert: false, update: false })
+  teamSize: number;
+
   @Column({ type: String, nullable: true })
   location: string;
 
