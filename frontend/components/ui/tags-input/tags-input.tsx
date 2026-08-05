@@ -14,6 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from "../../own-combobox"
+import { ScrollArea, ScrollBar } from ".."
 import { badgeVariants } from "../badge"
 import { labelVariants } from "../label"
 import { Popover, PopoverContent, PopoverTrigger } from "../popover"
@@ -183,7 +184,8 @@ export const TagsInputInput = React.forwardRef<
 
     const anchorRef = React.useRef<HTMLDivElement>(null)
     const [dropdownPos, setDropdownPos] = React.useState<{
-      top: number
+      top?: number
+      bottom?: number
       left: number
     } | null>(null)
 
@@ -204,7 +206,18 @@ export const TagsInputInput = React.forwardRef<
         }
         p = p.parentElement
       }
-      setDropdownPos(visible ? { top: r.bottom + 8, left: r.left } : null)
+      if (!visible) {
+        setDropdownPos(null)
+        return
+      }
+      const estimatedHeight = 250
+      const spaceBelow = window.innerHeight - r.bottom
+      const flipUp = spaceBelow < estimatedHeight && r.top > spaceBelow
+      setDropdownPos(
+        flipUp
+          ? { bottom: window.innerHeight - r.top + 8, left: r.left }
+          : { top: r.bottom + 8, left: r.left }
+      )
     }, [])
 
     React.useEffect(() => {
@@ -256,7 +269,9 @@ export const TagsInputInput = React.forwardRef<
                     portalDropdown && dropdownPos
                       ? {
                           position: "fixed",
-                          top: dropdownPos.top,
+                          ...(dropdownPos.top != null
+                            ? { top: dropdownPos.top }
+                            : { bottom: dropdownPos.bottom }),
                           left: dropdownPos.left,
                           width: 202,
                           pointerEvents: "auto",
@@ -281,7 +296,11 @@ export const TagsInputInput = React.forwardRef<
                     onInputValueChange?.(value)
                   }}
                 />
-                <CommandList>
+                <ScrollArea
+                  scrollBar={<ScrollBar className="w-4 p-1" />}
+                  viewportClassName="max-h-[232px]"
+                >
+                <CommandList className="max-h-none">
                   {canCreateOption ? null : (
                     <CommandEmpty>No results found.</CommandEmpty>
                   )}
@@ -336,6 +355,7 @@ export const TagsInputInput = React.forwardRef<
                     ) : null}
                   </CommandGroup>
                 </CommandList>
+                </ScrollArea>
                   </Command>
                 </div>
               </ScaleOutIn>

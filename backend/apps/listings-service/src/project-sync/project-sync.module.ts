@@ -8,6 +8,7 @@ import { ConfigModule } from "@nestjs/config";
 import { HttpModule } from "@nestjs/axios";
 import { ProjectSyncController } from "./project-sync.controller";
 import { ProjectDeliverablesController } from "./project-deliverables.controller";
+import { SuggestSkillsController } from "./suggest-skills.controller";
 import { ProjectSyncService } from "./project-sync.service";
 import { ProjectSyncContractMiddleware } from "./project-sync.contract.middleware";
 import { DELIVERABLES_ADAPTER } from "./deliverables/deliverables.adapter";
@@ -20,7 +21,11 @@ import { PublishModule } from "../publish/publish.module";
 
 @Module({
   imports: [ConfigModule, HttpModule, PublishModule],
-  controllers: [ProjectSyncController, ProjectDeliverablesController],
+  controllers: [
+    ProjectSyncController,
+    ProjectDeliverablesController,
+    SuggestSkillsController,
+  ],
   providers: [
     ProjectSyncService,
     DeliverablesAdapterHeuristic,

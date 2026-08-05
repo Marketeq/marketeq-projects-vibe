@@ -107,6 +107,12 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: 'jsonb', default: [] })
   faqs: { question: string; answer: string; is_ai_generated?: boolean }[];
 
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  publishedSnapshot: Record<string, any> | null;
+
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  scope: any;
+
   @Column('uuid')
   userId: string;
 

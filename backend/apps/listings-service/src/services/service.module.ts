@@ -6,11 +6,13 @@ import { ServicesInternalController } from './services-internal.controller';
 import { ServicesController } from './service.controller';
 import { ServicesService } from './service.service';
 import { Service } from './entities/service.entity';
+import { UserProfileModule } from '../shared/user-profile/user-profile.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Service]),
     ConfigModule,
+    UserProfileModule,
     ClientsModule.registerAsync([
       {
         name: 'ALGOLIA_CLIENT',
