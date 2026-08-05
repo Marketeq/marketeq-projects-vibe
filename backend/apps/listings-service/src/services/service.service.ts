@@ -7,6 +7,7 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
+import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 
 @Injectable()
 export class ServicesService {
@@ -17,6 +18,7 @@ export class ServicesService {
     private readonly repo: Repository<Service>,
     @Inject('ALGOLIA_CLIENT')
     private readonly algoliaClient: ClientProxy,
+    private readonly userProfileClient: UserProfileClient,
   ) {}
 
   findAll(status = ListingStatus.Published) {
@@ -32,7 +34,14 @@ export class ServicesService {
   async findBySlug(slug: string) {
     const item = await this.repo.findOne({ where: { slug, listingType: 'service' } });
     if (!item) throw new NotFoundException('Service not found');
-    return item;
+    if (item.status !== ListingStatus.Published && !item.publishedSnapshot) {
+      throw new NotFoundException('Service not found');
+    }
+    if (item.publishedSnapshot) {
+      Object.assign(item, item.publishedSnapshot);
+    }
+    const team = await this.userProfileClient.hydrateTeam(item.teamMemberIds);
+    return { ...item, team };
   }
 
   async seedFromN8n(dto: Record<string, any>) {

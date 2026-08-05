@@ -21,11 +21,41 @@ import { User } from '../user/entities/user.entity';
           transport: Transport.RMQ,
           options: {
             urls: [config.get<string>('RABBITMQ_URL', 'amqp://localhost:5672')],
-            queue: 'algolia_queue',
+            queue: 'algolia_service_queue',
             queueOptions: { durable: true },
             socketOptions: { heartbeatIntervalInSeconds: 60 },
           },
         }),
+      },
+      {
+        name: 'RABBITMQ_CLIENT',
+        imports: [ConfigModule],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672'],
+            queue: 'algolia_service_queue',
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
+      },
+      {
+        // Semantic category matching lives in category-service, which owns the
+        // taxonomy. Queue name must match the RPC microservice connection in
+        // category-service's main.ts (not its CMS event queue, which uses a
+        // deserializer incompatible with request/response).
+        name: 'CATEGORY_CLIENT',
+        imports: [ConfigModule],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672'],
+            queue: 'category_rpc_queue',
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
       },
     ]),
   ],

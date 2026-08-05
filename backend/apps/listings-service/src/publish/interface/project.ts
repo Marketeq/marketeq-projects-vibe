@@ -13,6 +13,7 @@ export class Project {
   budget?: number | null;
   initialTeamBudget?: number | null;
   durationMonths?: number | null;
+  teamSize?: number | null;
   location?: string | null;
   timezone?: string | null;
 
@@ -39,6 +40,10 @@ export class Project {
   teamMemberIds?: string[];
   videoUrl?: string | null;
   faqs?: { question: string; answer: string; is_ai_generated?: boolean }[];
+
+  publishedSnapshot?: Record<string, any> | null;
+
+  scope?: any;
 
   createdAt?: Date;
   updatedAt?: Date;

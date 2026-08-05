@@ -59,6 +59,15 @@ export class TagService {
     return tag;
   }
 
+  /** List all tags, optionally filtered by a case-insensitive name match */
+  async findAll(search?: string): Promise<TagEntity[]> {
+    const qb = this.repo.createQueryBuilder('tag').orderBy('tag.name', 'ASC');
+    if (search) {
+      qb.andWhere('tag.name ILIKE :search', { search: `%${search}%` });
+    }
+    return qb.getMany();
+  }
+
   // ----- Nest -> CMS helpers (Payload REST API) -----
 
   private baseCmsUrl() {

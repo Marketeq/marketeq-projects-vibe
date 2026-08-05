@@ -2,9 +2,11 @@ import {
   IsString,
   IsOptional,
   IsEnum,
+  IsIn,
   IsInt,
   Min,
   Max,
+  MaxLength,
   IsBoolean,
   IsArray,
   IsNumber,
@@ -59,19 +61,25 @@ export class SearchFiltersDto {
 
   // ── Talent ────────────────────────────────────────────────────────────────
 
+  // `category` (shared field above with Teams) doubles as talent's category
+  // filter — talent supports multiple simultaneous categories, unlike teams'
+  // single value, but both map onto an OR'd array filter the same way.
+  @IsOptional() @IsArray() @IsString({ each: true })
+  subcategory?: string[]
+
   @IsOptional() @IsArray() @IsString({ each: true })
   job_title?: string[]
 
   @IsOptional() @IsArray() @IsString({ each: true })
   experience_level?: string[]
 
-  @IsOptional() @IsString()
-  availability?: string
+  @IsOptional() @IsArray() @IsString({ each: true })
+  availability?: string[]
 
   // ── Teams ─────────────────────────────────────────────────────────────────
 
-  @IsOptional() @IsString()
-  category?: string
+  @IsOptional() @IsArray() @IsString({ each: true })
+  category?: string[]
 
   @IsOptional() @IsArray() @IsString({ each: true })
   team_size_range?: string[]
@@ -90,11 +98,29 @@ export class SearchFiltersDto {
 
   // ── Projects ──────────────────────────────────────────────────────────────
 
-  @IsOptional() @IsString()
-  project_category?: string
+  @IsOptional() @IsArray() @IsString({ each: true })
+  project_category?: string[]
 
-  @IsOptional() @IsString()
-  project_type?: string
+  // Subcategories of the single selected parent in `project_category`. The
+  // sidebar lets a user pick exactly one parent category but any number of
+  // its subcategories, so these two AND together: parent narrows to the
+  // branch, subcategories narrow further within it.
+  //
+  // Both fields carry EXPANDED taxonomy name lists (the picked node's name
+  // plus every descendant's) because a listing records only its own leaf
+  // category name, never its ancestors — the sidebar does the expansion
+  // since it's the side that holds the category tree. Both therefore match
+  // against the same indexed attribute; the parent clause is redundant
+  // whenever subcategories are set, but keeping it makes the two filters
+  // independent and lets either be cleared on its own.
+  //
+  // Kept separate from talent's `subcategory` field so a stale talent
+  // selection can never leak into a projects search (and vice versa).
+  @IsOptional() @IsArray() @IsString({ each: true })
+  project_subcategory?: string[]
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  project_type?: string[]
 
   @IsOptional() @IsString()
   industry?: string
@@ -116,14 +142,19 @@ export class SearchFiltersDto {
 
   // ── Services ──────────────────────────────────────────────────────────────
 
-  @IsOptional() @IsString()
-  service_category?: string
+  @IsOptional() @IsArray() @IsString({ each: true })
+  service_category?: string[]
 
-  @IsOptional() @IsString()
-  pricing_model?: string
+  // Services counterpart of `project_subcategory` above — same one-parent /
+  // many-subcategories sidebar contract.
+  @IsOptional() @IsArray() @IsString({ each: true })
+  service_subcategory?: string[]
 
-  @IsOptional() @IsString()
-  delivery_time?: string
+  @IsOptional() @IsArray() @IsString({ each: true })
+  pricing_model?: string[]
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  delivery_time?: string[]
 
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number)
   price_min?: number
@@ -135,6 +166,8 @@ export class SearchFiltersDto {
 export class SearchDto {
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   q?: string = ''
 
   @IsOptional()
@@ -168,6 +201,46 @@ export class SearchDto {
   @ValidateNested()
   @Type(() => SearchFiltersDto)
   filters?: SearchFiltersDto
+
+  // ── Flat filter shortcuts ────────────────────────────────────────────────
+  // The frontend sends these as flat query params (e.g. ?skills=React) rather
+  // than nested `filters[skills]=React` syntax. Mapped onto `filters` in
+  // SearchController before reaching SearchService.
+  @IsOptional() @IsString()
+  skills?: string
+
+  @IsOptional() @IsString()
+  location?: string
+
+  @IsOptional() @IsString()
+  industry?: string
+
+  @IsOptional() @IsString()
+  project_type?: string
+
+  @IsOptional() @IsString()
+  project_category?: string
+
+  @IsOptional() @IsString()
+  budget_range?: string
+
+  @IsOptional() @IsString()
+  project_duration_range?: string
+
+  @IsOptional() @IsString()
+  team_size_range?: string
+
+  @IsOptional() @IsString()
+  tags?: string
+
+  // Flat sort shortcut — mirrors earnings-service's EarningsQueryDto pattern.
+  // Mapped onto `sort` in SearchController, same as the flat filter
+  // shortcuts above are mapped onto `filters`.
+  @IsOptional() @IsString()
+  sortBy?: string
+
+  @IsOptional() @IsIn(['asc', 'desc'])
+  sortOrder?: string
 }
 
 export class IndexRecordDto {

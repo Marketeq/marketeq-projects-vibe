@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Logger, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { TagService } from './tag.service';
 import { ServiceAuthGuard } from '../guards/service-auth.guard';
@@ -56,6 +56,12 @@ export class TagsController {
   async pushTest() {
     const t = await this.service.createAndPushDummyTag();
     return { status: 'ok', data: { uuid: t.uuid, slug: t.slug } };
+  }
+
+  /** List all tags (optionally filtered by name via ?search=) */
+  @Get()
+  async findAll(@Query('search') search?: string) {
+    return this.service.findAll(search);
   }
 
   /** Lookup a local tag by slug */
