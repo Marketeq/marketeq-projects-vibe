@@ -99,6 +99,16 @@ export class ProxyService {
       headers['authorization'] = `Bearer ${cookieToken}`
     }
 
+    // The refresh_token / session_id cookies are httpOnly, so the browser can
+    // only present them via the Cookie header — the frontend cannot copy them
+    // into the body. auth-service reads them with cookie-parser
+    // (auth.controller.ts refresh/logout); without this pass-through
+    // req.cookies is empty downstream and every /auth/refresh 401s, logging
+    // users out as soon as the access token expires.
+    if (req.headers.cookie) {
+      headers['cookie'] = req.headers.cookie
+    }
+
     if (user) {
       headers['x-user-id'] = user.userId
       headers['x-user-email'] = user.email
