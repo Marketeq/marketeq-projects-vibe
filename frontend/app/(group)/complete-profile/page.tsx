@@ -2677,6 +2677,7 @@ const WorkExperienceDialog = ({
     handleSubmit,
     formState: { errors, isValid, isDirty },
     trigger,
+    getValues,
     setValue,
     register,
     reset,
@@ -3020,7 +3021,7 @@ const WorkExperienceDialog = ({
                                     value={value}
                                     onChange={(v) => {
                                       onChange(v)
-                                      trigger("endDate.year")
+                                      if (getValues("endDate.year")) trigger("endDate.year")
                                     }}
                                   >
                                     <ListboxButton
@@ -3071,7 +3072,7 @@ const WorkExperienceDialog = ({
                                     value={value}
                                     onChange={(v) => {
                                       onChange(v)
-                                      trigger("endDate.year")
+                                      if (getValues("endDate.year")) trigger("endDate.year")
                                     }}
                                   >
                                     <ListboxButton
@@ -3141,7 +3142,7 @@ const WorkExperienceDialog = ({
                                     value={value}
                                     onChange={(v) => {
                                       onChange(v)
-                                      trigger("endDate.year")
+                                      if (getValues("endDate.year")) trigger("endDate.year")
                                     }}
                                   >
                                     <ListboxButton
@@ -3193,7 +3194,7 @@ const WorkExperienceDialog = ({
                                     value={value}
                                     onChange={(v) => {
                                       onChange(v)
-                                      trigger("endDate.year")
+                                      if (getValues("endDate.year")) trigger("endDate.year")
                                     }}
                                   >
                                     <ListboxButton
@@ -3711,6 +3712,7 @@ const EducationDialog = ({
     register,
     reset,
     trigger,
+    getValues,
     setValue: setFormValue,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
@@ -4135,7 +4137,7 @@ const EducationDialog = ({
                                   value={value}
                                   onChange={(v) => {
                                     onChange(v)
-                                    trigger("endDate.year")
+                                    if (getValues("endDate.year")) trigger("endDate.year")
                                   }}
                                 >
                                   <ListboxButton
@@ -4177,7 +4179,7 @@ const EducationDialog = ({
                                   value={value}
                                   onChange={(v) => {
                                     onChange(v)
-                                    trigger("endDate.year")
+                                    if (getValues("endDate.year")) trigger("endDate.year")
                                   }}
                                 >
                                   <ListboxButton
@@ -4234,7 +4236,7 @@ const EducationDialog = ({
                                   value={value ?? null}
                                   onChange={(v) => {
                                     onChange(v)
-                                    trigger("endDate.year")
+                                    if (getValues("endDate.year")) trigger("endDate.year")
                                   }}
                                 >
                                   <ListboxButton
@@ -4277,7 +4279,7 @@ const EducationDialog = ({
                                   value={value ?? null}
                                   onChange={(v) => {
                                     onChange(v)
-                                    trigger("endDate.year")
+                                    if (getValues("endDate.year")) trigger("endDate.year")
                                   }}
                                 >
                                   <ListboxButton
