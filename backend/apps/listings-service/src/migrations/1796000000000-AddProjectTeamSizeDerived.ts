@@ -19,8 +19,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * environment reads), so IMMUTABLE is accurate and Postgres accepts it inside
  * a generation expression — subqueries are not allowed there directly.
  */
-export class AddProjectTeamSizeDerived1795000000000 implements MigrationInterface {
-  name = 'AddProjectTeamSizeDerived1795000000000';
+export class AddProjectTeamSizeDerived1796000000000 implements MigrationInterface {
+  name = 'AddProjectTeamSizeDerived1796000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
