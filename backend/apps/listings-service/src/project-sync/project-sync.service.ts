@@ -10,6 +10,7 @@ import {
   DeliverablesAdapter,
 } from "./deliverables/deliverables.adapter";
 import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
+import { SkillExtractionInput } from "./skills/skills.types";
 import { budgetFromScope } from "../shared/utils/pricing";
 import { CloudflareStorageService } from "../publish/cloudflare-storage.service";
 
@@ -39,6 +40,10 @@ export class ProjectSyncService {
     private readonly cloudflareStorageService: CloudflareStorageService,
     private readonly httpService: HttpService,
   ) {}
+
+  async suggestSkills(input: SkillExtractionInput): Promise<string[]> {
+    return this.skillsAdapter.extractSkills(input);
+  }
 
   async syncFromCms(
     dto: ProjectSyncDto,
