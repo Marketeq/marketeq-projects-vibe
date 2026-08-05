@@ -67,6 +67,7 @@ export class TeamsService {
   private buildPayload(team: Team) {
     return {
       id: team.id,
+      createdAt: team.createdAt?.toISOString() ?? null,
       teamName: team.title,
       username: team.slug ?? null,
       category: team.category ?? null,

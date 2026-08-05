@@ -4,8 +4,9 @@ import {
   NestModule,
   RequestMethod,
 } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { HttpModule } from "@nestjs/axios";
+import { ClientsModule, Transport } from "@nestjs/microservices";
 import { ProjectSyncController } from "./project-sync.controller";
 import { ProjectDeliverablesController } from "./project-deliverables.controller";
 import { SuggestSkillsController } from "./suggest-skills.controller";
@@ -20,7 +21,27 @@ import { SkillsAdapterHuggingFace } from "./skills/skills.adapter.huggingface";
 import { PublishModule } from "../publish/publish.module";
 
 @Module({
-  imports: [ConfigModule, HttpModule, PublishModule],
+  imports: [
+    ConfigModule,
+    HttpModule,
+    PublishModule,
+    ClientsModule.registerAsync([
+      {
+        name: "ALGOLIA_CLIENT",
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.get<string>("RABBITMQ_URL", "amqp://localhost:5672")],
+            queue: "algolia_queue",
+            queueOptions: { durable: true },
+            socketOptions: { heartbeatIntervalInSeconds: 60 },
+          },
+        }),
+      },
+    ]),
+  ],
   controllers: [
     ProjectSyncController,
     ProjectDeliverablesController,

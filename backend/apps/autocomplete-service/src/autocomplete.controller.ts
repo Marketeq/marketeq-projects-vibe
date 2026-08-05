@@ -48,11 +48,20 @@ export class AutocompleteController {
 
   // Wildcard :type route MUST come after all specific routes to avoid shadowing them
   @Get(':type')
-  async getByType(@Param('type') type: string, @Query('q') q?: string) {
+  async getByType(
+    @Param('type') type: string,
+    @Query('q') q?: string,
+    @Query('limit') limitParam?: string,
+  ) {
+    const parsedLimit = Number(limitParam);
+    const limit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, 500)
+        : 10;
     // If a JSON data file exists for this type, serve from it with Fuse.js fuzzy search
     if (this.svc.hasJsonData(type)) {
       try {
-        return await this.svc.queryFromJson(type, q);
+        return await this.svc.queryFromJson(type, q, limit);
       } catch (err) {
         console.error(`[Autocomplete] queryFromJson error for type="${type}":`, err);
         throw err;

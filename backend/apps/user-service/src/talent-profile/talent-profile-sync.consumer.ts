@@ -1,5 +1,11 @@
 import { Controller, Logger } from '@nestjs/common';
-import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
+import {
+  EventPattern,
+  MessagePattern,
+  Payload,
+  Ctx,
+  RmqContext,
+} from '@nestjs/microservices';
 import { TalentProfileSyncService } from './talent-profile-sync.service';
 import {
   TalentProfileSavedEvent,
@@ -33,6 +39,19 @@ export class TalentProfileSyncConsumer {
       );
       channel.nack(message, false, true);
     }
+  }
+
+  /**
+   * Backfill trigger for derived categories. Exposed over RabbitMQ rather than
+   * HTTP so it stays an operator action and never reaches the public API — it
+   * walks every active profile and re-emits each one.
+   */
+  @MessagePattern('talent-profile.reindex_categories')
+  async onReindexCategories(
+    @Payload() payload: { batchSize?: number },
+  ): Promise<{ processed: number; categorised: number }> {
+    this.logger.log('Received talent-profile.reindex_categories');
+    return this.syncService.reindexCategories(payload?.batchSize);
   }
 
   @EventPattern('talent-profile.deleted')

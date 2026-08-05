@@ -36,8 +36,6 @@ interface TalentProfileSavedEvent {
   country: string | null;
   timezone: string | null;
   rate: number | null;
-  rateMin: number | null;
-  rateMax: number | null;
   overview: unknown | null;
   skills: string[];
   industryExpertise: string[];
