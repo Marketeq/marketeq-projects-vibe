@@ -15,6 +15,8 @@ import { TaxGroupsController } from './tax-groups.controller';
 import { CategoryConsumer } from '../consumers/category.consumer';
 import { CategoryEventPublisher } from './category-event.publisher';
 import { CmsBackfillService } from './cms-backfill.service';
+import { CategoryMatchingService } from './category-matching.service';
+import { CategoryMatchingController } from './category-matching.controller';
 
 @Module({
   imports: [
@@ -35,8 +37,21 @@ import { CmsBackfillService } from './cms-backfill.service';
       },
     ]),
   ],
-  providers: [CategoryService, TagService, CronSyncService, CategoryEventPublisher, CmsBackfillService],
-  controllers: [CategoryController, TagsController, TaxGroupsController, CategoryConsumer],
-  exports: [CategoryService, TagService],
+  providers: [
+    CategoryService,
+    TagService,
+    CronSyncService,
+    CategoryEventPublisher,
+    CmsBackfillService,
+    CategoryMatchingService,
+  ],
+  controllers: [
+    CategoryController,
+    TagsController,
+    TaxGroupsController,
+    CategoryConsumer,
+    CategoryMatchingController,
+  ],
+  exports: [CategoryService, TagService, CategoryMatchingService],
 })
 export class CategoryModule {}
