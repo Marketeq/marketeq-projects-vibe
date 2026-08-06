@@ -35,6 +35,7 @@ import {
   SearchField,
   SearchFieldButton,
   SearchFieldInput,
+  ScrollArea,
   Select,
   SelectContent,
   SelectItem,
@@ -125,8 +126,6 @@ type OfferDialogProps = {
   }) => void
 }
 
-const MAX_VISIBLE_CONTRACTS = 5
-
 const existingContracts = [
   {
     id: "contract-1",
@@ -137,6 +136,7 @@ const existingContracts = [
       "/woman.jpg",
       "/tutorial-thumbnails/image-2.png",
       "/tutorial-thumbnails/image-3.png",
+      "/man.jpg",
     ],
     extra: "+5",
   },
@@ -225,7 +225,6 @@ let sessionExpiredRedirecting = false
 const getInitialOfferState = (mode: "create" | "edit") => ({
   schedule: mode === "edit" ? "full-time" : "",
   search: "",
-  showAllContracts: false,
   selectedContractId:
     mode === "edit" ? (existingContracts[0]?.id ?? null) : null,
   creatingContract: false,
@@ -266,13 +265,10 @@ export function OfferDialog({
   }, [])
   const [search, setSearch] = React.useState(initialState.search)
   // FR-4/AC-5.2: 200ms debounce. `search` stays immediate (drives the input
-  // itself); filtering, the empty-state check, and the "View all" gate all
-  // read this instead, so they can never disagree with each other mid-typing.
+  // itself); filtering and the empty-state check both read this instead,
+  // so they can never disagree with each other mid-typing.
   const [debouncedSearch, setDebouncedSearch] = React.useState(
     initialState.search
-  )
-  const [showAllContracts, setShowAllContracts] = React.useState(
-    initialState.showAllContracts
   )
   const [selectedContractId, setSelectedContractId] = React.useState<
     string | null
@@ -382,15 +378,22 @@ export function OfferDialog({
   const filteredContracts = existingContracts.filter((contract) =>
     contract.title.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
-  const visibleContracts =
-    debouncedSearch || showAllContracts
-      ? filteredContracts
-      : filteredContracts.slice(0, MAX_VISIBLE_CONTRACTS)
   const selectedContract =
     existingContracts.find((contract) => contract.id === selectedContractId) ||
     null
-  const isStepTwo = Boolean(schedule) && !selectedContract && !creatingContract
-  const isStepThree = Boolean(schedule) && Boolean(selectedContract)
+  // T1-10: a client with no existing contracts skips select-contract
+  // entirely — schedule selection alone should be enough to reach
+  // Estimated Start Date. With a non-empty list (every case today),
+  // hasExistingContracts is always true and these three reduce to exactly
+  // what they were before this existed.
+  const hasExistingContracts = existingContracts.length > 0
+  const isStepTwo =
+    Boolean(schedule) &&
+    hasExistingContracts &&
+    !selectedContract &&
+    !creatingContract
+  const isStepThree =
+    Boolean(schedule) && (Boolean(selectedContract) || !hasExistingContracts)
   const isStepFour = Boolean(schedule) && creatingContract
   const scheduleLabel =
     schedule === "part-time"
@@ -481,7 +484,6 @@ export function OfferDialog({
     setSchedule(initialState.schedule)
     setSearch(initialState.search)
     setDebouncedSearch(initialState.search)
-    setShowAllContracts(initialState.showAllContracts)
     setSelectedContractId(initialState.selectedContractId)
     setCreatingContract(initialState.creatingContract)
     setSelectedRate(initialState.selectedRate)
@@ -652,7 +654,13 @@ export function OfferDialog({
               <DialogTitle className="text-[16px] font-semibold leading-normal text-dark-blue-400">
                 Edit Offer
               </DialogTitle>
-            ) : isStepThree || isStepFour ? (
+            ) : (isStepThree || isStepFour) && hasExistingContracts ? (
+              // T1-10: with no existing contracts, select-contract is
+              // skipped entirely (isStepTwo can't be true), so Back's only
+              // job — clearing selectedContractId/creatingContract to
+              // return to that list — has nothing to return to. Both are
+              // already null/false here; rendering it would be a clickable
+              // no-op. The X button remains the exit, per AC-3.1.
               <Button
                 variant="link"
                 visual="gray"
@@ -882,64 +890,66 @@ export function OfferDialog({
                             </SearchFieldButton>
                           </SearchField>
 
-                          <div className="mt-3 space-y-2">
-                            {visibleContracts.map((contract) => (
-                              <button
-                                key={contract.id}
-                                type="button"
-                                className="flex w-full items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3 text-left"
-                                onClick={() =>
-                                  setSelectedContractId(contract.id)
-                                }
-                              >
-                                <span className="min-w-0">
-                                  <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
-                                    {contract.title}
-                                  </span>
-                                  <span className="block text-[12px] font-light leading-normal text-gray-500">
-                                    {contract.subtitle}
-                                  </span>
-                                </span>
-
-                                <span className="ml-4 flex items-center gap-3">
-                                  <AvatarGroup
-                                    className="cursor-default"
-                                    max={5}
-                                    size="sm"
-                                    excess
-                                  >
-                                    {contract.avatars.map((avatar, index) => (
-                                      <Avatar
-                                        key={`${contract.id}-${index}`}
-                                        className={cn(
-                                          "size-8 border-2 border-white",
-                                          staticAvatarClassName
-                                        )}
-                                      >
-                                        <AvatarImage
-                                          src={avatar}
-                                          alt={`Member ${index + 1}`}
-                                        />
-                                        <AvatarFallback
-                                          className={
-                                            staticAvatarFallbackClassName
-                                          }
-                                        >
-                                          {index + 1}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                    ))}
-                                  </AvatarGroup>
-                                  {contract.extra ? (
-                                    <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
-                                      {contract.extra}
+                          <ScrollArea viewportClassName="mt-3 max-h-[360px]">
+                            <div className="space-y-2 pr-3">
+                              {filteredContracts.map((contract) => (
+                                <button
+                                  key={contract.id}
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3 text-left"
+                                  onClick={() =>
+                                    setSelectedContractId(contract.id)
+                                  }
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
+                                      {contract.title}
                                     </span>
-                                  ) : null}
-                                  <ArrowRight className="size-4 text-gray-400" />
-                                </span>
-                              </button>
-                            ))}
-                          </div>
+                                    <span className="block text-[12px] font-light leading-normal text-gray-500">
+                                      {contract.subtitle}
+                                    </span>
+                                  </span>
+
+                                  <span className="ml-4 flex items-center gap-3">
+                                    <AvatarGroup
+                                      className="cursor-default"
+                                      max={5}
+                                      size="sm"
+                                      excess
+                                    >
+                                      {contract.avatars.map((avatar, index) => (
+                                        <Avatar
+                                          key={`${contract.id}-${index}`}
+                                          className={cn(
+                                            "size-8 border-2 border-white",
+                                            staticAvatarClassName
+                                          )}
+                                        >
+                                          <AvatarImage
+                                            src={avatar}
+                                            alt={`Member ${index + 1}`}
+                                          />
+                                          <AvatarFallback
+                                            className={
+                                              staticAvatarFallbackClassName
+                                            }
+                                          >
+                                            {index + 1}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                      ))}
+                                    </AvatarGroup>
+                                    {contract.extra ? (
+                                      <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
+                                        {contract.extra}
+                                      </span>
+                                    ) : null}
+                                    <ArrowRight className="size-4 text-gray-400" />
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
 
                           {/* FR-5/AC-5.3, doc 05 EC-008: verbatim copy, not
                           quoted — trimmed only so leading/trailing spaces in
@@ -963,21 +973,13 @@ export function OfferDialog({
                             </div>
                           ) : null}
 
-                          {!debouncedSearch &&
-                          filteredContracts.length > MAX_VISIBLE_CONTRACTS ? (
-                            <Button
-                              variant="link"
-                              visual="gray"
-                              className="mt-3 px-0 text-[12px] font-medium leading-normal text-primary-500"
-                              onClick={() =>
-                                setShowAllContracts((current) => !current)
-                              }
-                            >
-                              {showAllContracts
-                                ? "Show fewer contracts"
-                                : "View all contracts"}
-                            </Button>
-                          ) : null}
+                          <div className="mt-5 flex items-center gap-4">
+                            <span className="h-px flex-1 bg-gray-200" />
+                            <span className="text-[14px] font-light leading-normal text-gray-500">
+                              Or
+                            </span>
+                            <span className="h-px flex-1 bg-gray-200" />
+                          </div>
 
                           <Button
                             variant="link"
@@ -988,18 +990,10 @@ export function OfferDialog({
                             <Plus className="size-4" />
                             Invite me to a new contract
                           </Button>
-
-                          <div className="mt-5 flex items-center gap-4">
-                            <span className="h-px flex-1 bg-gray-200" />
-                            <span className="text-[14px] font-light leading-normal text-gray-500">
-                              Or
-                            </span>
-                            <span className="h-px flex-1 bg-gray-200" />
-                          </div>
                         </div>
                       ) : null}
 
-                      {isStepThree ? (
+                      {isStepThree && selectedContract ? (
                         <div>
                           <button
                             type="button"
