@@ -349,12 +349,17 @@ export const FILTER_VALUE_SOURCES: Record<
 > = {
   projects: {
     tags: { attribute: 'tags', column: 'tags' },
-    industries: { attribute: 'industry', column: 'industry' },
+    // The Algolia attribute is singular but the listings.project column is
+    // PLURAL — the two names genuinely differ here, which is what having both
+    // fields is for. (listings.teams is the singular `industry`, but teams
+    // have no derived filter values, so they never reach this map.)
+    industries: { attribute: 'industry', column: 'industries' },
     skills: { attribute: 'skills', column: 'skills' },
   },
   services: {
     tags: { attribute: 'tags', column: 'tags' },
-    industries: { attribute: 'industry', column: 'industry' },
+    // PLURAL column — see projects above.
+    industries: { attribute: 'industry', column: 'industries' },
     skills: { attribute: 'skills', column: 'skills' },
   },
   talent: {
