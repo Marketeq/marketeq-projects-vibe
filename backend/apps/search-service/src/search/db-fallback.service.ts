@@ -237,9 +237,16 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
       let rows: any[] = []
 
       // NOTE: table names/columns below match the actual per-service schemas
-      // (listings.projects/services/teams, cms.talent_profiles) — NOT the
-      // unqualified public.* names Algolia's index config implies. Keep this
-      // in sync with each service's entity definitions if they change.
+      // (listings.project, listings.teams, cms.talent_profiles) — NOT the
+      // unqualified public.* names Algolia's index config implies.
+      //
+      // Projects and services are NOT separate tables. Both live in
+      // listings.project and are told apart by "listingType" ('project' /
+      // 'service'), which is how listings-service itself reads them
+      // (ProjectsService and ServiceService both filter on it). Every query
+      // here that reads one of them must carry the discriminator or it will
+      // return the other's rows too. Keep this in sync with each service's
+      // entity definitions if they change.
       if (category === SearchCategory.TALENT) {
         const params: any[] = [pattern]
         const clauses: string[] = []
@@ -352,7 +359,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
 
         const filterSql = clauses.length ? `AND ${clauses.join(' AND ')}` : ''
         const result = await this.pool.query(
-          `SELECT id, first_name, last_name, username, availability,
+          `SELECT id, name, username, availability,
                   (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
                   (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
                   (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
@@ -360,8 +367,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                   COUNT(*) OVER () AS total_count
            FROM cms.talent_profiles
            WHERE status = 'active'
-             AND (first_name ILIKE $1 ESCAPE '\' OR last_name ILIKE $1 ESCAPE '\'
-                  OR username ILIKE $1 ESCAPE '\' OR overview::text ILIKE $1 ESCAPE '\')
+             AND (name ILIKE $1 ESCAPE '\' OR username ILIKE $1 ESCAPE '\'
+                  OR overview::text ILIKE $1 ESCAPE '\')
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -369,7 +376,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         )
         rows = result.rows.map((r) => ({
           id: r.id,
-          name: [r.first_name, r.last_name].filter(Boolean).join(' ') || r.username,
+          // cms.talent_profiles stores one `name`, not first_name/last_name.
+          name: r.name || r.username,
           username: r.username,
           availability: r.availability,
           hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
@@ -457,7 +465,10 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           ...(filters?.industries ?? []),
           ...(filters?.industry ? [filters.industry] : []),
         ]
-        const industryClause = this.arrayContainsAny(params, 'industry', industryValues)
+        // PLURAL on listings.project, unlike listings.teams' singular
+        // `industry` — the Algolia attribute is singular for both, so only the
+        // DB column differs.
+        const industryClause = this.arrayContainsAny(params, 'industries', industryValues)
         if (industryClause) clauses.push(industryClause)
 
         const locationClause = this.arrayContainsAny(params, 'locations', filters?.location)
@@ -501,8 +512,9 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                   "projectType" AS project_type, "teamSize" AS team_size,
                   budget, duration, "mediaUrls" AS media_urls, skills,
                   COUNT(*) OVER () AS total_count
-           FROM listings.projects
-           WHERE status = 'published' AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
+           FROM listings.project
+           WHERE status = 'published' AND "listingType" = $${params.push('project')}
+             AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -537,7 +549,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           ...(filters?.industries ?? []),
           ...(filters?.industry ? [filters.industry] : []),
         ]
-        const industryClause = this.arrayContainsAny(params, 'industry', industryValues)
+        // PLURAL on listings.project — see the projects branch above.
+        const industryClause = this.arrayContainsAny(params, 'industries', industryValues)
         if (industryClause) clauses.push(industryClause)
 
         const locationClause = this.arrayContainsAny(params, 'locations', filters?.location)
@@ -561,8 +574,13 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         clauses.push(...this.numRange(params, 'priceMin', filters?.price_min, undefined))
         clauses.push(...this.numRange(params, 'priceMax', undefined, filters?.price_max))
 
-        const pricingModelClause = this.scalarInAny(params, 'pricingModel', filters?.pricing_model)
-        if (pricingModelClause) clauses.push(pricingModelClause)
+        // Pricing Model is a no-op for the DB fallback: listings.project has
+        // no "pricingModel" column and no listings entity declares one — it
+        // only exists on the project-sync contract. Filtering or selecting it
+        // errors the whole query, which is why it is neither here nor in the
+        // SELECT below. Re-add both halves if the column is ever added.
+        // const pricingModelClause = this.scalarInAny(params, 'pricingModel', filters?.pricing_model)
+        // if (pricingModelClause) clauses.push(pricingModelClause)
 
         // Team Size is hidden on the Services sidebar and the backing column
         // has been dropped — see search-config.
@@ -572,12 +590,12 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         const filterSql = clauses.length ? `AND ${clauses.join(' AND ')}` : ''
         const result = await this.pool.query(
           `SELECT id, title AS service_title, description, category,
-                  "pricingModel" AS pricing_model,
                   "priceMin" AS price_min, "priceMax" AS price_max, "deliveryTime" AS timeline,
                   "mediaUrls" AS media_urls, skills,
                   COUNT(*) OVER () AS total_count
-           FROM listings.services
-           WHERE status = 'published' AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
+           FROM listings.project
+           WHERE status = 'published' AND "listingType" = $${params.push('service')}
+             AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -619,9 +637,12 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
   // Talent is absent because it stores no category at all — its categories are
   // derived semantically from job titles, so distinctTalentCategoryNames
   // answers from the taxonomy instead of from a column.
-  private static readonly CATEGORY_SOURCES: Record<string, { table: string; column: string }> = {
-    projects: { table: 'listings.projects', column: 'category' },
-    services: { table: 'listings.services', column: 'category' },
+  private static readonly CATEGORY_SOURCES: Record<
+    string,
+    { table: string; column: string; listingType: string }
+  > = {
+    projects: { table: 'listings.project', column: 'category', listingType: 'project' },
+    services: { table: 'listings.project', column: 'category', listingType: 'service' },
   }
 
   // Talent's counterpart of CATEGORY_SOURCES. Payload stores both arrays as
@@ -684,8 +705,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                 ) AS texts
            FROM cms.talent_profiles
           WHERE status = 'active'
-            AND (first_name ILIKE $1 ESCAPE '\' OR last_name ILIKE $1 ESCAPE '\'
-                 OR username ILIKE $1 ESCAPE '\' OR overview::text ILIKE $1 ESCAPE '\')
+            AND (name ILIKE $1 ESCAPE '\' OR username ILIKE $1 ESCAPE '\'
+                 OR overview::text ILIKE $1 ESCAPE '\')
             ${filterSql}
           LIMIT ${DbFallbackService.MAX_SEMANTIC_CANDIDATES}`,
         probeParams,
@@ -750,9 +771,11 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         `SELECT DISTINCT btrim("${source.column}") AS name
            FROM ${source.table}
           WHERE status = 'published'
+            AND "listingType" = $1
             AND "${source.column}" IS NOT NULL
             AND btrim("${source.column}") <> ''
           ORDER BY name ASC`,
+        [source.listingType],
       )
       return result.rows.map((row) => row.name as string)
     } catch (err) {
@@ -809,9 +832,12 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
   // column for a field stay declared side by side. Both must match the
   // clauses the PROJECTS and SERVICES branches of queryEntity filter against,
   // or the sidebar would offer values the filter can't match.
-  private static readonly LISTING_TABLES: Record<string, string> = {
-    projects: 'listings.projects',
-    services: 'listings.services',
+  private static readonly LISTING_TABLES: Record<
+    string,
+    { table: string; listingType: string }
+  > = {
+    projects: { table: 'listings.project', listingType: 'project' },
+    services: { table: 'listings.project', listingType: 'service' },
   }
 
   // Filter fields whose values live in a Payload child table keyed by
@@ -882,18 +908,20 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     const childSource = DbFallbackService.CHILD_VALUE_TABLES[category]?.[field]
     if (childSource) return this.childValueCounts(category, field, column, childSource)
 
-    const table = DbFallbackService.LISTING_TABLES[category]
-    if (!table) return {}
+    const source = DbFallbackService.LISTING_TABLES[category]
+    if (!source) return {}
 
     try {
       const result = await this.pool.query(
         `SELECT btrim(t.value) AS name, COUNT(*)::int AS usage_count
-           FROM ${table} l, unnest(l."${column}") AS t(value)
+           FROM ${source.table} l, unnest(l."${column}") AS t(value)
           WHERE l.status = 'published'
+            AND l."listingType" = $1
             AND btrim(t.value) <> ''
           GROUP BY btrim(t.value)
           ORDER BY usage_count DESC, name ASC
           LIMIT 1000`,
+        [source.listingType],
       )
       return Object.fromEntries(
         result.rows.map((row) => [row.name as string, Number(row.usage_count)]),
