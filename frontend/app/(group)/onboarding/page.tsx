@@ -11,7 +11,10 @@ import { Button } from "@/components/ui"
 export default function Onboarding() {
   return (
     <AuthenticatedRoute>
-      <div className="h-screen flex overflow-hidden">
+      {/* h-dvh (not h-screen) so the shell matches the *visible* viewport on
+          mobile browsers too — with h-screen the URL bar leaves the document
+          taller than the screen and the banner column scrolls with it. */}
+      <div className="h-dvh flex overflow-hidden">
         <div className="relative p-[75px] w-[480px] shrink-0 flex flex-col bg-dark-blue-500">
           <Logo className="h-9 w-[245px] shrink-0" />
 
@@ -49,8 +52,12 @@ export default function Onboarding() {
           </div>
         </div>
 
-        <div className="relative flex justify-stretch items-center flex-auto py-[100px] px-[200px]">
-          <div className="max-w-[560px] w-full mx-auto">
+        {/* The role picker scrolls inside its own column when the viewport is
+            too short, so the banner column stays put instead of the whole
+            page moving. `m-auto` on the child centers it without making the
+            overflowing top edge unreachable, which `items-center` would. */}
+        <div className="relative flex flex-auto overflow-y-auto py-[100px] px-[200px]">
+          <div className="max-w-[560px] w-full m-auto">
             <h1 className="text-2xl leading-[36px] text-dark-blue-400 font-semibold">
               What brings you here today?
             </h1>
