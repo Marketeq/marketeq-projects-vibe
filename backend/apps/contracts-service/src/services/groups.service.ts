@@ -5,6 +5,7 @@ import { ContractGroup } from '../entities/contract-group.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Contract } from '../entities/contract.entity';
+import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
 
 @Injectable()
 export class GroupsService {
@@ -63,5 +64,33 @@ export class GroupsService {
       throw new NotFoundException('Group not found');
     }
     return group;
+  }
+
+  // FR-1: contracts list for the Hire Me modal. One query via the existing
+  // OneToMany relation — no N+1. No aggregate group status: FR-8/FR-11 are
+  // per-talent (per member), not per-group, so there's nothing here to
+  // derive that has a caller.
+  async getGroupsForClient(
+    ownerClientId: string,
+  ): Promise<ContractGroupSummaryDto[]> {
+    const groups = await this.contractGroupRepository.find({
+      where: { ownerClientId },
+      relations: ['contracts'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return groups.map((group) => ({
+      id: group.id,
+      members: group.contracts.map((contract) => ({
+        contractId: contract.id,
+        talentId: contract.talentId,
+        title: contract.title,
+        status: contract.status,
+      })),
+      projectId: group.projectId,
+      serviceId: group.serviceId,
+      teamId: group.teamId,
+      jobId: group.jobId,
+    }));
   }
 }

@@ -50,9 +50,18 @@ export class ContractsController {
     return this.contractsService.respondToOffer(id, dto);
   }
 
-  // List contracts for a client
+  // List contracts for a client. clientId still comes from the path (kept
+  // for the existing callers, who all already pass their own id), but it
+  // must match the caller's own identity — this route had no ownership
+  // check at all before T2-1.
   @Get('client/:clientId')
-  async getClientContracts(@Param('clientId') clientId: string) {
+  async getClientContracts(
+    @Param('clientId') clientId: string,
+    @Req() req: Request & { user: { sub: string } },
+  ) {
+    if (clientId !== req.user.sub) {
+      throw new ForbiddenException('You may only view your own contracts');
+    }
     return this.contractsService.getContractsByClient(clientId);
   }
 
