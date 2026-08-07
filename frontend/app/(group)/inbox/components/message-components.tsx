@@ -30,7 +30,7 @@ import { EmojiPicker } from "@/components/emoji-picker"
 import { useEditContext } from "@/components/inbox-comps"
 import {
   Avatar,
-  AvatarFallbackIcon,
+  AvatarFallback,
   AvatarImage,
   Dialog,
   DialogClose,
@@ -771,7 +771,9 @@ const YourBubbleImpl = ({
           src={participantAvatarUrl || undefined}
           alt={participantName || "User"}
         />
-        <AvatarFallbackIcon />
+        <AvatarFallback>
+          {(participantName || "U").charAt(0).toUpperCase()}
+        </AvatarFallback>
       </Avatar>
 
       <div className="group flex flex-col items-start gap-y-2 min-w-0 flex-1">
@@ -945,7 +947,7 @@ const SearchPeopleRowImpl = ({
   >
     <Avatar size="md" className="shrink-0">
       <AvatarImage src={avatarUrl || undefined} alt={name} />
-      <AvatarFallbackIcon />
+      <AvatarFallback>{(name || "U").charAt(0).toUpperCase()}</AvatarFallback>
     </Avatar>
     <div className="flex flex-col min-w-0">
       <span className="text-[13px] text-gray-700 truncate">{name}</span>
@@ -979,7 +981,9 @@ const SearchMessageRowImpl = ({
         src={participantAvatarUrl || undefined}
         alt={participantName}
       />
-      <AvatarFallbackIcon />
+      <AvatarFallback>
+        {(participantName || "U").charAt(0).toUpperCase()}
+      </AvatarFallback>
     </Avatar>
     <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
       <div className="flex items-center justify-between gap-x-2">

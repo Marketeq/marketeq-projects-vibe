@@ -10,6 +10,7 @@ import { ApiError, apiFetch } from "@/src/lib/api"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
+  cn,
   DataEmoji,
   EmojiProperties,
   noop,
@@ -81,8 +82,6 @@ import {
   DropdownMenuRadioTrigger,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Favorite,
-  FavoriteRoot,
   IconButton,
   Input,
   InputGroup,
@@ -91,6 +90,7 @@ import {
   ScrollArea,
   ScrollBar,
   Textarea,
+  ToastAction,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -145,6 +145,11 @@ function describeKeyFailure(err: unknown): string {
 
 interface ChatsProps {
   selectedConversation: Conversation | null
+  setSelectedConversation?: (conv: Conversation | null) => void
+  /** Patches a conversation directly in the sidebar's list (see
+   * left-sidebar.tsx's registerPatchConversation) so header actions like
+   * the favorite star show up in the list without an Ably round-trip. */
+  onPatchConversation?: (id: string, patch: Partial<Conversation>) => void
   jwtToken: string
   privateKey: CryptoKey | null
   currentUserProfile?: any
@@ -291,6 +296,8 @@ export interface DeclinedOfferCardData {
 
 export function Chats({
   selectedConversation,
+  setSelectedConversation,
+  onPatchConversation,
   jwtToken,
   privateKey,
   currentUserProfile,
@@ -421,14 +428,46 @@ export function Chats({
   const threadArchived = !!(selectedConversation as any)?.isArchived
   const threadSpam = !!(selectedConversation as any)?.isSpam
   const threadUnread = !!(selectedConversation as any)?.markedUnread
-  const [starredOverride, setStarredOverride] = useState<boolean | null>(null)
-  const threadStarred =
-    starredOverride ?? !!(selectedConversation as any)?.isStarred
+  const threadStarred = !!(selectedConversation as any)?.isStarred
   const threadActions = useThreadActions(jwtToken)
+
+  const handleToggleStar = useCallback(
+    (next: boolean) => {
+      if (!selectedConversation) return
+      const prev = selectedConversation
+      setSelectedConversation?.({ ...(prev as any), isStarred: next })
+      onPatchConversation?.(prev.id, { isStarred: next })
+      ;(next
+        ? threadActions.star(prev.id)
+        : threadActions.unstar(prev.id)
+      ).catch((err) => {
+        console.error("star toggle failed", err)
+        setSelectedConversation?.(prev)
+        onPatchConversation?.(prev.id, { isStarred: !next })
+      })
+    },
+    [selectedConversation, setSelectedConversation, onPatchConversation, threadActions]
+  )
 
   const handleOpenForward = useCallback((msg: Message) => {
     setForwardTarget(msg)
     setForwardOpen(true)
+  }, [])
+
+  const pushUndoToast = useCallback((title: string, onUndo?: () => void) => {
+    toast({
+      title,
+      variant: "success",
+      action: onUndo ? (
+        <ToastAction
+          altText="Undo"
+          className="h-auto p-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none text-sm font-semibold"
+          onClick={onUndo}
+        >
+          Undo
+        </ToastAction>
+      ) : undefined,
+    })
   }, [])
 
   const [currentUser, setCurrentUser] =
@@ -499,7 +538,6 @@ export function Chats({
   // Reset per-conversation state when switching conversations,
   // then restore any persisted draft for this thread (Doc 05 EC-3.3).
   useEffect(() => {
-    setStarredOverride(null)
     setReplyingTo(null)
     setEditingMessage(null)
     setTextareaValue("")
@@ -545,10 +583,6 @@ export function Chats({
       setTextareaValue(evt.text)
     })
   }, [selectedConversation?.id, currentUser?.id])
-
-  useEffect(() => {
-    setStarredOverride(null)
-  }, [(selectedConversation as any)?.isStarred])
 
   // Auto mark-read when opening a conversation
   useEffect(() => {
@@ -2005,30 +2039,23 @@ export function Chats({
             </TooltipProvider>
             <TooltipProvider>
               <Tooltip>
-                <FavoriteRoot
-                  value={threadStarred}
-                  onValueChange={(next) => {
-                    if (!selectedConversation) return
-                    setStarredOverride(next)
-                    ;(next
-                      ? threadActions.star(selectedConversation.id)
-                      : threadActions.unstar(selectedConversation.id)
-                    ).catch((err) => {
-                      console.error("star toggle failed", err)
-                      setStarredOverride(!next)
-                    })
-                  }}
-                >
-                  {() => (
-                    // Wrap div, not Favorite — TooltipTrigger's data-state
-                    // would overwrite Toggle's, breaking the active-color rule.
-                    <TooltipTrigger asChild>
-                      <div className="size-11 flex items-center justify-center">
-                        <Favorite className="text-gray-500" />
-                      </div>
-                    </TooltipTrigger>
-                  )}
-                </FavoriteRoot>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-pressed={threadStarred}
+                    className="size-11 flex items-center justify-center focus-visible:outline-none"
+                    onClick={() => handleToggleStar(!threadStarred)}
+                  >
+                    <Star
+                      className={cn(
+                        "size-6 transition-colors duration-300 ease-out",
+                        threadStarred
+                          ? "text-warning-300 fill-warning-300"
+                          : "text-dark-blue-400/50 fill-transparent hover:text-dark-blue-400"
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
                 <TooltipContent>
                   {threadStarred ? "Remove from Favorites" : "Add to Favorites"}
                 </TooltipContent>
@@ -2060,16 +2087,7 @@ export function Chats({
                 <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault()
-                    if (!selectedConversation) return
-                    const next = !threadStarred
-                    setStarredOverride(next)
-                    ;(next
-                      ? threadActions.star(selectedConversation.id)
-                      : threadActions.unstar(selectedConversation.id)
-                    ).catch((err) => {
-                      console.error("star toggle failed", err)
-                      setStarredOverride(!next)
-                    })
+                    handleToggleStar(!threadStarred)
                   }}
                 >
                   <Star className="size-4" />
@@ -2079,12 +2097,27 @@ export function Chats({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
-                    ;(threadUnread
-                      ? threadActions.markRead(selectedConversation.id)
-                      : threadActions.markUnread(selectedConversation.id)
-                    ).catch((err) =>
-                      console.error("mark unread/read failed", err)
+                    const id = selectedConversation.id
+                    const goingUnread = !threadUnread
+                    ;(goingUnread
+                      ? threadActions.markUnread(id)
+                      : threadActions.markRead(id)
                     )
+                      .then(() =>
+                        pushUndoToast(
+                          goingUnread
+                            ? "Message marked as unread"
+                            : "Message marked as read",
+                          () =>
+                            (goingUnread
+                              ? threadActions.markRead(id)
+                              : threadActions.markUnread(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) =>
+                        console.error("mark unread/read failed", err)
+                      )
                   }}
                 >
                   <Mail05 className="size-4" />{" "}
@@ -2094,11 +2127,20 @@ export function Chats({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
+                    const id = selectedConversation.id
                     const next = !threadPinned
-                    ;(next
-                      ? threadActions.pin(selectedConversation.id)
-                      : threadActions.unpin(selectedConversation.id)
-                    ).catch((err) => console.error("pin toggle failed", err))
+                    ;(next ? threadActions.pin(id) : threadActions.unpin(id))
+                      .then(() =>
+                        pushUndoToast(
+                          next ? "Message Pinned" : "Message Unpinned",
+                          () =>
+                            (next
+                              ? threadActions.unpin(id)
+                              : threadActions.pin(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) => console.error("pin toggle failed", err))
                   }}
                 >
                   <Pin02 className="size-4" />
@@ -2108,12 +2150,27 @@ export function Chats({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
-                    ;(threadArchived
-                      ? threadActions.unarchive(selectedConversation.id)
-                      : threadActions.archive(selectedConversation.id)
-                    ).catch((err) =>
-                      console.error("archive toggle failed", err)
+                    const id = selectedConversation.id
+                    const goingArchived = !threadArchived
+                    ;(goingArchived
+                      ? threadActions.archive(id)
+                      : threadActions.unarchive(id)
                     )
+                      .then(() =>
+                        pushUndoToast(
+                          goingArchived
+                            ? "Message Archived"
+                            : "Message Restored",
+                          () =>
+                            (goingArchived
+                              ? threadActions.unarchive(id)
+                              : threadActions.archive(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) =>
+                        console.error("archive toggle failed", err)
+                      )
                   }}
                 >
                   <Archive className="size-4" />{" "}
@@ -2124,10 +2181,25 @@ export function Chats({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
-                    ;(threadSpam
-                      ? threadActions.unspam(selectedConversation.id)
-                      : threadActions.spam(selectedConversation.id)
-                    ).catch((err) => console.error("spam toggle failed", err))
+                    const id = selectedConversation.id
+                    const goingSpam = !threadSpam
+                    ;(goingSpam
+                      ? threadActions.spam(id)
+                      : threadActions.unspam(id)
+                    )
+                      .then(() =>
+                        pushUndoToast(
+                          goingSpam
+                            ? "Message moved to Spam"
+                            : "Message moved to Inbox",
+                          () =>
+                            (goingSpam
+                              ? threadActions.unspam(id)
+                              : threadActions.spam(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) => console.error("spam toggle failed", err))
                   }}
                 >
                   <AlertTriangle className="size-4" />{" "}
@@ -2175,8 +2247,14 @@ export function Chats({
                   <Button
                     onClick={() => {
                       if (!selectedConversation) return
+                      const id = selectedConversation.id
                       threadActions
-                        .trash(selectedConversation.id)
+                        .trash(id)
+                        .then(() =>
+                          pushUndoToast("Chat Deleted", () =>
+                            threadActions.untrash(id).catch(() => {})
+                          )
+                        )
                         .catch((err) => console.error("trash failed", err))
                       setShowDeleteConfirm(false)
                     }}
