@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import { HttpService } from "@nestjs/axios";
+import { ClientProxy } from "@nestjs/microservices";
 import { ProjectSyncDto } from "./dto/project-sync.dto";
 import { Project } from "../projects/entities/project.entity";
 import { ListingStatus } from "../shared/enums/listing.enum";
@@ -10,6 +11,7 @@ import {
   DeliverablesAdapter,
 } from "./deliverables/deliverables.adapter";
 import { SKILLS_ADAPTER, SkillsAdapter } from "./skills/skills.adapter";
+import { SkillExtractionInput } from "./skills/skills.types";
 import { budgetFromScope } from "../shared/utils/pricing";
 import { CloudflareStorageService } from "../publish/cloudflare-storage.service";
 
@@ -38,7 +40,13 @@ export class ProjectSyncService {
     private readonly skillsAdapter: SkillsAdapter,
     private readonly cloudflareStorageService: CloudflareStorageService,
     private readonly httpService: HttpService,
+    @Inject("ALGOLIA_CLIENT")
+    private readonly algoliaClient: ClientProxy,
   ) {}
+
+  async suggestSkills(input: SkillExtractionInput): Promise<string[]> {
+    return this.skillsAdapter.extractSkills(input);
+  }
 
   async syncFromCms(
     dto: ProjectSyncDto,
@@ -107,6 +115,7 @@ export class ProjectSyncService {
     this.logger.log(
       `Project ${action} from CMS: id=${saved.id} payloadId=${payloadId} slug=${row.slug}`,
     );
+    this.emitAlgoliaUpsert(saved);
     return { id: saved.id, payloadId, action };
   }
 
@@ -117,7 +126,49 @@ export class ProjectSyncService {
     existing.status = "archived" as any;
     await repo.save(existing);
     this.logger.log(`Project soft-deleted from CMS: payloadId=${payloadId}`);
+    this.algoliaClient.emit<void>("listing.deleted", {
+      id: String(existing.id),
+      type: "project",
+    });
     return { deleted: true };
+  }
+
+  private emitAlgoliaUpsert(project: Project): void {
+    const payload = {
+      id: String(project.id),
+      type: "project",
+      ownerId: project.createdBy ?? "cms-sync",
+      createdAt:
+        project.createdAt instanceof Date
+          ? project.createdAt.toISOString()
+          : new Date().toISOString(),
+      rating: null,
+      title: project.title,
+      description:
+        project.shortDescription ??
+        (project.description ? project.description.substring(0, 500) : null),
+      skills: project.skills ?? [],
+      category: project.category ?? project.categories?.[0] ?? null,
+      industry: project.industry ?? [],
+      tags: project.tags ?? [],
+      subcategories: project.subcategories ?? [],
+      projectType: project.projectType ?? null,
+      budgetMin: project.budget != null ? Number(project.budget) : null,
+      budgetMax: null,
+      status: project.status,
+      slug: project.slug,
+      mediaUrls: project.mediaUrls ?? [],
+    };
+    const event =
+      project.status === ListingStatus.Published
+        ? "listing.updated"
+        : "listing.created";
+    this.algoliaClient.emit<void>(event, payload).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(
+          `Failed to emit ${event} for ${project.id}: ${err.message}`,
+        ),
+    });
   }
 
   // ── Internal mapping ─────────────────────────────────────────────────

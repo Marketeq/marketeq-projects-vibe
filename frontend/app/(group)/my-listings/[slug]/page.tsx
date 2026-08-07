@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, usePathname, useRouter } from "next/navigation"
 import { ProjectChatPanel } from "./project-chat-panel"
 import { RecentQuestionsManager } from "./recent-questions-manager"
 
@@ -1355,7 +1355,13 @@ function SortableGalleryItem({
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const pathname = usePathname()
+  const { user, isLoading: isAuthLoading } = useAuth()
+  React.useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
+    }
+  }, [isAuthLoading, user, router, pathname])
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -1933,9 +1939,6 @@ export default function ProjectDetails() {
   const [removeTarget, setRemoveTarget] = React.useState<any | null>(null)
   const [leadSearch, setLeadSearch] = React.useState("")
 
-  // The project owner. my-listings is owner-scoped, so the logged-in user is
-  // the owner; prefer the project's stored userId when present. Never derive
-  // "owner" from list position.
   const ownerId = String(
     (project as any)?.userId ??
       (project as any)?.ownerId ??
@@ -1943,9 +1946,6 @@ export default function ProjectDetails() {
       ""
   )
 
-  // my-listings is the owner's own listing — hide "Ask a Question" (you don't
-  // ask questions on your own project). Always true here, but keep the check
-  // explicit and safe.
   const isOwnerViewing =
     !(user as any)?.id ||
     !ownerId ||
@@ -1962,20 +1962,33 @@ export default function ProjectDetails() {
 
   const projectAssignees = React.useMemo(() => {
     const team = Array.isArray((project as any)?.team) ? (project as any).team : []
-    const mapped = team.map((m: any) => ({
-      id: String(m.id || m.userId || ""),
-      firstName: m.firstName || m.name || "User",
-      username: m.username || m.email?.split("@")[0] || "",
-      avatarUrl: m.avatarUrl || null,
-      jobTitle: jobTitleOf(m),
-    }))
     const ids = Array.isArray((project as any)?.teamMemberIds)
       ? (project as any).teamMemberIds.map(String)
       : []
-    return ids.length > 0
-      ? mapped.filter((m: any) => ids.includes(m.id))
-      : mapped
-  }, [project])
+    return team
+      .filter((m: any) => {
+        const mid = String(m.id || m.userId || "")
+        return m.role === "owner" || mid === ownerId || ids.includes(mid)
+      })
+      .map((m: any) => ({
+        id: String(m.id || m.userId || ""),
+        firstName: m.firstName || m.name || "User",
+        username: m.username || m.email?.split("@")[0] || "",
+        avatarUrl: m.avatarUrl || null,
+        jobTitle: jobTitleOf(m),
+      }))
+  }, [project, ownerId])
+
+  const currentTeam = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team) ? (project as any).team : []
+    const ids = Array.isArray((project as any)?.teamMemberIds)
+      ? (project as any).teamMemberIds.map(String)
+      : []
+    return team.filter((m: any) => {
+      const mid = String(m.id || m.userId || "")
+      return m.role === "owner" || mid === ownerId || ids.includes(mid)
+    })
+  }, [project, ownerId])
 
   const confirmRemoveMember = async (deactivateInstead: boolean) => {
     const target = removeTarget
@@ -2137,8 +2150,6 @@ export default function ProjectDetails() {
     let leadLabel = ""
     for (const m of pm) {
       const uid = String(m.userId)
-      // "Owner" is derived from the real owner id, never from stored roles —
-      // ignore any stale/persisted "Owner" on non-owner members.
       if (m.projectRole && m.projectRole !== "Owner") roles[uid] = m.projectRole
       if (m.status) statuses[uid] = m.status
       if (m.isLead) {
@@ -2767,6 +2778,9 @@ export default function ProjectDetails() {
               startDay: 1,
               endDay: 30,
               order: idx,
+              phaseType: phase.phaseType ?? undefined,
+              recurrenceSchedule: phase.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase.recurrenceCount ?? undefined,
               projectId: project.id,
               tasks: (phase.rows || []).map((row: any) => ({
                 taskName: row.task || "",
@@ -2829,6 +2843,16 @@ export default function ProjectDetails() {
   // ── Budget & Duration computed from scope ──────────────────────────────────
   const [budgetPeriod, setBudgetPeriod] = React.useState("week")
 
+  const isServiceListing =
+    project?.listingType === "service" ||
+    (Array.isArray(project?.scope) &&
+      project.scope.some(
+        (p: any) =>
+          p?.phaseType === "setup" ||
+          p?.phaseType === "recurring" ||
+          p?.phaseType === "ongoing"
+      ))
+
   const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
@@ -2837,15 +2861,34 @@ export default function ProjectDetails() {
       // Matches the scope builder's getPhaseDurationInDays logic.
       let totalDays = 0
       for (const phase of phases) {
-        const taskDurations = (phase.rows ?? [])
+        const taskDurations = ((phase.rows ?? phase.tasks ?? []) as any[])
           .map((row: any) => {
             const dur = row.duration
-            if (!dur) return 0
-            const val = Number(dur.value) || 0
-            if (val <= 0) return 0
-            if (dur.type === "weeks") return val * 7
-            if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-            return val // days
+            // Object form { value, type }
+            if (dur && typeof dur === "object") {
+              const val = Number(dur.value) || 0
+              if (val > 0) {
+                if (dur.type === "weeks") return val * 7
+                if (dur.type === "months") return val * 30
+                if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+                return val // days
+              }
+            }
+            // String form, e.g. "2 weeks" (relational scope stores it this way)
+            if (typeof dur === "string" && dur.trim()) {
+              const [rv, ru] = dur.trim().split(/\s+/)
+              const v = Number(rv) || 0
+              const u = (ru || "days").toLowerCase()
+              if (v > 0) {
+                if (u.startsWith("week")) return v * 7
+                if (u.startsWith("month")) return v * 30
+                if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+                return v
+              }
+            }
+            // Fall back to estimatedHours at 40 hrs/week.
+            const hrs = Number(row.estimatedHours) || 0
+            return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
           })
           .filter((d: number) => d > 0)
         if (taskDurations.length > 0) {
@@ -3031,12 +3074,7 @@ export default function ProjectDetails() {
             role: d.category || d.categories?.[0] || "Software Development",
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
-            featuredImage:
-              featuredImage ||
-              d.featuredImage ||
-              galleryUrls[0] ||
-              d.mediaUrls?.[0] ||
-              null,
+            featuredImage: featuredImage || d.featuredImage || null,
             featuredVideo:
               featuredVideo || d.featuredVideo || d.videoUrl || null,
             mediaUrls: finalGallery,
@@ -3080,6 +3118,9 @@ export default function ProjectDetails() {
                 return {
                   phaseName:
                     phase.phaseName || phase.name || phase.stageName || "",
+                  phaseType: phase.phaseType ?? undefined,
+                  recurrenceSchedule: phase.recurrenceSchedule ?? undefined,
+                  recurrenceCount: phase.recurrenceCount ?? undefined,
                   ...(rawTasks.length > 0
                     ? {
                         rows: rawTasks.map((t: any) => {
@@ -3248,9 +3289,6 @@ export default function ProjectDetails() {
               })
             )
             setProject((prev: any) => {
-              // Union the roster with anyone already assigned to this project
-              // so assigned members never drop out of the picker even if they
-              // aren't (yet) in the roster.
               const byId = new Map<string, any>()
               for (const m of prev.team ?? []) byId.set(m.id || m.userId, m)
               for (const m of hydratedMembers) byId.set(m.id || m.userId, m)
@@ -3396,15 +3434,19 @@ export default function ProjectDetails() {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
 
+  if (!isAuthLoading && !user) {
+    return null
+  }
+
   if (loading) {
     return (
       <div className="px-[100px] pb-[100px] relative bg-white">
-        <div className="max-w-[1240px] flex items-start gap-x-8">
+        <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
           <div className="max-w-[818px] flex-auto">
             {/* gray header area */}
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
+                <div className="absolute w-screen left-[min(-100px,calc(620px-50vw))] top-0 bottom-0 bg-gray-50" />
                 {/* breadcrumb */}
                 <div className="flex items-center gap-x-2 relative">
                   <Shimmer className="size-[18px] rounded" />
@@ -3572,11 +3614,11 @@ export default function ProjectDetails() {
   return (
     <>
       <div className="px-[100px] pb-[100px] relative bg-white">
-        <div className="max-w-[1240px] flex items-start gap-x-8">
+        <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
           <div className="max-w-[818px] flex-auto">
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
+                <div className="absolute w-screen left-[min(-100px,calc(620px-50vw))] top-0 bottom-0 bg-gray-50" />
 
                 <div className="flex items-center gap-x-2 relative">
                   <NextLink href="/">
@@ -4031,6 +4073,7 @@ export default function ProjectDetails() {
                           )
                           setInfoSummary(project.summary || "")
                           setInfoTab("Categories")
+                          setSelected("Details")
                           setProjectInfoOpen(true)
                         }}
                       >
@@ -4060,6 +4103,7 @@ export default function ProjectDetails() {
                       )
                       setInfoSummary(project.summary || "")
                       setInfoTab("Basic Info")
+                      setSelected("Details")
                       setProjectInfoOpen(true)
                     }}
                   >
@@ -4072,6 +4116,7 @@ export default function ProjectDetails() {
                   onClick={() => {
                     setInfoTab("Basic Info")
                     setFocusSummaryOnOpen(true)
+                    setSelected("Details")
                     setProjectInfoOpen(true)
                   }}
                 >
@@ -5501,8 +5546,8 @@ export default function ProjectDetails() {
                           project.team[] (Step 2 of the hybrid team model).
                           Falls back to the static design when team is empty.
                         */}
-                              {Array.isArray(project.team) &&
-                              project.team.length > 0 ? (
+                              {Array.isArray(currentTeam) &&
+                              currentTeam.length > 0 ? (
                                 (() => {
                                   type TeamMember = {
                                     firstName: string
@@ -5514,7 +5559,7 @@ export default function ProjectDetails() {
                                     isLead: boolean
                                     isOnline: boolean
                                   }
-                                  const members = project.team as TeamMember[]
+                                  const members = currentTeam as TeamMember[]
                                   // Profiles may deliver languages/skills/location
                                   // as objects ({ name, fluency, ... }); coerce to
                                   // display strings before rendering.
@@ -6298,9 +6343,6 @@ export default function ProjectDetails() {
                                     className="pt-6 pb-6"
                                   >
                                     {(() => {
-                                      // The actual current lead is the persisted
-                                      // lead (or the owner by default) — never
-                                      // just the first row.
                                       const effectiveLeadId =
                                         originalLeadId || ownerId
                                       const currentLead =
@@ -9617,7 +9659,7 @@ export default function ProjectDetails() {
                         </span>
                         <div className="mt-2">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {durationLabel}
+                            {isServiceListing ? "Ongoing" : durationLabel}
                           </span>
                         </div>
                       </div>
@@ -9627,6 +9669,21 @@ export default function ProjectDetails() {
 
                   <ScopeBuilder
                     embedded
+                    scopeType={
+                      project?.listingType === "service"
+                        ? "service"
+                        : "project"
+                    }
+                    onScopeTypeChange={(type) => {
+                      setProject((prev: any) => ({
+                        ...prev,
+                        listingType: type,
+                      }))
+                      setHasChanges(true)
+                      ProjectAPI.UpdateProjectDraft(project.id, {
+                        listingType: type,
+                      } as any).catch(() => {})
+                    }}
                     phases={
                       project.scope?.length > 0 ? project.scope : undefined
                     }
@@ -9654,16 +9711,17 @@ export default function ProjectDetails() {
                             null,
                         }
                       })
+                      // Scope assignees must be members ON this project
+                      // (Chris 07-28) — the owner (self) plus added members —
+                      // never the whole roster or seed members.
                       const ids = Array.isArray(project.teamMemberIds)
                         ? project.teamMemberIds.map(String)
                         : []
-                      const subset =
-                        ids.length > 0
-                          ? apiTeam.filter((m: any) =>
-                              ids.includes(String(m.id))
-                            )
-                          : apiTeam
-                      return subset.length > 0 ? subset : SEED_TEAM_MEMBERS
+                      return apiTeam.filter(
+                        (m: any) =>
+                          ids.includes(String(m.id)) ||
+                          String(m.id) === ownerId
+                      )
                     })()}
                   />
                 </div>
@@ -9725,7 +9783,7 @@ export default function ProjectDetails() {
                 <div className="mt-3">
                   <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
                     {budgetTotalCents > 0
-                      ? `with an initial payment of $${Math.round((budgetTotalCents / 100) * 0.25).toLocaleString()} to kickoff`
+                      ? `with an initial payment of ${formatBudget(budgetTotalCents, budgetPeriod)} to kickoff`
                       : "with an initial payment of $0 to kickoff"}
                   </span>
                 </div>
@@ -9735,11 +9793,11 @@ export default function ProjectDetails() {
                     Current Team
                   </span>
 
-                  {Array.isArray(project.assignedTeam) &&
-                  project.assignedTeam.length > 0 ? (
+                  {Array.isArray(currentTeam) &&
+                  currentTeam.length > 0 ? (
                     <div className="group relative w-fit">
                       <div className="flex items-center -space-x-2">
-                      {project.assignedTeam
+                      {currentTeam
                         .slice(0, 5)
                         .map((m: any, i: number) => (
                           <Avatar
@@ -9758,9 +9816,9 @@ export default function ProjectDetails() {
                             </AvatarFallback>
                           </Avatar>
                         ))}
-                      {project.assignedTeam.length > 5 && (
+                      {currentTeam.length > 5 && (
                         <span className="pl-3 text-xs font-medium text-dark-blue-400">
-                          +{project.assignedTeam.length - 5}
+                          +{currentTeam.length - 5}
                         </span>
                       )}
                       </div>
@@ -9771,7 +9829,7 @@ export default function ProjectDetails() {
                             <span>
                               Your project currently has{" "}
                               <span className="font-bold">
-                                {project.assignedTeam.length} team members
+                                {currentTeam.length} team members
                               </span>
                             </span>
                           </div>
@@ -9779,6 +9837,10 @@ export default function ProjectDetails() {
                             type="button"
                             className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
                             onClick={() => {
+                              // The team dialog lives in the "Details" tab, which
+                              // unmounts on other tabs — switch to it so the
+                              // dialog is mounted, then open it.
+                              setSelected("Details")
                               setTeamTab("Team Members")
                               setTeamDialogOpen(true)
                             }}
@@ -9789,17 +9851,43 @@ export default function ProjectDetails() {
                       </div>
                     </div>
                   ) : (
-                    <Avatar size="sm" className="border-2 border-white">
-                      {user?.avatarUrl && (
-                        <AvatarImage
-                          src={user.avatarUrl}
-                          alt={user.firstName || "Owner"}
-                        />
-                      )}
-                      <AvatarFallback>
-                        {user?.firstName?.[0]?.toUpperCase() || "O"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="group relative w-fit">
+                      <Avatar size="sm" className="border-2 border-white">
+                        {user?.avatarUrl && (
+                          <AvatarImage
+                            src={user.avatarUrl}
+                            alt={user.firstName || "Owner"}
+                          />
+                        )}
+                        <AvatarFallback>
+                          {user?.firstName?.[0]?.toUpperCase() || "O"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="pointer-events-none absolute left-0 top-full z-20 pt-2 w-[300px] opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+                          <div className="flex items-center gap-x-2 text-sm font-light text-dark-blue-400">
+                            <Users03 className="size-4 shrink-0 text-primary-500" />
+                            <span>
+                              No team members yet — just you as owner.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
+                            onClick={() => {
+                              // The team dialog lives in the "Details" tab, which
+                              // unmounts on other tabs — switch to it so the
+                              // dialog is mounted, then open it.
+                              setSelected("Details")
+                              setTeamTab("Team Members")
+                              setTeamDialogOpen(true)
+                            }}
+                          >
+                            Manage Team <span aria-hidden>→</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -9807,23 +9895,25 @@ export default function ProjectDetails() {
                   <div className="flex items-center gap-x-[6.4px]">
                     <Clock className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {durationDays > 0
-                        ? `Starting from a ${durationValue} ${durationUnit} duration`
-                        : "Add a scope to see duration"}
+                      {isServiceListing
+                        ? "Ongoing duration"
+                        : durationDays > 0
+                          ? `Starting from a ${durationValue} ${durationUnit} duration`
+                          : "Add a scope to see duration"}
                     </span>
                   </div>
                   <div className="flex items-center gap-x-[6.4px]">
                     <Users03 className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
                       {(() => {
-                        const roles = new Set<string>()
+                        let memberSlots = 0
                         for (const phase of project.scope ?? []) {
                           for (const row of phase.rows ?? []) {
-                            if (row.role) roles.add(row.role)
+                            if (row.role || row.task) memberSlots++
                           }
                         }
-                        return roles.size > 0
-                          ? `Minimum ${roles.size} team member${roles.size !== 1 ? "s" : ""}`
+                        return memberSlots > 0
+                          ? `Minimum ${memberSlots} team member${memberSlots !== 1 ? "s" : ""}`
                           : "Add a scope to see team members"
                       })()}
                     </span>
@@ -10030,7 +10120,7 @@ export default function ProjectDetails() {
                   open={publishDialogOpen}
                   onOpenChange={setPublishDialogOpen}
                 >
-                  <DialogContent className="max-w-[480px] p-0">
+                  <DialogContent className="p-0" style={{ maxWidth: 416 }}>
                     <div className="p-6">
                       <DialogTitle>
                         Publish this{" "}

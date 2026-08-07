@@ -16,6 +16,7 @@
  * ListingCard for visual consistency.
  */
 import { projectDetailsUrl, serviceDetailsUrl } from "@/src/lib/listing-urls"
+import { plainTextFromRichTextHtml } from "@/utils/functions"
 import { Briefcase } from "@blend-metrics/icons"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -45,6 +46,9 @@ export function ListingCardCompact({
   duration,
   href,
 }: ListingCardCompactProps) {
+  // Same rich-text HTML as ListingCard receives — flatten before rendering it
+  // as a text child, or the homepage prints literal tags.
+  const plainDescription = plainTextFromRichTextHtml(description)
   const computedHref =
     href ??
     (kind === "service"
@@ -83,9 +87,9 @@ export function ListingCardCompact({
           </h1>
         </NextLink>
 
-        {description && (
+        {plainDescription && (
           <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
-            {description}
+            {plainDescription}
           </p>
         )}
 

@@ -265,6 +265,26 @@ export class PublishService {
       if (galleryUrls.length > 0) {
         updatePayload.mediaUrls = galleryUrls;
       }
+
+      const proj = await this.projectRepository.findOne({ id: projectId });
+      if (proj) {
+        updatePayload.publishedSnapshot = {
+          title: proj.title,
+          subtitle: proj.subtitle ?? null,
+          shortDescription: proj.shortDescription ?? null,
+          description: proj.fullDescription ?? null,
+          categories: proj.categories ?? [],
+          subcategories: proj.subCategories ?? [],
+          industry: proj.industries ?? [],
+          tags: proj.tags ?? [],
+          skills: proj.skills ?? [],
+          mediaUrls: galleryUrls,
+          videoUrl: proj.videoUrl ?? null,
+          faqs: proj.faqs ?? [],
+          deliverables: proj.deliverables ?? [],
+          scope: proj.scope ?? null,
+        };
+      }
     }
 
     const moderatedProject = await this.projectRepository.update(
@@ -843,12 +863,47 @@ export class PublishService {
     });
   }
 
+  /**
+   * Normalizes a service scope to the required shape (docs JL-07) instead of
+   * rejecting it — so autosave never fails mid-edit. Runs only when the scope
+   * carries phase types (project scopes pass through untouched):
+   *   - Setup phases first, Recurring in the middle, Ongoing last (re-ordered).
+   *   - Recurring phases get sensible recurrence defaults when missing.
+   * The frontend enforces the "one Setup / one Ongoing" UX; if extras slip
+   * through they're simply ordered by type, never dropped.
+   */
+  private normalizeServiceScope(
+    phases: CreateProjectPhaseDto[],
+  ): CreateProjectPhaseDto[] {
+    if (!phases.some((p) => p.phaseType)) return phases;
+
+    const rank = (t?: string) =>
+      t === 'setup' ? 0 : t === 'ongoing' ? 2 : 1;
+
+    return [...phases]
+      .sort((a, b) => {
+        const byType = rank(a.phaseType) - rank(b.phaseType);
+        return byType !== 0 ? byType : (a.order ?? 0) - (b.order ?? 0);
+      })
+      .map((p, index) => ({
+        ...p,
+        order: index,
+        ...(p.phaseType === 'recurring'
+          ? {
+              recurrenceSchedule: p.recurrenceSchedule ?? 'monthly',
+              recurrenceCount: p.recurrenceCount ?? 1,
+            }
+          : {}),
+      }));
+  }
+
   async replaceProjectScope(
     userId: string,
     projectId: string,
     dto: UpsertProjectScopeDto,
   ): Promise<{ scope: Phase[]; budgetUsdCents: number }> {
     await this.ensureProjectOwnership(projectId, userId);
+    const normalizedScope = this.normalizeServiceScope(dto.scope ?? []);
 
     const existingPhases = await this.phaseRepository.findAll({
       filterOptions: { projectId },
@@ -867,13 +922,16 @@ export class PublishService {
 
     const scope: Phase[] = [];
 
-    for (const phaseDto of dto.scope ?? []) {
+    for (const phaseDto of normalizedScope) {
       const phase = await this.phaseRepository.create({
         name: phaseDto.name,
         stageName: phaseDto.stageName,
         startDay: phaseDto.startDay,
         endDay: phaseDto.endDay,
         order: phaseDto.order,
+        phaseType: phaseDto.phaseType ?? null,
+        recurrenceSchedule: phaseDto.recurrenceSchedule ?? null,
+        recurrenceCount: phaseDto.recurrenceCount ?? null,
         projectId,
       });
 
@@ -938,6 +996,9 @@ export class PublishService {
     const scopeSnapshot = scope.map((phase, index) => ({
       phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
       order: phase.order ?? index,
+      phaseType: phase.phaseType ?? null,
+      recurrenceSchedule: phase.recurrenceSchedule ?? null,
+      recurrenceCount: phase.recurrenceCount ?? null,
       tasks: (phase.task ?? []).map((task) => {
         const hours = this.taskHours(task);
         totalHours += hours;
@@ -948,6 +1009,7 @@ export class PublishService {
           experienceLevel:
             task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
           estimatedHours: hours,
+          duration: task.duration ?? null,
         };
       }),
     }));
@@ -1329,6 +1391,9 @@ export class PublishService {
         persistedVideoUrl = resolvedVideoUrl;
       }
 
+      const clearFeatured =
+        (dto as CreateMediaDto & { clearFeatured?: string }).clearFeatured ===
+        'true';
       let featuredImageUrl: string;
       if (files.featuredImage) {
         const featuredImageUpload =
@@ -1339,6 +1404,8 @@ export class PublishService {
         featuredImageUrl = featuredImageUpload.url;
       } else if (dto.featuredImage) {
         featuredImageUrl = dto.featuredImage;
+      } else if (clearFeatured) {
+        featuredImageUrl = '';
       } else {
         throw new BadRequestException('Featured image is required.');
       }
@@ -1355,8 +1422,13 @@ export class PublishService {
         ...(dto.additionalImages ?? []),
         ...uploadedAdditionalUrls,
       ];
+      const replaceAdditional =
+        (dto as CreateMediaDto & { replaceAdditional?: string })
+          .replaceAdditional === 'true';
       const hasProvidedAdditional =
-        dto.additionalImages !== undefined || uploadedAdditionalUrls.length > 0;
+        replaceAdditional ||
+        dto.additionalImages !== undefined ||
+        uploadedAdditionalUrls.length > 0;
 
       // Upsert: update existing media record if one exists, otherwise create
       let media: Media;
@@ -1397,6 +1469,10 @@ export class PublishService {
       if (galleryUrls.length > 0) {
         await this.projectRepository.update(dto.projectId, {
           mediaUrls: galleryUrls,
+        });
+      } else if (clearFeatured) {
+        await this.projectRepository.update(dto.projectId, {
+          mediaUrls: [],
         });
       }
 

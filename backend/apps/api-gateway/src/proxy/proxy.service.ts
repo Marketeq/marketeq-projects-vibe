@@ -99,6 +99,16 @@ export class ProxyService {
       headers['authorization'] = `Bearer ${cookieToken}`
     }
 
+    // The refresh_token / session_id cookies are httpOnly, so the browser can
+    // only present them via the Cookie header — the frontend cannot copy them
+    // into the body. auth-service reads them with cookie-parser
+    // (auth.controller.ts refresh/logout); without this pass-through
+    // req.cookies is empty downstream and every /auth/refresh 401s, logging
+    // users out as soon as the access token expires.
+    if (req.headers.cookie) {
+      headers['cookie'] = req.headers.cookie
+    }
+
     if (user) {
       headers['x-user-id'] = user.userId
       headers['x-user-email'] = user.email
@@ -128,6 +138,12 @@ export class ProxyService {
       // Do NOT also set params here — that would duplicate them
       validateStatus: () => true,
       responseType: 'stream',
+      // Without this, axios' default maxRedirects (21) silently follows any
+      // 3xx a downstream service returns (e.g. the OAuth callback's redirect
+      // to the frontend) server-side, fetches the final page itself, and
+      // streams THAT back with a 200 — the browser never sees the redirect
+      // at all. Relay 3xx + Location as-is and let the browser navigate.
+      maxRedirects: 0,
     }
 
     try {

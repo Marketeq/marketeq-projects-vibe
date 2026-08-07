@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
@@ -12,8 +12,6 @@ import {
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
-import { useAuth } from "@/contexts/auth"
-import { getContractsForClient, getContractsForTalent } from "@/service/http/contracts"
 import {
   EarningsTab,
   type EarningsFilters,
@@ -21,6 +19,7 @@ import {
   OverviewTab,
   PAYOUT_STATUS_LABELS,
   type PayoutDepositStatus,
+  type PayoutsFilters,
   PayoutScheduleDialog,
   PayoutsTab,
 } from "@/components/transactions-comps"
@@ -41,24 +40,13 @@ import {
 export default function TransactionsPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   // US-75: Log Time is reachable in-place from the Earnings area, rather than
   // only via navigating away to /time-tracking.
   const [showLogTime, setShowLogTime] = useState(false)
-  const [activeContracts, setActiveContracts] = useState<Array<{ id: string; title: string }>>([])
   const [depositStatus, setDepositStatus] = useState<PayoutDepositStatus | null>(null)
-
-  useEffect(() => {
-    if (!user?.id) return
-    const role = ((user as any).role?.toUpperCase?.() || (user as any).accountType?.toUpperCase?.() || "")
-    const fetcher = role === "CLIENT" ? getContractsForClient : getContractsForTalent
-    fetcher(user.id)
-      .then((contracts) => setActiveContracts(contracts.filter((c) => c.status === "active").map((c) => ({ id: c.id, title: c.title }))))
-      .catch(() => {})
-  }, [user?.id])
   // Bumped after a successful schedule save to remount OverviewTab — it fetches
   // schedule/balance/methods once on mount, and PayoutScheduleDialog is a sibling
   // (not a child), so there's otherwise no way to tell it to refetch after a save.
@@ -67,7 +55,27 @@ export default function TransactionsPage() {
   // contractor currently has the earnings table filtered to, rather than always
   // exporting the full unfiltered dataset regardless of what's on screen.
   const [earningsFilters, setEarningsFilters] = useState<EarningsFilters>({ dateRange: "this_month", entryType: "", statusFilter: "", search: "" })
+  // Populated by PayoutsTab via onFiltersChange — same reasoning as
+  // earningsFilters above, just for the Payouts tab's own filter set.
+  const [payoutsFilters, setPayoutsFilters] = useState<PayoutsFilters>({ dateRange: "all_time", statusFilter: "", depositMethodId: "", search: "" })
   const [exporting, setExporting] = useState(false)
+
+  // US-80.03/80.05: the balance must NOT refresh immediately after a manual
+  // time submission — only the entry itself surfaces right away (handled by
+  // the Time Tracking screen's own immediate refetch). Without a real Ably
+  // balance.updated push in this codebase, a single delayed re-fetch — fired
+  // once, ~6s after a successful save — is the safety-net behavior AC-80.06
+  // describes, instead of the previous immediate remount-on-save.
+  const manualTimeRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleManualTimeSaved = useCallback(() => {
+    if (manualTimeRefreshTimer.current) clearTimeout(manualTimeRefreshTimer.current)
+    manualTimeRefreshTimer.current = setTimeout(() => {
+      setOverviewRefreshKey((k) => k + 1)
+    }, 6000)
+  }, [])
+  useEffect(() => () => {
+    if (manualTimeRefreshTimer.current) clearTimeout(manualTimeRefreshTimer.current)
+  }, [])
 
   const handleExport = useCallback(
     async (format: "csv" | "pdf") => {
@@ -75,11 +83,20 @@ export default function TransactionsPage() {
       try {
         // Routed through api-gateway — see service/http/earnings.ts for why
         // (access_token is HttpOnly; the gateway forwards it server-side).
-        const params = new URLSearchParams({ format, currency: "USD" })
-        if (earningsFilters.dateRange) params.set("dateRange", earningsFilters.dateRange)
-        if (earningsFilters.entryType) params.set("entryType", earningsFilters.entryType)
-        if (earningsFilters.statusFilter) params.set("status", earningsFilters.statusFilter)
-        const url = `${getPublicApiUrl()}/v1/earnings/export?${params.toString()}`
+        const isPayouts = activeTab === "payouts"
+        const params = new URLSearchParams({ format })
+        if (isPayouts) {
+          if (payoutsFilters.dateRange && payoutsFilters.dateRange !== "all_time") params.set("dateRange", payoutsFilters.dateRange)
+          if (payoutsFilters.statusFilter) params.set("status", payoutsFilters.statusFilter)
+          if (payoutsFilters.depositMethodId) params.set("depositMethodId", payoutsFilters.depositMethodId)
+          if (payoutsFilters.search) params.set("search", payoutsFilters.search)
+        } else {
+          params.set("currency", "USD")
+          if (earningsFilters.dateRange) params.set("dateRange", earningsFilters.dateRange)
+          if (earningsFilters.entryType) params.set("entryType", earningsFilters.entryType)
+          if (earningsFilters.statusFilter) params.set("status", earningsFilters.statusFilter)
+        }
+        const url = `${getPublicApiUrl()}/v1/${isPayouts ? "payouts" : "earnings"}/export?${params.toString()}`
         const res = await fetch(url, { credentials: "include" })
 
         if (res.status === 202) {
@@ -90,7 +107,7 @@ export default function TransactionsPage() {
         }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          toast({ title: "Export failed", description: data.message ?? "Could not export your earnings. Please try again.", variant: "destructive" })
+          toast({ title: "Export failed", description: data.message ?? `Could not export your ${isPayouts ? "payouts" : "earnings"}. Please try again.`, variant: "destructive" })
           return
         }
 
@@ -98,7 +115,7 @@ export default function TransactionsPage() {
         // Use the server's actual filename (date-stamped) rather than a generic guess.
         const disposition = res.headers.get("Content-Disposition") ?? ""
         const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
-        const filename = filenameMatch?.[1] ?? `earnings.${format}`
+        const filename = filenameMatch?.[1] ?? `${isPayouts ? "payouts" : "earnings"}.${format}`
         const a = document.createElement("a")
         a.href = URL.createObjectURL(blob)
         a.download = filename
@@ -111,7 +128,7 @@ export default function TransactionsPage() {
         setExporting(false)
       }
     },
-    [toast, earningsFilters]
+    [toast, earningsFilters, payoutsFilters, activeTab]
   )
 
   return (
@@ -231,33 +248,31 @@ export default function TransactionsPage() {
                     </>
                   )}
 
-                  {/* Export — only earnings-service exposes a real export endpoint;
-                      hidden on Payouts (exporting earnings data while viewing payout
-                      transactions would silently hand the contractor the wrong file). */}
-                  {activeTab !== "payouts" && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          className="bg-white"
-                          variant="outlined"
-                          visual="gray"
-                          size="sm"
-                          disabled={exporting}
-                          rightIcon={<Download className="size-4" />}
-                        >
-                          {exporting ? "Exporting…" : "Export"}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleExport("csv")}>
-                          Export CSV
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleExport("pdf")}>
-                          Export PDF
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                  {/* Export — earnings-service and payout-service (v1/payouts/export)
+                      each expose their own real export endpoint; handleExport
+                      picks the right one based on activeTab. */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        className="bg-white"
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        disabled={exporting}
+                        rightIcon={<Download className="size-4" />}
+                      >
+                        {exporting ? "Exporting…" : "Export"}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleExport("csv")}>
+                        Export CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExport("pdf")}>
+                        Export PDF
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   {/* Settings gear */}
                   <IconButton
@@ -287,7 +302,7 @@ export default function TransactionsPage() {
               </TabsContent>
 
               <TabsContent value="payouts" className="mt-5">
-                <PayoutsTab key={overviewRefreshKey} onDepositStatusChange={setDepositStatus} />
+                <PayoutsTab key={overviewRefreshKey} onDepositStatusChange={setDepositStatus} onFiltersChange={setPayoutsFilters} />
               </TabsContent>
             </Tabs>
           </div>
@@ -302,8 +317,7 @@ export default function TransactionsPage() {
         <AddManualTimeDialog
           open={showLogTime}
           onOpenChange={setShowLogTime}
-          contracts={activeContracts}
-          onSaved={() => setOverviewRefreshKey((k) => k + 1)}
+          onSaved={handleManualTimeSaved}
         />
       </div>
     </AuthenticatedRoute>

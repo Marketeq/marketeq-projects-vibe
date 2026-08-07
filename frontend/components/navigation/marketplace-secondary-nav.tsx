@@ -113,8 +113,8 @@ export function MarketplaceSecondaryNavShell({
           transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)",
         }}
       >
-        <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px]">
-          <div className="flex flex-col">
+        <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px] min-w-0">
+          <div className="flex flex-col shrink-0">
             <span className="inline-block text-[10px] leading-[12.1px] lg:text-xs lg:leading-[16.34px] text-dark-blue-400">
               You currently have
             </span>
@@ -122,7 +122,7 @@ export function MarketplaceSecondaryNavShell({
             <TeamMemberLink />
           </div>
 
-          <div className="flex items-center gap-x-6 lg:gap-x-[54.17px] lg:ml-[26.5px]">
+          <div className="flex items-center gap-x-6 lg:gap-x-[54.17px] lg:ml-[26.5px] min-w-0 overflow-x-auto scrollbar-none [&>*]:shrink-0">
             <Button
               className="text-[11px] lg:text-[13px] leading-6 opacity-60 hover:opacity-100"
               variant="link"

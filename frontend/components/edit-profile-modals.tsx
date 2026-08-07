@@ -280,6 +280,18 @@ const JOB_TITLE_WORDS = [
   "avp",
 ]
 
+// Capitalize the first letter of each word, preserving numbers, punctuation and
+// existing casing (so "3M", "AT&T", "eBay" stay intact). A word that already
+// contains an uppercase letter is left alone — otherwise deliberate brand casing
+// like "eBay"/"iPhone" would be flattened to "EBay"/"IPhone".
+function capitalizeCompanyName(value?: string): string {
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+}
+
 function formatJobTitle(raw: string): string {
   let title = raw.trim()
   if (!title) return title
@@ -806,10 +818,6 @@ const certificationsFormSchema = z
       path: ["issuedDate"],
     }
   )
-  .refine((data) => data.canNotExpire || Boolean(data.expirationDate), {
-    message: "Expiration date is required.",
-    path: ["expirationDate"],
-  })
   .refine(
     (data) => {
       if (data.canNotExpire || !data.expirationDate) return true
@@ -2324,6 +2332,7 @@ export const WorkExperienceDialog = ({
     handleSubmit,
     formState: { errors, isValid, isDirty, isSubmitting },
     trigger,
+    getValues,
     setValue,
     register,
     reset,
@@ -2573,6 +2582,12 @@ export const WorkExperienceDialog = ({
                       id="employer"
                       placeholder="Acme Inc."
                       {...register("employer")}
+                      onBlur={(e) => {
+                        setValue(
+                          "employer",
+                          capitalizeCompanyName(e.target.value)
+                        )
+                      }}
                       isInvalid={hookFormHasError({
                         errors,
                         name: "employer",
@@ -2629,7 +2644,8 @@ export const WorkExperienceDialog = ({
                               value={value ?? null}
                               onChange={(v) => {
                                 onChange(v)
-                                trigger("endDate.year")
+                                if (getValues("endDate.year"))
+                                  trigger("endDate.year")
                               }}
                             >
                               <ListboxButton
@@ -2679,7 +2695,8 @@ export const WorkExperienceDialog = ({
                               value={value ?? null}
                               onChange={(v) => {
                                 onChange(v)
-                                trigger("endDate.year")
+                                if (getValues("endDate.year"))
+                                  trigger("endDate.year")
                               }}
                             >
                               <ListboxButton
@@ -4509,7 +4526,7 @@ export const CertificationsDialog = ({
         credentialsUrl: cert.credentialUrl ?? "",
         issuedDate: parseLocalDate(cert.issueDate),
         expirationDate: parseLocalDate(cert.expirationDate),
-        canNotExpire: !cert.expirationDate,
+        canNotExpire: cert.doesntExpire ?? !cert.expirationDate,
         skills: Array.isArray(cert.skills)
           ? cert.skills.map((name: string, i: number) => ({
               id: `${cert.id}-${i}`,
@@ -4759,7 +4776,7 @@ export const CertificationsDialog = ({
                   )}
                 >
                   <Label htmlFor="expiration-date" size="sm">
-                    Expiration Date
+                    Expiration Date <span className="font-light">(optional)</span>
                   </Label>
                   <Controller
                     control={control}

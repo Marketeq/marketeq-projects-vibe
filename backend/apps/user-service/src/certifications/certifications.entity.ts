@@ -26,6 +26,9 @@ export class Certification {
   @Column({ type: 'date', nullable: true })
   expirationDate?: Date;
 
+  @Column({ type: 'boolean', default: false })
+  doesntExpire: boolean;
+
   @Column({ nullable: true })
   credentialId?: string;
 
