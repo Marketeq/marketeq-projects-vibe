@@ -4526,7 +4526,7 @@ export const CertificationsDialog = ({
         credentialsUrl: cert.credentialUrl ?? "",
         issuedDate: parseLocalDate(cert.issueDate),
         expirationDate: parseLocalDate(cert.expirationDate),
-        canNotExpire: !cert.expirationDate,
+        canNotExpire: cert.doesntExpire ?? !cert.expirationDate,
         skills: Array.isArray(cert.skills)
           ? cert.skills.map((name: string, i: number) => ({
               id: `${cert.id}-${i}`,
