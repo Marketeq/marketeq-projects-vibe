@@ -112,6 +112,12 @@ import {
   useToast,
 } from "@/components/ui"
 
+// The flow is numbered 1..6, starting at "Introduce yourself!" and ending at
+// "Outline Your Interests"; the closing "What would you like to do next?" screen
+// is not numbered. Every numbered screen sits at step index 0-5 and draws a
+// progress ring, so its displayed number is its own index + 1.
+const NUMBERED_STEPS = 6
+
 const getClientUsernameSuggestions = ({
   email,
   firstName,
@@ -472,9 +478,9 @@ const DescribeYourTeam = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<DescribeYourTeamFormValues> = (values) => {
     setStepData({
@@ -526,12 +532,11 @@ const DescribeYourTeam = ({
           </div>
 
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            What brings you here today?
+            Describe Your Team!
           </h1>
 
           <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Whether you&apos;re here to hire or get hired, let&apos;s get you
-            set up the right way.
+            Give us insights into your team to help us make things even smoother.
           </p>
 
           <div className="mt-10 2xl:mt-[50px] flex flex-col">
@@ -787,9 +792,9 @@ const ShareYourGoals = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<ShareYourGoalsFormValues> = (values) => {
     const businessTypes = Object.entries(values)
@@ -844,12 +849,11 @@ const ShareYourGoals = ({
           </div>
 
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            What brings you here today?
+            Share Your Goals!
           </h1>
 
           <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Whether you&apos;re here to hire or get hired, let&apos;s get you
-            set up the right way.
+            Give us insights into your team to help us make things even smoother.
           </p>
 
           <div className="mt-10 2xl:mt-[50px]">
@@ -1018,9 +1022,9 @@ const InviteYourTeam = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -1467,9 +1471,9 @@ const CreateYourUsername = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = (values) => {
     if (isAvailable === false || errors.username) return
@@ -2544,9 +2548,9 @@ const OutlineYourInterests = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<OutlineYourInterestsFormValues> = (values) => {
     setIsLoading(true)
@@ -3242,7 +3246,8 @@ const IntroduceYourself = ({
   const { nextStep, setStep } = useStepperContext()
   const { toast } = useToast()
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.trim()
   const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = async ({
     avatar,
@@ -3292,8 +3297,14 @@ const IntroduceYourself = ({
       >
         <div className="max-w-[488px] lg:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
+            <CircularProgress
+              show={false}
+              size={15.43}
+              strokeWidth={2.5}
+              value={progress}
+            />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 1 / {totalSteps}
+              STEP 1 / 6
             </span>
           </div>
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
