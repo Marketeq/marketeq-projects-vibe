@@ -162,6 +162,38 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     return `"${column}" ILIKE ANY($${idx}::text[])`
   }
 
+  /**
+   * The free-text half of the WHERE clause: the query pattern ($1) matched
+   * against every attribute the Algolia index declares searchable for this
+   * entity, resolved to its real backing column. Keep the arguments in sync
+   * with ALGOLIA_INDEX_SETTINGS[<index>].searchableAttributes in
+   * `config/search-config.ts` — when the two drift, the fallback silently
+   * returns fewer hits than Algolia would for the same query, which is not
+   * visible from the client because every hit still comes back HTTP 200.
+   *
+   * `textExprs` are SQL expressions yielding text (usually a quoted column,
+   * but `overview::text` and the like are fine). `arrayColumns` are text[]
+   * columns, matched when ANY element matches — that is what makes a listing
+   * tagged "Linux" in `skills` findable by searching for "linux". A NULL
+   * array unnests to zero rows, so it correctly fails to match.
+   *
+   * ESCAPE '\\' renders as ESCAPE '\' in the emitted SQL. It has to be
+   * written doubled here: in a template literal `'\'` collapses to `''`,
+   * which Postgres reads as "no escape character at all" — that disables
+   * the wildcard escaping queryEntity applies to `q`, and any query
+   * containing % or _ then matches nothing.
+   */
+  private freeTextClause(textExprs: string[], arrayColumns: string[] = []): string {
+    const parts = [
+      ...textExprs.map((expr) => `${expr} ILIKE $1 ESCAPE '\\'`),
+      ...arrayColumns.map(
+        (col) =>
+          `EXISTS (SELECT 1 FROM unnest("${col}") v(val) WHERE v.val ILIKE $1 ESCAPE '\\')`,
+      ),
+    ]
+    return `(${parts.join(' OR ')})`
+  }
+
   /** `column` is a numeric column. */
   private numRange(params: any[], column: string, min?: number, max?: number): string[] {
     const clauses: string[] = []
@@ -367,8 +399,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                   COUNT(*) OVER () AS total_count
            FROM cms.talent_profiles
            WHERE status = 'active'
-             AND (name ILIKE $1 ESCAPE '\' OR username ILIKE $1 ESCAPE '\'
-                  OR overview::text ILIKE $1 ESCAPE '\')
+             AND ${this.freeTextClause(['name', 'username', 'overview::text'])}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -434,7 +465,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           `SELECT id, title AS team_name, description,
                   COUNT(*) OVER () AS total_count
            FROM listings.teams
-           WHERE status = 'published' AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
+           WHERE status = 'published'
+             AND ${this.freeTextClause(['title', 'description'])}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -514,7 +546,15 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                   COUNT(*) OVER () AS total_count
            FROM listings.project
            WHERE status = 'published' AND "listingType" = $${params.push('project')}
-             AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
+             AND ${this.freeTextClause(
+               ['title', 'description', '"category"'],
+               // skills/tags/industries/programmingLanguages/developmentTech
+               // back the searchable `skills`, `tags`, `industry` and
+               // `technologies` attributes respectively — `technologies` is
+               // split across the two tech columns, same as the technologies
+               // filter above.
+               ['skills', 'tags', 'industries', 'programmingLanguages', 'developmentTech'],
+             )}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -595,7 +635,10 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                   COUNT(*) OVER () AS total_count
            FROM listings.project
            WHERE status = 'published' AND "listingType" = $${params.push('service')}
-             AND (title ILIKE $1 ESCAPE '\' OR description ILIKE $1 ESCAPE '\')
+             AND ${this.freeTextClause(
+               ['title', 'description', '"category"'],
+               ['skills', 'tags'],
+             )}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -705,8 +748,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                 ) AS texts
            FROM cms.talent_profiles
           WHERE status = 'active'
-            AND (name ILIKE $1 ESCAPE '\' OR username ILIKE $1 ESCAPE '\'
-                 OR overview::text ILIKE $1 ESCAPE '\')
+            AND ${this.freeTextClause(['name', 'username', 'overview::text'])}
             ${filterSql}
           LIMIT ${DbFallbackService.MAX_SEMANTIC_CANDIDATES}`,
         probeParams,
