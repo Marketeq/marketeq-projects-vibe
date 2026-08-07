@@ -231,7 +231,7 @@ export const DescribeYourTeam = () => {
               value={30}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 1 / 4
+              STEP 2 / 6
             </span>
           </div>
 
@@ -436,7 +436,7 @@ export const ShareYourGoals = () => {
               value={30}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 2 / 4
+              STEP 3 / 6
             </span>
           </div>
 
@@ -623,7 +623,7 @@ export const InviteYourTeam = () => {
               value={30}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 3 / 4
+              STEP 4 / 6
             </span>
           </div>
 
@@ -860,7 +860,7 @@ export const CreateYourUsername = () => {
               value={30}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 4 / 5
+              STEP 5 / 6
             </span>
           </div>
 
@@ -1380,7 +1380,7 @@ export const OutlineYourInterests = () => {
               value={30}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 5 / 5
+              STEP 6 / 6
             </span>
           </div>
 

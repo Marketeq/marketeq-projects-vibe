@@ -43,3 +43,7 @@ export const getContract = async (id: string): Promise<ContractDTO | null> => {
   const res = await AxiosRequest.get(`/contracts/${encodeURIComponent(id)}`)
   return res.data ?? null
 }
+
+export const logHireFlowInitiated = async (talentId: string): Promise<void> => {
+  await AxiosRequest.post("/contracts/audit/hire-initiated", { talentId })
+}

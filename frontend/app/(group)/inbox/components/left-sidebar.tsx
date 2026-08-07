@@ -44,6 +44,7 @@ import { Conversation } from "@/types/conversation"
 import { Message } from "@/types/message"
 import { User } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
+import { useToast } from "@/components/ui/toast/use-toast"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import {
@@ -76,6 +77,7 @@ import {
   ScrollArea,
   ScrollBar,
   Textarea,
+  ToastAction,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -145,6 +147,12 @@ interface LeftSidebarProps {
   }
   onHighlightMessage?: (messageId: string) => void
   privateKey: CryptoKey | null
+  /** Hands the parent a function that patches a conversation in this
+   * sidebar's own list, so other panes (e.g. the open thread's header)
+   * can update the list without waiting on a round-trip through Ably. */
+  registerPatchConversation?: (
+    fn: (id: string, patch: Partial<Conversation>) => void
+  ) => void
 }
 
 const LeftSidebar = ({
@@ -156,6 +164,7 @@ const LeftSidebar = ({
   searchIndex,
   onHighlightMessage,
   privateKey,
+  registerPatchConversation,
 }: LeftSidebarProps) => {
   const {
     pinnedChats,
@@ -171,6 +180,26 @@ const LeftSidebar = ({
   const currentUserId = currentUser?.id || ""
   const token = getAccessToken()
 
+  const { toast } = useToast()
+  const pushUndoToast = useCallback(
+    (label: string, onUndo?: () => void) => {
+      toast({
+        title: label,
+        variant: "success",
+        action: onUndo ? (
+          <ToastAction
+            altText="Undo"
+            className="h-auto p-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none text-sm font-semibold"
+            onClick={onUndo}
+          >
+            Undo
+          </ToastAction>
+        ) : undefined,
+      })
+    },
+    [toast]
+  )
+
   const router = useRouter()
   const clearSelectionParam = useCallback(
     (param: "threadId" | "participantId") => {
@@ -184,6 +213,14 @@ const LeftSidebar = ({
   const CACHE_KEY = currentUserId ? `inbox_conversations_${currentUserId}` : ""
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    registerPatchConversation?.((id, patch) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+      )
+    })
+  }, [registerPatchConversation])
 
   // Hydrate from sessionStorage AFTER mount so SSR markup matches initial
   // client render (avoids React hydration mismatch). Only restores when we
@@ -211,6 +248,7 @@ const LeftSidebar = ({
   const [activeFilter, setActiveFilter] = useState<string>("all")
   const [threadsRefetchToken, setThreadsRefetchToken] = useState(0)
   const threadListScrollRef = useRef<HTMLDivElement>(null)
+  const [pinnedBarCollapsed, setPinnedBarCollapsed] = useState(false)
 
   useEffect(() => {
     const onVisibility = () => {
@@ -243,6 +281,30 @@ const LeftSidebar = ({
       "[data-radix-scroll-area-viewport]"
     ) as HTMLElement | null
     if (viewport) viewport.scrollTop = 0
+  }, [activeFilter])
+
+  // Collapse the pinned-chats bar on scroll-down, re-expand on scroll-up
+  // (AC §1.3). A small threshold avoids flicker from sub-pixel/inertial
+  // scroll events firing in alternating directions.
+  useEffect(() => {
+    const viewport = threadListScrollRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null
+    if (!viewport) return
+
+    let lastScrollTop = viewport.scrollTop
+    const SCROLL_THRESHOLD = 8
+
+    const onScroll = () => {
+      const current = viewport.scrollTop
+      const delta = current - lastScrollTop
+      if (Math.abs(delta) < SCROLL_THRESHOLD) return
+      setPinnedBarCollapsed(delta > 0 && current > SCROLL_THRESHOLD)
+      lastScrollTop = current
+    }
+
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+    return () => viewport.removeEventListener("scroll", onScroll)
   }, [activeFilter])
 
   const [searchQuery, setSearchQuery] = useState("")
@@ -1202,7 +1264,7 @@ const LeftSidebar = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <IconButton
-                        className="rounded-full size-6 text-gray-400 hover:text-dark-blue-400"
+                        className="rounded-full size-6 text-dark-blue-400/50 hover:text-dark-blue-400 transition-colors duration-300 ease-out"
                         visual="gray"
                         variant="ghost"
                         onClick={() => {
@@ -1223,7 +1285,25 @@ const LeftSidebar = ({
                         visual="gray"
                         variant="ghost"
                         onClick={() => {
-                          void bulkAction("pin", { isPinned: true })
+                          const ids = Array.from(checkedIds)
+                          void bulkAction("pin", { isPinned: true }).then(
+                            (ok) => {
+                              if (!ok) return
+                              pushUndoToast("Message Pinned", () => {
+                                threadActions
+                                  .bulk(ids, "unpin")
+                                  .catch(console.error)
+                                const idSet = new Set(ids)
+                                setConversations((prev) =>
+                                  prev.map((c) =>
+                                    idSet.has(c.id)
+                                      ? { ...c, isPinned: false }
+                                      : c
+                                  )
+                                )
+                              })
+                            }
+                          )
                         }}
                       >
                         <Pin02 className="size-4" />
@@ -1362,33 +1442,39 @@ const LeftSidebar = ({
         )}
       </div>
       {pinnedChats > 0 && (
-        <div className="py-1 flex h-7 items-center justify-between pr-2 pl-4 bg-gray-25 border-b border-gray-200 shrink-0">
-          <div className="flex items-center gap-x-1.5">
-            <Pin02 className="text-gray-500 fill-gray-500 size-4" />
-            <span className="text-[11px] leading-5 font-semibold text-gray-500">
-              {pinnedChats} pinned chats
-            </span>
-          </div>
+        <div
+          className={`overflow-hidden shrink-0 transition-[height,opacity] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] ${
+            pinnedBarCollapsed ? "h-0 opacity-0" : "h-7 opacity-100"
+          }`}
+        >
+          <div className="py-1 flex h-7 items-center justify-between pr-2 pl-4 bg-gray-25 border-b border-gray-200">
+            <div className="flex items-center gap-x-1.5">
+              <Pin02 className="text-gray-500 fill-gray-500 size-4" />
+              <span className="text-[11px] leading-5 font-semibold text-gray-500">
+                {pinnedChats} pinned chats
+              </span>
+            </div>
 
-          {showPinnedIcon ? (
-            <Button
-              className="hover:no-underline"
-              variant="link"
-              visual="gray"
-              onClick={() => toggleShowPinnedIcon()}
-            >
-              <X className="size-[15px]" /> Close
-            </Button>
-          ) : (
-            <Button
-              className="hover:no-underline"
-              variant="link"
-              visual="gray"
-              onClick={() => toggleShowPinnedIcon()}
-            >
-              View
-            </Button>
-          )}
+            {showPinnedIcon ? (
+              <Button
+                className="hover:no-underline text-xs"
+                variant="link"
+                visual="gray"
+                onClick={() => toggleShowPinnedIcon()}
+              >
+                <X className="size-[15px]" /> Close
+              </Button>
+            ) : (
+              <Button
+                className="hover:no-underline text-xs"
+                variant="link"
+                visual="gray"
+                onClick={() => toggleShowPinnedIcon()}
+              >
+                View
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -1502,6 +1588,36 @@ const LeftSidebar = ({
                           })
                         }
                       }}
+                      onPinnedChange={(val) => {
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === conv.id ? { ...c, isPinned: val } : c
+                          )
+                        )
+                        if (
+                          selectedConversation &&
+                          selectedConversation.id === conv.id
+                        ) {
+                          setSelectedConversation({
+                            ...(selectedConversation as any),
+                            isPinned: val,
+                          })
+                        }
+                        pushUndoToast(
+                          val ? "Message Pinned" : "Message Unpinned",
+                          () => {
+                            ;(val
+                              ? threadActions.unpin(conv.id)
+                              : threadActions.pin(conv.id)
+                            ).catch(console.error)
+                            setConversations((prev) =>
+                              prev.map((c) =>
+                                c.id === conv.id ? { ...c, isPinned: !val } : c
+                              )
+                            )
+                          }
+                        )
+                      }}
                       onMarkUnread={() => {
                         const next = !conv.markedUnread
                         ;(next
@@ -1512,6 +1628,24 @@ const LeftSidebar = ({
                           prev.map((c) =>
                             c.id === conv.id ? { ...c, markedUnread: next } : c
                           )
+                        )
+                        pushUndoToast(
+                          next
+                            ? "Message marked as unread"
+                            : "Message marked as read",
+                          () => {
+                            ;(next
+                              ? threadActions.markRead(conv.id)
+                              : threadActions.markUnread(conv.id)
+                            ).catch(console.error)
+                            setConversations((prev) =>
+                              prev.map((c) =>
+                                c.id === conv.id
+                                  ? { ...c, markedUnread: !next }
+                                  : c
+                              )
+                            )
+                          }
                         )
                       }}
                       onArchive={() => {
@@ -1525,6 +1659,22 @@ const LeftSidebar = ({
                             c.id === conv.id ? { ...c, isArchived: next } : c
                           )
                         )
+                        pushUndoToast(
+                          next ? "Message Archived" : "Message Restored",
+                          () => {
+                            ;(next
+                              ? threadActions.unarchive(conv.id)
+                              : threadActions.archive(conv.id)
+                            ).catch(console.error)
+                            setConversations((prev) =>
+                              prev.map((c) =>
+                                c.id === conv.id
+                                  ? { ...c, isArchived: !next }
+                                  : c
+                              )
+                            )
+                          }
+                        )
                       }}
                       onSpam={() => {
                         const next = !conv.isSpam
@@ -1537,6 +1687,22 @@ const LeftSidebar = ({
                             c.id === conv.id ? { ...c, isSpam: next } : c
                           )
                         )
+                        pushUndoToast(
+                          next
+                            ? "Message moved to Spam"
+                            : "Message moved to Inbox",
+                          () => {
+                            ;(next
+                              ? threadActions.unspam(conv.id)
+                              : threadActions.spam(conv.id)
+                            ).catch(console.error)
+                            setConversations((prev) =>
+                              prev.map((c) =>
+                                c.id === conv.id ? { ...c, isSpam: !next } : c
+                              )
+                            )
+                          }
+                        )
                       }}
                       onTrash={() => {
                         const next = !conv.isTrashed
@@ -1548,6 +1714,22 @@ const LeftSidebar = ({
                           prev.map((c) =>
                             c.id === conv.id ? { ...c, isTrashed: next } : c
                           )
+                        )
+                        pushUndoToast(
+                          next ? "Chat Deleted" : "Message Restored",
+                          () => {
+                            ;(next
+                              ? threadActions.untrash(conv.id)
+                              : threadActions.trash(conv.id)
+                            ).catch(console.error)
+                            setConversations((prev) =>
+                              prev.map((c) =>
+                                c.id === conv.id
+                                  ? { ...c, isTrashed: !next }
+                                  : c
+                              )
+                            )
+                          }
                         )
                       }}
                       checked={checkedIds.has(conv.id)}
