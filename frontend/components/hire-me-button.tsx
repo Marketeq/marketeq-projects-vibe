@@ -207,6 +207,15 @@ const customScheduleFrequencies = [
   { value: "month", label: "Per Month" },
 ] as const
 
+// Physical upper bound on hours within each frequency window — facts,
+// not workload opinions, so the numbers can't be argued in review.
+// Not specified in the ticket or docs; new behaviour, declared in the PR.
+const CUSTOM_HOURS_MAX: Record<string, number> = {
+  day: 24,
+  week: 168, // 7 * 24
+  month: 744, // 31 * 24
+}
+
 // Local copy of the shimmer pattern from talent-profile/page.tsx:531 — not
 // extracted to components/ui, that's a separate PR.
 const Shimmer = ({ className }: { className?: string }) => (
@@ -294,12 +303,16 @@ export function OfferDialog({
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
   // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
-  // Figma rests on "Per day", not an empty placeholder — canonical over doc
-  // 06 §3.1's `customFrequency: null`.
-  const [customFrequency, setCustomFrequency] = React.useState("day")
-  // Blur-triggered, not CTA-triggered — showValidationErrors is scoped to
-  // the later screens' CTA press, this field's trigger is its own blur.
-  const [customHoursTouched, setCustomHoursTouched] = React.useState(false)
+  // Defaults to "week" per explicit request — not an empty placeholder,
+  // and not "day" (Figma's own rest state) — overridden on purpose.
+  const [customFrequency, setCustomFrequency] = React.useState("week")
+  // Same class of blur-vs-click race T1-5 fixed on the Cancel button
+  // (onMouseDown + preventDefault, below): a blur fired by clicking
+  // somewhere INSIDE this row shouldn't count as "done with the field."
+  // T1-5's guard only covers Cancel, since Cancel sits outside this
+  // container; this covers everything inside it, including the frequency
+  // Select trigger, without needing a guard per-control.
+  const customScheduleRowRef = React.useRef<HTMLDivElement>(null)
   const [isFetchingTalent, setIsFetchingTalent] = React.useState(false)
   // FR-11: guards the audit-log effect below against firing twice for the
   // same open — reset only when the effect itself observes open === false,
@@ -322,17 +335,16 @@ export function OfferDialog({
   // `||` not `??`: a resolved-but-nameless fetch yields "", which should
   // still defer to the seed name rather than display blank.
   const displayName = fetchedDisplayName || seedDisplayName
+  // Shared by headerName below and the AC-1.3 name line — same
+  // fetched-over-seed precedence as displayName throughout.
+  const username = fetchedProfile?.username || profile?.username || ""
   // AC-1.3: the header wants "@handle", not a name with "@" glued on —
   // "Hire @John Smith" is wrong. displayName already prefers username over
   // firstName+lastName (:322), so it can't tell the header which one it got.
-  // This checks the username fields directly, same fetched-over-seed
-  // precedence as displayName, and falls back to the plain name only when
-  // neither profile has a username at all. Header-only — every other
-  // displayName use (avatar fallback/alt, Offer Sent) is untouched.
-  const headerName =
-    fetchedProfile?.username || profile?.username
-      ? `@${fetchedProfile?.username || profile?.username}`
-      : displayName
+  // Falls back to the plain name only when there's no username at all.
+  // Header-only — every other displayName use (avatar fallback/alt, Offer
+  // Sent) is untouched.
+  const headerName = username ? `@${username}` : displayName
 
   // Independent of displayName so a missing name can't also break the
   // checkout URL. Fetched wins over seed, same precedence as every other
@@ -435,7 +447,12 @@ export function OfferDialog({
   // in the still-open row. This closes that gap for mode="edit", where the
   // CTA and the row can be on screen at the same time.
   const isCustomScheduleIncomplete =
-    customScheduleOpen && !(Number(customHours) > 0 && customFrequency)
+    customScheduleOpen &&
+    !(
+      Number(customHours) > 0 &&
+      Number(customHours) <= CUSTOM_HOURS_MAX[customFrequency] &&
+      customFrequency
+    )
   const isOfferReady =
     (isStepThree
       ? Boolean(
@@ -466,17 +483,6 @@ export function OfferDialog({
     showValidationErrors && isStepThree && !selectedStartDateAction
       ? "Please confirm or change the start date."
       : null
-  // Blur-triggered (customHoursTouched), not CTA-triggered like the four
-  // errors above. EC-004's "reject non-numeric characters" is fully
-  // handled by the keystroke filter on the input itself — a non-numeric
-  // character can never reach this state, so there's nothing to check for
-  // it here. Only empty (EC-003) and zero-or-less (EC-005) remain.
-  const customHoursError =
-    customHoursTouched && customHours.trim() === ""
-      ? "Please enter the number of hours."
-      : customHoursTouched && !(Number(customHours) > 0)
-        ? "Hours must be greater than 0."
-        : null
   const staticAvatarClassName = "hover:ring-0 active:ring-0"
   const staticAvatarFallbackClassName = "hover:bg-primary-25"
 
@@ -495,8 +501,7 @@ export function OfferDialog({
     setShowValidationErrors(false)
     setCustomScheduleOpen(false)
     setCustomHours("")
-    setCustomFrequency("day")
-    setCustomHoursTouched(false)
+    setCustomFrequency("week")
     setIsFetchingTalent(false)
     setFetchedProfile(null)
     setFetchError(null)
@@ -511,6 +516,7 @@ export function OfferDialog({
       hours.trim() !== "" &&
       Number.isFinite(parsedHours) &&
       parsedHours > 0 &&
+      parsedHours <= CUSTOM_HOURS_MAX[frequency] &&
       frequency
     ) {
       setSchedule("custom")
@@ -1231,7 +1237,7 @@ export function OfferDialog({
                           </RadioGroup>
 
                           {customScheduleOpen ? (
-                            <div className="mt-3">
+                            <div className="mt-3" ref={customScheduleRowRef}>
                               <div className="flex gap-3">
                                 <Input
                                   autoFocus
@@ -1249,12 +1255,49 @@ export function OfferDialog({
                                     // relative to. AC-2.4/EC-004: integers
                                     // only, decimals flagged as an open
                                     // question for the lead, not built.
-                                    if (/^\d*$/.test(event.target.value)) {
-                                      setCustomHours(event.target.value)
+                                    // T1-12: same rejection, extended with
+                                    // the per-frequency max.
+                                    const value = event.target.value
+                                    if (
+                                      /^\d*$/.test(value) &&
+                                      Number(value) <=
+                                        CUSTOM_HOURS_MAX[customFrequency]
+                                    ) {
+                                      setCustomHours(value)
                                     }
                                   }}
-                                  onBlur={() => {
-                                    setCustomHoursTouched(true)
+                                  onBlur={(event) => {
+                                    // Same blur-vs-click race T1-5 fixed on
+                                    // Cancel: clicking the frequency
+                                    // Select's trigger blurs this input
+                                    // first. With customFrequency
+                                    // defaulting to "week" (truthy), that
+                                    // blur alone could already satisfy
+                                    // tryConfirmCustomSchedule and advance
+                                    // the screen before the user picks a
+                                    // new frequency.
+                                    //
+                                    // containment alone isn't enough: Radix
+                                    // renders SelectContent through a Portal
+                                    // (select.tsx:43) and moves focus straight
+                                    // into the selected option the instant it
+                                    // opens, so relatedTarget is never a
+                                    // descendant of this row's container —
+                                    // it's a role="option" node living near
+                                    // document.body. Took two attempts to
+                                    // find that; the role check below is why.
+                                    const next = event.relatedTarget as Element | null
+                                    if (
+                                      next &&
+                                      (customScheduleRowRef.current?.contains(
+                                        next
+                                      ) ||
+                                        next.closest(
+                                          '[role="listbox"], [role="option"]'
+                                        ))
+                                    ) {
+                                      return
+                                    }
                                     tryConfirmCustomSchedule(
                                       customHours,
                                       customFrequency
@@ -1264,13 +1307,34 @@ export function OfferDialog({
                                 <Select
                                   value={customFrequency}
                                   onValueChange={(value) => {
+                                    // T1-12: a value valid under the old
+                                    // frequency can exceed the new one's max
+                                    // with no keystroke to catch it. Clamp
+                                    // once here, into a local, so the
+                                    // confirm-check below reads the clamped
+                                    // number instead of stale closure state.
+                                    const max = CUSTOM_HOURS_MAX[value]
+                                    const clamped =
+                                      Number(customHours) > max
+                                        ? String(max)
+                                        : customHours
                                     setCustomFrequency(value)
-                                    tryConfirmCustomSchedule(customHours, value)
+                                    setCustomHours(clamped)
+                                    // Only advance when the value survived
+                                    // unchanged. If we clamped, keep the row
+                                    // open so the corrected number is visible
+                                    // before the flow moves on — silently
+                                    // substituting a number AND changing
+                                    // screens in one click hides the
+                                    // correction from the user.
+                                    if (clamped === customHours) {
+                                      tryConfirmCustomSchedule(clamped, value)
+                                    }
                                   }}
                                 >
                                   <SelectTrigger className="w-[140px] shrink-0 text-left">
                                     {/* No placeholder: customFrequency
-                                    defaults to "day" and is never empty, so
+                                    defaults to "week" and is never empty, so
                                     SelectValue's placeholder can never render. */}
                                     <SelectValue />
                                   </SelectTrigger>
@@ -1280,6 +1344,11 @@ export function OfferDialog({
                                         <SelectItem
                                           key={option.value}
                                           value={option.value}
+                                          // Checkmark removed for this dropdown
+                                          // only — SelectItem is shared, so this
+                                          // hides its indicator span locally
+                                          // rather than editing the shared file.
+                                          className="[&>span:first-child]:hidden"
                                         >
                                           {option.label}
                                         </SelectItem>
@@ -1288,11 +1357,6 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {customHoursError ? (
-                                <ErrorMessage className="mt-2">
-                                  {customHoursError}
-                                </ErrorMessage>
-                              ) : null}
                             </div>
                           ) : null}
 
@@ -1307,12 +1371,11 @@ export function OfferDialog({
                               if (customScheduleOpen) {
                                 setCustomScheduleOpen(false)
                                 setCustomHours("")
-                                // Not named in the ticket, but the same "day"
+                                // Not named in the ticket, but the same "week"
                                 // default applies here too — otherwise Cancel
                                 // then reopening the row would show a blank
                                 // Select now that its placeholder is gone.
-                                setCustomFrequency("day")
-                                setCustomHoursTouched(false)
+                                setCustomFrequency("week")
                               } else {
                                 // A tile click may have a commit in flight
                                 // (T1-11's 200ms delay). Without cancelling
