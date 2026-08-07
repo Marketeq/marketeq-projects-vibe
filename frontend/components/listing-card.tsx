@@ -21,7 +21,7 @@ import {
   talentProfileUrl,
   teamDetailsUrl,
 } from "@/src/lib/listing-urls"
-import { cn } from "@/utils/functions"
+import { cn, plainTextFromRichTextHtml } from "@/utils/functions"
 import {
   Briefcase,
   Check,
@@ -207,6 +207,11 @@ function ProjectListingCard({
   favoriteSlot,
   cardVariant = "default",
 }: ProjectLikeProps) {
+  // Listing descriptions are authored in the rich-text editor and stored as
+  // HTML. Cards render their excerpt as a JSX text child, which React escapes
+  // — so without flattening it first the tags show up on screen as literal
+  // text. Detail pages still render the real markup.
+  const plainDescription = plainTextFromRichTextHtml(description)
   const computedHref =
     href ??
     (cardVariant === "job" || cardVariant === "job-grid"
@@ -245,7 +250,7 @@ function ProjectListingCard({
   // grid layout when the shared search toggle is in grid mode.
   if (cardVariant === "job-grid") {
     const jobDescription =
-      description ||
+      plainDescription ||
       "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
     const primarySkills = ["Visual Design", "Tailwind CSS", "Next.js"]
     const secondarySkills = ["Wireframing", "Figma"]
@@ -428,7 +433,7 @@ function ProjectListingCard({
   // landscape layout so /find-jobs can evolve independently from project cards.
   if (cardVariant === "job") {
     const jobDescription =
-      description ||
+      plainDescription ||
       "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."
     const jobSkills = ["Visual Design", "Tailwind CSS", "Next.js", "E-commerce"]
 
@@ -666,9 +671,9 @@ function ProjectListingCard({
           )}
         </div>
 
-        {description && (
+        {plainDescription && (
           <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
-            {description}
+            {plainDescription}
           </p>
         )}
 
