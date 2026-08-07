@@ -818,10 +818,6 @@ const certificationsFormSchema = z
       path: ["issuedDate"],
     }
   )
-  .refine((data) => data.canNotExpire || Boolean(data.expirationDate), {
-    message: "Expiration date is required.",
-    path: ["expirationDate"],
-  })
   .refine(
     (data) => {
       if (data.canNotExpire || !data.expirationDate) return true
@@ -4780,7 +4776,7 @@ export const CertificationsDialog = ({
                   )}
                 >
                   <Label htmlFor="expiration-date" size="sm">
-                    Expiration Date
+                    Expiration Date <span className="font-light">(optional)</span>
                   </Label>
                   <Controller
                     control={control}
