@@ -541,3 +541,43 @@ export function strToArray(value: string) {
 export function fromLength(length: number) {
   return Array.from({ length }, (_, index) => index)
 }
+
+/**
+ * Flattens rich-text-editor HTML into a single line of plain text.
+ *
+ * Listing descriptions are authored in `rich-text-editor.tsx` and stored as
+ * HTML, so anywhere a description is rendered as a JSX text child React
+ * escapes it and the markup shows up on screen as literal `<h2>`/`<img>`
+ * tags. Detail pages render the real HTML; compact surfaces (cards, previews,
+ * character counts) want this instead — dropping tags rather than sanitising
+ * them, because an embedded banner `<img>` or `<h2>` would wreck a card's
+ * layout even when it is perfectly safe markup.
+ *
+ * Block-level closers become spaces first so "…done.</p><p>Next…" doesn't
+ * collapse into "done.Next".
+ */
+export function plainTextFromRichTextHtml(value?: string | null): string {
+  if (!value) return ""
+  // The DOM path decodes every named/numeric entity, which the regex path
+  // cannot do; it is only available in the browser, so keep both.
+  //
+  // DOMParser rather than `div.innerHTML = value`: descriptions are authored
+  // by listing owners, and assigning them to a live element \u2014 even a detached
+  // one \u2014 still kicks off resource loads such as `<img onerror=\u2026>`. A parsed
+  // document is inert, so nothing in the markup can run just because we
+  // wanted the text out of it.
+  if (typeof window !== "undefined" && typeof window.DOMParser !== "undefined") {
+    const parsed = new window.DOMParser().parseFromString(value, "text/html")
+    return (parsed.body?.textContent ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+  return value
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
