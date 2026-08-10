@@ -17,6 +17,7 @@ import {
   logHireFlowInitiated,
   getMyContractGroups,
   type ContractGroupSummary,
+  type ContractGroupMemberSummary,
 } from "@/service/http/contracts"
 import { ProjectAPI } from "@/service/http/project"
 import type { UserProfile } from "@/types/user"
@@ -142,6 +143,10 @@ type ContractRow = {
   subtitle: string
   avatars: ContractRowAvatar[]
   extra?: string
+  // T2-9: raw group members, threaded through unmodified — the pending
+  // badge needs each member's talentId/status, which the flattened
+  // title/subtitle/avatars shape above has nowhere to carry otherwise.
+  members: ContractGroupMemberSummary[]
 }
 
 // Duplicated rather than imported from talent-profile/page.tsx:110-116 —
@@ -178,6 +183,11 @@ const EDIT_MODE_PLACEHOLDER_CONTRACT: ContractRow = {
     { url: "/man.jpg" },
   ],
   extra: "+5",
+  // T2-9: empty, not just unused — this placeholder is never the target of
+  // a members.some(...) badge check since edit mode never reaches
+  // isStepTwo's row list, but an empty array keeps that true structurally
+  // rather than by coincidence.
+  members: [],
 }
 
 // T2-3 decision 3: a group can be type service/team/job with no projectId
@@ -208,6 +218,7 @@ const buildFallbackContractRow = (group: ContractGroupSummary): ContractRow => {
       group.members.length > 5
         ? `+${group.members.length - 5}`
         : undefined,
+    members: group.members,
   }
 }
 
@@ -258,6 +269,7 @@ const hydrateContractRow = async (
       group.members.length > 5
         ? `+${group.members.length - 5}`
         : undefined,
+    members: group.members,
   }
 }
 
@@ -495,6 +507,12 @@ export function OfferDialog({
   const filteredContracts = existingContracts.filter((contract) =>
     contract.title.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
+  // T2-9: same expression as the FR-11 audit effect below (fetchedProfile
+  // is authoritative once T1-3's self-fetch resolves; profile is the seed
+  // passed in from callers like checkout confirmation's Edit Offer, which
+  // carries no id at all). A separate const rather than reusing that
+  // effect's local — this is a render-time value, not an effect dependency.
+  const hiredTalentId = fetchedProfile?.id || profile?.id
   // T2-3: edit mode always resolves to its own static placeholder, never a
   // lookup into the real fetched list — see EDIT_MODE_PLACEHOLDER_CONTRACT.
   const selectedContract = isEditMode
@@ -1172,6 +1190,32 @@ export function OfferDialog({
                                         <span className="block text-[12px] font-light leading-normal text-gray-500">
                                           {contract.subtitle}
                                         </span>
+                                        {/* FR-8/AC-7.1: per-talent, not
+                                        per-group — this is the person
+                                        currently being hired, not "does this
+                                        group contain anyone pending". "Pending"
+                                        rather than "Pending Invite": status
+                                        PENDING (enums.ts:7) also covers
+                                        accepted-but-awaiting-deposit, which
+                                        would make "Pending Invite" wrong. Not
+                                        reachable today, though —
+                                        respondToOffer's accept path
+                                        (contracts.service.ts:82-87) never
+                                        persists anything, so every PENDING
+                                        contract is still a genuinely
+                                        unanswered invite. Narrower copy is
+                                        the one that stays true once that's
+                                        fixed. */}
+                                        {contract.members.some(
+                                          (member) =>
+                                            member.talentId ===
+                                              hiredTalentId &&
+                                            member.status === "pending"
+                                        ) ? (
+                                          <span className="mt-1.5 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium leading-normal text-gray-500">
+                                            Pending
+                                          </span>
+                                        ) : null}
                                       </span>
 
                                       <span className="ml-4 flex items-center gap-3">
