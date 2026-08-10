@@ -374,6 +374,18 @@ export function OfferDialog({
   const [isLoadingGroups, setIsLoadingGroups] = React.useState(
     mode !== "edit"
   )
+  // T2-5: mirrors fetchError's shape ("data" | null) below, but a separate
+  // flag — this fetch and the talent fetch are independent and must retry
+  // independently. Single value rather than distinguishing offline from a
+  // generic failure: the toast already carries the "why" for 5s, so the
+  // inline copy's job is just "the list didn't load, here's Retry" —
+  // identical regardless of cause. Two inline strings for one outcome
+  // would just be two things that could say something different about the
+  // same event.
+  const [groupsFetchError, setGroupsFetchError] = React.useState<
+    "data" | null
+  >(null)
+  const [groupsRetryToken, setGroupsRetryToken] = React.useState(0)
   const [creatingContract, setCreatingContract] = React.useState(
     initialState.creatingContract
   )
@@ -498,7 +510,12 @@ export function OfferDialog({
   // declaration above). Edit mode's isLoadingGroups is always false and
   // its selectedContract is always truthy regardless, so this never
   // affects it either way.
-  const hasExistingContracts = isLoadingGroups || existingContracts.length > 0
+  // T2-5: a failed fetch (or the offline pre-flight) must also count as
+  // "has contracts" — otherwise the client gets silently routed to
+  // Estimated Start Date as if their list were genuinely empty, hiding a
+  // real failure instead of showing FR-10's inline error.
+  const hasExistingContracts =
+    isLoadingGroups || groupsFetchError !== null || existingContracts.length > 0
   const isStepTwo =
     Boolean(schedule) &&
     hasExistingContracts &&
@@ -639,8 +656,35 @@ export function OfferDialog({
   React.useEffect(() => {
     if (!open || isEditMode) return
 
+    // T2-5: checked and returned on BEFORE setIsLoadingGroups(true), same
+    // order as the talent fetch's own offline check above — flipping the
+    // flag first and returning here would pin the skeleton forever with
+    // nothing left to clear it, since no promise chain starts on this
+    // path. groupsFetchError is also set here (not just the toast): the
+    // pre-flight return leaves existingContracts empty, which without this
+    // would mis-route past the contract list exactly like an unhandled
+    // fetch failure would. isLoadingGroups is explicitly set false too —
+    // it defaults true (and resetFlow's own open-effect re-asserts true
+    // right before this effect runs), and the render chain checks
+    // isLoadingGroups before groupsFetchError, so leaving it true here
+    // would pin the skeleton forever instead of showing the inline error.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast({
+        variant: "destructive",
+        description:
+          "You appear to be offline. Please check your connection and try again.",
+        // Same call as the talent fetch's offline toast above — doc 08
+        // §2/§11 want 5s, the Provider defaults to 3000 (toaster.tsx:18).
+        duration: 5000,
+      })
+      setGroupsFetchError("data")
+      setIsLoadingGroups(false)
+      return
+    }
+
     let isActive = true
     setIsLoadingGroups(true)
+    setGroupsFetchError(null)
 
     getMyContractGroups()
       .then(async (groups) => {
@@ -656,12 +700,27 @@ export function OfferDialog({
           )
         )
       })
-      .catch(() => {
-        // T2-5 owns real error/retry UI for this list. A failed groups
-        // fetch degrades to "no contracts" for now — isLoadingGroups still
-        // resolves to false via `finally`, so hasExistingContracts ends up
-        // correctly false rather than stuck permanently "loading".
-        if (isActive) setExistingContracts([])
+      .catch((error) => {
+        if (!isActive) return
+
+        if (error?.response?.status === 401) {
+          // Reachable here, unlike the talent fetch's @Public() endpoint —
+          // /contracts/groups/mine requires req.user.sub. AxiosRequest
+          // already attempted one silent refresh+retry before this catch
+          // ever sees it, so this means that refresh also failed. Same
+          // module-level guard as the talent fetch above — one flag, so a
+          // concurrent 401 from both fetches still only redirects once.
+          if (!sessionExpiredRedirecting) {
+            sessionExpiredRedirecting = true
+            const returnTo = `${window.location.pathname}${window.location.search}`
+            window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
+          }
+          return
+        }
+
+        // FR-10/ERR-004: inline error with Retry, not a silent empty list —
+        // hasExistingContracts already accounts for groupsFetchError above.
+        setGroupsFetchError("data")
       })
       .finally(() => {
         if (isActive) setIsLoadingGroups(false)
@@ -670,7 +729,7 @@ export function OfferDialog({
     return () => {
       isActive = false
     }
-  }, [open, isEditMode])
+  }, [open, isEditMode, groupsRetryToken])
 
   // FR-4/AC-5.2: 200ms debounce. Same cleanup handles both cases — clears
   // the previous timer on every keystroke (a new one is scheduled below),
@@ -1047,94 +1106,144 @@ export function OfferDialog({
                             </SearchFieldButton>
                           </SearchField>
 
-                          <ScrollArea viewportClassName="mt-3 max-h-[300px]">
-                            <div className="space-y-2 pr-3">
-                              {filteredContracts.map((contract) => (
-                                <button
-                                  key={contract.id}
-                                  type="button"
-                                  className="flex w-full items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3 text-left"
-                                  onClick={() =>
-                                    setSelectedContractId(contract.id)
-                                  }
+                          {/* T2-4/T2-5 priority chain: skeleton, then
+                          error, then the list (with T2-6/T2-7's own
+                          empty-search state nested inside the loaded
+                          branch). A failed fetch and a no-match search can
+                          otherwise both be true at once — existingContracts
+                          stays [] either way — so these must be mutually
+                          exclusive if/else, not independent {cond && ...}
+                          blocks, or both would render together. */}
+                          {isLoadingGroups ? (
+                            <div className="mt-3 space-y-2">
+                              {[0, 1, 2].map((i) => (
+                                <div
+                                  key={i}
+                                  className="flex items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3"
                                 >
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
-                                      {contract.title}
-                                    </span>
-                                    <span className="block text-[12px] font-light leading-normal text-gray-500">
-                                      {contract.subtitle}
-                                    </span>
-                                  </span>
-
-                                  <span className="ml-4 flex items-center gap-3">
-                                    <span className="flex items-center -space-x-2">
-                                      {/* excess deliberately off — the
-                                      manual pill right after this closes is
-                                      the +N indicator; AvatarGroup's own
-                                      built-in badge would double up with it
-                                      otherwise. */}
-                                      <AvatarGroup
-                                        className="cursor-default"
-                                        max={5}
-                                        size="sm"
-                                      >
-                                        {contract.avatars.map((avatar, index) => (
-                                          <Avatar
-                                            key={`${contract.id}-${index}`}
-                                            className={cn(
-                                              "size-8 border-2 border-white",
-                                              staticAvatarClassName
-                                            )}
-                                          >
-                                            <AvatarImage
-                                              src={avatar.url}
-                                              alt={avatar.name || `Member ${index + 1}`}
-                                            />
-                                            <AvatarFallback
-                                              className={
-                                                staticAvatarFallbackClassName
-                                              }
-                                            >
-                                              {getInitials(avatar.name)}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                        ))}
-                                      </AvatarGroup>
-                                      {contract.extra ? (
-                                        <span className="relative z-10 inline-flex size-8 items-center justify-center rounded-full border-2 border-gray-500 bg-white text-sm font-medium leading-none text-gray-500">
-                                          {contract.extra}
-                                        </span>
-                                      ) : null}
-                                    </span>
-                                    <ArrowRight className="size-4 text-gray-400" />
-                                  </span>
-                                </button>
+                                  <div className="min-w-0 flex-auto space-y-1.5">
+                                    <Shimmer className="h-3.5 w-32" />
+                                    <Shimmer className="h-3 w-20" />
+                                  </div>
+                                  <Shimmer className="size-8 shrink-0 rounded-full" />
+                                </div>
                               ))}
                             </div>
-                          </ScrollArea>
-
-                          {/* FR-5/AC-5.3, doc 05 EC-008: verbatim copy, not
-                          quoted — trimmed only so leading/trailing spaces in
-                          the query don't make the rendered string ambiguous. */}
-                          {debouncedSearch && filteredContracts.length === 0 ? (
+                          ) : groupsFetchError ? (
                             <div className="mt-3 text-center">
-                              <p className="text-[13px] font-light leading-normal text-gray-500">
-                                No contracts found for {debouncedSearch.trim()}.
-                              </p>
+                              {/* FR-10/ERR-004: same inline copy regardless
+                              of whether this came from the offline
+                              pre-flight or a real request failure — the
+                              toast (when offline) already carries the
+                              distinct "why" for 5s; this only needs to say
+                              the list didn't load and offer Retry. */}
+                              <ErrorMessage className="mt-1">
+                                We couldn&apos;t load your contracts. Please
+                                try again.
+                              </ErrorMessage>
                               <Button
-                                variant="link"
                                 visual="gray"
-                                className="mt-1 px-0 text-[12px] font-medium leading-normal text-primary-500"
-                                onClick={() => {
-                                  setSearch("")
-                                  setDebouncedSearch("")
-                                }}
+                                variant="outlined"
+                                className="mt-2"
+                                onClick={() =>
+                                  setGroupsRetryToken((t) => t + 1)
+                                }
                               >
-                                Clear search
+                                Retry
                               </Button>
                             </div>
-                          ) : null}
+                          ) : (
+                            <>
+                              <ScrollArea viewportClassName="mt-3 max-h-[300px]">
+                                <div className="space-y-2 pr-3">
+                                  {filteredContracts.map((contract) => (
+                                    <button
+                                      key={contract.id}
+                                      type="button"
+                                      className="flex w-full items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 py-3 text-left"
+                                      onClick={() =>
+                                        setSelectedContractId(contract.id)
+                                      }
+                                    >
+                                      <span className="min-w-0">
+                                        <span className="block truncate text-[13px] font-semibold leading-normal text-dark-blue-400">
+                                          {contract.title}
+                                        </span>
+                                        <span className="block text-[12px] font-light leading-normal text-gray-500">
+                                          {contract.subtitle}
+                                        </span>
+                                      </span>
+
+                                      <span className="ml-4 flex items-center gap-3">
+                                        <span className="flex items-center -space-x-2">
+                                          {/* excess deliberately off — the
+                                          manual pill right after this closes is
+                                          the +N indicator; AvatarGroup's own
+                                          built-in badge would double up with it
+                                          otherwise. */}
+                                          <AvatarGroup
+                                            className="cursor-default"
+                                            max={5}
+                                            size="sm"
+                                          >
+                                            {contract.avatars.map((avatar, index) => (
+                                              <Avatar
+                                                key={`${contract.id}-${index}`}
+                                                className={cn(
+                                                  "size-8 border-2 border-white",
+                                                  staticAvatarClassName
+                                                )}
+                                              >
+                                                <AvatarImage
+                                                  src={avatar.url}
+                                                  alt={avatar.name || `Member ${index + 1}`}
+                                                />
+                                                <AvatarFallback
+                                                  className={
+                                                    staticAvatarFallbackClassName
+                                                  }
+                                                >
+                                                  {getInitials(avatar.name)}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                            ))}
+                                          </AvatarGroup>
+                                          {contract.extra ? (
+                                            <span className="relative z-10 inline-flex size-8 items-center justify-center rounded-full border-2 border-gray-500 bg-white text-sm font-medium leading-none text-gray-500">
+                                              {contract.extra}
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                        <ArrowRight className="size-4 text-gray-400" />
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </ScrollArea>
+
+                              {/* FR-5/AC-5.3, doc 05 EC-008: verbatim copy, not
+                              quoted — trimmed only so leading/trailing spaces in
+                              the query don't make the rendered string ambiguous. */}
+                              {debouncedSearch && filteredContracts.length === 0 ? (
+                                <div className="mt-3 text-center">
+                                  <p className="text-[13px] font-light leading-normal text-gray-500">
+                                    No contracts found for {debouncedSearch.trim()}.
+                                  </p>
+                                  <Button
+                                    variant="link"
+                                    visual="gray"
+                                    className="mt-1 px-0 text-[12px] font-medium leading-normal text-primary-500"
+                                    onClick={() => {
+                                      setSearch("")
+                                      setDebouncedSearch("")
+                                    }}
+                                  >
+                                    Clear search
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </>
+                          )}
 
                           <Button
                             variant="link"
