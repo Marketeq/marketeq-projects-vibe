@@ -1,9 +1,11 @@
 import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenException } from '@nestjs/common';
 import { Request } from 'express';
 import { ContractsService } from '../services/contracts.service';
+import { GroupsService } from '../services/groups.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
 import { LogHireInitiatedDto } from '../dtos/log-hire-initiated.dto';
+import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
 import { AuditLoggerService } from '../services/audit-logger.service';
@@ -12,6 +14,7 @@ import { AuditLoggerService } from '../services/audit-logger.service';
 export class ContractsController {
   constructor(
     private readonly contractsService: ContractsService,
+    private readonly groupsService: GroupsService,
     private readonly configService: ConfigService,
     private readonly auditLoggerService: AuditLoggerService,
   ) {}
@@ -48,6 +51,22 @@ export class ContractsController {
   @Put(':id/respond')
   async respond(@Param('id') id: string, @Body() dto: AcceptRejectDto) {
     return this.contractsService.respondToOffer(id, dto);
+  }
+
+  // FR-1: the authenticated client's own contract groups, for the Hire Me
+  // modal's "existing contracts" list. Identity from req.user only, never
+  // a path param. Moved here from GroupsController's `contract-groups`
+  // prefix, which api-gateway's SERVICE_PREFIX_MAP never routed — `contracts`
+  // is mapped, so this is reachable through the gateway. Two static
+  // segments, same shape as `audit/hire-initiated` above: it can't collide
+  // with `:id`, `client/:clientId`, or `talent/:talentId` regardless of
+  // declaration order, since none of those share both the literal first
+  // segment and the segment count.
+  @Get('groups/mine')
+  async getMyGroups(
+    @Req() req: Request & { user: { sub: string } },
+  ): Promise<ContractGroupSummaryDto[]> {
+    return this.groupsService.getGroupsForClient(req.user.sub);
   }
 
   // List contracts for a client. clientId still comes from the path (kept
