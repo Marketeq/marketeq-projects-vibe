@@ -692,7 +692,12 @@ export function OfferDialog({
             </DialogClose>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-5">
+          <div
+            className={cn(
+              "min-h-0 flex-1 px-6 pb-6 pt-5",
+              isStepTwo ? "overflow-hidden" : "overflow-y-auto"
+            )}
+          >
             <motion.div layout transition={screenTransition}>
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
@@ -770,7 +775,9 @@ export function OfferDialog({
                     </div>
                   ) : (
                     <>
-                      {!isEditMode && currentScreen === "select-schedule" ? (
+                      {!isEditMode &&
+                      (currentScreen === "select-schedule" ||
+                        currentScreen === "select-contract") ? (
                         isFetchingTalent && !fetchedProfile && !fetchError ? (
                           <div className="flex items-center gap-4">
                             <Shimmer className="size-[90px] shrink-0 rounded-full" />
@@ -877,7 +884,7 @@ export function OfferDialog({
 
                       {isStepTwo ? (
                         <div>
-                          <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                          <h2 className="mt-6 text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Select From Existing Contracts
                           </h2>
 
@@ -896,7 +903,7 @@ export function OfferDialog({
                             </SearchFieldButton>
                           </SearchField>
 
-                          <ScrollArea viewportClassName="mt-3 max-h-[360px]">
+                          <ScrollArea viewportClassName="mt-3 max-h-[300px]">
                             <div className="space-y-2 pr-3">
                               {filteredContracts.map((contract) => (
                                 <button
@@ -917,39 +924,41 @@ export function OfferDialog({
                                   </span>
 
                                   <span className="ml-4 flex items-center gap-3">
-                                    <AvatarGroup
-                                      className="cursor-default"
-                                      max={5}
-                                      size="sm"
-                                      excess
-                                    >
-                                      {contract.avatars.map((avatar, index) => (
-                                        <Avatar
-                                          key={`${contract.id}-${index}`}
-                                          className={cn(
-                                            "size-8 border-2 border-white",
-                                            staticAvatarClassName
-                                          )}
-                                        >
-                                          <AvatarImage
-                                            src={avatar}
-                                            alt={`Member ${index + 1}`}
-                                          />
-                                          <AvatarFallback
-                                            className={
-                                              staticAvatarFallbackClassName
-                                            }
+                                    <span className="flex items-center -space-x-2">
+                                      <AvatarGroup
+                                        className="cursor-default"
+                                        max={5}
+                                        size="sm"
+                                        excess
+                                      >
+                                        {contract.avatars.map((avatar, index) => (
+                                          <Avatar
+                                            key={`${contract.id}-${index}`}
+                                            className={cn(
+                                              "size-8 border-2 border-white",
+                                              staticAvatarClassName
+                                            )}
                                           >
-                                            {index + 1}
-                                          </AvatarFallback>
-                                        </Avatar>
-                                      ))}
-                                    </AvatarGroup>
-                                    {contract.extra ? (
-                                      <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
-                                        {contract.extra}
-                                      </span>
-                                    ) : null}
+                                            <AvatarImage
+                                              src={avatar}
+                                              alt={`Member ${index + 1}`}
+                                            />
+                                            <AvatarFallback
+                                              className={
+                                                staticAvatarFallbackClassName
+                                              }
+                                            >
+                                              {index + 1}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        ))}
+                                      </AvatarGroup>
+                                      {contract.extra ? (
+                                        <span className="relative z-10 inline-flex size-8 items-center justify-center rounded-full border-2 border-gray-500 bg-white text-sm font-medium leading-none text-gray-500">
+                                          {contract.extra}
+                                        </span>
+                                      ) : null}
+                                    </span>
                                     <ArrowRight className="size-4 text-gray-400" />
                                   </span>
                                 </button>
@@ -979,14 +988,6 @@ export function OfferDialog({
                             </div>
                           ) : null}
 
-                          <div className="mt-5 flex items-center gap-4">
-                            <span className="h-px flex-1 bg-gray-200" />
-                            <span className="text-[14px] font-light leading-normal text-gray-500">
-                              Or
-                            </span>
-                            <span className="h-px flex-1 bg-gray-200" />
-                          </div>
-
                           <Button
                             variant="link"
                             visual="gray"
@@ -996,6 +997,14 @@ export function OfferDialog({
                             <Plus className="size-4" />
                             Invite me to a new contract
                           </Button>
+
+                          <div className="mt-5 flex items-center gap-4">
+                            <span className="h-px flex-1 bg-gray-200" />
+                            <span className="text-[14px] font-light leading-normal text-gray-500">
+                              Or
+                            </span>
+                            <span className="h-px flex-1 bg-gray-200" />
+                          </div>
                         </div>
                       ) : null}
 
@@ -1015,41 +1024,43 @@ export function OfferDialog({
                             </span>
 
                             <span className="ml-4 flex items-center gap-3">
-                              <AvatarGroup
-                                className="cursor-default"
-                                max={5}
-                                size="sm"
-                                excess
-                              >
-                                {selectedContract?.avatars.map(
-                                  (avatar, index) => (
-                                    <Avatar
-                                      key={`${selectedContract?.id}-${index}`}
-                                      className={cn(
-                                        "size-8 border-2 border-white",
-                                        staticAvatarClassName
-                                      )}
-                                    >
-                                      <AvatarImage
-                                        src={avatar}
-                                        alt={`Member ${index + 1}`}
-                                      />
-                                      <AvatarFallback
-                                        className={
-                                          staticAvatarFallbackClassName
-                                        }
+                              <span className="flex items-center -space-x-2">
+                                <AvatarGroup
+                                  className="cursor-default"
+                                  max={5}
+                                  size="sm"
+                                  excess
+                                >
+                                  {selectedContract?.avatars.map(
+                                    (avatar, index) => (
+                                      <Avatar
+                                        key={`${selectedContract?.id}-${index}`}
+                                        className={cn(
+                                          "size-8 border-2 border-white",
+                                          staticAvatarClassName
+                                        )}
                                       >
-                                        {index + 1}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                  )
-                                )}
-                              </AvatarGroup>
-                              {selectedContract?.extra ? (
-                                <span className="inline-flex size-6 items-center justify-center rounded-full border border-gray-300 text-[10px] font-medium leading-none text-gray-500">
-                                  {selectedContract.extra}
-                                </span>
-                              ) : null}
+                                        <AvatarImage
+                                          src={avatar}
+                                          alt={`Member ${index + 1}`}
+                                        />
+                                        <AvatarFallback
+                                          className={
+                                            staticAvatarFallbackClassName
+                                          }
+                                        >
+                                          {index + 1}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    )
+                                  )}
+                                </AvatarGroup>
+                                {selectedContract?.extra ? (
+                                  <span className="relative z-10 inline-flex size-8 items-center justify-center rounded-full border-2 border-gray-500 bg-white text-sm font-medium leading-none text-gray-500">
+                                    {selectedContract.extra}
+                                  </span>
+                                ) : null}
+                              </span>
                             </span>
                           </button>
 
@@ -1171,7 +1182,7 @@ export function OfferDialog({
                         </>
                       ) : null}
 
-                      {currentScreen !== "select-contract" ? (
+                      {currentScreen !== "offer-sent" ? (
                         <div className="mt-7">
                           <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Select Work Schedule
