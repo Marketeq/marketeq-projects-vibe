@@ -19,6 +19,7 @@ import { DepositMethod } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutError } from '../common/errors/payout.error';
+import { BrevoMailService } from '../notifications/brevo-mail.service';
 
 const TTL_SECONDS = 15 * 60; // 15 minutes — hard, no extension
 const MAX_RESENDS = 3;
@@ -44,6 +45,7 @@ export class MagicLinkService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly brevoMail: BrevoMailService,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
     this.baseUrl = this.config.get('MAGIC_LINK_BASE_URL', 'http://localhost:3000/verify-withdrawal');
@@ -96,35 +98,34 @@ export class MagicLinkService {
     return rawToken;
   }
 
-  // ─── PS-14 §4: Publish magic link event to notification-service ──
+  // ─── PS-14 §4: Send magic link email via Brevo ──
+  // Per 00 — Payouts Epic Overview §9.3, payout-service calls its email
+  // provider directly for magic links (unlike every other contractor
+  // communication, which goes through notification-service via RabbitMQ).
   async publishMagicLinkEvent(
     payout: PayoutRequest,
     rawToken: string,
+    contractorEmail?: string,
   ): Promise<void> {
-    const method = await this.methodRepo.findOne({ where: { id: payout.depositMethodId } });
     const magicLinkUrl = `${this.baseUrl}?token=${rawToken}&id=${payout.id}`;
-    const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000);
 
-    // In production: publish to RabbitMQ for notification-service
-    // For now: log + fire-and-forget (same as PS-00 stub pattern)
     this.logger.log(`[MAGIC_LINK] Email event for payout ${payout.id} (contractor: ${payout.contractorId})`);
     // CRITICAL: Do NOT log the raw token or full URL
     this.logger.log(`[DEV] Verify URL: ${this.baseUrl}?token=***REDACTED***&id=${payout.id}`);
 
-    // Dev mode: log the actual URL for manual testing
-    if (!this.config.get('SENDGRID_API_KEY') || this.config.get('SENDGRID_API_KEY', '').startsWith('SG.your_')) {
+    if (!contractorEmail) {
+      this.logger.warn(`No contractor email available for payout ${payout.id} — magic link cannot be emailed.`);
       this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
+      return;
     }
-  }
 
-  // ─── PS-14 §3 (legacy compat): send() — called by existing payout.service.ts ──
-  async send(contractorId: string, rawToken: string, amountUsd: string): Promise<void> {
-    this.logger.log(`Sending magic link for contractor ${contractorId}, amount $${amountUsd}`);
-    // In production: this publishes to RabbitMQ
-    // Dev mode: log URL for manual testing
-    const verifyUrl = `${this.baseUrl}?token=${rawToken}`;
-    if (!this.config.get('SENDGRID_API_KEY') || this.config.get('SENDGRID_API_KEY', '').startsWith('SG.your_')) {
-      this.logger.warn(`[DEV] Verification URL: ${verifyUrl}`);
+    try {
+      await this.brevoMail.sendMagicLink(contractorEmail, magicLinkUrl, parseFloat(payout.amountUsd).toFixed(2));
+    } catch (err) {
+      // PS-14 / F-18: delivery failure must not block withdrawal initiation —
+      // the payout_request already exists; the contractor can use resend (F-19).
+      this.logger.error(`Magic link email delivery failed for payout ${payout.id}: ${(err as Error).message}`);
+      this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
     }
   }
 
@@ -247,6 +248,7 @@ export class MagicLinkService {
   async resendVerification(
     contractorId: string,
     payoutRequestId: string,
+    contractorEmail?: string,
   ): Promise<{ resent: boolean; message: string }> {
     const payout = await this.payoutRepo.findOne({
       where: { id: payoutRequestId, contractorId, status: PayoutStatus.PENDING_VERIFICATION },
@@ -298,7 +300,7 @@ export class MagicLinkService {
 
     // Generate and publish new token
     const rawToken = await this.generateAndStore(payoutRequestId, contractorId);
-    await this.publishMagicLinkEvent(payout, rawToken);
+    await this.publishMagicLinkEvent(payout, rawToken, contractorEmail);
 
     return { resent: true, message: 'A new verification email has been sent.' };
   }
