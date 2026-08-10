@@ -13,7 +13,12 @@ import {
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
 import { UserAPI } from "@/service/http/user"
-import { logHireFlowInitiated } from "@/service/http/contracts"
+import {
+  logHireFlowInitiated,
+  getMyContractGroups,
+  type ContractGroupSummary,
+} from "@/service/http/contracts"
+import { ProjectAPI } from "@/service/http/project"
 import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import {
@@ -126,65 +131,135 @@ type OfferDialogProps = {
   }) => void
 }
 
-const existingContracts = [
-  {
-    id: "contract-1",
-    title: "React Native Mobile App",
-    subtitle: "Design Phase",
-    avatars: [
-      "/man.jpg",
-      "/woman.jpg",
-      "/tutorial-thumbnails/image-2.png",
-      "/tutorial-thumbnails/image-3.png",
-      "/man.jpg",
-    ],
-    extra: "+5",
-  },
-  {
-    id: "contract-2",
-    title: "React Native Mobile App",
-    subtitle: "Design Phase",
-    avatars: ["/man.jpg", "/woman.jpg", "/tutorial-thumbnails/image-2.png"],
-  },
-  {
-    id: "contract-3",
-    title: "React Native Mobile App",
-    subtitle: "Design Phase",
-    avatars: [
-      "/man.jpg",
-      "/tutorial-thumbnails/image-3.png",
-      "/tutorial-thumbnails/image-2.png",
-      "/woman.jpg",
-    ],
-  },
-  {
-    id: "contract-4",
-    title: "React Native Mobile App",
-    subtitle: "Design Phase",
-    avatars: ["/man.jpg", "/tutorial-thumbnails/image-3.png"],
-  },
-  {
-    id: "contract-5",
-    title: "React Native Mobile App",
-    subtitle: "Design Phase",
-    avatars: [
-      "/man.jpg",
-      "/woman.jpg",
-      "/tutorial-thumbnails/image-2.png",
-      "/tutorial-thumbnails/image-3.png",
-    ],
-  },
-  {
-    id: "contract-6",
-    title: "React Native Mobile App",
-    subtitle: "Design Phase",
-    avatars: [
-      "/woman.jpg",
-      "/tutorial-thumbnails/image-2.png",
-      "/tutorial-thumbnails/image-3.png",
-    ],
-  },
-]
+type ContractRowAvatar = {
+  url?: string
+  name?: string
+}
+
+type ContractRow = {
+  id: string
+  title: string
+  subtitle: string
+  avatars: ContractRowAvatar[]
+  extra?: string
+}
+
+// Duplicated rather than imported from talent-profile/page.tsx:110-116 —
+// that function isn't exported, and re-exporting a helper from a page
+// component (rather than a shared utils module) to import it into another
+// component isn't the right home for it either. Six lines, pure, matched
+// exactly rather than reinvented; a real shared extraction into
+// utils/functions.ts is a separate, small cleanup, not done here.
+const getInitials = (name?: string | null): string => {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return "?"
+  const first = parts[0].charAt(0)
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : ""
+  return (first + last).toUpperCase() || "?"
+}
+
+// Edit mode edits one specific, already-known offer directly — it never
+// lists contracts, so it must never depend on the real fetched list below.
+// Before this was decoupled, edit mode seeded selectedContractId from
+// existingContracts[0], which broke two ways once that became live data:
+// the synthetic id never matches a real backend id, and a client who
+// actually has groups would make hasExistingContracts true, removing the
+// isStepThree fallback that used to cover the mismatch. Single, static,
+// intentionally disconnected from anything fetched.
+const EDIT_MODE_PLACEHOLDER_CONTRACT: ContractRow = {
+  id: "edit-mode-contract",
+  title: "React Native Mobile App",
+  subtitle: "Design Phase",
+  avatars: [
+    { url: "/man.jpg" },
+    { url: "/woman.jpg" },
+    { url: "/tutorial-thumbnails/image-2.png" },
+    { url: "/tutorial-thumbnails/image-3.png" },
+    { url: "/man.jpg" },
+  ],
+  extra: "+5",
+}
+
+// T2-3 decision 3: a group can be type service/team/job with no projectId
+// — nothing to hydrate for those in this chunk's scope. Also doubles as
+// the per-row failure fallback (T2-3 spec #4): if a project group's own
+// fetch fails (ensureProjectOwnership throwing, network error, etc.), that
+// one row degrades to this rather than the whole list failing.
+const buildFallbackContractRow = (group: ContractGroupSummary): ContractRow => {
+  const typeLabel = group.projectId
+    ? "Project"
+    : group.serviceId
+      ? "Service Engagement"
+      : group.teamId
+        ? "Team"
+        : group.jobId
+          ? "Job"
+          : "Contract"
+  return {
+    id: group.id,
+    title: typeLabel,
+    subtitle: "",
+    // No talent name lives on ContractGroupMemberSummaryDto — only
+    // contractId/talentId/title/status — so a fallback row genuinely has
+    // nothing to compute initials from. Renders "?" via getInitials' own
+    // empty-input handling, not a bug in the initials logic itself.
+    avatars: group.members.map(() => ({})),
+    extra:
+      group.members.length > 5
+        ? `+${group.members.length - 5}`
+        : undefined,
+  }
+}
+
+// T2-3 accepted trade-off: getProjectDraft hydrates tasks, media and
+// questions and runs a per-task pricing calculation — far more than this
+// row needs (title, one phase name, member avatars). One call per group
+// per modal open is a deliberate interim choice, not a claim that it's
+// optimal; a lean batched summary endpoint is the correct fix, raised
+// separately.
+const hydrateContractRow = async (
+  group: ContractGroupSummary
+): Promise<ContractRow> => {
+  if (!group.projectId) return buildFallbackContractRow(group)
+
+  const res = await ProjectAPI.GetProjectDraft(group.projectId)
+  const projectData = res?.data ?? {}
+  const scope = Array.isArray(projectData.scope) ? projectData.scope : []
+  const team = Array.isArray(projectData.team) ? projectData.team : []
+
+  // Decision 1: members[] (the actually-contracted talents) decide who's
+  // in the row — team[] is only an avatarUrl/name lookup by talentId,
+  // never the source of who appears. A contracted talent with no match in
+  // the project's team list falls back to initials-from-nothing ("?"),
+  // same as any other unresolved avatar.
+  const avatars = group.members.map((member): ContractRowAvatar => {
+    const match = team.find(
+      (t: { userId?: string }) => String(t.userId) === String(member.talentId)
+    )
+    return {
+      url: match?.avatarUrl || undefined,
+      // hydrateTeam only ever carries firstName, not lastName (see
+      // user-profile.client.ts:42-68) — getInitials still degrades
+      // correctly on a single word, just to one letter instead of two.
+      name: match?.firstName || match?.username || undefined,
+    }
+  })
+
+  return {
+    id: group.id,
+    title: projectData.title || "Project",
+    // Decision 2: no source anywhere derives a "current" phase —
+    // publish.service.ts:628-641 only ever sorts scope by `order`. First
+    // by order is a declared invention, chosen because it's the one line
+    // easiest to replace with a real date-derived rule later.
+    subtitle: scope[0]?.name || "",
+    avatars,
+    extra:
+      group.members.length > 5
+        ? `+${group.members.length - 5}`
+        : undefined,
+  }
+}
 
 export const offerRates = [
   { value: "logo-design", label: "Logo Design", price: "$45/hr" },
@@ -235,7 +310,7 @@ const getInitialOfferState = (mode: "create" | "edit") => ({
   schedule: mode === "edit" ? "full-time" : "",
   search: "",
   selectedContractId:
-    mode === "edit" ? (existingContracts[0]?.id ?? null) : null,
+    mode === "edit" ? EDIT_MODE_PLACEHOLDER_CONTRACT.id : null,
   creatingContract: false,
   selectedRate: mode === "edit" ? "web-development" : "",
   selectedDuration: mode === "edit" ? "Ongoing" : "",
@@ -282,6 +357,23 @@ export function OfferDialog({
   const [selectedContractId, setSelectedContractId] = React.useState<
     string | null
   >(initialState.selectedContractId)
+  // T2-3: real data replacing the old hardcoded mock, fetched below.
+  // Edit mode never populates or reads this — see
+  // EDIT_MODE_PLACEHOLDER_CONTRACT above.
+  const [existingContracts, setExistingContracts] = React.useState<
+    ContractRow[]
+  >([])
+  // Defaults true in create mode (a fetch is about to start) and false in
+  // edit mode (nothing is ever fetched there, so there's nothing to wait
+  // on). Feeds hasExistingContracts below: while loading, treat as "has
+  // contracts" so T1-10's routing doesn't act on a not-yet-known answer —
+  // picking a schedule before the fetch resolves must not skip straight to
+  // Estimated Start Date only to have the screen change once real data
+  // lands. No spinner; this is a routing decision, not a visual state —
+  // the loading skeleton itself is T2-4.
+  const [isLoadingGroups, setIsLoadingGroups] = React.useState(
+    mode !== "edit"
+  )
   const [creatingContract, setCreatingContract] = React.useState(
     initialState.creatingContract
   )
@@ -387,18 +479,26 @@ export function OfferDialog({
   // Same reasoning as locationLabel — an empty string from the fetch must
   // not override a seed that already has something to show.
   const avatarUrl = fetchedProfile?.avatarUrl || seedAvatarUrl
+  const isEditMode = mode === "edit"
   const filteredContracts = existingContracts.filter((contract) =>
     contract.title.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
-  const selectedContract =
-    existingContracts.find((contract) => contract.id === selectedContractId) ||
-    null
+  // T2-3: edit mode always resolves to its own static placeholder, never a
+  // lookup into the real fetched list — see EDIT_MODE_PLACEHOLDER_CONTRACT.
+  const selectedContract = isEditMode
+    ? EDIT_MODE_PLACEHOLDER_CONTRACT
+    : existingContracts.find(
+        (contract) => contract.id === selectedContractId
+      ) || null
   // T1-10: a client with no existing contracts skips select-contract
   // entirely — schedule selection alone should be enough to reach
-  // Estimated Start Date. With a non-empty list (every case today),
-  // hasExistingContracts is always true and these three reduce to exactly
-  // what they were before this existed.
-  const hasExistingContracts = existingContracts.length > 0
+  // Estimated Start Date. isLoadingGroups keeps this true until the real
+  // fetch settles, so an early schedule pick can't mis-route before we
+  // actually know whether the client has any groups (see the state
+  // declaration above). Edit mode's isLoadingGroups is always false and
+  // its selectedContract is always truthy regardless, so this never
+  // affects it either way.
+  const hasExistingContracts = isLoadingGroups || existingContracts.length > 0
   const isStepTwo =
     Boolean(schedule) &&
     hasExistingContracts &&
@@ -413,7 +513,6 @@ export function OfferDialog({
       : schedule === "custom"
         ? "custom" // Figma has no Offer Sent copy for a custom schedule — guessing here.
         : "full-time"
-  const isEditMode = mode === "edit"
   const currentScreen = offerSent
     ? "offer-sent"
     : isStepFour
@@ -506,9 +605,11 @@ export function OfferDialog({
     setFetchedProfile(null)
     setFetchError(null)
     setRetryToken(0)
+    setExistingContracts([])
+    setIsLoadingGroups(mode !== "edit")
     clearScheduleCommitTimeout()
     setPendingSchedule("")
-  }, [initialState, clearScheduleCommitTimeout])
+  }, [initialState, clearScheduleCommitTimeout, mode])
 
   const tryConfirmCustomSchedule = (hours: string, frequency: string) => {
     const parsedHours = Number(hours)
@@ -527,6 +628,49 @@ export function OfferDialog({
   React.useEffect(() => {
     if (open) resetFlow()
   }, [open, resetFlow])
+
+  // T2-3: real "existing contracts" data. Edit mode never runs this — it
+  // has its own static placeholder and must stay decoupled (see
+  // EDIT_MODE_PLACEHOLDER_CONTRACT). Parallel per-group hydration via
+  // Promise.allSettled (spec #5): each group's project fetch is
+  // independent, and one failing (spec #4) must not fail the batch — a
+  // rejected row degrades to buildFallbackContractRow instead of blanking
+  // the whole list.
+  React.useEffect(() => {
+    if (!open || isEditMode) return
+
+    let isActive = true
+    setIsLoadingGroups(true)
+
+    getMyContractGroups()
+      .then(async (groups) => {
+        const settled = await Promise.allSettled(
+          groups.map(hydrateContractRow)
+        )
+        if (!isActive) return
+        setExistingContracts(
+          settled.map((result, index) =>
+            result.status === "fulfilled"
+              ? result.value
+              : buildFallbackContractRow(groups[index])
+          )
+        )
+      })
+      .catch(() => {
+        // T2-5 owns real error/retry UI for this list. A failed groups
+        // fetch degrades to "no contracts" for now — isLoadingGroups still
+        // resolves to false via `finally`, so hasExistingContracts ends up
+        // correctly false rather than stuck permanently "loading".
+        if (isActive) setExistingContracts([])
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingGroups(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [open, isEditMode])
 
   // FR-4/AC-5.2: 200ms debounce. Same cleanup handles both cases — clears
   // the previous timer on every keystroke (a new one is scheduled below),
@@ -925,11 +1069,15 @@ export function OfferDialog({
 
                                   <span className="ml-4 flex items-center gap-3">
                                     <span className="flex items-center -space-x-2">
+                                      {/* excess deliberately off — the
+                                      manual pill right after this closes is
+                                      the +N indicator; AvatarGroup's own
+                                      built-in badge would double up with it
+                                      otherwise. */}
                                       <AvatarGroup
                                         className="cursor-default"
                                         max={5}
                                         size="sm"
-                                        excess
                                       >
                                         {contract.avatars.map((avatar, index) => (
                                           <Avatar
@@ -940,15 +1088,15 @@ export function OfferDialog({
                                             )}
                                           >
                                             <AvatarImage
-                                              src={avatar}
-                                              alt={`Member ${index + 1}`}
+                                              src={avatar.url}
+                                              alt={avatar.name || `Member ${index + 1}`}
                                             />
                                             <AvatarFallback
                                               className={
                                                 staticAvatarFallbackClassName
                                               }
                                             >
-                                              {index + 1}
+                                              {getInitials(avatar.name)}
                                             </AvatarFallback>
                                           </Avatar>
                                         ))}
@@ -1025,11 +1173,12 @@ export function OfferDialog({
 
                             <span className="ml-4 flex items-center gap-3">
                               <span className="flex items-center -space-x-2">
+                                {/* excess deliberately off — same reasoning
+                                as the list row above. */}
                                 <AvatarGroup
                                   className="cursor-default"
                                   max={5}
                                   size="sm"
-                                  excess
                                 >
                                   {selectedContract?.avatars.map(
                                     (avatar, index) => (
@@ -1041,15 +1190,15 @@ export function OfferDialog({
                                         )}
                                       >
                                         <AvatarImage
-                                          src={avatar}
-                                          alt={`Member ${index + 1}`}
+                                          src={avatar.url}
+                                          alt={avatar.name || `Member ${index + 1}`}
                                         />
                                         <AvatarFallback
                                           className={
                                             staticAvatarFallbackClassName
                                           }
                                         >
-                                          {index + 1}
+                                          {getInitials(avatar.name)}
                                         </AvatarFallback>
                                       </Avatar>
                                     )

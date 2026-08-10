@@ -47,3 +47,28 @@ export const getContract = async (id: string): Promise<ContractDTO | null> => {
 export const logHireFlowInitiated = async (talentId: string): Promise<void> => {
   await AxiosRequest.post("/contracts/audit/hire-initiated", { talentId })
 }
+
+export interface ContractGroupMemberSummary {
+  contractId: string
+  talentId: string
+  title: string
+  status: string
+}
+
+export interface ContractGroupSummary {
+  id: string
+  members: ContractGroupMemberSummary[]
+  projectId: string | null
+  serviceId: string | null
+  teamId: string | null
+  jobId: string | null
+}
+
+// Identity comes from req.user server-side — no clientId param, matching
+// the T2-1 fix (never trust a caller-supplied id for "whose data is this").
+export const getMyContractGroups = async (): Promise<
+  ContractGroupSummary[]
+> => {
+  const res = await AxiosRequest.get("/contracts/groups/mine")
+  return Array.isArray(res.data) ? res.data : []
+}
