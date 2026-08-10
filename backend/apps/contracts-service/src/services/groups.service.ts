@@ -18,6 +18,7 @@ export class GroupsService {
   ) {}
   async createGroup(
     dto: CreateGroupDto,
+    ownerClientId: string,
   ): Promise<{ group: ContractGroup; contracts: Contract[] }> {
     return this.contractGroupRepository.manager.transaction(async (manager) => {
       const groupRepo = manager.getRepository(ContractGroup);
@@ -26,7 +27,7 @@ export class GroupsService {
       // Create group
       const group = groupRepo.create({
         type: dto.type,
-        ownerClientId: dto.ownerClientId,
+        ownerClientId,
         projectId: dto.projectId,
         serviceId: dto.serviceId,
         teamId: dto.teamId,
@@ -40,7 +41,7 @@ export class GroupsService {
       const contracts = dto.contracts.map((c) =>
         contractRepo.create({
           ...c,
-          clientId: dto.ownerClientId, // satisfies NOT NULL
+          clientId: ownerClientId, // satisfies NOT NULL
           groupId: savedGroup.id,
           status: ContractStatus.PENDING,
         }),
