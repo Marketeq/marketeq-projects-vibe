@@ -72,3 +72,28 @@ export const getMyContractGroups = async (): Promise<
   const res = await AxiosRequest.get("/contracts/groups/mine")
   return Array.isArray(res.data) ? res.data : []
 }
+
+export interface AddContractGroupMemberPayload {
+  talentId: string
+  title: string
+  rate: number
+  schedule: string
+  duration: string
+  note?: string
+}
+
+// T2-14: attach a talent to an existing group (T2-13's endpoint). clientId
+// and groupId both come from the URL/server side, not the body — same
+// identity discipline as getMyContractGroups above. Throws on non-2xx
+// (401/403/404/409/5xx) via AxiosRequest's interceptor, same as every other
+// call in this file — callers handle status codes in their own catch.
+export const addContractGroupMember = async (
+  groupId: string,
+  payload: AddContractGroupMemberPayload
+): Promise<ContractDTO> => {
+  const res = await AxiosRequest.post(
+    `/contracts/groups/${encodeURIComponent(groupId)}/members`,
+    payload
+  )
+  return res.data
+}

@@ -16,6 +16,7 @@ import { UserAPI } from "@/service/http/user"
 import {
   logHireFlowInitiated,
   getMyContractGroups,
+  addContractGroupMember,
   type ContractGroupSummary,
   type ContractGroupMemberSummary,
 } from "@/service/http/contracts"
@@ -41,7 +42,6 @@ import {
   SearchField,
   SearchFieldButton,
   SearchFieldInput,
-  ScrollArea,
   Select,
   SelectContent,
   SelectItem,
@@ -273,11 +273,34 @@ const hydrateContractRow = async (
   }
 }
 
+// T2-14 flagged this, not fixed here: these three prices are a hardcoded
+// module constant, not the talent's actual rate — amitreyes78's real range
+// (profile.rateMin/rateMax) is $65-$132/hr, nowhere near $45/$70/$85. This
+// was already misleading as a *display*; T2-14 is the first thing that
+// *persists* one of these numbers into a Contract row that governs payment.
+// Same category of fabrication T1-2 removed from the talent header, now
+// written to the database instead of just rendered. Declared in the PR, not
+// silently shipped — see the T2-14 report for what sourcing these tiles
+// from profile.rateMin/rateMax would actually take.
 export const offerRates = [
   { value: "logo-design", label: "Logo Design", price: "$45/hr" },
   { value: "web-development", label: "Web Development", price: "$70/hr" },
   { value: "ux-ui-design", label: "UX/UI Design", price: "$85/hr" },
 ]
+
+// Parses the number back out of offerRates' own display string ("$70/hr" ->
+// 70) — this is the number already shown to the user for their selection,
+// not a second invented value on top of the first. Still fabricated data
+// (see the comment above); this only avoids inventing a THIRD number
+// disconnected from what the UI displayed. Returns null if selectedRate
+// doesn't match any tile (e.g. nothing selected yet, or "custom" — see the
+// Custom Rate button below, which has no onClick and is unreachable today).
+const parseFabricatedRateValue = (selectedRateValue: string): number | null => {
+  const match = offerRates.find((rate) => rate.value === selectedRateValue)
+  if (!match) return null
+  const parsed = Number(match.price.replace(/[^0-9.]/g, ""))
+  return Number.isFinite(parsed) ? parsed : null
+}
 
 const durations = [
   "3 Months",
@@ -350,6 +373,12 @@ export function OfferDialog({
   // holds the click's value for a short, deliberately perceptible delay so
   // the highlight renders before schedule commits and the screen advances.
   const [pendingSchedule, setPendingSchedule] = React.useState("")
+  const modalScrollViewportRef = React.useRef<HTMLDivElement>(null)
+  const [modalScrollThumb, setModalScrollThumb] = React.useState({
+    height: 0,
+    offset: 0,
+    visible: false,
+  })
   const scheduleCommitTimeoutRef = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
@@ -413,6 +442,18 @@ export function OfferDialog({
   const [contractTitle, setContractTitle] = React.useState(
     initialState.contractTitle
   )
+  // T2-14: true only while the Send Offer click is awaiting
+  // addContractGroupMember — separate from isLoadingGroups/isFetchingTalent,
+  // which are about the two background fetches, not this user-initiated
+  // submission.
+  const [isSubmittingOffer, setIsSubmittingOffer] = React.useState(false)
+  // ERR-007: 409 from addContractGroupMember — inline in the footer, not a
+  // toast (that's ERR-006, the 5xx/network case). Single "duplicate" value
+  // rather than the literal message string, matching groupsFetchError's
+  // convention elsewhere in this file.
+  const [addMemberError, setAddMemberError] = React.useState<
+    "duplicate" | null
+  >(null)
   const [message, setMessage] = React.useState(initialState.message)
   const [offerSent, setOfferSent] = React.useState(initialState.offerSent)
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
@@ -557,6 +598,31 @@ export function OfferDialog({
         : isStepTwo
           ? "select-contract"
           : "select-schedule"
+
+  const syncModalScrollThumb = React.useCallback(() => {
+    const viewport = modalScrollViewportRef.current
+    if (!viewport) return
+
+    const maxScroll = viewport.scrollHeight - viewport.clientHeight
+    if (maxScroll <= 0) {
+      setModalScrollThumb({ height: 0, offset: 0, visible: false })
+      return
+    }
+
+    const proportionalHeight =
+      (viewport.clientHeight * viewport.clientHeight) / viewport.scrollHeight
+    const height = proportionalHeight / 3
+    const maxOffset = viewport.clientHeight - height
+    const offset = (viewport.scrollTop / maxScroll) * maxOffset
+
+    setModalScrollThumb({ height, offset, visible: true })
+  }, [])
+
+  React.useEffect(() => {
+    const animationFrame = requestAnimationFrame(syncModalScrollThumb)
+    return () => cancelAnimationFrame(animationFrame)
+  }, [currentScreen, existingContracts.length, open, syncModalScrollThumb])
+
   const screenTransition = {
     duration: 0.26,
     ease: [0.22, 1, 0.36, 1] as const,
@@ -587,6 +653,17 @@ export function OfferDialog({
       Number(customHours) <= CUSTOM_HOURS_MAX[customFrequency] &&
       customFrequency
     )
+  // AC-13.1: "A contract title input field is displayed and required" — doc
+  // 04 §6 places it on the Send Offer screen, which is isStepThree here,
+  // not just isStepFour. The input was only ever wired to isStepFour; this
+  // is closing that gap against the spec, not adding a new field. Excluded
+  // for edit mode (selectedContract is always the static placeholder there,
+  // and edit mode never calls addContractGroupMember) and for the
+  // zero-existing-contracts case (selectedContract is null, isStepThree is
+  // true only via T1-10's `!hasExistingContracts` fallthrough — there's no
+  // group to title a membership against).
+  const isExistingContractOfferStep =
+    isStepThree && !isEditMode && Boolean(selectedContract)
   const isOfferReady =
     (isStepThree
       ? Boolean(
@@ -594,7 +671,8 @@ export function OfferDialog({
           selectedContractId &&
           selectedRate &&
           selectedDuration &&
-          selectedStartDateAction
+          selectedStartDateAction &&
+          (!isExistingContractOfferStep || contractTitle.trim())
         )
       : isStepFour
         ? Boolean(
@@ -602,7 +680,9 @@ export function OfferDialog({
           )
         : false) && !isCustomScheduleIncomplete
   const contractTitleError =
-    showValidationErrors && isStepFour && !contractTitle.trim()
+    showValidationErrors &&
+    (isStepFour || isExistingContractOfferStep) &&
+    !contractTitle.trim()
       ? "Please enter a contract title."
       : null
   const selectedRateError =
@@ -630,6 +710,8 @@ export function OfferDialog({
     setSelectedDuration(initialState.selectedDuration)
     setSelectedStartDateAction(initialState.selectedStartDateAction)
     setContractTitle(initialState.contractTitle)
+    setIsSubmittingOffer(false)
+    setAddMemberError(null)
     setMessage(initialState.message)
     setOfferSent(initialState.offerSent)
     setShowValidationErrors(false)
@@ -913,12 +995,12 @@ export function OfferDialog({
             </DialogClose>
           </div>
 
-          <div
-            className={cn(
-              "min-h-0 flex-1 px-6 pb-6 pt-5",
-              isStepTwo ? "overflow-hidden" : "overflow-y-auto"
-            )}
-          >
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <div
+              ref={modalScrollViewportRef}
+              className="max-h-[calc(100dvh-76px)] overflow-y-auto px-6 pb-6 pt-5 scrollbar-none"
+              onScroll={syncModalScrollThumb}
+            >
             <motion.div layout transition={screenTransition}>
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
@@ -1172,8 +1254,7 @@ export function OfferDialog({
                             </div>
                           ) : (
                             <>
-                              <ScrollArea viewportClassName="mt-3 max-h-[300px]">
-                                <div className="space-y-2 pr-3">
+                              <div className="mt-3 space-y-2">
                                   {filteredContracts.map((contract) => (
                                     <button
                                       key={contract.id}
@@ -1262,8 +1343,7 @@ export function OfferDialog({
                                       </span>
                                     </button>
                                   ))}
-                                </div>
-                              </ScrollArea>
+                              </div>
 
                               {/* FR-5/AC-5.3, doc 05 EC-008: verbatim copy, not
                               quoted — trimmed only so leading/trailing spaces in
@@ -1371,7 +1451,15 @@ export function OfferDialog({
                               variant="link"
                               visual="gray"
                               className="ml-auto mt-3 flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
-                              onClick={() => setSelectedContractId(null)}
+                              onClick={() => {
+                                setSelectedContractId(null)
+                                // ERR-007 recovery path: this button IS "the
+                                // client selects a different contract" — the
+                                // stale 409 from the abandoned selection
+                                // must not carry over to whatever they pick
+                                // next.
+                                setAddMemberError(null)
+                              }}
                             >
                               Change Contract
                             </Button>
@@ -1379,7 +1467,10 @@ export function OfferDialog({
                         </div>
                       ) : null}
 
-                      {isStepFour ? (
+                      {/* AC-13.1 / doc 04 §6: required on the Send Offer
+                      screen, which is isStepThree here too, not just
+                      isStepFour — see isExistingContractOfferStep above. */}
+                      {isStepFour || isExistingContractOfferStep ? (
                         <div>
                           <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Contract Title
@@ -1781,22 +1872,147 @@ export function OfferDialog({
                 </motion.div>
               </AnimatePresence>
             </motion.div>
+            </div>
+            {modalScrollThumb.visible ? (
+              <div className="absolute inset-y-0 right-0 w-2.5">
+                <div
+                  className="absolute right-[1px] w-2 cursor-pointer rounded-lg bg-gray-300"
+                  style={{
+                    height: modalScrollThumb.height,
+                    transform: `translateY(${modalScrollThumb.offset}px)`,
+                  }}
+                  onPointerDown={(event) => {
+                    event.preventDefault()
+                    const viewport = modalScrollViewportRef.current
+                    if (!viewport) return
+
+                    const startY = event.clientY
+                    const startScrollTop = viewport.scrollTop
+                    const maxScroll =
+                      viewport.scrollHeight - viewport.clientHeight
+                    const maxThumbOffset =
+                      viewport.clientHeight - modalScrollThumb.height
+
+                    const handlePointerMove = (moveEvent: PointerEvent) => {
+                      if (maxThumbOffset <= 0) return
+                      viewport.scrollTop =
+                        startScrollTop +
+                        ((moveEvent.clientY - startY) / maxThumbOffset) *
+                          maxScroll
+                    }
+                    const handlePointerUp = () => {
+                      document.removeEventListener(
+                        "pointermove",
+                        handlePointerMove
+                      )
+                      document.removeEventListener(
+                        "pointerup",
+                        handlePointerUp
+                      )
+                    }
+
+                    document.addEventListener("pointermove", handlePointerMove)
+                    document.addEventListener("pointerup", handlePointerUp)
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
           {isOfferDetailsStep ? (
             <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-4">
+              {/* ERR-007: inline, not a toast (that's ERR-006 below). The
+              Change Contract button above is the recovery path this error
+              points at — clicking it already clears addMemberError. */}
+              {addMemberError ? (
+                <ErrorMessage className="mb-3">
+                  This talent is already part of this contract.
+                </ErrorMessage>
+              ) : null}
               <Button
                 className={cn(
                   "w-full",
-                  !isOfferReady && "cursor-not-allowed opacity-50"
+                  (!isOfferReady || isSubmittingOffer) &&
+                    "cursor-not-allowed opacity-50"
                 )}
-                aria-disabled={!isOfferReady}
-                onClick={() => {
-                  if (!isOfferReady) {
+                aria-disabled={!isOfferReady || isSubmittingOffer}
+                onClick={async () => {
+                  if (!isOfferReady || isSubmittingOffer) {
                     setShowValidationErrors(true)
                     return
                   }
 
                   setShowValidationErrors(false)
+
+                  // T2-14: only the existing-contract path calls
+                  // addContractGroupMember. isStepFour ("Invite me to a new
+                  // contract") has no wiring yet — that's POST
+                  // /contract-groups, a different endpoint, out of scope
+                  // here. Edit mode and the zero-existing-contracts
+                  // fallthrough (isExistingContractOfferStep excludes both)
+                  // proceed exactly as before this chunk.
+                  if (isExistingContractOfferStep && selectedContract) {
+                    // Checked and returned on BEFORE setIsSubmittingOffer(true)
+                    // — same ordering as every other offline pre-flight in
+                    // this file. Nothing async has started, so no cleanup
+                    // is needed on this path.
+                    if (typeof navigator !== "undefined" && !navigator.onLine) {
+                      toast({
+                        variant: "destructive",
+                        description:
+                          "You appear to be offline. Please check your connection and try again.",
+                        duration: 5000,
+                      })
+                      return
+                    }
+
+                    if (!hiredTalentId) return
+
+                    setAddMemberError(null)
+                    setIsSubmittingOffer(true)
+                    try {
+                      await addContractGroupMember(selectedContract.id, {
+                        talentId: hiredTalentId,
+                        title: contractTitle.trim(),
+                        // T2-14 report: fabricated — see offerRates' own
+                        // comment above. Not the talent's real rate.
+                        rate: parseFabricatedRateValue(selectedRate) ?? 0,
+                        schedule,
+                        duration: selectedDuration,
+                      })
+                    } catch (error: any) {
+                      setIsSubmittingOffer(false)
+
+                      if (error?.response?.status === 401) {
+                        // Same module-level guard as the two fetch effects
+                        // above — one flag, so a concurrent 401 from any of
+                        // them only redirects once.
+                        if (!sessionExpiredRedirecting) {
+                          sessionExpiredRedirecting = true
+                          const returnTo = `${window.location.pathname}${window.location.search}`
+                          window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
+                        }
+                        return
+                      }
+
+                      if (error?.response?.status === 409) {
+                        setAddMemberError("duplicate")
+                        return
+                      }
+
+                      // ERR-006: every other failure (5xx, network) is a
+                      // toast, not inline — the modal stays open so the
+                      // client can just press Send Offer again.
+                      toast({
+                        variant: "destructive",
+                        description:
+                          "Couldn't add talent to this contract. Please try again.",
+                        duration: 5000,
+                      })
+                      return
+                    }
+                    setIsSubmittingOffer(false)
+                  }
+
                   onSaveOffer?.({ selectedRate, schedule, selectedDuration })
                   onOpenChange(false)
                   if (!isEditMode) {
@@ -1810,7 +2026,11 @@ export function OfferDialog({
                   }
                 }}
               >
-                {isEditMode ? "Save Offer" : "Send Offer"}
+                {isSubmittingOffer
+                  ? "Sending..."
+                  : isEditMode
+                    ? "Save Offer"
+                    : "Send Offer"}
               </Button>
             </div>
           ) : null}
