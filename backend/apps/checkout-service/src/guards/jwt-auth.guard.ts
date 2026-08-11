@@ -1,17 +1,35 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import * as jwt from 'jsonwebtoken';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as jwt from "jsonwebtoken";
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  constructor(private readonly config: ConfigService) {}
+
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest();
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) throw new UnauthorizedException('Missing auth token');
+    if (!authHeader?.startsWith("Bearer ")) {
+      throw new UnauthorizedException("Missing auth token");
+    }
+
+    const publicKey = this.config
+      .get<string>("AUTH_JWT_PUBLIC_KEY")
+      ?.replace(/\\n/g, "\n");
+    const secretOrKey = publicKey || this.config.get<string>("JWT_SECRET");
+
     try {
-      req.user = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET!);
+      req.user = jwt.verify(authHeader.split(" ")[1], secretOrKey!, {
+        algorithms: publicKey ? ["RS256"] : ["HS256"],
+      });
       return true;
     } catch {
-      throw new UnauthorizedException('Invalid or expired token');
+      throw new UnauthorizedException("Invalid or expired token");
     }
   }
 }

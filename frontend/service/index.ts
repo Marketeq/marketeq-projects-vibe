@@ -21,9 +21,46 @@ const getAccessToken = () => {
 
   return (
     window.localStorage.getItem("access_token") ||
+    window.localStorage.getItem("accessToken") ||
     window.localStorage.getItem("token") ||
+    window.localStorage.getItem("authToken") ||
     undefined
   )
+}
+
+export const persistAuthTokens = (data: {
+  access_token?: string
+  accessToken?: string
+  refresh_token?: string
+  refreshToken?: string
+  sessionId?: string
+  session_id?: string
+}) => {
+  const accessToken = data.access_token ?? data.accessToken
+  const refreshToken = data.refresh_token ?? data.refreshToken
+  const sessionId = data.sessionId ?? data.session_id
+
+  if (accessToken) {
+    Cookies.set("access_token", accessToken, { path: "/" })
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("access_token", accessToken)
+      window.localStorage.setItem("token", accessToken)
+    }
+  }
+
+  if (refreshToken) {
+    Cookies.set("refresh_token", refreshToken, { path: "/" })
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("refresh_token", refreshToken)
+    }
+  }
+
+  if (sessionId) {
+    Cookies.set("session_id", sessionId, { path: "/" })
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("session_id", sessionId)
+    }
+  }
 }
 
 axios.defaults.baseURL = BASE
@@ -110,13 +147,11 @@ axiosInstance.interceptors.response.use(
       const newRefreshToken = res?.data?.refresh_token
 
       if (newAccessToken) {
-        Cookies.set("access_token", newAccessToken, { path: "/" })
-        if (newRefreshToken) {
-          Cookies.set("refresh_token", newRefreshToken, { path: "/" })
-        }
-        if (res?.data?.sessionId) {
-          Cookies.set("session_id", res.data.sessionId, { path: "/" })
-        }
+        persistAuthTokens({
+          access_token: newAccessToken,
+          refresh_token: newRefreshToken,
+          sessionId: res?.data?.sessionId,
+        })
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         processQueue(null, newAccessToken)
         return axiosInstance(originalRequest)

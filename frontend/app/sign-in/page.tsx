@@ -9,13 +9,13 @@ import {
 } from "@/contexts/auth"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
+import { persistAuthTokens } from "@/service"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { containsOneLowerCaseLetter, hookFormHasError } from "@/utils/functions"
 import { Eye, EyeOff } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
-import Cookies from "js-cookie"
 import { Controller, SubmitHandler, useForm } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
@@ -99,13 +99,7 @@ export default function SignIn() {
     try {
       const res = await AuthAPI.VerifyTwoFactor({ code: twoFactorCode, partialToken })
       if (res?.data?.access_token) {
-        Cookies.set("access_token", res.data.access_token, { path: "/" })
-        if (res.data.refresh_token) {
-          Cookies.set("refresh_token", res.data.refresh_token, { path: "/" })
-        }
-        if (res.data.sessionId) {
-          Cookies.set("session_id", res.data.sessionId, { path: "/" })
-        }
+        persistAuthTokens(res.data)
 
         let nextUser = res.data.user
         try {
@@ -173,13 +167,7 @@ export default function SignIn() {
         }
 
         if (response?.status === 200 && response?.data?.access_token) {
-          Cookies.set("access_token", response.data.access_token, { path: "/" })
-          if (response.data.refresh_token) {
-            Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-          }
-          if (response.data.sessionId) {
-            Cookies.set("session_id", response.data.sessionId, { path: "/" })
-          }
+          persistAuthTokens(response.data)
 
           let nextUser = response.data.user
           try {
@@ -556,13 +544,7 @@ export default function SignIn() {
                       if (!res.ok) throw new Error("Dev login failed")
                       const data = await res.json()
                       if (data.access_token) {
-                        Cookies.set("access_token", data.access_token, { path: "/" })
-                        if (data.refresh_token) {
-                          Cookies.set("refresh_token", data.refresh_token, { path: "/" })
-                        }
-                        if (data.sessionId) {
-                          Cookies.set("session_id", data.sessionId, { path: "/" })
-                        }
+                        persistAuthTokens(data)
                         let nextUser = data.user
                         try {
                           const meResponse = await UserAPI.me()

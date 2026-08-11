@@ -1,19 +1,20 @@
 import AxiosRequest from ".."
 
 export type CheckoutPaymentMethod = "card" | "ach" | "wire"
+export type CheckoutInstallmentPlan =
+  | "full"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "quarterly"
+  | "yearly"
 
 export const CheckoutAPI = {
   CreateSession: (data: {
     projectId: string
     contractId?: string
     paymentMethod: CheckoutPaymentMethod
-    installmentPlanOption?:
-      | "full"
-      | "weekly"
-      | "biweekly"
-      | "monthly"
-      | "quarterly"
-      | "yearly"
+    installmentPlanOption?: CheckoutInstallmentPlan
     splitPaymentEnabled?: boolean
     initialPaymentAmount?: number
     giftCardCode?: string
@@ -32,4 +33,11 @@ export const CheckoutAPI = {
 
   GetStatus: (sessionId: string) =>
     AxiosRequest.get(`/v1/checkout/status/${sessionId}`),
+
+  ApplyGiftCard: (data: { code: string }) =>
+    AxiosRequest.post("/v1/checkout/apply-giftcard", data),
+
+  CheckCooldown: () => AxiosRequest.get("/v1/checkout/cooldown"),
+
+  GetWalletBalance: () => AxiosRequest.get("/v1/checkout/wallet/balance"),
 }

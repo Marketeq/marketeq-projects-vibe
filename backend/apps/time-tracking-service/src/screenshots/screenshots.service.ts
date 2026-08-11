@@ -356,11 +356,18 @@ export class ScreenshotsService {
     return this.repo.save(screenshot);
   }
 
-  async getFlaggedScreenshots(): Promise<Screenshot[]> {
-    return this.repo.find({
+  async getFlaggedScreenshots(page = 1, pageSize = 50): Promise<{ items: Screenshot[]; page: number; pageSize: number; total: number }> {
+    const take = Math.min(200, Math.max(1, Number(pageSize)));
+    const skip = (Math.max(1, Number(page)) - 1) * take;
+
+    const [items, total] = await this.repo.findAndCount({
       where: { isFlagged: true, isDeleted: false },
       order: { flaggedAt: 'DESC' },
+      skip,
+      take,
     });
+
+    return { items, page: Number(page), pageSize: take, total };
   }
 
   async reviewScreenshot(id: string, adminId: string, dto: ReviewScreenshotDto): Promise<Screenshot> {

@@ -334,11 +334,22 @@ export class JobListingService {
     if (dto.successCriteria !== undefined)
       fields.successCriteria = dto.successCriteria;
     if (dto.headcount !== undefined) fields.headcount = dto.headcount;
+    if (dto.categorySelections !== undefined)
+      fields.categorySelections = dto.categorySelections;
+    if (dto.tags !== undefined) fields.tags = dto.tags;
+    if (dto.skills !== undefined) fields.skills = dto.skills;
+    if (dto.tools !== undefined) fields.tools = dto.tools;
+    if (dto.media !== undefined) fields.media = dto.media;
     if (dto.budgetFrequency !== undefined)
       fields.budgetFrequency = dto.budgetFrequency;
     if (dto.durationMonths !== undefined)
       fields.durationMonths = dto.durationMonths;
     if (dto.isOngoing !== undefined) fields.isOngoing = dto.isOngoing;
+    if (dto.briefR2Key !== undefined) fields.briefR2Key = dto.briefR2Key;
+    if (dto.briefFilename !== undefined)
+      fields.briefFilename = dto.briefFilename;
+    if (dto.briefSizeBytes !== undefined)
+      fields.briefSizeBytes = dto.briefSizeBytes;
     if (
       dto.ndaEnabled !== undefined &&
       existing.contractType !== ContractType.EXISTING
@@ -520,16 +531,51 @@ export class JobListingService {
       assignedUserId: dto.assignedUserId ?? null,
       assignedUsername: null,
       assignedUserDeactivated: false,
-      location: null,
-      experienceLevel: null,
-      customHours: null,
-      customFrequency: null,
-      contractLengthMonths: null,
-      hourlyRateLowUsdCents: null,
-      hourlyRateHighUsdCents: null,
+      location: dto.location ?? null,
+      experienceLevel: dto.experienceLevel ?? null,
+      workSchedule: dto.workSchedule ?? undefined,
+      customHours: dto.customHours ?? null,
+      customFrequency: dto.customFrequency ?? null,
+      contractLengthMonths: dto.contractLengthMonths ?? null,
+      hourlyRateLowUsdCents: dto.hourlyRateLowUsdCents ?? null,
+      hourlyRateHighUsdCents: dto.hourlyRateHighUsdCents ?? null,
     });
 
     return this.roleRowRepo.save(roleRow);
+  }
+
+  async replaceRoleRows(
+    listingId: string,
+    rows: CreateRoleRowDto[],
+  ): Promise<TeamMemberRow[]> {
+    await this.roleRowRepo.delete({ jobListingId: listingId });
+
+    const roleRows = rows
+      .map((row, positionOrder) => {
+        const roleTitle = row.role?.trim();
+        if (!roleTitle) return null;
+
+        return this.roleRowRepo.create({
+          jobListingId: listingId,
+          roleTitle,
+          positionOrder: row.positionOrder ?? positionOrder,
+          assignedUserId: row.assignedUserId ?? null,
+          assignedUsername: null,
+          assignedUserDeactivated: false,
+          location: row.location ?? null,
+          experienceLevel: row.experienceLevel ?? null,
+          workSchedule: row.workSchedule ?? undefined,
+          customHours: row.customHours ?? null,
+          customFrequency: row.customFrequency ?? null,
+          contractLengthMonths: row.contractLengthMonths ?? null,
+          hourlyRateLowUsdCents: row.hourlyRateLowUsdCents ?? null,
+          hourlyRateHighUsdCents: row.hourlyRateHighUsdCents ?? null,
+        });
+      })
+      .filter((row): row is TeamMemberRow => Boolean(row));
+
+    if (roleRows.length === 0) return [];
+    return this.roleRowRepo.save(roleRows);
   }
 
   async listRoleDescriptions(listingId: string): Promise<RoleDescription[]> {

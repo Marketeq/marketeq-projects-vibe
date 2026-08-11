@@ -80,7 +80,12 @@ export class JobListingInviteService {
   ): Promise<{ inviteBalance: number }> {
     const listing = await this.repo.findOne({
       where: { id: listingId },
-      select: ["id", "inviteBalance", "clientUserId"],
+      select: [
+        "id",
+        "inviteBalance",
+        "clientUserId",
+        "processedInviteCheckoutSessionIds",
+      ],
     });
 
     if (!listing) {
@@ -90,7 +95,45 @@ export class JobListingInviteService {
       });
     }
 
-    await this.repo.increment({ id: listingId }, "inviteBalance", inviteCount);
+    if (checkoutSessionId) {
+      const processedSessionIds =
+        listing.processedInviteCheckoutSessionIds ?? [];
+
+      if (processedSessionIds.includes(checkoutSessionId)) {
+        return { inviteBalance: listing.inviteBalance };
+      }
+
+      const updateResult = await this.repo
+        .createQueryBuilder()
+        .update(JobListing)
+        .set({
+          inviteBalance: () => `"invite_balance" + ${inviteCount}`,
+          processedInviteCheckoutSessionIds: () =>
+            `COALESCE("processed_invite_checkout_session_ids", '[]'::jsonb) || to_jsonb(ARRAY[:checkoutSessionId]::text[])`,
+        })
+        .where("id = :listingId", { listingId })
+        .andWhere(
+          `NOT (COALESCE("processed_invite_checkout_session_ids", '[]'::jsonb) ? :checkoutSessionId)`,
+        )
+        .setParameters({ checkoutSessionId })
+        .execute();
+
+      if (!updateResult.affected) {
+        const current = await this.repo.findOne({
+          where: { id: listingId },
+          select: ["inviteBalance"],
+        });
+        return {
+          inviteBalance: current?.inviteBalance ?? listing.inviteBalance,
+        };
+      }
+    } else {
+      await this.repo.increment(
+        { id: listingId },
+        "inviteBalance",
+        inviteCount,
+      );
+    }
 
     this.publisher.emit("job_listing.invites_purchased", {
       listingId,

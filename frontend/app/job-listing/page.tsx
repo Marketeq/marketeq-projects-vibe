@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   CSSProperties,
@@ -9,37 +9,37 @@ import {
   useReducer,
   useRef,
   useState,
-} from "react"
-import React from "react"
+} from "react";
+import React from "react";
 // import ReactPlayer from "react-player"
-import dynamic from "next/dynamic"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
-import options from "@/public/mock/options.json"
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth";
+import options from "@/public/mock/options.json";
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
   type AutocompleteTypeSuggestion,
-} from "@/service/http/autocomplete"
-import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
+} from "@/service/http/autocomplete";
+import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category";
 import {
   CheckoutAPI,
   type CheckoutPaymentMethod,
-} from "@/service/http/checkout"
+} from "@/service/http/checkout";
 import {
   type ContractDTO,
   getContractsForClient,
-} from "@/service/http/contracts"
+} from "@/service/http/contracts";
 import {
   JobListingAPI,
   type JobListingPhaseType,
   type JobListingWorkSchedule,
-} from "@/service/http/job-listing"
-import { LegalAPI } from "@/service/http/legal"
-import { ProjectAPI } from "@/service/http/project"
-import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import { buildProjectUrl } from "@/src/lib/urlHelpers"
-import { HTTPS, ONE_SECOND } from "@/utils/constants"
+} from "@/service/http/job-listing";
+import { LegalAPI } from "@/service/http/legal";
+import { ProjectAPI } from "@/service/http/project";
+import { editProjectListingUrl } from "@/src/lib/listing-urls";
+import { buildProjectUrl } from "@/src/lib/urlHelpers";
+import { HTTPS, ONE_SECOND } from "@/utils/constants";
 import {
   cn,
   convertToKbOrMb,
@@ -48,16 +48,16 @@ import {
   getIsNotEmpty,
   hookFormHasError,
   keys,
-} from "@/utils/functions"
+} from "@/utils/functions";
 import {
   useCallbackRef,
   useControllableState,
   useStepper,
   useUncontrolledState,
   useUnmountEffect,
-} from "@/utils/hooks"
-import { createContext, createStrictContext } from "@/utils/react-utils"
-import { TagsInputHiddenInput } from "@ark-ui/react"
+} from "@/utils/hooks";
+import { createContext, createStrictContext } from "@/utils/react-utils";
+import { TagsInputHiddenInput } from "@ark-ui/react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -97,7 +97,7 @@ import {
   Users,
   X,
   X2,
-} from "@blend-metrics/icons"
+} from "@blend-metrics/icons";
 import {
   DndContext,
   type DragEndEvent,
@@ -108,25 +108,25 @@ import {
   closestCenter,
   useSensor,
   useSensors,
-} from "@dnd-kit/core"
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
+} from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   arrayMove,
   verticalListSortingStrategy,
-} from "@dnd-kit/sortable"
-import { useSortable } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { createColumnHelper, noop } from "@tanstack/react-table"
+} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createColumnHelper, noop } from "@tanstack/react-table";
 import {
   Row,
   flexRender,
   getCoreRowModel,
   useReactTable,
-} from "@tanstack/react-table"
-import { Steps } from "headless-stepper"
+} from "@tanstack/react-table";
+import { Steps } from "headless-stepper";
 import {
   Controller,
   type FieldPath,
@@ -135,24 +135,28 @@ import {
   get,
   useForm,
   useWatch,
-} from "react-hook-form"
+} from "react-hook-form";
 import {
   useIsomorphicLayoutEffect,
   useToggle,
   useUpdateEffect,
-} from "react-use"
-import { util, z } from "zod"
-import { Prettify } from "@/types/core"
-import { CreateProjectType } from "@/types/project"
-import { Spinner } from "@/components/ui/spinner/spinner"
-import { GripVertical2 } from "@/components/icons/grip-vertical-2"
-import { Network } from "@/components/icons/network"
-import { Network1 } from "@/components/icons/network-1"
-import { Network2 } from "@/components/icons/network-2"
-import { Network3 } from "@/components/icons/network-3"
-import { Network4 } from "@/components/icons/network-4"
-import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
-import { RichTextEditor } from "@/components/rich-text-editor"
+} from "react-use";
+import { util, z } from "zod";
+import { Prettify } from "@/types/core";
+import { CreateProjectType } from "@/types/project";
+import { Spinner } from "@/components/ui/spinner/spinner";
+import { GripVertical2 } from "@/components/icons/grip-vertical-2";
+import { Network } from "@/components/icons/network";
+import { Network1 } from "@/components/icons/network-1";
+import { Network2 } from "@/components/icons/network-2";
+import { Network3 } from "@/components/icons/network-3";
+import { Network4 } from "@/components/icons/network-4";
+import {
+  CountriesCombobox,
+  OwnCombobox,
+  getFlagUrlByName,
+} from "@/components/own-combobox";
+import { RichTextEditor } from "@/components/rich-text-editor";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -180,7 +184,7 @@ import {
   useStepContext,
   useStepRootContext,
   useStepperContext,
-} from "@/components/ui"
+} from "@/components/ui";
 import {
   Accordion,
   AccordionItem,
@@ -233,20 +237,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
   useToast,
-} from "@/components/ui"
-import { InviteTalentFlow } from "@/app/invite-talent/page"
+} from "@/components/ui";
+import { InviteTalentFlow } from "@/app/invite-talent/page";
 
 type ProgressProps = {
-  setProgress?: (val: number) => void
-}
+  setProgress?: (val: number) => void;
+};
 
-type WorkTypeChoice = "project" | "service" | null
-type HiringModeChoice = "team" | "individual" | null
+type WorkTypeChoice = "project" | "service" | null;
+type HiringModeChoice = "team" | "individual" | null;
 type SmartAssistantEditableField =
   | "title"
   | "overview"
   | "benefits"
-  | "responsibilities"
+  | "responsibilities";
 
 const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   SmartAssistantEditableField,
@@ -256,56 +260,56 @@ const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   overview: 100,
   benefits: 100,
   responsibilities: 100,
-}
+};
 
 const clampSmartAssistantFieldValue = (
   field: SmartAssistantEditableField,
-  value: string
+  value: string,
 ) => {
-  const maxLength = SMART_ASSISTANT_FIELD_MAX_LENGTH[field]
-  const normalized = value.replace(/\s+/g, " ").trim()
-  if (normalized.length <= maxLength) return normalized
+  const maxLength = SMART_ASSISTANT_FIELD_MAX_LENGTH[field];
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
 
-  const truncated = normalized.slice(0, maxLength).trim()
-  const lastSpaceIndex = truncated.lastIndexOf(" ")
+  const truncated = normalized.slice(0, maxLength).trim();
+  const lastSpaceIndex = truncated.lastIndexOf(" ");
   return lastSpaceIndex > 0
     ? truncated.slice(0, lastSpaceIndex).trim()
-    : truncated
-}
+    : truncated;
+};
 
 type ExistingListingOption = {
-  id: string
-  title: string
-  badges: string[]
-  icon?: React.ReactNode
-  image?: string
-  avatars: string[]
-  workType: Exclude<WorkTypeChoice, null>
-  disabledReason?: string
-}
+  id: string;
+  title: string;
+  badges: string[];
+  icon?: React.ReactNode;
+  image?: string;
+  avatars: string[];
+  workType: Exclude<WorkTypeChoice, null>;
+  disabledReason?: string;
+};
 
-const ReactPlayer = dynamic(() => import("react-player"), { ssr: false })
+const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 const PROJECT_SCOPE_TIP_VIDEO_URL =
-  process.env.NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL ?? ""
+  process.env.NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL ?? "";
 
 declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
-    updateData: (rowIndex: number, columnId: string, value: unknown) => void
-    openDurationDialog: (index: number) => void
-    roles: string[]
+    updateData: (rowIndex: number, columnId: string, value: unknown) => void;
+    openDurationDialog: (index: number) => void;
+    roles: string[];
   }
 }
 
-type SubmissionStatus = "in_review" | "published" | "needs_update"
+type SubmissionStatus = "in_review" | "published" | "needs_update";
 
 type SubmissionOutcome = {
-  status: SubmissionStatus
-  projectId?: string
-  projectSlug?: string
-  inviteBalance?: number
-  ndaDocumentId?: string | null
-}
+  status: SubmissionStatus;
+  projectId?: string;
+  projectSlug?: string;
+  inviteBalance?: number;
+  ndaDocumentId?: string | null;
+};
 
 const JOB_INVITE_MATCHES = [
   {
@@ -356,138 +360,138 @@ const JOB_INVITE_MATCHES = [
     availability: "Available 40 Hrs/Week",
     projects: "12 projects",
   },
-]
+];
 
 type PublishErrorClassification =
   | "image_rejection"
   | "video_rejection"
   | "content_rejection"
   | "temporary_unavailable"
-  | "other"
+  | "other";
 
 function classifyPublishError(input: {
-  message?: string
-  statusCode?: number
-  status?: string
+  message?: string;
+  statusCode?: number;
+  status?: string;
 }): PublishErrorClassification {
-  const message = String(input.message ?? "").trim()
-  const normalizedMessage = message.toLowerCase()
+  const message = String(input.message ?? "").trim();
+  const normalizedMessage = message.toLowerCase();
   const normalizedStatus = String(input.status ?? "")
     .trim()
-    .toLowerCase()
+    .toLowerCase();
 
   const isTemporaryUnavailable =
     input.statusCode === 502 ||
     input.statusCode === 503 ||
     normalizedStatus === "publish_blocked" ||
     /temporarily unavailable|currently unavailable|upstream listings-service|retry media upload|invalid response|failed with status 5\d{2}|bad gateway|service unavailable/.test(
-      normalizedMessage
-    )
+      normalizedMessage,
+    );
 
   if (isTemporaryUnavailable) {
-    return "temporary_unavailable"
+    return "temporary_unavailable";
   }
 
   const isVideoRejection =
     /project rejected:\s*video|video violates moderation policy|unsafe frame|frame_moderation|video rejected|video moderation review/.test(
-      normalizedMessage
-    )
+      normalizedMessage,
+    );
 
   if (isVideoRejection) {
-    return "video_rejection"
+    return "video_rejection";
   }
 
   const isImageRejection =
     /project rejected:\s*image|image violates moderation policy|featured image failed moderation|image rejected by moderation|nudity|graphic|gore|weapon|hate symbol|blur/.test(
-      normalizedMessage
-    )
+      normalizedMessage,
+    );
 
   if (isImageRejection) {
-    return "image_rejection"
+    return "image_rejection";
   }
 
   const isContentRejection =
     /project rejected:\s*content|content violates moderation policy|banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines|rejected by moderation/.test(
-      normalizedMessage
-    )
+      normalizedMessage,
+    );
 
   if (isContentRejection) {
-    return "content_rejection"
+    return "content_rejection";
   }
 
-  return "other"
+  return "other";
 }
 
 function makeUniqueFile(
-  file: File | Blob | undefined
+  file: File | Blob | undefined,
 ): File | Blob | undefined {
-  if (!file) return file
+  if (!file) return file;
   // If already a File, clone with a unique name
   if (file instanceof File) {
-    const ext = file.name.split(".").pop()
-    const base = file.name.replace(/\.[^/.]+$/, "")
-    const uniqueName = `${base}_${Date.now()}_${Math.floor(Math.random() * 10000)}.${ext}`
-    return new File([file], uniqueName, { type: file.type })
+    const ext = file.name.split(".").pop();
+    const base = file.name.replace(/\.[^/.]+$/, "");
+    const uniqueName = `${base}_${Date.now()}_${Math.floor(Math.random() * 10000)}.${ext}`;
+    return new File([file], uniqueName, { type: file.type });
   }
   // If Blob or other, just return as is
-  return file
+  return file;
 }
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type PersistedMediaFile = File & {
-  __persistedUrl?: string
-}
+  __persistedUrl?: string;
+};
 
 const isPersistedMediaFile = (file: unknown): file is PersistedMediaFile =>
   file instanceof File &&
-  typeof (file as PersistedMediaFile).__persistedUrl === "string"
+  typeof (file as PersistedMediaFile).__persistedUrl === "string";
 
 const buildPersistedMediaFile = (url: string, fallbackName: string) => {
   const pathname = (() => {
     try {
-      return new URL(url).pathname
+      return new URL(url).pathname;
     } catch {
-      return ""
+      return "";
     }
-  })()
-  const derivedName = pathname.split("/").pop() || fallbackName
+  })();
+  const derivedName = pathname.split("/").pop() || fallbackName;
   const file = new File([""], derivedName, {
     type: "image/jpeg",
-  }) as PersistedMediaFile
-  file.__persistedUrl = url
-  return file
-}
+  }) as PersistedMediaFile;
+  file.__persistedUrl = url;
+  return file;
+};
 
 const resolveMediaFileForUpload = async (
   file: File | Blob | undefined,
-  fallbackName: string
+  fallbackName: string,
 ): Promise<File | Blob | undefined> => {
-  if (!file) return undefined
+  if (!file) return undefined;
   if (isPersistedMediaFile(file)) {
-    const response = await fetch(file.__persistedUrl!)
-    const blob = await response.blob()
+    const response = await fetch(file.__persistedUrl!);
+    const blob = await response.blob();
     return new File([blob], file.name || fallbackName, {
       type: blob.type || file.type || "image/jpeg",
-    })
+    });
   }
-  return makeUniqueFile(file)
-}
+  return makeUniqueFile(file);
+};
 
 const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
   try {
-    const response = await fetch(url)
-    const blob = await response.blob()
+    const response = await fetch(url);
+    const blob = await response.blob();
     const file = new File([blob], fallbackName, {
       type: blob.type || "image/jpeg",
-    }) as PersistedMediaFile
-    file.__persistedUrl = url
-    return file
+    }) as PersistedMediaFile;
+    file.__persistedUrl = url;
+    return file;
   } catch {
-    return buildPersistedMediaFile(url, fallbackName)
+    return buildPersistedMediaFile(url, fallbackName);
   }
-}
+};
 
 const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
   const categorySelections = (projectInfo.category ?? [])
@@ -498,23 +502,23 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
         .filter(Boolean),
     }))
     .filter(
-      (value) => value.category.length > 0 && value.subCategories.length > 0
-    )
+      (value) => value.category.length > 0 && value.subCategories.length > 0,
+    );
 
   const categories = Array.from(
     new Set(
       categorySelections
         .map((value) => value.category)
-        .filter((value): value is string => Boolean(value))
-    )
-  )
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
   const subCategories = Array.from(
     new Set(
       categorySelections
         .flatMap((value) => value.subCategories)
-        .filter((value): value is string => Boolean(value))
-    )
-  )
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
 
   return {
     title: projectInfo.title,
@@ -527,21 +531,21 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
     skills: projectInfo.skills,
     shortDescription: projectInfo.shortDescription,
     fullDescription: projectInfo.fullDescription,
-  }
-}
+  };
+};
 
 const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
   (phases ?? [])
     .map((phase, phaseIndex) => {
-      const phaseName = phase?.phaseName?.trim()
+      const phaseName = phase?.phaseName?.trim();
       const rows = (phase?.rows ?? [])
         .map((row) => {
-          const taskName = row?.task?.trim()
-          const role = row?.role?.trim()
-          const locationValue = row?.location?.trim()
-          const experienceLevel = row?.experience?.trim()
-          const durationValue = row?.duration?.value
-          const durationType = row?.duration?.type
+          const taskName = row?.task?.trim();
+          const role = row?.role?.trim();
+          const locationValue = row?.location?.trim();
+          const experienceLevel = row?.experience?.trim();
+          const durationValue = row?.duration?.value;
+          const durationType = row?.duration?.type;
 
           if (
             !taskName ||
@@ -551,7 +555,7 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
             durationValue === undefined ||
             !durationType
           ) {
-            return null
+            return null;
           }
 
           return {
@@ -562,12 +566,12 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
             experienceLevel,
             duration: `${durationValue} ${durationType}`,
             phaseId: "temporary-required-string",
-          }
+          };
         })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
       if (!phaseName || rows.length === 0) {
-        return null
+        return null;
       }
 
       return {
@@ -578,47 +582,60 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
         order: phaseIndex + 1,
         projectId,
         tasks: rows,
-      }
+      };
     })
-    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase));
 
 const getJobListingScopeKnowledge = (
   selectedWorkType?: WorkTypeChoice,
-  isNoScopeFlow = false
+  isNoScopeFlow = false,
 ) => {
-  if (isNoScopeFlow) return "no_scope_selected" as const
-  return selectedWorkType ? ("has_scope" as const) : undefined
-}
+  if (isNoScopeFlow) return "no_scope_selected" as const;
+  return selectedWorkType ? ("has_scope" as const) : undefined;
+};
 
 const getJobListingWorkType = (selectedWorkType?: WorkTypeChoice) =>
   selectedWorkType === "service"
     ? ("service" as const)
     : selectedWorkType === "project"
       ? ("project" as const)
-      : undefined
+      : undefined;
 
 const getJobListingHiringType = (selectedHiringMode?: HiringModeChoice) =>
   selectedHiringMode === "individual"
     ? ("individual" as const)
     : selectedHiringMode === "team"
       ? ("team" as const)
-      : undefined
+      : undefined;
 
-const toJobListingPhaseType = (phaseName: string) => {
-  const normalized = phaseName.trim().toLowerCase()
-  if (normalized.includes("recurring")) return "recurring" as const
-  if (normalized.includes("ongoing")) return "ongoing" as const
-  return "setup" as const
-}
+const toWorkTypeChoice = (value: unknown): WorkTypeChoice =>
+  value === "service" || value === "project" ? value : null;
+
+const toHiringModeChoice = (value: unknown): HiringModeChoice =>
+  value === "individual" || value === "team" ? value : null;
+
+const isNoScopeKnowledge = (value: unknown) =>
+  value === "no_scope" || value === "no_scope_selected";
+
+const toJobListingPhaseType = (phaseName: string, phaseIndex = 0) => {
+  const normalized = phaseName.trim().toLowerCase();
+  if (normalized.includes("recurring")) return "recurring" as const;
+  if (normalized.includes("ongoing")) return "ongoing" as const;
+  return phaseIndex === 0 ? ("setup" as const) : ("recurring" as const);
+};
 
 const getJobListingPhaseFields = (
   phase: Phase,
   phaseName: string,
   phases: Phase[],
-  phaseIndex: number
+  phaseIndex: number,
 ) => {
-  const phaseType = phase.phaseType ?? toJobListingPhaseType(phaseName)
-  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex)
+  const inferredPhaseType = toJobListingPhaseType(phaseName, phaseIndex);
+  const phaseType =
+    phaseIndex > 0 && phase.phaseType === "setup"
+      ? inferredPhaseType
+      : (phase.phaseType ?? inferredPhaseType);
+  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex);
 
   return {
     phaseType,
@@ -632,8 +649,8 @@ const getJobListingPhaseFields = (
         : undefined,
     recurrenceCount:
       phaseType === "recurring" ? (phase.recurrenceCount ?? 3) : undefined,
-  }
-}
+  };
+};
 
 const toEstimatedHours = (row: PhaseRow) => {
   if (
@@ -641,43 +658,92 @@ const toEstimatedHours = (row: PhaseRow) => {
     Number.isFinite(Number(row.customHours)) &&
     Number(row.customHours) > 0
   ) {
-    return Number(row.customHours)
+    return Number(row.customHours);
   }
 
-  const value = Number(row?.duration?.value)
-  if (!Number.isFinite(value) || value <= 0) return 1
-  if (row?.duration?.type === "days") return value * 8
-  if (row?.duration?.type === "weeks") return value * 40
-  return value
-}
+  const value = Number(row?.duration?.value);
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  if (row?.duration?.type === "days") return value * 8;
+  if (row?.duration?.type === "weeks") return value * 40;
+  return value;
+};
+
+const replaceJobListingScope = async (listingId: string, phases: Phase[]) => {
+  const existingListingResponse = await JobListingAPI.Get(listingId);
+  const existingPhases = Array.isArray(existingListingResponse?.data?.phases)
+    ? existingListingResponse.data.phases
+    : [];
+
+  for (const phase of existingPhases) {
+    const phaseId = String(phase?.id ?? "");
+    if (phaseId) {
+      await JobListingAPI.DeletePhase(listingId, phaseId);
+    }
+  }
+
+  for (const [phaseIndex, phase] of phases.entries()) {
+    const phaseName = phase?.phaseName?.trim();
+    const validRows = (phase?.rows ?? []).filter(
+      (row) => row?.task?.trim() && row?.role?.trim(),
+    );
+    if (!phaseName || validRows.length === 0) continue;
+
+    const { phaseType, durationDays, recurrenceSchedule, recurrenceCount } =
+      getJobListingPhaseFields(phase, phaseName, phases, phaseIndex);
+    const phaseResponse = await JobListingAPI.CreatePhase(listingId, {
+      phaseName,
+      phaseType,
+      durationDays,
+      recurrenceSchedule,
+      recurrenceCount,
+    });
+    const phaseId = String(phaseResponse?.data?.id ?? "");
+    if (!phaseId) continue;
+
+    for (const row of validRows) {
+      await JobListingAPI.CreateTask(listingId, phaseId, {
+        taskName: row.task.trim(),
+        roleTitle: row.role.trim(),
+        location: row.location?.trim() || undefined,
+        experienceLevel: row.experience?.trim() || undefined,
+        workSchedule: row.workSchedule ?? "full_time",
+        customHours:
+          row.workSchedule === "custom" ? row.customHours : undefined,
+        customFrequency:
+          row.workSchedule === "custom" ? row.customFrequency : undefined,
+        estimatedHours: toEstimatedHours(row),
+      });
+    }
+  }
+};
 const Empty = ({
   outcome,
   draftId,
 }: {
-  outcome?: SubmissionOutcome
-  draftId?: string
+  outcome?: SubmissionOutcome;
+  draftId?: string;
 }) => {
-  const status = outcome?.status ?? "in_review"
+  const status = outcome?.status ?? "in_review";
   const isJobListingFlow =
     typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/job-listing")
+    window.location.pathname.startsWith("/job-listing");
   // Category slug is not known at this point in the flow; fall back to an
   // empty string so buildProjectUrl returns "/c//projects/<slug>-<shortId>",
   // which downstream category pages resolve. If no slug/id, go to marketplace.
   const marketplaceHref =
     outcome?.projectSlug && outcome?.projectId
       ? buildProjectUrl("", outcome.projectSlug, outcome.projectId)
-      : "/marketplace"
-  const router = useRouter()
-  const { toast } = useToast()
-  const { user } = useAuth()
-  const hasKnownInviteBalance = outcome?.inviteBalance !== undefined
+      : "/marketplace";
+  const router = useRouter();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const hasKnownInviteBalance = outcome?.inviteBalance !== undefined;
   const freeInvites = hasKnownInviteBalance
     ? Math.max(0, Number(outcome?.inviteBalance ?? 0))
-    : 30
+    : 30;
   const totalFreeInvites = hasKnownInviteBalance
     ? Math.max(50, freeInvites)
-    : 30
+    : 30;
   const [inviteStep, setInviteStep] = useState<
     | "success"
     | "select"
@@ -687,46 +753,46 @@ const Empty = ({
     | "upgradeDetails"
     | "upgradePayment"
     | "sent"
-  >("success")
+  >("success");
   const [selectedTalentIds, setSelectedTalentIds] = useState<string[]>(
-    JOB_INVITE_MATCHES.map((talent) => talent.id)
-  )
-  const [isSendingInvites, setIsSendingInvites] = useState(false)
-  const [selectedInvitePackage, setSelectedInvitePackage] = useState("100")
-  const [selectedPlan, setSelectedPlan] = useState("premium")
+    JOB_INVITE_MATCHES.map((talent) => talent.id),
+  );
+  const [isSendingInvites, setIsSendingInvites] = useState(false);
+  const [selectedInvitePackage, setSelectedInvitePackage] = useState("100");
+  const [selectedPlan, setSelectedPlan] = useState("premium");
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<CheckoutPaymentMethod>("card")
+    useState<CheckoutPaymentMethod>("card");
   const [selectedPaymentLabel, setSelectedPaymentLabel] = useState(
-    "Credit / Debit Card"
-  )
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+    "Credit / Debit Card",
+  );
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(
-    "monthly"
-  )
-  const [topUpInvites, setTopUpInvites] = useState(100)
-  const selectedInviteCount = selectedTalentIds.length
+    "monthly",
+  );
+  const [topUpInvites, setTopUpInvites] = useState(100);
+  const selectedInviteCount = selectedTalentIds.length;
   const hasInviteCapacity =
     freeInvites > 0 &&
     selectedInviteCount > 0 &&
-    selectedInviteCount <= freeInvites
+    selectedInviteCount <= freeInvites;
   const toggleTalentInvite = (talentId: string) => {
     setSelectedTalentIds((current) =>
       current.includes(talentId)
         ? current.filter((id) => id !== talentId)
-        : [...current, talentId]
-    )
-  }
+        : [...current, talentId],
+    );
+  };
   const sendTalentInvites = async () => {
     if (!outcome?.projectId || !hasInviteCapacity) {
-      return
+      return;
     }
 
     try {
-      setIsSendingInvites(true)
+      setIsSendingInvites(true);
       await JobListingAPI.SendInvites(outcome.projectId, {
         talentUserIds: selectedTalentIds,
-      })
-      setInviteStep("sent")
+      });
+      setInviteStep("sent");
     } catch (error: any) {
       toast({
         title:
@@ -734,55 +800,55 @@ const Empty = ({
           error?.message ||
           "Unable to send invites right now",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsSendingInvites(false)
+      setIsSendingInvites(false);
     }
-  }
+  };
 
   const parseCurrencyAmount = (value?: string) =>
-    Number(value?.replace(/[^0-9.]/g, "") || 0)
+    Number(value?.replace(/[^0-9.]/g, "") || 0);
 
   const submitCheckoutPayment = async (params: {
-    amount: number
-    installmentPlanOption?: "full" | "monthly" | "yearly"
+    amount: number;
+    installmentPlanOption?: "full" | "monthly" | "yearly";
   }) => {
     if (!outcome?.projectId) {
       toast({
         title: "Project is missing. Publish the job before payment.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     if (!user?.id) {
       toast({
         title: "Please sign in before submitting payment.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     try {
-      setIsSubmittingPayment(true)
+      setIsSubmittingPayment(true);
       const response = await CheckoutAPI.CreateSession({
         projectId: outcome.projectId,
         clientId: user.id,
         paymentMethod: selectedPaymentMethod,
         installmentPlanOption: params.installmentPlanOption ?? "full",
         amount: params.amount,
-      })
-      const checkoutUrl = response?.data?.checkoutUrl
+      });
+      const checkoutUrl = response?.data?.checkoutUrl;
 
       if (checkoutUrl) {
-        window.location.assign(checkoutUrl)
-        return
+        window.location.assign(checkoutUrl);
+        return;
       }
 
       toast({
         title: "Payment session created, but no checkout URL was returned.",
         variant: "destructive",
-      })
+      });
     } catch (error: any) {
       toast({
         title:
@@ -790,11 +856,11 @@ const Empty = ({
           error?.message ||
           "Unable to start payment right now",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsSubmittingPayment(false)
+      setIsSubmittingPayment(false);
     }
-  }
+  };
 
   if (status !== "needs_update" && isJobListingFlow) {
     const jobsPage = (
@@ -845,7 +911,7 @@ const Empty = ({
                       router.push(
                         outcome?.projectId
                           ? `/invite-talent?jobListingId=${outcome.projectId}`
-                          : "/invite-talent"
+                          : "/invite-talent",
                       )
                     }
                   >
@@ -890,10 +956,10 @@ const Empty = ({
           </Card>
         </div>
       </div>
-    )
+    );
 
     if (inviteStep === "select") {
-      return <InviteTalentFlow embedded jobListingId={outcome?.projectId} />
+      return <InviteTalentFlow embedded jobListingId={outcome?.projectId} />;
     }
 
     if (false && inviteStep === "select") {
@@ -963,7 +1029,7 @@ const Empty = ({
               </div>
               <div className="mt-6 divide-y divide-gray-200">
                 {JOB_INVITE_MATCHES.map((talent) => {
-                  const isSelected = selectedTalentIds.includes(talent.id)
+                  const isSelected = selectedTalentIds.includes(talent.id);
                   return (
                     <button
                       key={talent.id}
@@ -1016,13 +1082,13 @@ const Empty = ({
                         className={cn(
                           "mt-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-gray-300",
                           isSelected &&
-                            "border-primary-500 bg-primary-500 text-white"
+                            "border-primary-500 bg-primary-500 text-white",
                         )}
                       >
                         {isSelected ? <Check className="size-4" /> : null}
                       </span>
                     </button>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -1109,7 +1175,7 @@ const Empty = ({
             </Button>
           </div>
         </div>
-      )
+      );
     }
 
     if (inviteStep === "buy" || inviteStep === "upgrade") {
@@ -1117,7 +1183,7 @@ const Empty = ({
         { id: "100", title: "100", price: "$25" },
         { id: "500", title: "500", price: "$45" },
         { id: "1000", title: "1,000", price: "$90" },
-      ]
+      ];
       const planOptions = [
         {
           id: "essentials",
@@ -1140,7 +1206,7 @@ const Empty = ({
           badge: "For growing teams",
           invites: "500 invites / month",
         },
-      ]
+      ];
 
       return (
         <div className="relative flex-auto overflow-hidden bg-gray-25">
@@ -1172,14 +1238,14 @@ const Empty = ({
                       onValueChange={setSelectedInvitePackage}
                     >
                       {invitePackages.map((option) => {
-                        const isSelected = selectedInvitePackage === option.id
+                        const isSelected = selectedInvitePackage === option.id;
                         return (
                           <HeadlessRadioGroupItem
                             key={option.id}
                             value={option.id}
                             className={cn(
                               "rounded-[8px] border border-gray-200 p-5 text-left",
-                              isSelected && "border-primary-500 bg-primary-50"
+                              isSelected && "border-primary-500 bg-primary-50",
                             )}
                           >
                             <span className="block text-[28px] font-bold leading-tight text-dark-blue-400">
@@ -1189,7 +1255,7 @@ const Empty = ({
                               {option.price}
                             </span>
                           </HeadlessRadioGroupItem>
-                        )
+                        );
                       })}
                     </RadioGroup>
                     <p className="mt-5 text-sm leading-5 text-gray-500">
@@ -1230,7 +1296,7 @@ const Empty = ({
                           className={cn(
                             "rounded-[8px] px-5 py-2 text-sm font-semibold capitalize text-gray-500",
                             billingCycle === cycle &&
-                              "bg-primary-50 text-primary-500"
+                              "bg-primary-50 text-primary-500",
                           )}
                           onClick={() => setBillingCycle(cycle)}
                         >
@@ -1244,14 +1310,14 @@ const Empty = ({
                       onValueChange={setSelectedPlan}
                     >
                       {planOptions.map((option) => {
-                        const isSelected = selectedPlan === option.id
+                        const isSelected = selectedPlan === option.id;
                         return (
                           <HeadlessRadioGroupItem
                             key={option.id}
                             value={option.id}
                             className={cn(
                               "rounded-[8px] border border-gray-200 p-5 text-left",
-                              isSelected && "border-primary-500 bg-primary-50"
+                              isSelected && "border-primary-500 bg-primary-50",
                             )}
                           >
                             <span className="text-xs font-semibold text-primary-500">
@@ -1271,7 +1337,7 @@ const Empty = ({
                               and hiring resources.
                             </span>
                           </HeadlessRadioGroupItem>
-                        )
+                        );
                       })}
                     </RadioGroup>
                     <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
@@ -1301,7 +1367,7 @@ const Empty = ({
             </Card>
           </div>
         </div>
-      )
+      );
     }
 
     if (inviteStep === "upgradeDetails") {
@@ -1324,7 +1390,7 @@ const Empty = ({
           price: "$99/month",
           invites: "500 invites / month",
         },
-      ]
+      ];
 
       return (
         <div className="relative flex-auto overflow-hidden bg-gray-25">
@@ -1352,7 +1418,7 @@ const Empty = ({
                       className={cn(
                         "rounded-[8px] px-5 py-2 text-sm font-semibold capitalize text-gray-500",
                         billingCycle === cycle &&
-                          "bg-primary-50 text-primary-500"
+                          "bg-primary-50 text-primary-500",
                       )}
                       onClick={() => setBillingCycle(cycle)}
                     >
@@ -1366,14 +1432,14 @@ const Empty = ({
                   onValueChange={setSelectedPlan}
                 >
                   {planOptions.map((option) => {
-                    const isSelected = selectedPlan === option.id
+                    const isSelected = selectedPlan === option.id;
                     return (
                       <HeadlessRadioGroupItem
                         key={option.id}
                         value={option.id}
                         className={cn(
                           "rounded-[8px] border border-gray-200 p-5 text-left",
-                          isSelected && "border-primary-500 bg-primary-50"
+                          isSelected && "border-primary-500 bg-primary-50",
                         )}
                       >
                         <span className="block text-lg font-bold text-dark-blue-400">
@@ -1392,7 +1458,7 @@ const Empty = ({
                           <li>Priority job postings</li>
                         </ul>
                       </HeadlessRadioGroupItem>
-                    )
+                    );
                   })}
                 </RadioGroup>
                 <Button
@@ -1405,11 +1471,11 @@ const Empty = ({
             </Card>
           </div>
         </div>
-      )
+      );
     }
 
     if (inviteStep === "buyPayment" || inviteStep === "upgradePayment") {
-      const isUpgrade = inviteStep === "upgradePayment"
+      const isUpgrade = inviteStep === "upgradePayment";
       const options = isUpgrade
         ? [
             { id: "essentials", title: "Essentials", price: "$20/mo" },
@@ -1420,19 +1486,19 @@ const Empty = ({
             { id: "100", title: "100", price: "$25" },
             { id: "500", title: "500", price: "$45" },
             { id: "1000", title: "1,000", price: "$90" },
-          ]
+          ];
       const selectedOption =
         options.find((option) =>
           isUpgrade
             ? option.id === selectedPlan
-            : option.id === selectedInvitePackage
-        ) ?? options[0]
-      const basePaymentAmount = parseCurrencyAmount(selectedOption?.price)
-      const topUpAmount = isUpgrade ? (topUpInvites / 100) * 45 : 0
-      const checkoutAmount = basePaymentAmount + topUpAmount
+            : option.id === selectedInvitePackage,
+        ) ?? options[0];
+      const basePaymentAmount = parseCurrencyAmount(selectedOption?.price);
+      const topUpAmount = isUpgrade ? (topUpInvites / 100) * 45 : 0;
+      const checkoutAmount = basePaymentAmount + topUpAmount;
       const paymentMethods: Array<{
-        label: string
-        value: CheckoutPaymentMethod
+        label: string;
+        value: CheckoutPaymentMethod;
       }> = [
         { label: "Credit / Debit Card", value: "card" },
         { label: "Bank Account", value: "ach" },
@@ -1440,7 +1506,7 @@ const Empty = ({
         { label: "Google Pay", value: "card" },
         { label: "Apple Pay", value: "card" },
         { label: "Pay with Klarna", value: "card" },
-      ]
+      ];
 
       return (
         <div className="flex flex-auto flex-col bg-gray-25">
@@ -1494,7 +1560,7 @@ const Empty = ({
                             className="px-4 py-3 text-lg font-semibold text-dark-blue-400"
                             onClick={() =>
                               setTopUpInvites((value) =>
-                                Math.max(100, value - 100)
+                                Math.max(100, value - 100),
                               )
                             }
                           >
@@ -1569,14 +1635,14 @@ const Empty = ({
                       onValueChange={setSelectedInvitePackage}
                     >
                       {options.map((option) => {
-                        const isSelected = selectedInvitePackage === option.id
+                        const isSelected = selectedInvitePackage === option.id;
                         return (
                           <HeadlessRadioGroupItem
                             key={option.id}
                             value={option.id}
                             className={cn(
                               "rounded-[8px] border border-gray-200 p-5 text-left",
-                              isSelected && "border-primary-500 bg-primary-50"
+                              isSelected && "border-primary-500 bg-primary-50",
                             )}
                           >
                             <span className="block text-[28px] font-bold leading-tight text-dark-blue-400">
@@ -1586,7 +1652,7 @@ const Empty = ({
                               {option.price}
                             </span>
                           </HeadlessRadioGroupItem>
-                        )
+                        );
                       })}
                     </RadioGroup>
                     <p className="mt-5 text-sm leading-5 text-gray-500">
@@ -1601,13 +1667,13 @@ const Empty = ({
                       value={selectedPaymentLabel}
                       onValueChange={(nextPaymentLabel) => {
                         const nextMethod = paymentMethods.find(
-                          (method) => method.label === nextPaymentLabel
-                        )
+                          (method) => method.label === nextPaymentLabel,
+                        );
 
-                        if (!nextMethod) return
+                        if (!nextMethod) return;
 
-                        setSelectedPaymentLabel(nextMethod.label)
-                        setSelectedPaymentMethod(nextMethod.value)
+                        setSelectedPaymentLabel(nextMethod.label);
+                        setSelectedPaymentMethod(nextMethod.value);
                       }}
                     >
                       {paymentMethods.map((method) => (
@@ -1617,7 +1683,7 @@ const Empty = ({
                           className={cn(
                             "rounded-[8px] border border-gray-200 p-4 text-sm font-semibold text-dark-blue-400",
                             selectedPaymentLabel === method.label &&
-                              "border-primary-500 bg-primary-50"
+                              "border-primary-500 bg-primary-50",
                           )}
                         >
                           {method.label}
@@ -1696,7 +1762,7 @@ const Empty = ({
             </div>
           </div>
         </div>
-      )
+      );
     }
 
     return (
@@ -1751,7 +1817,7 @@ const Empty = ({
           </Card>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -1802,7 +1868,7 @@ const Empty = ({
               variant="link"
               className="px-0"
               onClick={() => {
-                router.push("/my-projects")
+                router.push("/my-projects");
               }}
             >
               My Projects
@@ -1833,7 +1899,7 @@ const Empty = ({
               visual="gray"
               variant="outlined"
               onClick={() => {
-                window.location.href = "/"
+                window.location.href = "/";
               }}
             >
               <Home03 className="size-[15px]" />
@@ -1841,7 +1907,7 @@ const Empty = ({
             </Button>
             <Button
               onClick={() => {
-                window.location.href = marketplaceHref
+                window.location.href = marketplaceHref;
               }}
             >
               View in Marketplace
@@ -1852,10 +1918,10 @@ const Empty = ({
             <Button
               onClick={() => {
                 if (draftId) {
-                  router.push(editProjectListingUrl(draftId))
-                  return
+                  router.push(editProjectListingUrl(draftId));
+                  return;
                 }
-                router.push("/publish-project")
+                router.push("/publish-project");
               }}
             >
               Update Project
@@ -1867,7 +1933,7 @@ const Empty = ({
               visual="gray"
               variant="outlined"
               onClick={() => {
-                window.location.href = "/"
+                window.location.href = "/";
               }}
             >
               <Home03 className="size-[15px]" />
@@ -1877,7 +1943,7 @@ const Empty = ({
               variant="link"
               className="mt-3 px-0"
               onClick={() => {
-                router.push("/my-projects")
+                router.push("/my-projects");
               }}
             >
               My Projects
@@ -1886,8 +1952,8 @@ const Empty = ({
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
 const meta = {
   "Project Info": [
@@ -1912,18 +1978,18 @@ const meta = {
     { label: "Experience", name: "experience" },
     { label: "Duration", name: "duration" },
   ],
-} as const
+} as const;
 
 const plainTextFromRichTextHtml = (value: string) => {
-  if (!value) return ""
+  if (!value) return "";
 
   if (typeof window !== "undefined") {
-    const container = window.document.createElement("div")
-    container.innerHTML = value
+    const container = window.document.createElement("div");
+    container.innerHTML = value;
     return (container.textContent ?? container.innerText ?? "")
       .replace(/\u00a0/g, " ")
       .replace(/\s+/g, " ")
-      .trim()
+      .trim();
   }
 
   return value
@@ -1932,43 +1998,43 @@ const plainTextFromRichTextHtml = (value: string) => {
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
-    .trim()
-}
+    .trim();
+};
 
 const getRichTextCharacterCount = (value: string) =>
-  plainTextFromRichTextHtml(value).length
+  plainTextFromRichTextHtml(value).length;
 
-const DURATION_TYPE = ["days", "weeks", "hours"] as const
+const DURATION_TYPE = ["days", "weeks", "hours"] as const;
 
 const formatDurationUnit = (
   value: number,
-  type: (typeof DURATION_TYPE)[number]
+  type: (typeof DURATION_TYPE)[number],
 ) => {
   if (value === 1) {
-    if (type === "days") return "day"
-    if (type === "weeks") return "week"
-    return "hour"
+    if (type === "days") return "day";
+    if (type === "weeks") return "week";
+    return "hour";
   }
 
-  return type
-}
+  return type;
+};
 
 const durationToDays = (
   value: number,
-  type: (typeof DURATION_TYPE)[number]
+  type: (typeof DURATION_TYPE)[number],
 ) => {
-  if (type === "weeks") return value * 7
-  if (type === "hours") return Math.max(1, Math.ceil(value / 24))
-  return value
-}
+  if (type === "weeks") return value * 7;
+  if (type === "hours") return Math.max(1, Math.ceil(value / 24));
+  return value;
+};
 const EXPERIENCE_LEVELS = [
   "Student",
   "Junior",
   "Medior",
   "Senior",
   "Guru",
-] as const
-type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
+] as const;
+type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter at least 1 character(s)"),
@@ -1987,18 +2053,18 @@ const taskFormSchema = z.object({
       required_error: "Please select an option",
     }),
   }),
-})
+});
 
 const rowSchema = taskFormSchema.merge(
   z.object({
     id: z.string().min(1, "Please enter at least 1 character(s)"),
-  })
-)
+  }),
+);
 
 const pickFromProjectScopeSchema = (
   options: {
-    [Property in keyof z.infer<typeof rowSchema>]?: true
-  } = {}
+    [Property in keyof z.infer<typeof rowSchema>]?: true;
+  } = {},
 ) => {
   return {
     safeParse: (data: unknown, params?: Partial<z.ParseParams>) => {
@@ -2011,16 +2077,16 @@ const pickFromProjectScopeSchema = (
             rows: z
               .array(rowSchema.pick(options))
               .min(1, "Please add at least 1 task(s)"),
-          })
+          }),
         )
         .min(1, "Please add at least 1 phase(s)")
-        .safeParse(data, params)
-      return success
+        .safeParse(data, params);
+      return success;
     },
-  }
-}
+  };
+};
 
-const projectScopeSchema = pickFromProjectScopeSchema()
+const projectScopeSchema = pickFromProjectScopeSchema();
 
 const jobCreationStepLabels = [
   "Project Foundation",
@@ -2028,54 +2094,54 @@ const jobCreationStepLabels = [
   "Project Scope",
   "Customize Team",
   "Final Check",
-] as const
+] as const;
 
 const Sidebar = () => {
-  const { currentStep, stepsState } = useStepRootContext()
-  const { setStep } = useStepperContext()
+  const { currentStep, stepsState } = useStepRootContext();
+  const { setStep } = useStepperContext();
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
-    useProjectInfoContext()
-  const mediaMethods = useMediaContext()
+    useProjectInfoContext();
+  const mediaMethods = useMediaContext();
   const { projectScopeMethods, setTaskSearchDialogOpen } =
-    useProjectScopeContext()
-  const [phases] = projectScopeMethods
+    useProjectScopeContext();
+  const [phases] = projectScopeMethods;
   // Show status icons only after the user has started filling Project Scope
   const hasStartedScope =
     Array.isArray(phases) &&
     phases.some(
       (p) =>
         (p.phaseName?.trim?.() ?? "").length > 0 ||
-        (Array.isArray(p.rows) && p.rows.length > 0)
-    )
+        (Array.isArray(p.rows) && p.rows.length > 0),
+    );
   const hasProjectInfoFieldError = useCallback(
     (name: (typeof meta)["Project Info"][number]["name"]) => {
       if (name === "category") {
-        return Boolean(projectInfoMethods.formState.errors.category)
+        return Boolean(projectInfoMethods.formState.errors.category);
       }
 
       return hookFormHasError({
         errors: projectInfoMethods.formState.errors,
         name: name as FieldPath<ProjectInfoFormValues>,
-      })
+      });
     },
-    [projectInfoMethods.formState.errors]
-  )
+    [projectInfoMethods.formState.errors],
+  );
   const hasMediaFieldError = useCallback(
     (name: (typeof meta)["Media"][number]["name"]) =>
       hookFormHasError({
         errors: mediaMethods.formState.errors,
         name: name as FieldPath<MediaFormValues>,
       }),
-    [mediaMethods.formState.errors]
-  )
+    [mediaMethods.formState.errors],
+  );
 
   return (
     <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
       {stepsState.map(({ label, isValid }, index) => {
-        const isActive = currentStep === index
-        const displayLabel = jobCreationStepLabels[index] ?? label
+        const isActive = currentStep === index;
+        const displayLabel = jobCreationStepLabels[index] ?? label;
         // can open this step if it's the first, or the previous step is valid
-        const canOpen = index === 0 || stepsState[index - 1]?.isValid
+        const canOpen = index === 0 || stepsState[index - 1]?.isValid;
         return (
           <TooltipProvider key={index}>
             <Tooltip>
@@ -2121,10 +2187,10 @@ const Sidebar = () => {
                     {label === "Project Info" &&
                       meta[label].map((field, i) => {
                         const isDirty = Boolean(
-                          projectInfoMethods.formState.dirtyFields[field.name]
-                        )
-                        const hasError = hasProjectInfoFieldError(field.name)
-                        const shouldShowStatus = hasError || isDirty
+                          projectInfoMethods.formState.dirtyFields[field.name],
+                        );
+                        const hasError = hasProjectInfoFieldError(field.name);
+                        const shouldShowStatus = hasError || isDirty;
 
                         return (
                           <div
@@ -2144,15 +2210,15 @@ const Sidebar = () => {
                                 </div>
                               ))}
                           </div>
-                        )
+                        );
                       })}
                     {label === "Media" &&
                       meta[label].map((field, i) => {
                         const isDirty = Boolean(
-                          mediaMethods.formState.dirtyFields[field.name]
-                        )
-                        const hasError = hasMediaFieldError(field.name)
-                        const shouldShowStatus = hasError || isDirty
+                          mediaMethods.formState.dirtyFields[field.name],
+                        );
+                        const hasError = hasMediaFieldError(field.name);
+                        const shouldShowStatus = hasError || isDirty;
 
                         return (
                           <div
@@ -2172,7 +2238,7 @@ const Sidebar = () => {
                                 </div>
                               ))}
                           </div>
-                        )
+                        );
                       })}
                     {label === "Project Scope" &&
                       meta[label].map((field, i) => (
@@ -2229,7 +2295,7 @@ const Sidebar = () => {
               </div>
             </Tooltip>
           </TooltipProvider>
-        )
+        );
       })}
       {jobCreationStepLabels.slice(stepsState.length).map((label, index) => (
         <TooltipProvider key={label}>
@@ -2259,8 +2325,8 @@ const Sidebar = () => {
         </TooltipProvider>
       ))}
     </div>
-  )
-}
+  );
+};
 
 const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
   return (
@@ -2293,8 +2359,8 @@ const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
         </TooltipProvider>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const BottomBar = ({
   progressValue,
@@ -2306,50 +2372,50 @@ const BottomBar = ({
   isExistingContractFlow,
   selectedExistingContractId,
 }: {
-  progressValue?: number
-  onNextClick?: () => void
-  workType?: WorkTypeChoice
-  jobListingId?: string | null
-  selectedHiringMode?: HiringModeChoice
-  isNoScopeFlow?: boolean
-  isExistingContractFlow?: boolean
-  selectedExistingContractId?: string | null
+  progressValue?: number;
+  onNextClick?: () => void;
+  workType?: WorkTypeChoice;
+  jobListingId?: string | null;
+  selectedHiringMode?: HiringModeChoice;
+  isNoScopeFlow?: boolean;
+  isExistingContractFlow?: boolean;
+  selectedExistingContractId?: string | null;
 }) => {
-  const { nextStep, prevStep, setStep } = useStepperContext()
+  const { nextStep, prevStep, setStep } = useStepperContext();
   const { hasNextStep, hasPreviousStep, totalSteps, currentStep, stepsState } =
-    useStepRootContext()
+    useStepRootContext();
 
-  const { isValid } = stepsState[currentStep]
-  const { user } = useAuth()
-  const { toast } = useToast()
-  const projectInfoMethods = useProjectInfoContext()
-  const mediaMethods = useMediaContext()
-  const { details: jobListingDraftDetails } = useJobListingDraftContext()
+  const { isValid } = stepsState[currentStep];
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const projectInfoMethods = useProjectInfoContext();
+  const mediaMethods = useMediaContext();
+  const { details: jobListingDraftDetails } = useJobListingDraftContext();
   const { projectScopeMethods, setIsProjectSubmitted, setSubmissionOutcome } =
-    useProjectScopeContext()
-  const [phases] = projectScopeMethods
+    useProjectScopeContext();
+  const [phases] = projectScopeMethods;
 
   const handleSubmit = async () => {
-    const projectInfo: ProjectInfoFormValues = projectInfoMethods.getValues()
-    const media = mediaMethods.getValues()
-    let createdProjectId: string | undefined
-    let createdProjectSlug: string | undefined
-    const reviewStartTimeMs = Date.now()
-    const reviewDelayMs = 10 * 1000
+    const projectInfo: ProjectInfoFormValues = projectInfoMethods.getValues();
+    const media = mediaMethods.getValues();
+    let createdProjectId: string | undefined;
+    let createdProjectSlug: string | undefined;
+    const reviewStartTimeMs = Date.now();
+    const reviewDelayMs = 10 * 1000;
     const waitForReviewWindow = async () => {
-      const elapsedMs = Date.now() - reviewStartTimeMs
-      const remainingMs = reviewDelayMs - elapsedMs
+      const elapsedMs = Date.now() - reviewStartTimeMs;
+      const remainingMs = reviewDelayMs - elapsedMs;
       if (remainingMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remainingMs))
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
       }
-    }
+    };
     const isJobListingFlow =
       typeof window !== "undefined" &&
-      window.location.pathname.startsWith("/job-listing")
+      window.location.pathname.startsWith("/job-listing");
 
     if (isJobListingFlow) {
       try {
-        let listingId = isExistingContractFlow ? null : jobListingId
+        let listingId = isExistingContractFlow ? null : jobListingId;
         if (!listingId) {
           const createResponse = await JobListingAPI.Create({
             contractType: isExistingContractFlow ? "existing" : "new",
@@ -2358,31 +2424,31 @@ const BottomBar = ({
               : undefined,
             scopeKnowledge: getJobListingScopeKnowledge(
               workType,
-              Boolean(isNoScopeFlow)
+              Boolean(isNoScopeFlow),
             ),
             workType: getJobListingWorkType(workType),
             hiringType: getJobListingHiringType(selectedHiringMode),
-          })
-          listingId = String(createResponse?.data?.id ?? "")
+          });
+          listingId = String(createResponse?.data?.id ?? "");
         }
 
         if (!listingId) {
-          throw new Error("Unable to create job listing draft")
+          throw new Error("Unable to create job listing draft");
         }
 
         if (typeof window !== "undefined") {
-          window.sessionStorage.setItem("marketeq-job-listing-id", listingId)
+          window.sessionStorage.setItem("marketeq-job-listing-id", listingId);
         }
 
         const title =
           projectInfo.title?.trim() ||
           projectInfo.shortDescription?.trim().slice(0, 100) ||
-          "New Job Listing"
+          "New Job Listing";
 
         await JobListingAPI.Update(listingId, {
           scopeKnowledge: getJobListingScopeKnowledge(
             workType,
-            Boolean(isNoScopeFlow)
+            Boolean(isNoScopeFlow),
           ),
           workType: getJobListingWorkType(workType),
           hiringType: getJobListingHiringType(selectedHiringMode),
@@ -2397,6 +2463,11 @@ const BottomBar = ({
             undefined,
           successCriteria: jobListingDraftDetails.successCriteria,
           headcount: jobListingDraftDetails.headcount,
+          categorySelections: projectInfo.category ?? [],
+          tags: projectInfo.tags ?? [],
+          skills: projectInfo.skills ?? [],
+          tools: jobListingDraftDetails.tools ?? [],
+          media: buildJobListingMediaPayload(media),
           budgetAmount: jobListingDraftDetails.budgetAmount,
           budgetDisplayCurrency: "USD",
           budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
@@ -2406,165 +2477,98 @@ const BottomBar = ({
           briefFilename: jobListingDraftDetails.briefFilename,
           briefSizeBytes: jobListingDraftDetails.briefSizeBytes,
           ndaEnabled: jobListingDraftDetails.ndaEnabled,
-        })
+        });
 
         await JobListingAPI.UpdateBasicInformation(listingId, {
           title,
           jobType: workType ?? undefined,
           industries: projectInfo.industry ?? [],
           languages: projectInfo.languages ?? [],
-        })
+        });
 
-        const existingListingResponse = await JobListingAPI.Get(listingId)
-        const existingPhases = Array.isArray(
-          existingListingResponse?.data?.phases
-        )
-          ? existingListingResponse.data.phases
-          : []
-
-        if (existingPhases.length === 0 && phases?.length) {
-          for (const [phaseIndex, phase] of phases.entries()) {
-            const phaseName = phase?.phaseName?.trim()
-            const validRows = (phase?.rows ?? []).filter(
-              (row) => row?.task?.trim() && row?.role?.trim()
-            )
-            if (!phaseName || validRows.length === 0) continue
-
-            const {
-              phaseType,
-              durationDays,
-              recurrenceSchedule,
-              recurrenceCount,
-            } = getJobListingPhaseFields(phase, phaseName, phases, phaseIndex)
-            let phaseResponse
-            try {
-              phaseResponse = await JobListingAPI.CreatePhase(listingId, {
-                phaseName,
-                phaseType,
-                durationDays,
-                recurrenceSchedule,
-                recurrenceCount,
-              })
-            } catch (error: any) {
-              if (error?.response?.status === 409) {
-                continue
-              }
-              throw error
-            }
-            const phaseId = String(phaseResponse?.data?.id ?? "")
-            if (!phaseId) continue
-
-            for (const row of validRows) {
-              try {
-                await JobListingAPI.CreateTask(listingId, phaseId, {
-                  taskName: row.task.trim(),
-                  roleTitle: row.role.trim(),
-                  location: row.location?.trim() || undefined,
-                  experienceLevel: row.experience?.trim() || undefined,
-                  workSchedule: row.workSchedule ?? "full_time",
-                  customHours:
-                    row.workSchedule === "custom" ? row.customHours : undefined,
-                  customFrequency:
-                    row.workSchedule === "custom"
-                      ? row.customFrequency
-                      : undefined,
-                  estimatedHours: toEstimatedHours(row),
-                })
-              } catch (error: any) {
-                if (error?.response?.status === 409) {
-                  continue
-                }
-                throw error
-              }
-            }
-          }
+        if (phases?.length) {
+          await replaceJobListingScope(listingId, phases);
         }
 
-        const listingBeforePublishResponse = await JobListingAPI.Get(listingId)
-        const existingRoleRows = Array.isArray(
-          listingBeforePublishResponse?.data?.teamMemberRows
-        )
-          ? listingBeforePublishResponse.data.teamMemberRows
-          : []
-        const roleRows = getPublishRoleRows(phases)
-
-        if (existingRoleRows.length === 0 && roleRows.length > 0) {
-          for (const [positionOrder, role] of roleRows.entries()) {
-            await JobListingAPI.CreateRoleRow(listingId, {
-              role,
+        const roleRows = getPublishRoleRowDetails(phases);
+        if (roleRows.length > 0) {
+          await JobListingAPI.ReplaceRoleRows(
+            listingId,
+            roleRows.map((row, positionOrder) => ({
+              ...row,
               positionOrder,
-            })
-          }
+            })),
+          );
         }
 
-        const publishResponse = await JobListingAPI.Publish(listingId)
-        let publishedListing: any = null
+        const publishResponse = await JobListingAPI.Publish(listingId);
+        let publishedListing: any = null;
         try {
-          const publishedListingResponse = await JobListingAPI.Get(listingId)
-          publishedListing = publishedListingResponse?.data ?? null
+          const publishedListingResponse = await JobListingAPI.Get(listingId);
+          publishedListing = publishedListingResponse?.data ?? null;
         } catch {
-          publishedListing = null
+          publishedListing = null;
         }
         const publishedNdaDocumentId =
           typeof publishedListing?.ndaDocumentId === "string"
             ? publishedListing.ndaDocumentId
-            : jobListingDraftDetails.ndaDocumentId
+            : jobListingDraftDetails.ndaDocumentId;
         setSubmissionOutcome({
           status: "published",
           projectId: String(publishResponse?.data?.listingId ?? listingId),
           inviteBalance: Number(publishResponse?.data?.inviteBalance ?? 0),
           ndaDocumentId: publishedNdaDocumentId ?? null,
-        })
-        setIsProjectSubmitted(true)
+        });
+        setIsProjectSubmitted(true);
       } catch (error: any) {
         const errorMessage =
           error?.response?.data?.message ||
           error?.response?.data?.details?.scope ||
           error?.message ||
-          "Unable to publish job listing"
-        setSubmissionOutcome(null)
-        setIsProjectSubmitted(false)
+          "Unable to publish job listing";
+        setSubmissionOutcome(null);
+        setIsProjectSubmitted(false);
         toast({
           title: Array.isArray(errorMessage)
             ? errorMessage.join(", ")
             : String(errorMessage),
           variant: "destructive",
-        })
+        });
       }
-      return
+      return;
     }
 
     const ensureCustomSubcategories = async () => {
       try {
-        const response = await CategoryAPI.getTree()
+        const response = await CategoryAPI.getTree();
         const nodes: CategoryTreeNode[] = Array.isArray(response?.data)
           ? response.data
-          : []
-        const categoryNodesByName = indexCategoryTreeByName(nodes)
+          : [];
+        const categoryNodesByName = indexCategoryTreeByName(nodes);
         const creations = new Map<
           string,
           { name: string; parentUuid?: string }
-        >()
+        >();
 
-        ;(projectInfo.category ?? []).forEach((entry) => {
-          const categoryName = entry?.category?.trim()
-          if (!categoryName) return
+        (projectInfo.category ?? []).forEach((entry) => {
+          const categoryName = entry?.category?.trim();
+          if (!categoryName) return;
 
-          const categoryNode = categoryNodesByName.get(categoryName)
-          if (!categoryNode) return
+          const categoryNode = categoryNodesByName.get(categoryName);
+          if (!categoryNode) return;
 
           const knownSubcategories = new Set(
             collectCategoryDescendants(categoryNode).map((node) =>
-              node.name.trim().toLowerCase()
-            )
-          )
+              node.name.trim().toLowerCase(),
+            ),
+          );
 
-          ;(entry.subCategories ?? []).forEach((subCategory) => {
-            const trimmedSubCategory = subCategory.trim()
-            if (!trimmedSubCategory) return
+          (entry.subCategories ?? []).forEach((subCategory) => {
+            const trimmedSubCategory = subCategory.trim();
+            if (!trimmedSubCategory) return;
 
             if (knownSubcategories.has(trimmedSubCategory.toLowerCase())) {
-              return
+              return;
             }
 
             creations.set(
@@ -2572,120 +2576,120 @@ const BottomBar = ({
               {
                 name: trimmedSubCategory,
                 parentUuid: categoryNode.uuid,
-              }
-            )
-          })
-        })
+              },
+            );
+          });
+        });
 
         for (const creation of creations.values()) {
-          await ProjectAPI.CreateModeratedSubcategory(creation)
+          await ProjectAPI.CreateModeratedSubcategory(creation);
         }
       } catch (error) {
         // Keep project publishing functional even when category sync is unavailable.
       }
-    }
+    };
 
     // Show "submitted for review" state immediately while validation/publish APIs run.
-    setSubmissionOutcome({ status: "in_review" })
-    setIsProjectSubmitted(true)
+    setSubmissionOutcome({ status: "in_review" });
+    setIsProjectSubmitted(true);
 
-    await ensureCustomSubcategories()
+    await ensureCustomSubcategories();
 
     const payload: CreateProjectType = {
       ...buildProjectDraftPayload(projectInfo),
       userId: user?.id ?? "",
-    }
+    };
 
     try {
       const projectIdFromUrl =
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("draftId")
-          : null
+          : null;
       let projectId =
         projectIdFromUrl && UUID_PATTERN.test(projectIdFromUrl)
           ? projectIdFromUrl
-          : null
-      let createProjectResponse
+          : null;
+      let createProjectResponse;
 
       if (projectId) {
         createProjectResponse = await ProjectAPI.UpdateProjectDraft(
           projectId,
-          payload
-        )
+          payload,
+        );
       } else {
-        createProjectResponse = await ProjectAPI.CreateProjectDraft(payload)
+        createProjectResponse = await ProjectAPI.CreateProjectDraft(payload);
         projectId =
           createProjectResponse?.data?.projectId ??
-          createProjectResponse?.data?.id
+          createProjectResponse?.data?.id;
         if (projectId && typeof window !== "undefined") {
-          const urlParams = new URLSearchParams(window.location.search)
-          const type = urlParams.get("type") ?? "project"
+          const urlParams = new URLSearchParams(window.location.search);
+          const type = urlParams.get("type") ?? "project";
           const nextPath = isJobListingFlow
             ? "/job-listing"
-            : "/publish-project"
+            : "/publish-project";
           window.history.replaceState(
             window.history.state,
             "",
             `${nextPath}?type=${encodeURIComponent(type)}&draftId=${encodeURIComponent(
-              String(projectId)
-            )}`
-          )
+              String(projectId),
+            )}`,
+          );
         }
       }
 
-      createdProjectId = projectId ? String(projectId) : undefined
-      createdProjectSlug = createProjectResponse?.data?.slug
+      createdProjectId = projectId ? String(projectId) : undefined;
+      createdProjectSlug = createProjectResponse?.data?.slug;
 
       // 2. Upload media after project draft is saved
-      let mediaUploadSuccess = true
-      let mediaUploadErrorMsg = ""
+      let mediaUploadSuccess = true;
+      let mediaUploadErrorMsg = "";
       if (projectId) {
-        const featuredFile = media.featuredImages?.[0]?.meta
+        const featuredFile = media.featuredImages?.[0]?.meta;
         const additionalFiles =
           media.additionalImages
             ?.flat()
             ?.map((item) => item?.meta)
-            ?.filter(Boolean) ?? []
+            ?.filter(Boolean) ?? [];
         const videoUrl = media.featuredVideo
           ?.trim()
-          .replace(/^(https?:\/\/)+/i, "https://")
+          .replace(/^(https?:\/\/)+/i, "https://");
 
         if (featuredFile || additionalFiles.length || videoUrl) {
-          const formData = new FormData()
-          formData.append("projectId", String(projectId))
+          const formData = new FormData();
+          formData.append("projectId", String(projectId));
           const uniqueFeatured = await resolveMediaFileForUpload(
             featuredFile,
-            "featured-image.jpg"
-          )
+            "featured-image.jpg",
+          );
           if (uniqueFeatured) {
-            formData.append("featuredImage", uniqueFeatured)
+            formData.append("featuredImage", uniqueFeatured);
           }
           for (const file of additionalFiles) {
             const uniqueAdditional = await resolveMediaFileForUpload(
               file,
-              "additional-image.jpg"
-            )
+              "additional-image.jpg",
+            );
             if (uniqueAdditional) {
-              formData.append("additionalImages", uniqueAdditional)
+              formData.append("additionalImages", uniqueAdditional);
             }
           }
           if (videoUrl) {
-            formData.append("videoUrl", videoUrl)
+            formData.append("videoUrl", videoUrl);
           }
           try {
-            await ProjectAPI.UploadMedia(formData)
+            await ProjectAPI.UploadMedia(formData);
           } catch (error: any) {
-            mediaUploadSuccess = false
+            mediaUploadSuccess = false;
             mediaUploadErrorMsg =
               error?.response?.data?.reason ||
               error?.response?.data?.message ||
               error?.message ||
-              "Media upload failed. Please check your files."
+              "Media upload failed. Please check your files.";
             const errorType = classifyPublishError({
               message: mediaUploadErrorMsg,
               statusCode: error?.response?.status,
               status: error?.response?.data?.status,
-            })
+            });
 
             if (errorType === "temporary_unavailable") {
               toast({
@@ -2693,8 +2697,8 @@ const BottomBar = ({
                   mediaUploadErrorMsg ||
                   "Media upload is temporarily unavailable. Please try again.",
                 variant: "destructive",
-              })
-              return
+              });
+              return;
             }
           }
         }
@@ -2704,10 +2708,10 @@ const BottomBar = ({
       if (!mediaUploadSuccess) {
         const errorType = classifyPublishError({
           message: mediaUploadErrorMsg,
-        })
-        const isVideoViolation = errorType === "video_rejection"
-        const isImageViolation = errorType === "image_rejection"
-        const isContentModerationRejection = errorType === "content_rejection"
+        });
+        const isVideoViolation = errorType === "video_rejection";
+        const isImageViolation = errorType === "image_rejection";
+        const isContentModerationRejection = errorType === "content_rejection";
 
         if (
           !isVideoViolation &&
@@ -2718,16 +2722,16 @@ const BottomBar = ({
             title:
               mediaUploadErrorMsg || "Media upload failed. Please try again.",
             variant: "destructive",
-          })
-          return
+          });
+          return;
         }
 
         setSubmissionOutcome({
           status: "needs_update",
           projectId: projectId ? String(projectId) : undefined,
           projectSlug: createProjectResponse?.data?.slug,
-        })
-        setIsProjectSubmitted(true)
+        });
+        setIsProjectSubmitted(true);
         toast({
           title: isVideoViolation
             ? `Project rejected: video violated moderation policy. ${mediaUploadErrorMsg}`
@@ -2735,23 +2739,23 @@ const BottomBar = ({
               ? `Project rejected: image violated moderation policy. ${mediaUploadErrorMsg}`
               : `Project rejected: content did not meet community guidelines. ${mediaUploadErrorMsg}`,
           variant: "destructive",
-        })
-        return
+        });
+        return;
       }
 
       // 4. Replace the saved project scope before publish
       if (projectId) {
         const publishPhases = (phases ?? [])
           .map((phase, phaseIndex) => {
-            const phaseName = phase?.phaseName?.trim()
+            const phaseName = phase?.phaseName?.trim();
             const rows = (phase?.rows ?? [])
               .map((row) => {
-                const taskName = row?.task?.trim()
-                const role = row?.role?.trim()
-                const locationValue = row?.location?.trim()
-                const experienceLevel = row?.experience?.trim()
-                const durationValue = row?.duration?.value
-                const durationType = row?.duration?.type
+                const taskName = row?.task?.trim();
+                const role = row?.role?.trim();
+                const locationValue = row?.location?.trim();
+                const experienceLevel = row?.experience?.trim();
+                const durationValue = row?.duration?.value;
+                const durationType = row?.duration?.type;
 
                 if (
                   !taskName ||
@@ -2761,7 +2765,7 @@ const BottomBar = ({
                   durationValue === undefined ||
                   !durationType
                 ) {
-                  return null
+                  return null;
                 }
 
                 return {
@@ -2772,23 +2776,23 @@ const BottomBar = ({
                   experienceLevel,
                   duration: `${durationValue} ${formatDurationUnit(
                     durationValue,
-                    durationType
+                    durationType,
                   )}`,
                   phaseId: "temporary-required-string",
-                }
+                };
               })
-              .filter((row): row is NonNullable<typeof row> => Boolean(row))
+              .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
             if (!phaseName || rows.length === 0) {
-              return null
+              return null;
             }
 
             const { startDay, endDay } = getPhaseDayRange(
               phases ?? [],
-              phaseIndex
-            )
+              phaseIndex,
+            );
             if (typeof endDay !== "number") {
-              return null
+              return null;
             }
 
             return {
@@ -2799,30 +2803,34 @@ const BottomBar = ({
               order: phaseIndex + 1,
               projectId: String(projectId),
               tasks: rows,
-            }
+            };
           })
-          .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+          .filter((phase): phase is NonNullable<typeof phase> =>
+            Boolean(phase),
+          );
 
-        await ProjectAPI.ReplaceProjectScope(String(projectId), publishPhases)
+        await ProjectAPI.ReplaceProjectScope(String(projectId), publishPhases);
       }
 
       if (projectId) {
         if (isJobListingFlow && !media.featuredImages?.[0]?.meta) {
-          await waitForReviewWindow()
+          await waitForReviewWindow();
           setSubmissionOutcome({
             status: "published",
             projectId: String(projectId),
             projectSlug: createdProjectSlug,
-          })
-          setIsProjectSubmitted(true)
-          return
+          });
+          setIsProjectSubmitted(true);
+          return;
         }
 
-        let publishResponse = await ProjectAPI.PublishProject(String(projectId))
+        let publishResponse = await ProjectAPI.PublishProject(
+          String(projectId),
+        );
         let rawStatus = String(publishResponse?.data?.status ?? "")
           .trim()
-          .toLowerCase()
-        await waitForReviewWindow()
+          .toLowerCase();
+        await waitForReviewWindow();
 
         // Prevent getting stuck on review UI: retry once after the review window.
         if (
@@ -2831,12 +2839,14 @@ const BottomBar = ({
           rawStatus === ""
         ) {
           try {
-            publishResponse = await ProjectAPI.PublishProject(String(projectId))
+            publishResponse = await ProjectAPI.PublishProject(
+              String(projectId),
+            );
             rawStatus = String(publishResponse?.data?.status ?? "")
               .trim()
-              .toLowerCase()
+              .toLowerCase();
           } catch {
-            rawStatus = "in_review"
+            rawStatus = "in_review";
           }
         }
 
@@ -2845,45 +2855,45 @@ const BottomBar = ({
             ? "published"
             : rawStatus === "rejected" || rawStatus === "needs_update"
               ? "needs_update"
-              : "in_review"
+              : "in_review";
 
         setSubmissionOutcome({
           status: normalizedStatus,
           projectId: String(projectId),
           projectSlug: publishResponse?.data?.slug ?? createdProjectSlug,
-        })
-        setIsProjectSubmitted(true)
+        });
+        setIsProjectSubmitted(true);
       }
     } catch (error: any) {
       const errorMessage =
         error?.response?.data?.reason ||
         error?.response?.data?.message ||
         error?.message ||
-        "Unable to submit project"
+        "Unable to submit project";
       const errorType = classifyPublishError({
         message: errorMessage,
         statusCode: error?.response?.status,
         status: error?.response?.data?.status,
-      })
-      const isVideoViolation = errorType === "video_rejection"
-      const isImageViolation = errorType === "image_rejection"
-      const isContentModerationRejection = errorType === "content_rejection"
+      });
+      const isVideoViolation = errorType === "video_rejection";
+      const isImageViolation = errorType === "image_rejection";
+      const isContentModerationRejection = errorType === "content_rejection";
 
       if (
         isVideoViolation ||
         isImageViolation ||
         isContentModerationRejection
       ) {
-        await waitForReviewWindow()
+        await waitForReviewWindow();
         setSubmissionOutcome({
           status: "needs_update",
           projectId: createdProjectId,
           projectSlug: createdProjectSlug,
-        })
-        setIsProjectSubmitted(true)
+        });
+        setIsProjectSubmitted(true);
       } else {
-        setSubmissionOutcome(null)
-        setIsProjectSubmitted(false)
+        setSubmissionOutcome(null);
+        setIsProjectSubmitted(false);
       }
 
       toast({
@@ -2895,9 +2905,9 @@ const BottomBar = ({
               ? `Project rejected: content did not meet community guidelines. ${errorMessage}`
               : errorMessage,
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   return (
     <div className="h-[78px] z-40 fixed left-0 bottom-0 right-0 bg-white border-b border-gray-200">
@@ -2911,14 +2921,14 @@ const BottomBar = ({
             visual="gray"
             onClick={() => {
               if (workType === "service" && currentStep === 3) {
-                setStep(2)
-                return
+                setStep(2);
+                return;
               }
               if (workType !== "service" && currentStep === 3) {
-                setStep(2)
-                return
+                setStep(2);
+                return;
               }
-              setStep(Math.max(0, currentStep - 1))
+              setStep(Math.max(0, currentStep - 1));
             }}
           >
             Go Back
@@ -2937,12 +2947,12 @@ const BottomBar = ({
               onClick={() => {
                 if (isValid) {
                   if (currentStep === 1) {
-                    setStep(2)
+                    setStep(2);
                   } else {
-                    nextStep()
+                    nextStep();
                   }
                 } else {
-                  onNextClick?.() // show errors on the current step
+                  onNextClick?.(); // show errors on the current step
                 }
               }}
             >
@@ -2953,7 +2963,7 @@ const BottomBar = ({
               className="h-8"
               disabled={!isValid}
               onClick={() => {
-                handleSubmit()
+                handleSubmit();
               }}
             >
               Publish
@@ -2962,8 +2972,8 @@ const BottomBar = ({
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const ProjectInfoTip = ({
   closeTrigger,
@@ -2971,17 +2981,17 @@ const ProjectInfoTip = ({
   className,
   variant = "scope",
 }: {
-  closeTrigger?: React.ReactNode
-  showArrow?: boolean
-  className?: string
-  variant?: "scope" | "contract"
+  closeTrigger?: React.ReactNode;
+  showArrow?: boolean;
+  className?: string;
+  variant?: "scope" | "contract";
 }) => {
-  const isContractTip = variant === "contract"
+  const isContractTip = variant === "contract";
   return (
     <div
       className={cn(
         "p-5 rounded-lg w-[269px] bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] relative",
-        className
+        className,
       )}
     >
       {showArrow && (
@@ -3032,8 +3042,8 @@ const ProjectInfoTip = ({
         ))}
       </div>
     </div>
-  )
-}
+  );
+};
 
 const projectInfoSchema = z.object({
   title: z
@@ -3042,7 +3052,7 @@ const projectInfoSchema = z.object({
     .min(1, "Please enter a project title")
     .regex(
       /^[A-Za-z0-9 -]+$/,
-      "Title can only contain letters, numbers, spaces, and hyphens."
+      "Title can only contain letters, numbers, spaces, and hyphens.",
     )
     .min(10, "Please enter at least 10 character(s)")
     .max(100, "Please do not enter more than 100 character(s)"),
@@ -3056,18 +3066,18 @@ const projectInfoSchema = z.object({
             .max(5, "You can add a maximum of five (5) sub categories"),
         })
         .superRefine((value, ctx) => {
-          const selectedCategory = value.category.trim()
+          const selectedCategory = value.category.trim();
           const selectedSubCategories = value.subCategories.filter(
-            (subCategory) => subCategory.trim()
-          )
+            (subCategory) => subCategory.trim(),
+          );
 
           if (!selectedCategory) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: ["category"],
               message: "Please select a category",
-            })
-            return
+            });
+            return;
           }
 
           if (!selectedSubCategories.length) {
@@ -3076,9 +3086,9 @@ const projectInfoSchema = z.object({
               path: ["subCategories"],
               message:
                 "Please select at least 1 sub-category for this category",
-            })
+            });
           }
-        })
+        }),
     )
     .length(3, "Please select all required categories"),
   industry: z
@@ -3093,7 +3103,7 @@ const projectInfoSchema = z.object({
     .min(50, "Please enter at least 50 character(s)")
     .max(300, "Please do not enter more than 300 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
-    const contentLength = getRichTextCharacterCount(value)
+    const contentLength = getRichTextCharacterCount(value);
 
     if (contentLength < 100) {
       ctx.addIssue({
@@ -3102,7 +3112,7 @@ const projectInfoSchema = z.object({
         type: "string",
         inclusive: true,
         message: "Please enter at least 100 character(s)",
-      })
+      });
     }
 
     if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
@@ -3112,7 +3122,7 @@ const projectInfoSchema = z.object({
         type: "string",
         inclusive: true,
         message: "Please do not enter more than 5,000 character(s)",
-      })
+      });
     }
   }),
   tags: z
@@ -3127,25 +3137,27 @@ const projectInfoSchema = z.object({
     })
     .min(1, "Please enter/select at least 1 skill(s)")
     .max(10, "Please do not enter/select more than 10 tag(s)"),
-})
+});
 
-type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>
+type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>;
 
 type JobListingDraftDetails = {
-  description?: string
-  deliverables?: string
-  successCriteria?: string
-  headcount?: number
-  budgetAmount?: number
-  budgetFrequency?: "per_week" | "per_month"
-  durationMonths?: number
-  isOngoing?: boolean
-  briefR2Key?: string
-  briefFilename?: string
-  briefSizeBytes?: number
-  ndaEnabled?: boolean
-  ndaDocumentId?: string | null
-}
+  jobListingId?: string;
+  description?: string;
+  deliverables?: string;
+  successCriteria?: string;
+  headcount?: number;
+  budgetAmount?: number;
+  budgetFrequency?: "per_week" | "per_month";
+  durationMonths?: number;
+  isOngoing?: boolean;
+  briefR2Key?: string;
+  briefFilename?: string;
+  briefSizeBytes?: number;
+  tools?: string[];
+  ndaEnabled?: boolean;
+  ndaDocumentId?: string | null;
+};
 
 const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "title",
@@ -3155,11 +3167,11 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "fullDescription",
   "tags",
   "skills",
-]
+];
 
 const PROJECT_INFO_VALIDATION_TARGETS: Array<{
-  name: FieldPath<ProjectInfoFormValues>
-  targetId: string
+  name: FieldPath<ProjectInfoFormValues>;
+  targetId: string;
 }> = [
   { name: "title", targetId: "publish-project-title-field" },
   { name: "category.0.category", targetId: "publish-project-category-field" },
@@ -3188,47 +3200,175 @@ const PROJECT_INFO_VALIDATION_TARGETS: Array<{
   },
   { name: "tags", targetId: "publish-project-tags-field" },
   { name: "skills", targetId: "publish-project-skills-field" },
-]
+];
 
 const scrollToPublishField = (targetId: string) => {
-  if (typeof window === "undefined") return
+  if (typeof window === "undefined") return;
 
   window.requestAnimationFrame(() => {
     document.getElementById(targetId)?.scrollIntoView({
       behavior: "smooth",
       block: "center",
-    })
-  })
-}
+    });
+  });
+};
 
-const TITLE_MAX_LENGTH = 100
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+const TITLE_MAX_LENGTH = 100;
+const SHORT_DESCRIPTION_MAX_LENGTH = 300;
+const FULL_DESCRIPTION_MAX_LENGTH = 5000;
 
 const resolveExistingContractApiId = (contractId?: string | null) => {
-  if (!contractId) return undefined
-  return UUID_PATTERN.test(contractId) ? contractId : undefined
-}
+  if (!contractId) return undefined;
+  return UUID_PATTERN.test(contractId) ? contractId : undefined;
+};
+
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
+const toUsdAmountFromCents = (value: unknown): number | undefined => {
+  const cents = toFiniteNumber(value);
+  return typeof cents === "number" ? cents / 100 : undefined;
+};
+
+const toNullableString = (value: unknown): string | undefined =>
+  typeof value === "string" ? value : undefined;
+
+const getResponsePayload = (response: any) => {
+  const data = response?.data ?? {};
+  if (
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    data.data &&
+    typeof data.data === "object" &&
+    !Array.isArray(data.data) &&
+    !("id" in data)
+  ) {
+    return data.data;
+  }
+
+  return data;
+};
 
 const getPublishRoleRows = (phases: Phase[] | undefined) => {
-  const roles = new Map<string, string>()
+  const roles = new Map<string, string>();
 
-  ;(phases ?? []).forEach((phase) => {
-    ;(phase.rows ?? []).forEach((row) => {
-      const role = row.role?.trim()
+  (phases ?? []).forEach((phase) => {
+    (phase.rows ?? []).forEach((row) => {
+      const role = row.role?.trim();
       if (role && !roles.has(role.toLowerCase())) {
-        roles.set(role.toLowerCase(), role)
+        roles.set(role.toLowerCase(), role);
       }
-    })
-  })
+    });
+  });
 
-  return Array.from(roles.values())
-}
-const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 100 character(s)"
+  return Array.from(roles.values());
+};
+
+const parseMonthCount = (value?: string) => {
+  const match = value?.match(/(\d+)/);
+  return match ? Number(match[1]) : undefined;
+};
+
+const parseHourlyEstimateCents = (value?: string) => {
+  const amounts = (value?.match(/\d+(?:\.\d+)?/g) ?? [])
+    .map((item) => Math.round(Number(item) * 100))
+    .filter((amount) => Number.isFinite(amount));
+
+  return {
+    low: amounts[0],
+    high: amounts[1] ?? amounts[0],
+  };
+};
+
+const getPublishRoleRowDetails = (phases: Phase[] | undefined) => {
+  const rows = new Map<
+    string,
+    {
+      role: string;
+      location?: string;
+      experienceLevel?: string;
+      workSchedule?: JobListingWorkSchedule;
+      customHours?: number;
+      customFrequency?: string;
+      contractLengthMonths?: number;
+      hourlyRateLowUsdCents?: number;
+      hourlyRateHighUsdCents?: number;
+    }
+  >();
+
+  (phases ?? []).forEach((phase) => {
+    (phase.rows ?? []).forEach((row) => {
+      const role = row.role?.trim();
+      if (!role || rows.has(role.toLowerCase())) return;
+
+      rows.set(role.toLowerCase(), {
+        role,
+        location: row.location?.trim() || undefined,
+        experienceLevel: row.experience?.trim() || undefined,
+        workSchedule: row.workSchedule ?? "full_time",
+        customHours:
+          row.workSchedule === "custom" ? row.customHours : undefined,
+        customFrequency:
+          row.workSchedule === "custom" ? row.customFrequency : undefined,
+        contractLengthMonths: row.contractLengthMonths,
+        hourlyRateLowUsdCents: row.hourlyRateLowUsdCents,
+        hourlyRateHighUsdCents: row.hourlyRateHighUsdCents,
+      });
+    });
+  });
+
+  return Array.from(rows.values());
+};
+
+const getScopeRoleOptions = (phases: Phase[] | undefined) => {
+  const roles = getPublishRoleRows(phases);
+  return roles.length > 0 ? roles : finalReviewRoles;
+};
+
+const buildJobListingMediaPayload = (mediaValues: Partial<MediaFormValues>) => {
+  const featuredMeta = mediaValues.featuredImages?.[0]?.meta;
+  const additionalMeta =
+    mediaValues.additionalImages
+      ?.flat()
+      .map((item) => item?.meta)
+      .filter(Boolean) ?? [];
+  const featuredImageUrl = isPersistedMediaFile(featuredMeta)
+    ? featuredMeta.__persistedUrl
+    : undefined;
+  const additionalImageUrls = additionalMeta
+    .map((item: any) =>
+      isPersistedMediaFile(item) ? item.__persistedUrl : undefined,
+    )
+    .filter((url): url is string => Boolean(url));
+  const featuredImageName = featuredMeta?.name ?? undefined;
+  const additionalImageNames = additionalMeta
+    .map((item: any) => item?.name)
+    .filter((name): name is string => Boolean(name));
+
+  return {
+    featuredImage: featuredImageUrl,
+    featuredImageName,
+    additionalImages: additionalImageUrls,
+    additionalImageNames,
+    featuredVideo: mediaValues.featuredVideo?.trim() ?? "",
+  };
+};
+const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 100 character(s)";
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 300 character(s)";
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 5,000 character(s)"
+  "Please do not enter more than 5,000 character(s)";
 
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
@@ -3243,13 +3383,13 @@ const FALLBACK_CATEGORY_OPTIONS = [
   "Artificial Intelligence",
   "Cloud Computing",
   "Cybersecurity",
-]
+];
 
-const MAX_SUBCATEGORIES_PER_CATEGORY = 5
+const MAX_SUBCATEGORIES_PER_CATEGORY = 5;
 const SUBCATEGORY_LIMIT_ERROR =
-  "You can add a maximum of five (5) sub categories"
+  "You can add a maximum of five (5) sub categories";
 
-const FALLBACK_SUBCATEGORY_OPTIONS = options.value
+const FALLBACK_SUBCATEGORY_OPTIONS = options.value;
 const FALLBACK_INDUSTRY_OPTIONS = [
   "Technology",
   "Healthcare",
@@ -3261,7 +3401,7 @@ const FALLBACK_INDUSTRY_OPTIONS = [
   "Real Estate",
   "Energy",
   "Transportation",
-]
+];
 const FALLBACK_LANGUAGE_OPTIONS = [
   "English",
   "Spanish",
@@ -3273,7 +3413,7 @@ const FALLBACK_LANGUAGE_OPTIONS = [
   "Mandarin",
   "Arabic",
   "Korean",
-]
+];
 const FALLBACK_TAG_OPTIONS = [
   "Web App",
   "Mobile App",
@@ -3285,7 +3425,7 @@ const FALLBACK_TAG_OPTIONS = [
   "Security",
   "E-commerce",
   "Automation",
-]
+];
 const FALLBACK_SKILL_OPTIONS = [
   "Node.js",
   "JavaScript",
@@ -3297,85 +3437,87 @@ const FALLBACK_SKILL_OPTIONS = [
   "Python",
   "UX Research",
   "API Integration",
-]
+];
 
 const normalizeAutocompleteLabel = (item: AutocompleteTypeSuggestion) => {
-  if ("value" in item && typeof item.value === "string") return item.value
-  if ("label" in item && typeof item.label === "string") return item.label
-  return ""
-}
+  if ("value" in item && typeof item.value === "string") return item.value;
+  if ("label" in item && typeof item.label === "string") return item.label;
+  return "";
+};
 
 const getUniqueOptions = (values: string[]) =>
   Array.from(
-    new Set(values.map((value) => value.trim()).filter((value) => value.length))
-  )
+    new Set(
+      values.map((value) => value.trim()).filter((value) => value.length),
+    ),
+  );
 
 type SuggestedCategoryOption = {
-  category: string
-  subCategory: string
-}
+  category: string;
+  subCategory: string;
+};
 
 const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
   { category: "Design", subCategory: "UI/UX Design" },
   { category: "Development", subCategory: "Mobile App" },
   { category: "Data Science", subCategory: "Machine Learning" },
-]
+];
 
-const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved
+const isActiveCategoryNode = (node: CategoryTreeNode) => node.approved;
 
 const collectCategoryDescendants = (
-  node?: CategoryTreeNode
+  node?: CategoryTreeNode,
 ): CategoryTreeNode[] => {
-  if (!node?.children?.length) return []
+  if (!node?.children?.length) return [];
 
   return node.children.flatMap((child) => {
-    const descendants = collectCategoryDescendants(child)
-    return isActiveCategoryNode(child) ? [child, ...descendants] : descendants
-  })
-}
+    const descendants = collectCategoryDescendants(child);
+    return isActiveCategoryNode(child) ? [child, ...descendants] : descendants;
+  });
+};
 
 const collectSelectableCategories = (nodes: CategoryTreeNode[]) => {
   const secondLevelNodes = nodes.flatMap((node) =>
-    (node.children ?? []).filter(isActiveCategoryNode)
-  )
+    (node.children ?? []).filter(isActiveCategoryNode),
+  );
 
   return getIsNotEmpty(secondLevelNodes)
     ? secondLevelNodes
-    : nodes.filter(isActiveCategoryNode)
-}
+    : nodes.filter(isActiveCategoryNode);
+};
 
 const findSuggestedSubCategory = (node?: CategoryTreeNode): string | null => {
-  const [firstDescendant] = collectCategoryDescendants(node)
-  return firstDescendant?.name ?? null
-}
+  const [firstDescendant] = collectCategoryDescendants(node);
+  return firstDescendant?.name ?? null;
+};
 
 const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
-  const index = new Map<string, CategoryTreeNode>()
+  const index = new Map<string, CategoryTreeNode>();
 
   const visit = (entries: CategoryTreeNode[]) => {
     entries.forEach((entry) => {
       if (isActiveCategoryNode(entry)) {
-        index.set(entry.name, entry)
+        index.set(entry.name, entry);
       }
       if (entry.children?.length) {
-        visit(entry.children)
+        visit(entry.children);
       }
-    })
-  }
+    });
+  };
 
-  visit(nodes)
-  return index
-}
+  visit(nodes);
+  return index;
+};
 type ProjectInfoProps = {
-  setProgress?: (val: number) => void
-  selectedWorkType?: WorkTypeChoice
-  onSelectedWorkTypeChange?: (value: WorkTypeChoice) => void
-  selectedHiringMode?: HiringModeChoice
-  onSelectedHiringModeChange?: (value: HiringModeChoice) => void
-  onNoScopeFlowChange?: (value: boolean) => void
-  onExistingContractFlowChange?: (value: boolean) => void
-  onExistingContractSelectionChange?: (value: string | null) => void
-}
+  setProgress?: (val: number) => void;
+  selectedWorkType?: WorkTypeChoice;
+  onSelectedWorkTypeChange?: (value: WorkTypeChoice) => void;
+  selectedHiringMode?: HiringModeChoice;
+  onSelectedHiringModeChange?: (value: HiringModeChoice) => void;
+  onNoScopeFlowChange?: (value: boolean) => void;
+  onExistingContractFlowChange?: (value: boolean) => void;
+  onExistingContractSelectionChange?: (value: string | null) => void;
+};
 
 const ProjectInfo = ({
   setProgress,
@@ -3387,106 +3529,106 @@ const ProjectInfo = ({
   onExistingContractFlowChange,
   onExistingContractSelectionChange,
 }: ProjectInfoProps) => {
-  const { user } = useAuth()
-  const { toggleValidation } = useStepContext()
-  const methods = useProjectInfoContext()
+  const { user } = useAuth();
+  const { toggleValidation } = useStepContext();
+  const methods = useProjectInfoContext();
   const {
     formState: { errors },
     setValue,
     trigger,
-  } = methods
+  } = methods;
 
   const [suggested, setSuggested] = useState<SuggestedCategoryOption[]>(
-    DEFAULT_SUGGESTED_CATEGORIES
-  )
+    DEFAULT_SUGGESTED_CATEGORIES,
+  );
 
-  const [showSuggestions] = useState(true)
-  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0)
-  const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([])
+  const [showSuggestions] = useState(true);
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
+  const [categoryTree, setCategoryTree] = useState<CategoryTreeNode[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(
-    FALLBACK_CATEGORY_OPTIONS
-  )
-  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([])
+    FALLBACK_CATEGORY_OPTIONS,
+  );
+  const [subCategoryOptions, setSubCategoryOptions] = useState<string[]>([]);
   const [industryOptions, setIndustryOptions] = useState<string[]>(
-    FALLBACK_INDUSTRY_OPTIONS
-  )
+    FALLBACK_INDUSTRY_OPTIONS,
+  );
   const [languageOptions, setLanguageOptions] = useState<string[]>(
-    FALLBACK_LANGUAGE_OPTIONS
-  )
-  const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
-  const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const categoryRequestRef = useRef(0)
+    FALLBACK_LANGUAGE_OPTIONS,
+  );
+  const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS);
+  const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS);
+  const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS);
+  const categoryRequestRef = useRef(0);
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
-  const typeRequestRef = useRef(0)
+    null,
+  );
+  const typeRequestRef = useRef(0);
   const typeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
+    null,
+  );
 
-  const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {}
-  const projectInfoValues = useWatch({ control: methods.control })
+  const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {};
+  const projectInfoValues = useWatch({ control: methods.control });
   const [contractChoice, setContractChoice] = useState<"new" | "existing">(
-    "new"
-  )
+    "new",
+  );
   const [scopeChoice, setScopeChoice] = useState<
     "known" | "unknown" | "none" | null
-  >(null)
+  >(null);
   const [localWorkTypeChoice, setLocalWorkTypeChoice] =
-    useState<WorkTypeChoice>(null)
-  const workTypeChoice = selectedWorkType ?? localWorkTypeChoice
+    useState<WorkTypeChoice>(null);
+  const workTypeChoice = selectedWorkType ?? localWorkTypeChoice;
   const [localHiringModeChoice, setLocalHiringModeChoice] =
-    useState<HiringModeChoice>(null)
-  const hiringModeChoice = selectedHiringMode ?? localHiringModeChoice
+    useState<HiringModeChoice>(null);
+  const hiringModeChoice = selectedHiringMode ?? localHiringModeChoice;
   const setWorkTypeChoice = useCallback(
     (value: WorkTypeChoice) => {
-      setLocalWorkTypeChoice(value)
-      onSelectedWorkTypeChange?.(value)
+      setLocalWorkTypeChoice(value);
+      onSelectedWorkTypeChange?.(value);
     },
-    [onSelectedWorkTypeChange]
-  )
+    [onSelectedWorkTypeChange],
+  );
   const setHiringModeChoice = useCallback(
     (value: HiringModeChoice) => {
-      setLocalHiringModeChoice(value)
-      onSelectedHiringModeChange?.(value)
+      setLocalHiringModeChoice(value);
+      onSelectedHiringModeChange?.(value);
     },
-    [onSelectedHiringModeChange]
-  )
+    [onSelectedHiringModeChange],
+  );
   const [selectedExistingListing, setSelectedExistingListing] = useState<
     string | null
-  >("ecommerce-react-build")
-  const [contractSearchValue, setContractSearchValue] = useState("")
+  >("ecommerce-react-build");
+  const [contractSearchValue, setContractSearchValue] = useState("");
   const [apiExistingListingOptions, setApiExistingListingOptions] = useState<
     ExistingListingOption[]
-  >([])
+  >([]);
   const foundationIsValid =
     contractChoice === "existing"
       ? Boolean(selectedExistingListing)
       : scopeChoice === "none"
         ? Boolean(contractChoice && hiringModeChoice)
-        : Boolean(contractChoice && scopeChoice && workTypeChoice)
+        : Boolean(contractChoice && scopeChoice && workTypeChoice);
   const isProjectInfoValid =
-    projectInfoSchema.safeParse(projectInfoValues).success
+    projectInfoSchema.safeParse(projectInfoValues).success;
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(foundationIsValid)
-  }, [foundationIsValid])
+    toggleValidation(foundationIsValid);
+  }, [foundationIsValid]);
   const categoryValues = useWatch({
     control: methods.control,
     name: "category",
-  })
+  });
   const categoryNodesByName = useMemo(() => {
-    return indexCategoryTreeByName(categoryTree)
-  }, [categoryTree])
+    return indexCategoryTreeByName(categoryTree);
+  }, [categoryTree]);
   const getSubCategoryOptionsForCategory = useCallback(
     (categoryName?: string, query = "") => {
-      if (!categoryName) return []
+      if (!categoryName) return [];
 
-      const normalizedQuery = query.trim().toLowerCase()
-      const activeNode = categoryNodesByName.get(categoryName)
+      const normalizedQuery = query.trim().toLowerCase();
+      const activeNode = categoryNodesByName.get(categoryName);
       const sourceNodes = activeNode
         ? collectCategoryDescendants(activeNode)
-        : []
+        : [];
 
       return getUniqueOptions(
         sourceNodes
@@ -3494,112 +3636,112 @@ const ProjectInfo = ({
           .filter((name) =>
             normalizedQuery
               ? name.toLowerCase().includes(normalizedQuery)
-              : true
-          )
-      )
+              : true,
+          ),
+      );
     },
-    [categoryNodesByName, categoryTree]
-  )
+    [categoryNodesByName, categoryTree],
+  );
   const handleSubCategoryChange = useCallback(
     (
       fieldName: `category.${0 | 1 | 2}.subCategories`,
-      onChange: (value: string[]) => void
+      onChange: (value: string[]) => void,
     ) =>
       (details: { value: string[] }) => {
         if (details.value.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
           methods.setError(fieldName, {
             type: "manual",
             message: SUBCATEGORY_LIMIT_ERROR,
-          })
-          return
+          });
+          return;
         }
 
-        methods.clearErrors(fieldName)
-        onChange(details.value)
-        void methods.trigger(fieldName)
+        methods.clearErrors(fieldName);
+        onChange(details.value);
+        void methods.trigger(fieldName);
       },
-    [methods]
-  )
+    [methods],
+  );
   const handleCategorySelection = useCallback(
     (
       index: 0 | 1 | 2,
       categoryName: string,
-      onChange: (value: string) => void
+      onChange: (value: string) => void,
     ) => {
-      onChange(categoryName)
-      setActiveCategoryIndex(index)
+      onChange(categoryName);
+      setActiveCategoryIndex(index);
 
       const availableSubCategories =
-        getSubCategoryOptionsForCategory(categoryName)
-      setSubCategoryOptions(availableSubCategories)
+        getSubCategoryOptionsForCategory(categoryName);
+      setSubCategoryOptions(availableSubCategories);
 
-      const fieldName = `category.${index}.subCategories` as const
-      const currentSubCategories = methods.getValues(fieldName) ?? []
+      const fieldName = `category.${index}.subCategories` as const;
+      const currentSubCategories = methods.getValues(fieldName) ?? [];
       const nextSubCategories = currentSubCategories.filter((value) =>
-        availableSubCategories.includes(value)
-      )
+        availableSubCategories.includes(value),
+      );
 
       if (nextSubCategories.length !== currentSubCategories.length) {
         methods.setValue(fieldName, nextSubCategories, {
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: false,
-        })
+        });
       }
 
-      methods.clearErrors(`category.${index}.category`)
-      methods.clearErrors(`category.${index}.subCategories`)
+      methods.clearErrors(`category.${index}.category`);
+      methods.clearErrors(`category.${index}.subCategories`);
     },
-    [getSubCategoryOptionsForCategory, methods]
-  )
+    [getSubCategoryOptionsForCategory, methods],
+  );
 
   const completedProjectInfoFields = PROJECT_INFO_PROGRESS_FIELDS.filter(
     (fieldName) =>
       projectInfoSchema.shape[fieldName].safeParse(
-        projectInfoValues?.[fieldName]
-      ).success
-  ).length
+        projectInfoValues?.[fieldName],
+      ).success,
+  ).length;
   const progressValue = Math.max(
     0,
     Math.min(
       33,
       Math.round(
-        (completedProjectInfoFields / PROJECT_INFO_PROGRESS_FIELDS.length) * 33
-      )
-    )
-  )
-  const titleCharacterCount = projectInfoValues.title?.length || 0
+        (completedProjectInfoFields / PROJECT_INFO_PROGRESS_FIELDS.length) * 33,
+      ),
+    ),
+  );
+  const titleCharacterCount = projectInfoValues.title?.length || 0;
   const titleHasError = hookFormHasError({
     errors,
     name: "title",
-  })
+  });
   const shortDescriptionHasError = hookFormHasError({
     errors,
     name: "shortDescription",
-  })
+  });
   const fullDescriptionHasError = hookFormHasError({
     errors,
     name: "fullDescription",
-  })
+  });
   const fullDescriptionCharacterCount = getRichTextCharacterCount(
-    projectInfoValues.fullDescription ?? ""
-  )
+    projectInfoValues.fullDescription ?? "",
+  );
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
-  })
+  });
 
   const triggerMaxLengthError = useCallback(
     (
       fieldName: "title" | "shortDescription" | "fullDescription",
-      message: string
+      message: string,
     ) => {
       methods.setError(fieldName, {
         type: "manual",
         message,
-      })
+      });
     },
-    [methods]
-  )
+    [methods],
+  );
 
   const shouldBlockMaxLengthInput = useCallback(
     (
@@ -3607,14 +3749,14 @@ const ProjectInfo = ({
         | React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
         | React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
       currentLength: number,
-      maxLength: number
+      maxLength: number,
     ) => {
       const selectionLength =
         event.currentTarget.selectionEnd !== null &&
         event.currentTarget.selectionStart !== null
           ? event.currentTarget.selectionEnd -
             event.currentTarget.selectionStart
-          : 0
+          : 0;
 
       if ("key" in event) {
         if (
@@ -3623,60 +3765,60 @@ const ProjectInfo = ({
           event.altKey ||
           event.key.length !== 1
         ) {
-          return false
+          return false;
         }
 
-        return currentLength - selectionLength >= maxLength
+        return currentLength - selectionLength >= maxLength;
       }
 
-      const pastedText = event.clipboardData.getData("text")
-      return currentLength - selectionLength + pastedText.length > maxLength
+      const pastedText = event.clipboardData.getData("text");
+      return currentLength - selectionLength + pastedText.length > maxLength;
     },
-    []
-  )
+    [],
+  );
 
   const fetchCategoriesAutocomplete = useCallback(
     (index: 0 | 1 | 2, query: string) => {
-      const trimmedQuery = query.trim()
-      setActiveCategoryIndex(index)
+      const trimmedQuery = query.trim();
+      setActiveCategoryIndex(index);
       const activeCategoryName = Array.isArray(categoryValues)
         ? categoryValues[index]?.category
-        : undefined
+        : undefined;
       const fallbackOptions =
-        getSubCategoryOptionsForCategory(activeCategoryName)
+        getSubCategoryOptionsForCategory(activeCategoryName);
 
       if (!activeCategoryName) {
-        setSubCategoryOptions([])
-        return
+        setSubCategoryOptions([]);
+        return;
       }
 
       if (!trimmedQuery) {
-        setSubCategoryOptions(fallbackOptions)
-        return
+        setSubCategoryOptions(fallbackOptions);
+        return;
       }
       if (categoryDebounceTimerRef.current) {
-        clearTimeout(categoryDebounceTimerRef.current)
+        clearTimeout(categoryDebounceTimerRef.current);
       }
 
       categoryDebounceTimerRef.current = setTimeout(async () => {
-        const currentRequestId = ++categoryRequestRef.current
+        const currentRequestId = ++categoryRequestRef.current;
 
         try {
-          const response = await AutocompleteAPI.getCategories(trimmedQuery)
-          if (currentRequestId !== categoryRequestRef.current) return
+          const response = await AutocompleteAPI.getCategories(trimmedQuery);
+          if (currentRequestId !== categoryRequestRef.current) return;
 
           const values: AutocompleteCategorySuggestion[] = Array.isArray(
-            response?.data
+            response?.data,
           )
             ? response.data
-            : []
+            : [];
 
           const scopedSubCategoryOptions =
-            getSubCategoryOptionsForCategory(activeCategoryName)
+            getSubCategoryOptionsForCategory(activeCategoryName);
           const allowedSubCategories = new Set(
-            scopedSubCategoryOptions.map((value) => value.toLowerCase())
-          )
-          const hasScopedSubCategories = allowedSubCategories.size > 0
+            scopedSubCategoryOptions.map((value) => value.toLowerCase()),
+          );
+          const hasScopedSubCategories = allowedSubCategories.size > 0;
           const matchingSubCategories = getUniqueOptions(
             values
               .filter((item) => item.type === "subcategory")
@@ -3684,122 +3826,122 @@ const ProjectInfo = ({
               .filter((value) =>
                 activeCategoryName && hasScopedSubCategories
                   ? allowedSubCategories.has(value.toLowerCase())
-                  : true
-              )
-          )
+                  : true,
+              ),
+          );
 
           setSubCategoryOptions(
             getIsNotEmpty(matchingSubCategories)
               ? matchingSubCategories
               : getSubCategoryOptionsForCategory(
                   activeCategoryName,
-                  trimmedQuery
-                )
-          )
+                  trimmedQuery,
+                ),
+          );
         } catch (error) {
           setSubCategoryOptions(
-            getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery)
-          )
+            getSubCategoryOptionsForCategory(activeCategoryName, trimmedQuery),
+          );
         }
-      }, 250)
+      }, 250);
     },
-    [categoryValues, getSubCategoryOptionsForCategory]
-  )
+    [categoryValues, getSubCategoryOptionsForCategory],
+  );
 
   const fetchTypeAutocomplete = useCallback(
     (type: string, query: string, onSuccess: (options: string[]) => void) => {
-      const trimmedQuery = query.trim()
-      if (!trimmedQuery) return
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) return;
       if (typeDebounceTimerRef.current) {
-        clearTimeout(typeDebounceTimerRef.current)
+        clearTimeout(typeDebounceTimerRef.current);
       }
 
       typeDebounceTimerRef.current = setTimeout(async () => {
-        const currentRequestId = ++typeRequestRef.current
+        const currentRequestId = ++typeRequestRef.current;
         try {
-          const response = await AutocompleteAPI.getByType(type, trimmedQuery)
-          if (currentRequestId !== typeRequestRef.current) return
+          const response = await AutocompleteAPI.getByType(type, trimmedQuery);
+          if (currentRequestId !== typeRequestRef.current) return;
 
           const values: AutocompleteTypeSuggestion[] = Array.isArray(
-            response?.data
+            response?.data,
           )
             ? response.data
-            : []
+            : [];
           const normalizedOptions = getUniqueOptions(
-            values.map((item) => normalizeAutocompleteLabel(item))
-          )
+            values.map((item) => normalizeAutocompleteLabel(item)),
+          );
           if (getIsNotEmpty(normalizedOptions)) {
-            onSuccess(normalizedOptions)
+            onSuccess(normalizedOptions);
           }
         } catch (error) {
           // Keep fallback options when endpoint is not ready.
         }
-      }, 250)
+      }, 250);
     },
-    []
-  )
+    [],
+  );
   useEffect(() => {
     return () => {
       if (categoryDebounceTimerRef.current) {
-        clearTimeout(categoryDebounceTimerRef.current)
+        clearTimeout(categoryDebounceTimerRef.current);
       }
       if (typeDebounceTimerRef.current) {
-        clearTimeout(typeDebounceTimerRef.current)
+        clearTimeout(typeDebounceTimerRef.current);
       }
-    }
-  }, [])
+    };
+  }, []);
   useEffect(() => {
     const activeCategoryName = Array.isArray(categoryValues)
       ? categoryValues[activeCategoryIndex]?.category
-      : undefined
+      : undefined;
 
-    setSubCategoryOptions(getSubCategoryOptionsForCategory(activeCategoryName))
-  }, [activeCategoryIndex, categoryValues, getSubCategoryOptionsForCategory])
+    setSubCategoryOptions(getSubCategoryOptionsForCategory(activeCategoryName));
+  }, [activeCategoryIndex, categoryValues, getSubCategoryOptionsForCategory]);
   // NEW: Report progress to parent whenever it changes
   useEffect(() => {
-    setProgress?.(foundationIsValid ? 20 : 4) //calls the prop passed from PublishProject
-  }, [foundationIsValid, setProgress])
+    setProgress?.(foundationIsValid ? 20 : 4); //calls the prop passed from PublishProject
+  }, [foundationIsValid, setProgress]);
 
   const suggestedSkills = suggestedSkillOptions.filter(
-    (value) => !projectInfoValues.skills?.includes(value)
-  )
-  const suggestedSkillsForDisplay = suggestedSkills.slice(0, 3)
+    (value) => !projectInfoValues.skills?.includes(value),
+  );
+  const suggestedSkillsForDisplay = suggestedSkills.slice(0, 3);
   const activeCategory = Array.isArray(categoryValues)
     ? categoryValues[activeCategoryIndex]
-    : null
+    : null;
   const getAvailableCategoriesForIndex = useCallback(
     (index: number, currentValue?: string) => {
       const selectedCategories = Array.isArray(categoryValues)
         ? categoryValues
             .map((item, itemIndex) =>
-              itemIndex === index ? null : item?.category?.trim()
+              itemIndex === index ? null : item?.category?.trim(),
             )
             .filter(
               (item): item is string =>
-                typeof item === "string" && item.length > 0
+                typeof item === "string" && item.length > 0,
             )
-        : []
+        : [];
 
       return categoryOptions.filter(
         (category) =>
-          category === currentValue || !selectedCategories.includes(category)
-      )
+          category === currentValue || !selectedCategories.includes(category),
+      );
     },
-    [categoryOptions, categoryValues]
-  )
+    [categoryOptions, categoryValues],
+  );
   const selectedSuggestedPairs = useMemo(
     () =>
       new Set(
         (Array.isArray(categoryValues) ? categoryValues : []).flatMap((item) =>
           item?.category && Array.isArray(item.subCategories)
             ? item.subCategories.map(
-                (subCategory) => `${item.category}::${subCategory}`
+                (subCategory) => `${item.category}::${subCategory}`,
               )
-            : []
-        )
+            : [],
+        ),
       ),
-    [categoryValues]
-  )
+    [categoryValues],
+  );
   const selectedCategoryNames = useMemo(
     () =>
       new Set(
@@ -3807,22 +3949,22 @@ const ProjectInfo = ({
           .map((item) => item?.category?.trim())
           .filter(
             (category): category is string =>
-              typeof category === "string" && category.length > 0
-          )
+              typeof category === "string" && category.length > 0,
+          ),
       ),
-    [categoryValues]
-  )
+    [categoryValues],
+  );
   const suggestedForDisplay = useMemo(
     () =>
       suggested
         .filter(
           ({ category, subCategory }) =>
             !selectedCategoryNames.has(category) &&
-            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
+            !selectedSuggestedPairs.has(`${category}::${subCategory}`),
         )
         .slice(0, 3),
-    [selectedCategoryNames, selectedSuggestedPairs, suggested]
-  )
+    [selectedCategoryNames, selectedSuggestedPairs, suggested],
+  );
   const fallbackExistingListingOptions: ExistingListingOption[] = [
     {
       id: "marketeq-projects-network",
@@ -3849,28 +3991,28 @@ const ProjectInfo = ({
       avatars: ["RK", "SB"],
       workType: "service" as const,
     },
-  ]
+  ];
   const getContractDisabledReason = (status?: string | null) => {
-    const normalizedStatus = status?.toLowerCase()
+    const normalizedStatus = status?.toLowerCase();
 
-    if (!normalizedStatus) return undefined
+    if (!normalizedStatus) return undefined;
     if (["closed", "expired", "disputed"].includes(normalizedStatus)) {
-      return "This contract cannot accept new jobs."
+      return "This contract cannot accept new jobs.";
     }
 
-    return undefined
-  }
+    return undefined;
+  };
   const mapContractToExistingOption = (
-    contract: ContractDTO
+    contract: ContractDTO,
   ): ExistingListingOption => {
-    const isServiceContract = Boolean(contract.serviceId)
+    const isServiceContract = Boolean(contract.serviceId);
     const statusBadge = contract.status
       ? contract.status
           .split(/[_\s-]+/)
           .filter(Boolean)
           .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
           .join(" ")
-      : "Active"
+      : "Active";
 
     return {
       id: contract.id,
@@ -3887,76 +4029,78 @@ const ProjectInfo = ({
       avatars: [],
       workType: isServiceContract ? "service" : "project",
       disabledReason: getContractDisabledReason(contract.status),
-    }
-  }
+    };
+  };
   const visibleExistingListingOptions = useMemo(() => {
     const sourceOptions = getIsNotEmpty(apiExistingListingOptions)
       ? apiExistingListingOptions
-      : fallbackExistingListingOptions
-    const query = contractSearchValue.trim().toLowerCase()
+      : fallbackExistingListingOptions;
+    const query = contractSearchValue.trim().toLowerCase();
 
-    if (!query) return sourceOptions
+    if (!query) return sourceOptions;
 
     return sourceOptions.filter((option) =>
-      [option.title, ...option.badges].join(" ").toLowerCase().includes(query)
-    )
-  }, [apiExistingListingOptions, contractSearchValue])
+      [option.title, ...option.badges].join(" ").toLowerCase().includes(query),
+    );
+  }, [apiExistingListingOptions, contractSearchValue]);
 
   useEffect(() => {
-    if (contractChoice !== "existing" || !user?.id) return
+    if (contractChoice !== "existing" || !user?.id) return;
 
-    let cancelled = false
+    let cancelled = false;
 
     const loadExistingContracts = async () => {
       try {
-        const contracts = await getContractsForClient(user.id)
-        if (cancelled) return
+        const contracts = await getContractsForClient(user.id);
+        if (cancelled) return;
 
-        setApiExistingListingOptions(contracts.map(mapContractToExistingOption))
+        setApiExistingListingOptions(
+          contracts.map(mapContractToExistingOption),
+        );
       } catch (error) {
         if (!cancelled) {
-          setApiExistingListingOptions([])
+          setApiExistingListingOptions([]);
         }
       }
-    }
+    };
 
-    void loadExistingContracts()
+    void loadExistingContracts();
 
     return () => {
-      cancelled = true
-    }
-  }, [contractChoice, user?.id])
+      cancelled = true;
+    };
+  }, [contractChoice, user?.id]);
   useEffect(() => {
     if (
       contractChoice !== "existing" ||
       !getIsNotEmpty(apiExistingListingOptions)
     ) {
-      return
+      return;
     }
 
     const currentSelectionIsVisible = apiExistingListingOptions.some(
       (option) =>
-        option.id === selectedExistingListing && !option.disabledReason
-    )
+        option.id === selectedExistingListing && !option.disabledReason,
+    );
 
-    if (currentSelectionIsVisible) return
+    if (currentSelectionIsVisible) return;
 
     const firstSelectableOption = apiExistingListingOptions.find(
-      (option) => !option.disabledReason
-    )
+      (option) => !option.disabledReason,
+    );
 
-    if (!firstSelectableOption) return
+    if (!firstSelectableOption) return;
 
-    setSelectedExistingListing(firstSelectableOption.id)
-    onExistingContractSelectionChange?.(firstSelectableOption.id)
-    setWorkTypeChoice(firstSelectableOption.workType)
+    setSelectedExistingListing(firstSelectableOption.id);
+    onExistingContractSelectionChange?.(firstSelectableOption.id);
+    setWorkTypeChoice(firstSelectableOption.workType);
   }, [
     apiExistingListingOptions,
     contractChoice,
     onExistingContractSelectionChange,
     selectedExistingListing,
     setWorkTypeChoice,
-  ])
+  ]);
 
   return (
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
@@ -4025,25 +4169,25 @@ const ProjectInfo = ({
                     className="flex flex-wrap gap-2"
                     value={contractChoice}
                     onValueChange={(value) => {
-                      const nextChoice = value as "new" | "existing"
+                      const nextChoice = value as "new" | "existing";
 
-                      setContractChoice(nextChoice)
-                      onExistingContractFlowChange?.(nextChoice === "existing")
+                      setContractChoice(nextChoice);
+                      onExistingContractFlowChange?.(nextChoice === "existing");
                       if (nextChoice === "existing") {
-                        setScopeChoice(null)
-                        onNoScopeFlowChange?.(false)
-                        setHiringModeChoice(null)
-                        setSelectedExistingListing("ecommerce-react-build")
+                        setScopeChoice(null);
+                        onNoScopeFlowChange?.(false);
+                        setHiringModeChoice(null);
+                        setSelectedExistingListing("ecommerce-react-build");
                         onExistingContractSelectionChange?.(
-                          "ecommerce-react-build"
-                        )
-                        setWorkTypeChoice("service")
+                          "ecommerce-react-build",
+                        );
+                        setWorkTypeChoice("service");
                       } else {
-                        setSelectedExistingListing(null)
-                        onExistingContractSelectionChange?.(null)
-                        setWorkTypeChoice(null)
-                        setHiringModeChoice(null)
-                        onNoScopeFlowChange?.(false)
+                        setSelectedExistingListing(null);
+                        onExistingContractSelectionChange?.(null);
+                        setWorkTypeChoice(null);
+                        setHiringModeChoice(null);
+                        onNoScopeFlowChange?.(false);
                       }
                     }}
                   >
@@ -4060,7 +4204,7 @@ const ProjectInfo = ({
                         className={cn(
                           "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 shadow-xs focus-visible:outline-none",
                           contractChoice === option.value &&
-                            "border-primary-500 text-primary-500"
+                            "border-primary-500 text-primary-500",
                         )}
                       >
                         {option.label}
@@ -4099,21 +4243,21 @@ const ProjectInfo = ({
                       onValueChange={(value) => {
                         const selectedOption =
                           visibleExistingListingOptions.find(
-                            (option) => option.id === value
-                          )
+                            (option) => option.id === value,
+                          );
 
                         if (!selectedOption || selectedOption.disabledReason) {
-                          return
+                          return;
                         }
 
-                        setSelectedExistingListing(selectedOption.id)
-                        onExistingContractSelectionChange?.(selectedOption.id)
-                        setWorkTypeChoice(selectedOption.workType)
+                        setSelectedExistingListing(selectedOption.id);
+                        onExistingContractSelectionChange?.(selectedOption.id);
+                        setWorkTypeChoice(selectedOption.workType);
                       }}
                     >
                       {visibleExistingListingOptions.map((option) => {
-                        const selected = selectedExistingListing === option.id
-                        const disabled = Boolean(option.disabledReason)
+                        const selected = selectedExistingListing === option.id;
+                        const disabled = Boolean(option.disabledReason);
 
                         return (
                           <HeadlessRadioGroupItem
@@ -4124,7 +4268,7 @@ const ProjectInfo = ({
                             className={cn(
                               "flex w-full items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
                               selected && "border-primary-500",
-                              disabled && "cursor-not-allowed opacity-60"
+                              disabled && "cursor-not-allowed opacity-60",
                             )}
                           >
                             <span className="inline-flex size-[72px] shrink-0 items-center justify-center overflow-hidden rounded bg-primary-50 text-primary-500">
@@ -4171,11 +4315,11 @@ const ProjectInfo = ({
                             <span
                               className={cn(
                                 "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                selected && "border-[5px] border-primary-500"
+                                selected && "border-[5px] border-primary-500",
                               )}
                             />
                           </HeadlessRadioGroupItem>
-                        )
+                        );
                       })}
                     </RadioGroup>
                   </div>
@@ -4209,20 +4353,20 @@ const ProjectInfo = ({
                             className={cn(
                               "rounded-full",
                               scopeChoice === option.value &&
-                                "border-primary-500 text-primary-500"
+                                "border-primary-500 text-primary-500",
                             )}
                             onClick={() => {
                               const nextScopeChoice = option.value as
                                 | "known"
                                 | "unknown"
-                                | "none"
-                              setScopeChoice(nextScopeChoice)
-                              onNoScopeFlowChange?.(nextScopeChoice === "none")
+                                | "none";
+                              setScopeChoice(nextScopeChoice);
+                              onNoScopeFlowChange?.(nextScopeChoice === "none");
                               if (nextScopeChoice === "none") {
-                                setWorkTypeChoice(null)
-                                setHiringModeChoice("team")
+                                setWorkTypeChoice(null);
+                                setHiringModeChoice("team");
                               } else {
-                                setHiringModeChoice(null)
+                                setHiringModeChoice(null);
                               }
                             }}
                           >
@@ -4267,7 +4411,7 @@ const ProjectInfo = ({
                               className={cn(
                                 "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
                                 hiringModeChoice === option.value &&
-                                  "border-primary-500"
+                                  "border-primary-500",
                               )}
                             >
                               <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
@@ -4285,7 +4429,7 @@ const ProjectInfo = ({
                                 className={cn(
                                   "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
                                   hiringModeChoice === option.value &&
-                                    "border-[5px] border-primary-500"
+                                    "border-[5px] border-primary-500",
                                 )}
                               />
                             </HeadlessRadioGroupItem>
@@ -4320,11 +4464,11 @@ const ProjectInfo = ({
                               className={cn(
                                 "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
                                 workTypeChoice === option.value &&
-                                  "border-primary-500"
+                                  "border-primary-500",
                               )}
                               onClick={() =>
                                 setWorkTypeChoice(
-                                  option.value as WorkTypeChoice
+                                  option.value as WorkTypeChoice,
                                 )
                               }
                             >
@@ -4343,7 +4487,7 @@ const ProjectInfo = ({
                                 className={cn(
                                   "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
                                   workTypeChoice === option.value &&
-                                    "border-[5px] border-primary-500"
+                                    "border-[5px] border-primary-500",
                                 )}
                               />
                             </button>
@@ -4399,13 +4543,13 @@ const ProjectInfo = ({
                           shouldDirty: true,
                           shouldTouch: true,
                           shouldValidate: false,
-                        }
-                      )
+                        },
+                      );
                       if (
                         titleHasError &&
                         get(errors, "title.type") === "manual"
                       ) {
-                        methods.clearErrors("title")
+                        methods.clearErrors("title");
                       }
                     }}
                     onBlur={() => void methods.trigger("title")}
@@ -4414,14 +4558,14 @@ const ProjectInfo = ({
                         shouldBlockMaxLengthInput(
                           event,
                           projectInfoValues.title?.length || 0,
-                          100
+                          100,
                         )
                       ) {
-                        event.preventDefault()
+                        event.preventDefault();
                         triggerMaxLengthError(
                           "title",
-                          "Please do not enter more than 100 character(s)"
-                        )
+                          "Please do not enter more than 100 character(s)",
+                        );
                       }
                     }}
                     onPaste={(event) => {
@@ -4429,14 +4573,14 @@ const ProjectInfo = ({
                         shouldBlockMaxLengthInput(
                           event,
                           projectInfoValues.title?.length || 0,
-                          100
+                          100,
                         )
                       ) {
-                        event.preventDefault()
+                        event.preventDefault();
                         triggerMaxLengthError(
                           "title",
-                          "Please do not enter more than 100 character(s)"
-                        )
+                          "Please do not enter more than 100 character(s)",
+                        );
                       }
                     }}
                     isInvalid={titleHasError}
@@ -4543,7 +4687,7 @@ const ProjectInfo = ({
                                     >
                                       {category}
                                     </ListboxOption>
-                                  )
+                                  ),
                                 )}
                               </ListboxOptions>
                             </Listbox>
@@ -4558,7 +4702,7 @@ const ProjectInfo = ({
                           <TagsInputRoot
                             onValueChange={handleSubCategoryChange(
                               "category.0.subCategories",
-                              onChange
+                              onChange,
                             )}
                             {...field}
                             className="space-y-1.5"
@@ -4598,15 +4742,15 @@ const ProjectInfo = ({
                                       allowCreateOption
                                       className="flex-1 min-w-[100px] "
                                       onInputValueChange={(value) => {
-                                        fetchCategoriesAutocomplete(0, value)
+                                        fetchCategoriesAutocomplete(0, value);
                                       }}
                                       onFocus={() => {
-                                        setActiveCategoryIndex(0)
+                                        setActiveCategoryIndex(0);
                                         setSubCategoryOptions(
                                           getSubCategoryOptionsForCategory(
-                                            categoryValues?.[0]?.category
-                                          )
-                                        )
+                                            categoryValues?.[0]?.category,
+                                          ),
+                                        );
                                       }}
                                     />
                                     <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
@@ -4675,7 +4819,7 @@ const ProjectInfo = ({
                                     >
                                       {category}
                                     </ListboxOption>
-                                  )
+                                  ),
                                 )}
                               </ListboxOptions>
                             </Listbox>
@@ -4690,7 +4834,7 @@ const ProjectInfo = ({
                           <TagsInputRoot
                             onValueChange={handleSubCategoryChange(
                               "category.1.subCategories",
-                              onChange
+                              onChange,
                             )}
                             {...field}
                             className="space-y-1.5"
@@ -4734,15 +4878,15 @@ const ProjectInfo = ({
                                       allowCreateOption
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
-                                        fetchCategoriesAutocomplete(1, value)
+                                        fetchCategoriesAutocomplete(1, value);
                                       }}
                                       onFocus={() => {
-                                        setActiveCategoryIndex(1)
+                                        setActiveCategoryIndex(1);
                                         setSubCategoryOptions(
                                           getSubCategoryOptionsForCategory(
-                                            categoryValues?.[1]?.category
-                                          )
-                                        )
+                                            categoryValues?.[1]?.category,
+                                          ),
+                                        );
                                       }}
                                     />
 
@@ -4812,7 +4956,7 @@ const ProjectInfo = ({
                                     >
                                       {category}
                                     </ListboxOption>
-                                  )
+                                  ),
                                 )}
                               </ListboxOptions>
                             </Listbox>
@@ -4827,7 +4971,7 @@ const ProjectInfo = ({
                           <TagsInputRoot
                             onValueChange={handleSubCategoryChange(
                               "category.2.subCategories",
-                              onChange
+                              onChange,
                             )}
                             {...field}
                             className="space-y-1.5"
@@ -4871,15 +5015,15 @@ const ProjectInfo = ({
                                       allowCreateOption
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
-                                        fetchCategoriesAutocomplete(2, value)
+                                        fetchCategoriesAutocomplete(2, value);
                                       }}
                                       onFocus={() => {
-                                        setActiveCategoryIndex(2)
+                                        setActiveCategoryIndex(2);
                                         setSubCategoryOptions(
                                           getSubCategoryOptionsForCategory(
-                                            categoryValues?.[2]?.category
-                                          )
-                                        )
+                                            categoryValues?.[2]?.category,
+                                          ),
+                                        );
                                       }}
                                     />
 
@@ -4928,7 +5072,7 @@ const ProjectInfo = ({
                           <button
                             type="button"
                             onClick={() => {
-                              const indexToUpdate = activeCategoryIndex
+                              const indexToUpdate = activeCategoryIndex;
 
                               // write values and mark as user-driven so Sidebar shows the checkmark
                               setValue(
@@ -4937,19 +5081,19 @@ const ProjectInfo = ({
                                 {
                                   shouldDirty: true,
                                   shouldValidate: true,
-                                }
-                              )
+                                },
+                              );
                               setValue(
                                 `category.${indexToUpdate}.subCategories`,
                                 [subCategory],
                                 {
                                   shouldDirty: true,
                                   shouldValidate: true,
-                                }
-                              )
+                                },
+                              );
 
                               // validate that slot
-                              trigger(`category.${indexToUpdate}`)
+                              trigger(`category.${indexToUpdate}`);
 
                               // keep suggestions visible for subsequent category slots
                             }}
@@ -5025,11 +5169,11 @@ const ProjectInfo = ({
                             methods.setError("industry", {
                               type: "manual",
                               message: "You can only add up to 5 industries",
-                            })
-                            return
+                            });
+                            return;
                           }
-                          methods.clearErrors("industry")
-                          onChange(details.value)
+                          methods.clearErrors("industry");
+                          onChange(details.value);
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -5085,8 +5229,8 @@ const ProjectInfo = ({
                                     fetchTypeAutocomplete(
                                       "industries",
                                       value,
-                                      setIndustryOptions
-                                    )
+                                      setIndustryOptions,
+                                    );
                                   }}
                                 />
 
@@ -5116,7 +5260,9 @@ const ProjectInfo = ({
                     render={({ field: { onChange, ...field } }) => (
                       <TagsInputRoot
                         onValueChange={(details) => {
-                          onChange(getUniqueOptions(details.value).slice(0, 10))
+                          onChange(
+                            getUniqueOptions(details.value).slice(0, 10),
+                          );
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -5153,8 +5299,8 @@ const ProjectInfo = ({
                                   fetchTypeAutocomplete(
                                     "languages",
                                     value,
-                                    setLanguageOptions
-                                  )
+                                    setLanguageOptions,
+                                  );
                                 }}
                               />
 
@@ -5198,12 +5344,12 @@ const ProjectInfo = ({
                     maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
                     {...shortDescriptionField}
                     onChange={(event) => {
-                      shortDescriptionField.onChange(event)
+                      shortDescriptionField.onChange(event);
                       if (
                         shortDescriptionHasError &&
                         get(errors, "shortDescription.type") === "manual"
                       ) {
-                        methods.clearErrors("shortDescription")
+                        methods.clearErrors("shortDescription");
                       }
                     }}
                     onKeyDown={(event) => {
@@ -5211,14 +5357,14 @@ const ProjectInfo = ({
                         shouldBlockMaxLengthInput(
                           event,
                           event.currentTarget.value.length,
-                          SHORT_DESCRIPTION_MAX_LENGTH
+                          SHORT_DESCRIPTION_MAX_LENGTH,
                         )
                       ) {
-                        event.preventDefault()
+                        event.preventDefault();
                         triggerMaxLengthError(
                           "shortDescription",
-                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR,
+                        );
                       }
                     }}
                     onPaste={(event) => {
@@ -5226,14 +5372,14 @@ const ProjectInfo = ({
                         shouldBlockMaxLengthInput(
                           event,
                           event.currentTarget.value.length,
-                          SHORT_DESCRIPTION_MAX_LENGTH
+                          SHORT_DESCRIPTION_MAX_LENGTH,
                         )
                       ) {
-                        event.preventDefault()
+                        event.preventDefault();
                         triggerMaxLengthError(
                           "shortDescription",
-                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR,
+                        );
                       }
                     }}
                     isInvalid={shortDescriptionHasError}
@@ -5285,20 +5431,20 @@ const ProjectInfo = ({
                           "rounded-lg border bg-white transition-colors",
                           fullDescriptionHasError
                             ? "border-error-500"
-                            : "border-gray-300 focus-within:border-primary-500"
+                            : "border-gray-300 focus-within:border-primary-500",
                         )}
                         toolbarClassName="left-4"
                         editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
                         onUpdate={(html) => {
-                          field.onChange(html)
+                          field.onChange(html);
 
-                          const contentLength = getRichTextCharacterCount(html)
+                          const contentLength = getRichTextCharacterCount(html);
                           if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
                             triggerMaxLengthError(
                               "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR,
+                            );
+                            return;
                           }
 
                           if (
@@ -5306,19 +5452,19 @@ const ProjectInfo = ({
                             get(errors, "fullDescription.message") ===
                               FULL_DESCRIPTION_MAX_LENGTH_ERROR
                           ) {
-                            methods.clearErrors("fullDescription")
+                            methods.clearErrors("fullDescription");
                           }
                         }}
                         onBlur={(html) => {
-                          field.onBlur()
+                          field.onBlur();
 
-                          const contentLength = getRichTextCharacterCount(html)
+                          const contentLength = getRichTextCharacterCount(html);
                           if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
                             triggerMaxLengthError(
                               "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR,
+                            );
+                            return;
                           }
 
                           if (
@@ -5326,10 +5472,10 @@ const ProjectInfo = ({
                             get(errors, "fullDescription.message") ===
                               FULL_DESCRIPTION_MAX_LENGTH_ERROR
                           ) {
-                            methods.clearErrors("fullDescription")
+                            methods.clearErrors("fullDescription");
                           }
 
-                          void trigger("fullDescription")
+                          void trigger("fullDescription");
                         }}
                       />
                     )}
@@ -5355,11 +5501,11 @@ const ProjectInfo = ({
                             methods.setError("tags", {
                               type: "manual",
                               message: "You can only add up to 10 tags",
-                            })
-                            return
+                            });
+                            return;
                           }
-                          methods.clearErrors("tags")
-                          onChange(details.value)
+                          methods.clearErrors("tags");
+                          onChange(details.value);
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -5416,8 +5562,8 @@ const ProjectInfo = ({
                                     fetchTypeAutocomplete(
                                       "search_keywords",
                                       value,
-                                      setTagOptions
-                                    )
+                                      setTagOptions,
+                                    );
                                   }}
                                 />
 
@@ -5451,11 +5597,11 @@ const ProjectInfo = ({
                             methods.setError("skills", {
                               type: "manual",
                               message: "You can only add up to 10 skills",
-                            })
-                            return
+                            });
+                            return;
                           }
-                          methods.clearErrors("skills")
-                          onChange(details.value)
+                          methods.clearErrors("skills");
+                          onChange(details.value);
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -5512,8 +5658,8 @@ const ProjectInfo = ({
                                     fetchTypeAutocomplete(
                                       "skills",
                                       value,
-                                      setSkills
-                                    )
+                                      setSkills,
+                                    );
                                   }}
                                 />
 
@@ -5560,20 +5706,20 @@ const ProjectInfo = ({
                                       ...projectInfoValues.skills,
                                       suggestedSkill,
                                     ]
-                                  : [suggestedSkill]
+                                  : [suggestedSkill];
 
                                 // tell RHF this field changed and should be validated
                                 setValue("skills", next, {
                                   shouldDirty: true,
                                   shouldValidate: true,
-                                })
+                                });
                               }}
                             >
                               {suggestedSkill}
                               <Plus2 className="size-3 opacity-50 hover:opacity-100" />
                             </button>
                           </Badge>
-                        )
+                        ),
                       )}
                     </div>
                   </div>
@@ -5590,20 +5736,20 @@ const ProjectInfo = ({
         </div>
       </ScrollArea>
     </form>
-  )
-}
+  );
+};
 
 interface MediaTipProps {
-  showArrow?: boolean
-  closeTrigger?: React.ReactNode
-  className?: string
+  showArrow?: boolean;
+  closeTrigger?: React.ReactNode;
+  className?: string;
 }
 const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
   return (
     <div
       className={cn(
         "p-5 rounded-lg w-[269px] bg-primary-50 relative",
-        className
+        className,
       )}
     >
       {showArrow && (
@@ -5657,8 +5803,8 @@ const MediaTip = ({ showArrow, closeTrigger, className }: MediaTipProps) => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const mediaFormSchema = z
   .object({
@@ -5671,7 +5817,7 @@ const mediaFormSchema = z
         }),
         {
           required_error: "Please upload a file",
-        }
+        },
       )
       .min(1, "Please at least upload 1 image(s)"),
     additionalImages: z.array(
@@ -5684,34 +5830,34 @@ const mediaFormSchema = z
           }),
           {
             required_error: "Please upload a file",
-          }
+          },
         )
-        .optional()
+        .optional(),
     ),
     featuredVideo: z
       .string()
       .refine(
         (value) => {
-          const rawValue = value?.trim()
-          if (!rawValue) return true // allow empty value
+          const rawValue = value?.trim();
+          if (!rawValue) return true; // allow empty value
 
           const normalized = /^https?:\/\//i.test(rawValue)
             ? rawValue
-            : `https://${rawValue.replace(/^\/+/, "")}`
+            : `https://${rawValue.replace(/^\/+/, "")}`;
 
           try {
-            const parsed = new URL(normalized)
+            const parsed = new URL(normalized);
             return (
               (parsed.protocol === "http:" || parsed.protocol === "https:") &&
               parsed.hostname.includes(".")
-            )
+            );
           } catch {
-            return false
+            return false;
           }
         },
         {
           message: "Please enter a valid URL",
-        }
+        },
       )
       .optional(),
   })
@@ -5720,7 +5866,7 @@ const mediaFormSchema = z
     {
       message: "Please let the images get uploaded to the server",
       path: ["featuredImage"],
-    }
+    },
   )
   .refine(
     (data) =>
@@ -5732,34 +5878,34 @@ const mediaFormSchema = z
                 meta: z.any(),
                 progress: z.literal(100),
                 hasError: z.literal(false).optional(),
-              })
+              }),
             )
-            .optional()
+            .optional(),
         )
         .safeParse(data.additionalImages),
     {
       message: "Please let the images get uploaded to the server",
       path: ["additionalImages"],
-    }
-  )
+    },
+  );
 
 type MediaFormValues = {
   featuredImages: {
-    progress: number
-    hasError: boolean
-    meta: any
-  }[]
+    progress: number;
+    hasError: boolean;
+    meta: any;
+  }[];
   additionalImages: {
-    progress: number
-    hasError: boolean
-    meta: any
-  }[][]
-  featuredVideo: string
-}
+    progress: number;
+    hasError: boolean;
+    meta: any;
+  }[][];
+  featuredVideo: string;
+};
 
 const MEDIA_VALIDATION_TARGETS: Array<{
-  name: FieldPath<MediaFormValues>
-  targetId: string
+  name: FieldPath<MediaFormValues>;
+  targetId: string;
 }> = [
   { name: "featuredImages", targetId: "publish-project-featured-images-field" },
   {
@@ -5767,15 +5913,15 @@ const MEDIA_VALIDATION_TARGETS: Array<{
     targetId: "publish-project-additional-images-field",
   },
   { name: "featuredVideo", targetId: "publish-project-featured-video-field" },
-]
+];
 type MediaProps = {
-  setProgress?: (val: number) => void
-}
+  setProgress?: (val: number) => void;
+};
 
 const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  const { toggleValidation } = useStepContext()
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const { toggleValidation } = useStepContext();
   const {
     control,
     formState: { errors, isValid, isSubmitted },
@@ -5783,95 +5929,101 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     handleSubmit,
     trigger,
     setValue,
-  } = useMediaContext()
+  } = useMediaContext();
 
-  const { currentStep } = useStepRootContext()
-  const [progressValue, setProgressValue] = useState(0)
+  const { currentStep } = useStepRootContext();
+  const [progressValue, setProgressValue] = useState(0);
 
-  const onSubmit: SubmitHandler<MediaFormValues> = (values) => {}
+  const onSubmit: SubmitHandler<MediaFormValues> = (values) => {};
 
-  const mediaValues = useWatch({ control: control })
-  const isMediaValid = mediaFormSchema.safeParse(mediaValues).success
-  const { error } = mediaFormSchema.safeParse(mediaValues)
-  const featuredImage = useWatch({ control, name: "featuredImages" })
-  const additionalImages = useWatch({ control, name: "additionalImages" })
-  const featuredVideo = useWatch({ control, name: "featuredVideo" })
+  const mediaValues = useWatch({ control: control });
+  const isMediaValid = mediaFormSchema.safeParse(mediaValues).success;
+  const { error } = mediaFormSchema.safeParse(mediaValues);
+  const featuredImage = useWatch({ control, name: "featuredImages" });
+  const additionalImages = useWatch({ control, name: "additionalImages" });
+  const featuredVideo = useWatch({ control, name: "featuredVideo" });
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(isMediaValid)
-  }, [isMediaValid])
+    toggleValidation(isMediaValid);
+  }, [isMediaValid]);
 
-  const featuredImageRef = React.useRef(featuredImage)
-  const progressValueRef = React.useRef(progressValue)
-
-  useEffect(() => {
-    featuredImageRef.current = featuredImage
-  }, [featuredImage])
+  const featuredImageRef = React.useRef(featuredImage);
+  const progressValueRef = React.useRef(progressValue);
 
   useEffect(() => {
-    progressValueRef.current = progressValue
-  }, [progressValue])
+    featuredImageRef.current = featuredImage;
+  }, [featuredImage]);
+
+  useEffect(() => {
+    progressValueRef.current = progressValue;
+  }, [progressValue]);
 
   useEffect(() => {
     if (currentStep === 1) {
-      let count = 0
+      let count = 0;
 
       const allFeaturedUploaded =
         Array.isArray(featuredImage) &&
         featuredImage.length > 0 &&
-        featuredImage.every((img) => img.progress === 100)
+        featuredImage.every((img) => img.progress === 100);
 
       const hasAdditionalImages =
         Array.isArray(additionalImages) &&
         additionalImages.some(
           (group) =>
-            Array.isArray(group) && group.some((img) => img.progress === 100)
-        )
+            Array.isArray(group) && group.some((img) => img.progress === 100),
+        );
 
-      if (allFeaturedUploaded) count += 1
-      if (hasAdditionalImages) count += 1
-      if (featuredVideo) count += 1
+      if (allFeaturedUploaded) count += 1;
+      if (hasAdditionalImages) count += 1;
+      if (featuredVideo) count += 1;
 
-      const percent = count * 11
-      setProgressValue(percent)
-      setProgress?.(percent)
+      const percent = count * 11;
+      setProgressValue(percent);
+      setProgress?.(percent);
     }
-  }, [currentStep, featuredImage, additionalImages, featuredVideo, setProgress])
+  }, [
+    currentStep,
+    featuredImage,
+    additionalImages,
+    featuredVideo,
+    setProgress,
+  ]);
 
   useEffect(() => {
     return () => {
       // only when leaving the Media step
-      if (currentStep !== 1) return
+      if (currentStep !== 1) return;
 
-      const fi = featuredImageRef.current
+      const fi = featuredImageRef.current;
       const allFeaturedUploaded =
         Array.isArray(fi) &&
         fi.length > 0 &&
-        fi.every((img) => img.progress === 100)
+        fi.every((img) => img.progress === 100);
 
       if (allFeaturedUploaded) {
         // bump Media to at least its full 33% share,
         // but don't reduce if user already reached 55/66
-        const bumped = Math.max(progressValueRef.current ?? 0, 33)
-        setProgressValue(bumped)
-        setProgress?.(bumped)
+        const bumped = Math.max(progressValueRef.current ?? 0, 33);
+        setProgressValue(bumped);
+        setProgress?.(bumped);
       } else {
-        setProgressValue(0)
-        setProgress?.(0)
+        setProgressValue(0);
+        setProgress?.(0);
       }
-    }
-  }, [currentStep, setProgress])
+    };
+  }, [currentStep, setProgress]);
 
-  const ref = React.useRef(new Set<() => void>())
+  const ref = React.useRef(new Set<() => void>());
 
   useUnmountEffect(() => {
-    ref.current.forEach((cb) => cb())
-    ref.current.clear()
-  })
+    ref.current.forEach((cb) => cb());
+    ref.current.clear();
+  });
   //Report progress to parent whenever it changes
   useEffect(() => {
-    setProgress?.(progressValue)
-  }, [progressValue, setProgress])
+    setProgress?.(progressValue);
+  }, [progressValue, setProgress]);
 
   return (
     <form className="contents" onSubmit={handleSubmit(onSubmit)}>
@@ -5956,10 +6108,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     icon
                     value={value}
                     onValueChange={(value) => {
-                      ref.current.forEach((cb) => cb())
-                      ref.current.clear()
+                      ref.current.forEach((cb) => cb());
+                      ref.current.clear();
 
-                      onChange(value)
+                      onChange(value);
 
                       ref.current.add(
                         debounce(
@@ -5968,11 +6120,11 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                               value?.map((item) => ({
                                 ...item,
                                 progress: 50,
-                              }))
+                              })),
                             ),
-                          ONE_SECOND * 3
-                        ).cancel
-                      )
+                          ONE_SECOND * 3,
+                        ).cancel,
+                      );
                       ref.current.add(
                         debounce(
                           () =>
@@ -5980,11 +6132,11 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                               value?.map((item) => ({
                                 ...item,
                                 progress: 100,
-                              }))
+                              })),
                             ),
-                          ONE_SECOND * 6
-                        ).cancel
-                      )
+                          ONE_SECOND * 6,
+                        ).cancel,
+                      );
                     }}
                     onError={(message) =>
                       setError("featuredImages", { message })
@@ -6033,14 +6185,17 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                         value={value}
                         onValueChange={(value) => {
                           onChange(
-                            value?.map((item) => ({ ...item, progress: 50 }))
-                          )
+                            value?.map((item) => ({ ...item, progress: 50 })),
+                          );
                           window.setTimeout(() => {
                             onChange(
-                              value?.map((item) => ({ ...item, progress: 100 }))
-                            )
-                          }, ONE_SECOND * 2)
-                          isSubmitted ? trigger("additionalImages") : noop
+                              value?.map((item) => ({
+                                ...item,
+                                progress: 100,
+                              })),
+                            );
+                          }, ONE_SECOND * 2);
+                          isSubmitted ? trigger("additionalImages") : noop;
                         }}
                         onError={(message) =>
                           setError(`additionalImages.${index}`, { message })
@@ -6094,18 +6249,18 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                       onChange={(event) => {
                         const {
                           target: { value },
-                        } = event
-                        const cleanedValue = value.trim()
+                        } = event;
+                        const cleanedValue = value.trim();
                         if (!cleanedValue) {
-                          onChange("")
-                          return
+                          onChange("");
+                          return;
                         }
                         const normalized = /^https?:\/\//i.test(cleanedValue)
                           ? cleanedValue
-                          : `${HTTPS}${cleanedValue.replace(/^\/+/, "")}`
+                          : `${HTTPS}${cleanedValue.replace(/^\/+/, "")}`;
                         onChange(
-                          normalized.replace(/^(https?:\/\/)+/i, "https://")
-                        )
+                          normalized.replace(/^(https?:\/\/)+/i, "https://"),
+                        );
                       }}
                       {...field}
                       isInvalid={hookFormHasError({
@@ -6126,10 +6281,10 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               />
 
               {(() => {
-                const previewUrl = mediaValues.featuredVideo
-                if (!previewUrl) return null
+                const previewUrl = mediaValues.featuredVideo;
+                if (!previewUrl) return null;
                 if (error?.formErrors.fieldErrors.featuredVideo) {
-                  return null
+                  return null;
                 }
                 return (
                   <div className="mt-6 inline-flex flex-col items-start gap-3">
@@ -6149,15 +6304,15 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                       className="inline-flex items-center gap-2 rounded-md border border-error-300 px-3 py-2 text-sm font-medium text-error-600 hover:bg-error-50 focus-visible:outline-none"
                       type="button"
                       onClick={() => {
-                        setValue("featuredVideo", "")
-                        isValid ? trigger("featuredVideo") : noop()
+                        setValue("featuredVideo", "");
+                        isValid ? trigger("featuredVideo") : noop();
                       }}
                     >
                       <Trash01 className="size-4" />
                       Remove video
                     </button>
                   </div>
-                )
+                );
               })()}
             </div>
           </div>
@@ -6168,23 +6323,23 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
         </div>
       </ScrollArea>
     </form>
-  )
-}
+  );
+};
 
 const ProjectScopeTip = ({
   showArrow,
   closeTrigger,
   className,
 }: {
-  showArrow?: boolean
-  closeTrigger?: React.ReactNode
-  className?: string
+  showArrow?: boolean;
+  closeTrigger?: React.ReactNode;
+  className?: string;
 }) => {
   return (
     <div
       className={cn(
         "p-5 rounded-lg w-[269px] bg-primary-50 relative",
-        className
+        className,
       )}
     >
       {showArrow && (
@@ -6283,14 +6438,14 @@ const ProjectScopeTip = ({
         </ul>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const phaseNameFormSchema = z.object({
   name: z.string().min(1, "Please enter at least 1 character(s)"),
-})
+});
 
-type PhaseNameFormValues = z.infer<typeof phaseNameFormSchema>
+type PhaseNameFormValues = z.infer<typeof phaseNameFormSchema>;
 
 const PhaseNameDialog = ({
   onOpenChange,
@@ -6299,17 +6454,17 @@ const PhaseNameDialog = ({
   defaultName,
   placeholder = "Enter Phase Name",
 }: {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
-  defaultName?: string
-  placeholder?: string
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onAddPhaseName: (phaseName: string) => void;
+  defaultName?: string;
+  placeholder?: string;
 }) => {
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
     onChange: onOpenChange,
-  })
+  });
 
   const {
     register,
@@ -6319,21 +6474,21 @@ const PhaseNameDialog = ({
   } = useForm<PhaseNameFormValues>({
     resolver: zodResolver(phaseNameFormSchema),
     defaultValues: { name: defaultName ?? "" },
-  })
+  });
 
   // whenever dialog opens for a different phase, sync the input
   useEffect(() => {
     if (isOpen) {
-      reset({ name: defaultName ?? "" })
+      reset({ name: defaultName ?? "" });
     }
-  }, [isOpen, defaultName, reset])
+  }, [isOpen, defaultName, reset]);
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
-    const { name } = values
-    onAddPhaseName(name)
+    const { name } = values;
+    onAddPhaseName(name);
 
-    toggleIsOpen(false)
-  }
+    toggleIsOpen(false);
+  };
 
   return (
     <>
@@ -6378,25 +6533,25 @@ const PhaseNameDialog = ({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
+  );
+};
 
-type TaskFormValues = z.infer<typeof taskFormSchema>
+type TaskFormValues = z.infer<typeof taskFormSchema>;
 
 const TaskDialog = ({
   open,
   onOpenChange,
   onAddTask,
 }: {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onAddTask: (values: TaskFormValues) => void
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onAddTask: (values: TaskFormValues) => void;
 }) => {
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
     onChange: onOpenChange,
-  })
+  });
   const {
     register,
     handleSubmit,
@@ -6414,16 +6569,16 @@ const TaskDialog = ({
         value: 1,
       },
     },
-  })
+  });
   const taskDurationValue = useWatch({
     control,
     name: "duration.value",
     defaultValue: 1,
-  })
+  });
   const onSubmit: SubmitHandler<TaskFormValues> = (values) => {
-    onAddTask(values)
-    toggleIsOpen(false)
-  }
+    onAddTask(values);
+    toggleIsOpen(false);
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
@@ -6471,7 +6626,7 @@ const TaskDialog = ({
                       {({ value: selectedValue }) =>
                         formatDurationUnit(
                           Number(taskDurationValue) || 0,
-                          selectedValue as (typeof DURATION_TYPE)[number]
+                          selectedValue as (typeof DURATION_TYPE)[number],
                         ).replace(/^./, (character) => character.toUpperCase())
                       }
                     </ListboxButton>
@@ -6480,9 +6635,9 @@ const TaskDialog = ({
                         <ListboxOption key={format} value={format}>
                           {formatDurationUnit(
                             Number(taskDurationValue) || 0,
-                            format
+                            format,
                           ).replace(/^./, (character) =>
-                            character.toUpperCase()
+                            character.toUpperCase(),
                           )}
                         </ListboxOption>
                       ))}
@@ -6583,23 +6738,23 @@ const TaskDialog = ({
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
 
 const SaveExitDialog = ({
   onOpenChange,
   open,
   onConfirm,
 }: {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onConfirm?: () => void
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onConfirm?: () => void;
 }) => {
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
     onChange: onOpenChange,
-  })
+  });
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
       <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
@@ -6621,51 +6776,51 @@ const SaveExitDialog = ({
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
 
 const TaskSearchDialog = ({
   open,
   onOpenChange,
   phases,
 }: {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  phases: Phase[]
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  phases: Phase[];
 }) => {
   const [isOpen, setIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
     onChange: onOpenChange,
-  })
-  const [query, setQuery] = useState("")
+  });
+  const [query, setQuery] = useState("");
 
   const searchableItems = useMemo(
     () =>
       phases.flatMap((phase, phaseIndex) => {
-        const phaseLabel = `Phase ${phaseIndex + 1}: ${phase.phaseName || "Untitled"}`
-        const rows = Array.isArray(phase.rows) ? phase.rows : []
+        const phaseLabel = `Phase ${phaseIndex + 1}: ${phase.phaseName || "Untitled"}`;
+        const rows = Array.isArray(phase.rows) ? phase.rows : [];
         const tasks = rows.map((row, rowIndex) => ({
           label: `Task ${rowIndex + 1}: ${row.task}`,
-        }))
-        return [{ label: phaseLabel }, ...tasks]
+        }));
+        return [{ label: phaseLabel }, ...tasks];
       }),
-    [phases]
-  )
+    [phases],
+  );
 
   const filteredItems = useMemo(() => {
-    if (!query.trim()) return searchableItems
-    const normalized = query.trim().toLowerCase()
+    if (!query.trim()) return searchableItems;
+    const normalized = query.trim().toLowerCase();
     return searchableItems.filter((item) =>
-      item.label.toLowerCase().includes(normalized)
-    )
-  }, [query, searchableItems])
+      item.label.toLowerCase().includes(normalized),
+    );
+  }, [query, searchableItems]);
 
   useEffect(() => {
     if (!isOpen) {
-      setQuery("")
+      setQuery("");
     }
-  }, [isOpen])
+  }, [isOpen]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -6712,22 +6867,22 @@ const TaskSearchDialog = ({
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
 
 const Dropdown = ({
   onValueChange,
   value,
   placeholder,
 }: {
-  onValueChange?: (value: ExperienceLevel | undefined) => void
-  value?: ExperienceLevel
-  placeholder?: string
+  onValueChange?: (value: ExperienceLevel | undefined) => void;
+  value?: ExperienceLevel;
+  placeholder?: string;
 }) => {
   const [state, setState] = useControllableState<ExperienceLevel | undefined>({
     onChange: onValueChange,
     value,
-  })
+  });
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5">
@@ -6786,23 +6941,23 @@ const Dropdown = ({
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
+  );
+};
 
 const DeletePhaseDialog = ({
   onOpenChange,
   open,
   onDeletePhase,
 }: {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onDeletePhase: () => void
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onDeletePhase: () => void;
 }) => {
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
     onChange: onOpenChange,
-  })
+  });
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
       <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
@@ -6822,8 +6977,8 @@ const DeletePhaseDialog = ({
 
             <Button
               onClick={() => {
-                onDeletePhase()
-                toggleIsOpen(false)
+                onDeletePhase();
+                toggleIsOpen(false);
               }}
             >
               Yes, Delete
@@ -6832,17 +6987,17 @@ const DeletePhaseDialog = ({
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
 
 const MoreDropdown = (props: {
-  openDeletePhaseDialog: () => void
-  openPhaseDialog: () => void
-  onChangeDuration: () => void
-  onInsertBelow: () => void
-  onInsertAbove: () => void
-  onDuplicatePhase: () => void
-  onSwapPhases: (to: number) => void
+  openDeletePhaseDialog: () => void;
+  openPhaseDialog: () => void;
+  onChangeDuration: () => void;
+  onInsertBelow: () => void;
+  onInsertAbove: () => void;
+  onDuplicatePhase: () => void;
+  onSwapPhases: (to: number) => void;
 }) => {
   const {
     openDeletePhaseDialog,
@@ -6852,17 +7007,17 @@ const MoreDropdown = (props: {
     onInsertBelow,
     onDuplicatePhase,
     onSwapPhases: onSwapPhasesProp,
-  } = props
-  const arrayNavigator = useArrayNavigationContext()
-  const selectedIndex = arrayNavigator?.selectedIndex
+  } = props;
+  const arrayNavigator = useArrayNavigationContext();
+  const selectedIndex = arrayNavigator?.selectedIndex;
 
-  const onSwapPhases = useCallbackRef(onSwapPhasesProp)
+  const onSwapPhases = useCallbackRef(onSwapPhasesProp);
 
   useUpdateEffect(() => {
     if (selectedIndex !== undefined) {
-      onSwapPhases(selectedIndex)
+      onSwapPhases(selectedIndex);
     }
-  }, [onSwapPhases, selectedIndex])
+  }, [onSwapPhases, selectedIndex]);
 
   return (
     <DropdownMenu>
@@ -6912,15 +7067,15 @@ const MoreDropdown = (props: {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
+  );
+};
 
 const PlusDropdown = ({
   addPhase,
   addTask,
 }: {
-  addTask: () => void
-  addPhase: () => void
+  addTask: () => void;
+  addPhase: () => void;
 }) => {
   return (
     <DropdownMenu>
@@ -6938,73 +7093,76 @@ const PlusDropdown = ({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
+  );
+};
 
 type PhaseRow = Prettify<
   {
-    id: string
-    role?: string
-    location?: string
-    experience?: string
-    workSchedule?: JobListingWorkSchedule
-    customHours?: number
-    customFrequency?: string
+    id: string;
+    role?: string;
+    location?: string;
+    experience?: string;
+    workSchedule?: JobListingWorkSchedule;
+    customHours?: number;
+    customFrequency?: string;
+    contractLengthMonths?: number;
+    hourlyRateLowUsdCents?: number;
+    hourlyRateHighUsdCents?: number;
   } & TaskFormValues
->
+>;
 
 interface Phase {
-  phaseName?: string
-  phaseType?: JobListingPhaseType
-  recurrenceSchedule?: string
-  recurrenceCount?: number
-  rows?: PhaseRow[]
+  phaseName?: string;
+  phaseType?: JobListingPhaseType;
+  recurrenceSchedule?: string;
+  recurrenceCount?: number;
+  rows?: PhaseRow[];
 }
 
 const getPhaseDurationInDays = (phase?: Phase) => {
-  const rows = phase?.rows ?? []
+  const rows = phase?.rows ?? [];
   const durations = rows
     .map((row) => {
-      const value = Number(row?.duration?.value)
-      const type = row?.duration?.type
+      const value = Number(row?.duration?.value);
+      const type = row?.duration?.type;
 
-      if (!Number.isFinite(value) || value <= 0 || !type) return null
-      return durationToDays(value, type)
+      if (!Number.isFinite(value) || value <= 0 || !type) return null;
+      return durationToDays(value, type);
     })
-    .filter((value): value is number => typeof value === "number")
+    .filter((value): value is number => typeof value === "number");
 
-  return durations.length ? Math.max(...durations) : 0
-}
+  return durations.length ? Math.max(...durations) : 0;
+};
 
 const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
   const priorDays = phases
     .slice(0, phaseIndex)
-    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
-  const startDay = priorDays + 1
-  const duration = getPhaseDurationInDays(phases[phaseIndex])
-  const endDay = duration > 0 ? startDay + duration - 1 : undefined
+    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0);
+  const startDay = priorDays + 1;
+  const duration = getPhaseDurationInDays(phases[phaseIndex]);
+  const endDay = duration > 0 ? startDay + duration - 1 : undefined;
 
-  return { startDay, endDay }
-}
+  return { startDay, endDay };
+};
 
 const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
-  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex)
+  const { startDay, endDay } = getPhaseDayRange(phases, phaseIndex);
 
   if (typeof endDay !== "number" || endDay === startDay) {
-    return `Day ${startDay}`
+    return `Day ${startDay}`;
   }
 
-  return `Day ${startDay} - Day ${endDay}`
-}
+  return `Day ${startDay} - Day ${endDay}`;
+};
 
 const getPhaseSearchTargetId = (phaseIndex: number) =>
-  `project-scope-phase-${phaseIndex}`
+  `project-scope-phase-${phaseIndex}`;
 
 const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
-  `project-scope-phase-${phaseIndex}-task-${rowIndex}`
+  `project-scope-phase-${phaseIndex}-task-${rowIndex}`;
 
 const normalizeSearchText = (value?: string) =>
-  (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
+  (value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 
 const createDefaultPhaseRow = (seed = getId()): PhaseRow => ({
   id: `phase-task-${seed}`,
@@ -7014,18 +7172,18 @@ const createDefaultPhaseRow = (seed = getId()): PhaseRow => ({
   experience: "Junior",
   duration: { value: 10, type: "hours" },
   workSchedule: "full_time",
-})
+});
 
 interface PhaseTableRowProps {
-  row: Row<PhaseRow>
+  row: Row<PhaseRow>;
 }
 
 const PhaseTableRow = ({ row }: PhaseTableRowProps) => {
   const { transform, transition, setNodeRef, isDragging, isOver } = useSortable(
     {
       id: row.original.id,
-    }
-  )
+    },
+  );
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform), //let dnd-kit do its thing
@@ -7033,14 +7191,14 @@ const PhaseTableRow = ({ row }: PhaseTableRowProps) => {
     opacity: isDragging ? 0.8 : 1,
     zIndex: isDragging ? 1 : 0,
     position: "relative",
-  }
+  };
 
   return (
     <TableRow
       className={cn(
         "group/row hover:bg-transparent relative",
         isOver &&
-          "after:content-[''] after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:bg-primary-500"
+          "after:content-[''] after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:bg-primary-500",
       )}
       ref={setNodeRef}
       style={style}
@@ -7051,13 +7209,13 @@ const PhaseTableRow = ({ row }: PhaseTableRowProps) => {
         </Fragment>
       ))}
     </TableRow>
-  )
-}
+  );
+};
 
 const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
   const { attributes, listeners } = useSortable({
     id: rowId,
-  })
+  });
   return (
     <button
       className="focus-visible:outline-none transition duration-300 group-hover/row:opacity-100 opacity-0 text-gray-900/50 hover:text-gray-900"
@@ -7066,10 +7224,10 @@ const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
     >
       <GripVertical2 />
     </button>
-  )
-}
+  );
+};
 
-const columnHelper = createColumnHelper<PhaseRow>()
+const columnHelper = createColumnHelper<PhaseRow>();
 
 const columns = [
   columnHelper.accessor("task", {
@@ -7091,7 +7249,7 @@ const columns = [
       const [value, setValue] = useUncontrolledState({
         defaultValue: getValue(),
         onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      });
 
       return (
         <TableCell className="py-4 px-6">
@@ -7103,7 +7261,7 @@ const columns = [
             triggerClassName="max-w-full"
           />
         </TableCell>
-      )
+      );
     },
     header: "Role",
   }),
@@ -7113,9 +7271,9 @@ const columns = [
       const [value, setValue] = useUncontrolledState({
         defaultValue: getValue(),
         onChange: () => {
-          table.options.meta?.updateData(index, id, value)
+          table.options.meta?.updateData(index, id, value);
         },
-      })
+      });
       return (
         <TableCell className="px-3 py-4">
           <CountriesCombobox
@@ -7124,7 +7282,7 @@ const columns = [
             onValueChange={setValue}
           />
         </TableCell>
-      )
+      );
     },
     header: "Location",
   }),
@@ -7136,19 +7294,19 @@ const columns = [
       >({
         defaultValue: getValue(),
         onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      });
       return (
         <TableCell className="py-4 px-6">
           <Dropdown
             placeholder="Experience"
             value={value}
             onValueChange={(nextValue) => {
-              if (!nextValue) return
-              setValue(nextValue)
+              if (!nextValue) return;
+              setValue(nextValue);
             }}
           />
         </TableCell>
-      )
+      );
     },
     header: "Experience",
   }),
@@ -7167,12 +7325,12 @@ const columns = [
     ),
     header: "Duration",
   }),
-]
+];
 
 interface PhaseTableProps {
-  rows: PhaseRow[]
-  onRowsChange: (rows: PhaseRow[]) => void
-  openDurationDialog: (index: number) => void
+  rows: PhaseRow[];
+  onRowsChange: (rows: PhaseRow[]) => void;
+  openDurationDialog: (index: number) => void;
 }
 
 const ROLES = [
@@ -7206,25 +7364,25 @@ const ROLES = [
   "Design Technologist",
   "Experience Designer",
   "Service Designer",
-]
+];
 
 const useArrayNavigator = <T,>(items: T[], itemIndex: number) => {
-  const [selectedIndex, setSelectedIndex] = useState(itemIndex)
+  const [selectedIndex, setSelectedIndex] = useState(itemIndex);
 
-  const canMoveLeft = itemIndex > 0
-  const canMoveRight = itemIndex < items.length - 1
+  const canMoveLeft = itemIndex > 0;
+  const canMoveRight = itemIndex < items.length - 1;
 
   const moveToLeft = useCallback(() => {
     if (canMoveLeft) {
-      setSelectedIndex((prev) => prev - 1)
+      setSelectedIndex((prev) => prev - 1);
     }
-  }, [canMoveLeft])
+  }, [canMoveLeft]);
 
   const moveToRight = useCallback(() => {
     if (canMoveRight) {
-      setSelectedIndex((prev) => prev + 1)
+      setSelectedIndex((prev) => prev + 1);
     }
-  }, [canMoveRight])
+  }, [canMoveRight]);
 
   return useMemo(
     () => ({
@@ -7234,33 +7392,33 @@ const useArrayNavigator = <T,>(items: T[], itemIndex: number) => {
       canMoveRight,
       selectedIndex,
     }),
-    [moveToRight, moveToLeft, canMoveLeft, canMoveRight, selectedIndex]
-  )
-}
+    [moveToRight, moveToLeft, canMoveLeft, canMoveRight, selectedIndex],
+  );
+};
 
 const [ArrayNavigatorProvider, useArrayNavigationContext] = createStrictContext<
   ReturnType<typeof useArrayNavigator>
 >({
   displayName: "ArrayNavigatorContext",
   errorMessage: `useArrayNavigatorContext returned is 'undefined'. Seems you forgot to wrap the components in "<ArrayNavigator />"`,
-})
+});
 
 const ArrayNavigator = ({
   children,
   value,
   index,
 }: {
-  children?: React.ReactNode
-  value: { phaseName?: string; rows?: PhaseRow[] }[]
-  index: number
+  children?: React.ReactNode;
+  value: { phaseName?: string; rows?: PhaseRow[] }[];
+  index: number;
 }) => {
-  const arrayNavigation = useArrayNavigator(value, index)
+  const arrayNavigation = useArrayNavigator(value, index);
   return (
     <ArrayNavigatorProvider value={arrayNavigation}>
       {children}
     </ArrayNavigatorProvider>
-  )
-}
+  );
+};
 
 const PhaseTable = ({
   rows,
@@ -7270,7 +7428,7 @@ const PhaseTable = ({
   const [data, setData] = useControllableState({
     value: rows,
     onChange: onRowsChange,
-  })
+  });
 
   const table = useReactTable({
     data,
@@ -7288,38 +7446,38 @@ const PhaseTable = ({
               return {
                 ...row,
                 [columnId]: value,
-              }
+              };
             }
-            return row
-          })
-        )
+            return row;
+          }),
+        );
       },
       openDurationDialog,
       roles: ROLES,
     },
-  })
+  });
 
   const dataIds = React.useMemo<UniqueIdentifier[]>(
     () => data.map(({ id }) => id),
-    [data]
-  )
+    [data],
+  );
 
   function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
+    const { active, over } = event;
     if (active && over && active.id !== over.id) {
       setData((data) => {
-        const oldIndex = dataIds.indexOf(active.id)
-        const newIndex = dataIds.indexOf(over.id)
-        return arrayMove(data, oldIndex, newIndex)
-      })
+        const oldIndex = dataIds.indexOf(active.id);
+        const newIndex = dataIds.indexOf(over.id);
+        return arrayMove(data, oldIndex, newIndex);
+      });
     }
   }
 
   const sensors = useSensors(
     useSensor(MouseSensor, {}),
     useSensor(TouchSensor, {}),
-    useSensor(KeyboardSensor, {})
-  )
+    useSensor(KeyboardSensor, {}),
+  );
 
   return (
     <DndContext
@@ -7338,7 +7496,7 @@ const PhaseTable = ({
                     ? null
                     : flexRender(
                         header.column.columnDef.header,
-                        header.getContext()
+                        header.getContext(),
                       )}
                 </TableHead>
               ))}
@@ -7357,34 +7515,34 @@ const PhaseTable = ({
         </TableBody>
       </Table>
     </DndContext>
-  )
-}
+  );
+};
 
 type PhaseNameDialogAction =
   | {
-      type: "TOGGLE"
+      type: "TOGGLE";
       payload?: {
-        open?: boolean
-        addTo?: "start" | "end" | "below"
-        targetPhaseIndex?: number
-      }
+        open?: boolean;
+        addTo?: "start" | "end" | "below";
+        targetPhaseIndex?: number;
+      };
     }
-  | { type: "EDIT"; payload: number }
+  | { type: "EDIT"; payload: number };
 
 type PhaseNameDialogState = {
-  open: boolean
-  editingPhaseIndex: number | null
-  action: "EDIT" | null
-  addTo: "start" | "end" | "below"
-}
+  open: boolean;
+  editingPhaseIndex: number | null;
+  action: "EDIT" | null;
+  addTo: "start" | "end" | "below";
+};
 
 const phaseNameDialogReducer = (
   state: PhaseNameDialogState,
-  action: PhaseNameDialogAction
+  action: PhaseNameDialogAction,
 ): PhaseNameDialogState => {
   switch (action.type) {
     case "TOGGLE":
-      const { payload } = action
+      const { payload } = action;
       return {
         ...state,
         action: null,
@@ -7394,7 +7552,7 @@ const phaseNameDialogReducer = (
             : null,
         open: typeof payload?.open === "boolean" ? payload.open : !state.open,
         addTo: typeof payload?.addTo === "string" ? payload.addTo : "end",
-      }
+      };
     case "EDIT":
       return {
         ...state,
@@ -7402,110 +7560,110 @@ const phaseNameDialogReducer = (
         action: "EDIT",
         open: true,
         editingPhaseIndex: action.payload,
-      }
+      };
 
     default:
-      return state
+      return state;
   }
-}
+};
 
 const defaultPhaseNameDialogState: PhaseNameDialogState = {
   action: null,
   editingPhaseIndex: null,
   open: false,
   addTo: "end",
-}
+};
 
 type TaskDialogState = {
-  open: boolean
-  editingPhaseIndex: number | null
-}
+  open: boolean;
+  editingPhaseIndex: number | null;
+};
 
 interface DurationDialogState extends TaskDialogState {
-  editingPhaseRowIndex: number | null
+  editingPhaseRowIndex: number | null;
 }
 
 type DeletePhaseDialogState = {
-  open: boolean
-  phaseIndex: number | null
-}
+  open: boolean;
+  phaseIndex: number | null;
+};
 type ProjectScopeProps = {
-  setProgress?: (val: number) => void
-}
+  setProgress?: (val: number) => void;
+};
 
 const ProjectScope = ({
   setProgress,
 }: {
-  setProgress?: (val: number) => void
+  setProgress?: (val: number) => void;
 }) => {
-  const { toast } = useToast()
-  const lastUndo = useRef<null | (() => void)>(null)
+  const { toast } = useToast();
+  const lastUndo = useRef<null | (() => void)>(null);
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
-  })
+  });
   const [durationDialogState, setDurationDialogState] =
     useState<DurationDialogState>({
       editingPhaseIndex: null,
       editingPhaseRowIndex: null,
       open: false,
-    })
+    });
   const [phaseDialogState, dispatch] = useReducer(
     phaseNameDialogReducer,
-    defaultPhaseNameDialogState
-  )
-  const [accordionState, setAccordionState] = useState(["item-0"])
+    defaultPhaseNameDialogState,
+  );
+  const [accordionState, setAccordionState] = useState(["item-0"]);
   const {
     projectScopeMethods,
     isTaskSearchDialogOpen,
     setTaskSearchDialogOpen,
-  } = useProjectScopeContext()
-  const { toggleValidation } = useStepContext()
+  } = useProjectScopeContext();
+  const { toggleValidation } = useStepContext();
 
-  const [projectScopeState, setProjectScopeState] = projectScopeMethods
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods;
 
   const [phases, setPhases] = useControllableState<Phase[]>({
     value: projectScopeState,
     onChange: (value) => {
-      setProjectScopeState(value)
-      expandAll()
+      setProjectScopeState(value);
+      expandAll();
     },
-  })
-  const success = projectScopeSchema.safeParse(phases)
+  });
+  const success = projectScopeSchema.safeParse(phases);
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(success)
-  }, [success])
+    toggleValidation(success);
+  }, [success]);
 
   const [deletePhaseDialogState, setDeletePhaseDialogState] =
     useState<DeletePhaseDialogState>({
       phaseIndex: null,
       open: false,
-    })
+    });
 
   const expandAll = useCallback(() => {
-    setAccordionState(phases.map((_, index) => `item-${index}`))
-  }, [phases])
+    setAccordionState(phases.map((_, index) => `item-${index}`));
+  }, [phases]);
 
   const collapseAll = useCallback(() => {
-    setAccordionState([])
-  }, [])
+    setAccordionState([]);
+  }, []);
 
   const handleOpenTaskDialog = useCallback(
     (phaseIndex: number) => {
-      const { phaseName } = phases[phaseIndex]
+      const { phaseName } = phases[phaseIndex];
 
       if (!phaseName) {
-        dispatch({ type: "EDIT", payload: phaseIndex })
+        dispatch({ type: "EDIT", payload: phaseIndex });
       } else {
         setTaskDialogState({
           open: true,
           editingPhaseIndex: phaseIndex,
-        })
+        });
       }
     },
-    [phases]
-  )
+    [phases],
+  );
 
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
@@ -7515,21 +7673,21 @@ const ProjectScope = ({
             return {
               ...phase,
               rows,
-            }
+            };
           }
-          return phase
-        })
-      )
+          return phase;
+        }),
+      );
     },
-    [setPhases]
-  )
+    [setPhases],
+  );
 
   const handleSwapPhases = useCallback(
     (from: number, to: number) => {
-      setPhases((prev) => arrayMove(prev, from, to))
+      setPhases((prev) => arrayMove(prev, from, to));
     },
-    [setPhases]
-  )
+    [setPhases],
+  );
 
   // Helper to show success toast with Undo
   const pushSuccess = useCallback(
@@ -7546,29 +7704,29 @@ const ProjectScope = ({
             Undo
           </ToastAction>
         ),
-      })
+      });
     },
-    [toast]
-  )
+    [toast],
+  );
 
   const onAddPhaseName = useCallback(
     (phaseName: string) => {
-      const { action, editingPhaseIndex, addTo } = phaseDialogState
+      const { action, editingPhaseIndex, addTo } = phaseDialogState;
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
         setPhases((prev) => {
-          const oldName = prev[editingPhaseIndex]?.phaseName ?? ""
+          const oldName = prev[editingPhaseIndex]?.phaseName ?? "";
           const nextState = prev.map((item, index) =>
-            index === editingPhaseIndex ? { ...item, phaseName } : item
-          )
+            index === editingPhaseIndex ? { ...item, phaseName } : item,
+          );
 
           // prepare undo: restore old name
           lastUndo.current = () =>
             setPhases((s) =>
               s.map((p, i) =>
-                i === editingPhaseIndex ? { ...p, phaseName: oldName } : p
-              )
-            )
+                i === editingPhaseIndex ? { ...p, phaseName: oldName } : p,
+              ),
+            );
 
           // Toast
           toast({
@@ -7579,50 +7737,50 @@ const ProjectScope = ({
                 altText="Undo"
                 className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                 onClick={() => {
-                  lastUndo.current?.()
-                  lastUndo.current = null
+                  lastUndo.current?.();
+                  lastUndo.current = null;
                 }}
               >
                 Undo
               </ToastAction>
             ),
-          })
+          });
 
-          return nextState
-        })
+          return nextState;
+        });
 
-        return
+        return;
       }
 
       // Do the add
-      let insertedPhaseIndex = 0
+      let insertedPhaseIndex = 0;
       setPhases((prev) => {
-        const next = [...prev]
+        const next = [...prev];
         const hasTargetPhase =
           typeof editingPhaseIndex === "number" &&
           editingPhaseIndex >= 0 &&
-          editingPhaseIndex < next.length
+          editingPhaseIndex < next.length;
 
         insertedPhaseIndex =
           addTo === "start" && hasTargetPhase
             ? editingPhaseIndex
             : addTo === "below" && hasTargetPhase
               ? editingPhaseIndex + 1
-              : next.length
+              : next.length;
 
         next.splice(insertedPhaseIndex, 0, {
           phaseName,
           phaseType: "setup",
           rows: [createDefaultPhaseRow()],
-        })
-        return next
-      })
+        });
+        return next;
+      });
 
       // Prepare Undo for this action
       lastUndo.current = () =>
         setPhases((prev) =>
-          prev.filter((_, index) => index !== insertedPhaseIndex)
-        )
+          prev.filter((_, index) => index !== insertedPhaseIndex),
+        );
 
       // Toast
       const phaseAddedTitle =
@@ -7630,7 +7788,7 @@ const ProjectScope = ({
           ? "Phase Added Above"
           : addTo === "below"
             ? "Phase Added Below"
-            : "Phase Added"
+            : "Phase Added";
 
       toast({
         variant: "success",
@@ -7640,88 +7798,88 @@ const ProjectScope = ({
             altText="Undo"
             className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
             onClick={() => {
-              lastUndo.current?.()
-              lastUndo.current = null // clear after use
+              lastUndo.current?.();
+              lastUndo.current = null; // clear after use
             }}
           >
             Undo
           </ToastAction>
         ),
-      })
+      });
     },
-    [phaseDialogState, setPhases, toast]
-  )
+    [phaseDialogState, setPhases, toast],
+  );
 
   const onAddTask = useCallback(
     (values: TaskFormValues) => {
-      const { editingPhaseIndex } = taskDialogState
+      const { editingPhaseIndex } = taskDialogState;
 
       if (typeof editingPhaseIndex === "number") {
         setPhases((prev) => {
           const newPhases = prev.map((phase, index) => {
             if (index === editingPhaseIndex) {
-              const newRow = { ...values, id: `${getId()}` }
-              const { rows } = phase
+              const newRow = { ...values, id: `${getId()}` };
+              const { rows } = phase;
 
               return {
                 ...phase,
                 rows: rows ? [...rows, newRow] : [newRow],
-              }
+              };
             }
-            return phase
-          })
+            return phase;
+          });
 
-          return newPhases
-        })
+          return newPhases;
+        });
       }
     },
-    [taskDialogState, setPhases]
-  )
+    [taskDialogState, setPhases],
+  );
 
   const onDurationFormValuesChange = useCallback(
     (durationFormValues: DurationFormValues) => {
       const { editingPhaseIndex: pIdx, editingPhaseRowIndex: rIdx } =
-        durationDialogState
-      if (typeof pIdx !== "number" || typeof rIdx !== "number") return
+        durationDialogState;
+      if (typeof pIdx !== "number" || typeof rIdx !== "number") return;
 
       // we'll detect if anything actually changed, capture a snapshot for Undo,
       // then show the toast.
-      let didChange = false
-      let oldRowSnapshot: any = null
+      let didChange = false;
+      let oldRowSnapshot: any = null;
 
       setPhases((prev) => {
-        const phase = prev[pIdx]
-        const rows = phase?.rows ?? []
-        const oldRow = rows[rIdx] ?? {}
+        const phase = prev[pIdx];
+        const rows = phase?.rows ?? [];
+        const oldRow = rows[rIdx] ?? {};
 
         // shallow-compare only keys present in durationFormValues
         didChange = Object.keys(durationFormValues).some(
-          (k) => (oldRow as any)?.[k] !== (durationFormValues as any)[k]
-        )
-        if (!didChange) return prev
+          (k) => (oldRow as any)?.[k] !== (durationFormValues as any)[k],
+        );
+        if (!didChange) return prev;
 
-        oldRowSnapshot = oldRow
+        oldRowSnapshot = oldRow;
 
         const newRows = rows.map((row, i) =>
-          i === rIdx ? { ...row, ...durationFormValues } : row
-        )
+          i === rIdx ? { ...row, ...durationFormValues } : row,
+        );
         const newPhases = prev.map((ph, i) =>
-          i === pIdx ? { ...ph, rows: newRows } : ph
-        )
+          i === pIdx ? { ...ph, rows: newRows } : ph,
+        );
 
         // prepare Undo: restore the old row snapshot
         lastUndo.current = () =>
           setPhases((s) => {
-            const sPhase = s[pIdx]
-            const sRows = (sPhase?.rows ?? []).slice()
-            sRows[rIdx] = oldRowSnapshot
-            const out = s.slice()
-            out[pIdx] = { ...sPhase, rows: sRows }
-            return out
-          })
+            const sPhase = s[pIdx];
+            const sRows = (sPhase?.rows ?? []).slice();
+            sRows[rIdx] = oldRowSnapshot;
+            const out = s.slice();
+            out[pIdx] = { ...sPhase, rows: sRows };
+            return out;
+          });
 
-        return newPhases
-      })
+        return newPhases;
+      });
 
       if (didChange) {
         toast({
@@ -7732,110 +7890,110 @@ const ProjectScope = ({
               altText="Undo"
               className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
               onClick={() => {
-                lastUndo.current?.()
-                lastUndo.current = null
+                lastUndo.current?.();
+                lastUndo.current = null;
               }}
             >
               Undo
             </ToastAction>
           ),
-        })
+        });
       }
     },
-    [durationDialogState, setPhases, toast]
-  )
+    [durationDialogState, setPhases, toast],
+  );
 
   const durationFormValues = useMemo(() => {
-    const { editingPhaseIndex, editingPhaseRowIndex } = durationDialogState
+    const { editingPhaseIndex, editingPhaseRowIndex } = durationDialogState;
     if (
       typeof editingPhaseIndex === "number" &&
       typeof editingPhaseRowIndex === "number"
     ) {
-      const { rows } = phases[editingPhaseIndex]
-      const { duration } = (rows ?? [])[editingPhaseRowIndex]
+      const { rows } = phases[editingPhaseIndex];
+      const { duration } = (rows ?? [])[editingPhaseRowIndex];
 
       return {
         duration: { ...duration },
-      }
+      };
     }
-  }, [durationDialogState, phases])
+  }, [durationDialogState, phases]);
 
   const onDeletePhase = useCallback(
     (id: string) => {
       setPhases((prev) => {
         const idx = prev.findIndex(
-          (p, i) => String(i) === id || (p as any).id === id
-        )
-        if (idx < 0) return prev
-        const removed = prev[idx]
+          (p, i) => String(i) === id || (p as any).id === id,
+        );
+        if (idx < 0) return prev;
+        const removed = prev[idx];
 
         // prepare undo: reinsert at same index
         lastUndo.current = () =>
           setPhases((s) => {
-            const next = [...s]
-            next.splice(idx, 0, removed)
-            return next
-          })
+            const next = [...s];
+            next.splice(idx, 0, removed);
+            return next;
+          });
 
         // do delete
-        const next = [...prev]
-        next.splice(idx, 0) // no-op to satisfy TS if needed
-        return prev.filter((_, i) => i !== idx)
-      })
+        const next = [...prev];
+        next.splice(idx, 0); // no-op to satisfy TS if needed
+        return prev.filter((_, i) => i !== idx);
+      });
 
-      pushSuccess("Phase Deleted", lastUndo.current || undefined)
-      lastUndo.current = null
+      pushSuccess("Phase Deleted", lastUndo.current || undefined);
+      lastUndo.current = null;
     },
-    [pushSuccess, setPhases]
-  )
+    [pushSuccess, setPhases],
+  );
 
   const handleOpenDeletePhaseDialog = useCallback((phaseIndex: number) => {
     setDeletePhaseDialogState({
       phaseIndex,
       open: true,
-    })
-  }, [])
+    });
+  }, []);
 
   const handleOpenPhaseDurationDialog = useCallback(
     (phaseIndex: number) => {
-      const rows = phases[phaseIndex]?.rows ?? []
+      const rows = phases[phaseIndex]?.rows ?? [];
       if (!rows.length) {
         toast({
           title: "Please add at least 1 task before changing duration",
           variant: "destructive",
-        })
-        return
+        });
+        return;
       }
       setDurationDialogState({
         editingPhaseIndex: phaseIndex,
         editingPhaseRowIndex: 0,
         open: true,
-      })
+      });
     },
-    [phases, toast]
-  )
+    [phases, toast],
+  );
 
   const onDuplicatePhase = useCallback(
     (idx: number) => {
       setPhases((prev) => {
-        const source = prev[idx]
-        if (!source) return prev
-        const dup = { ...source } // add new id if you have ids
-        const next = [...prev]
-        next.splice(idx + 1, 0, dup)
+        const source = prev[idx];
+        if (!source) return prev;
+        const dup = { ...source }; // add new id if you have ids
+        const next = [...prev];
+        next.splice(idx + 1, 0, dup);
 
         // undo: remove the new duplicate at idx+1
         lastUndo.current = () =>
-          setPhases((s) => s.filter((_, i) => i !== idx + 1))
+          setPhases((s) => s.filter((_, i) => i !== idx + 1));
 
-        return next
-      })
+        return next;
+      });
 
-      pushSuccess("Phase Duplicated", lastUndo.current || undefined)
-      lastUndo.current = null
+      pushSuccess("Phase Duplicated", lastUndo.current || undefined);
+      lastUndo.current = null;
     },
-    [pushSuccess, setPhases]
-  )
+    [pushSuccess, setPhases],
+  );
 
   const fieldsValidationArr = [
     pickFromProjectScopeSchema({ task: true }).safeParse(phases),
@@ -7843,18 +8001,18 @@ const ProjectScope = ({
     pickFromProjectScopeSchema({ role: true }).safeParse(phases),
     pickFromProjectScopeSchema({ location: true }).safeParse(phases),
     pickFromProjectScopeSchema({ duration: true }).safeParse(phases),
-  ]
+  ];
 
   // Each valid field contributes 34% to the total progress
   const progressValue = Math.round(
     (fieldsValidationArr.filter((item) => item).length /
       fieldsValidationArr.length) *
-      34
-  )
+      34,
+  );
   // Report progress to parent
   useEffect(() => {
-    setProgress?.(progressValue)
-  }, [progressValue, setProgress])
+    setProgress?.(progressValue);
+  }, [progressValue, setProgress]);
 
   //helper function to convert numbers to words
   const numberToWord = (num: number) => {
@@ -7869,23 +8027,23 @@ const ProjectScope = ({
       "Eight",
       "Nine",
       "Ten",
-    ]
-    return words[num] || num + 1 // fallback for numbers > 10
-  }
+    ];
+    return words[num] || num + 1; // fallback for numbers > 10
+  };
 
   // --- DurationFormValues type and DurationDialog component (hoisted) ---
   type DurationFormValues = {
     duration: {
-      value: number
-      type: "days" | "weeks" | "hours"
-    }
-  }
+      value: number;
+      type: "days" | "weeks" | "hours";
+    };
+  };
 
   interface DurationDialogProps {
-    open: boolean
-    durationFormValues?: DurationFormValues
-    onDurationFormValuesChange: (values: DurationFormValues) => void
-    onOpenChange: (open: boolean) => void
+    open: boolean;
+    durationFormValues?: DurationFormValues;
+    onDurationFormValuesChange: (values: DurationFormValues) => void;
+    onOpenChange: (open: boolean) => void;
   }
 
   const DurationDialog = ({
@@ -7899,23 +8057,23 @@ const ProjectScope = ({
         duration: { value: 1, type: "days" },
       },
       values: durationFormValues,
-    })
+    });
     const selectedDurationValue = useWatch({
       control,
       name: "duration.value",
       defaultValue: 1,
-    })
+    });
 
     React.useEffect(() => {
       if (open && durationFormValues) {
-        reset(durationFormValues)
+        reset(durationFormValues);
       }
-    }, [open, durationFormValues, reset])
+    }, [open, durationFormValues, reset]);
 
     const onSubmit = (data: DurationFormValues) => {
-      onDurationFormValuesChange(data)
-      onOpenChange(false)
-    }
+      onDurationFormValuesChange(data);
+      onOpenChange(false);
+    };
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -7956,19 +8114,19 @@ const ProjectScope = ({
                       <SelectItem value="days">
                         {formatDurationUnit(
                           Number(selectedDurationValue) || 0,
-                          "days"
+                          "days",
                         ).replace(/^./, (character) => character.toUpperCase())}
                       </SelectItem>
                       <SelectItem value="weeks">
                         {formatDurationUnit(
                           Number(selectedDurationValue) || 0,
-                          "weeks"
+                          "weeks",
                         ).replace(/^./, (character) => character.toUpperCase())}
                       </SelectItem>
                       <SelectItem value="hours">
                         {formatDurationUnit(
                           Number(selectedDurationValue) || 0,
-                          "hours"
+                          "hours",
                         ).replace(/^./, (character) => character.toUpperCase())}
                       </SelectItem>
                     </SelectContent>
@@ -7987,13 +8145,13 @@ const ProjectScope = ({
           </form>
         </DialogContent>
       </Dialog>
-    )
-  }
+    );
+  };
   const currentPhaseName =
     phaseDialogState.action === "EDIT" &&
     typeof phaseDialogState.editingPhaseIndex === "number"
       ? (phases[phaseDialogState.editingPhaseIndex]?.phaseName ?? "")
-      : ""
+      : "";
 
   return (
     <>
@@ -8378,7 +8536,7 @@ const ProjectScope = ({
               }
               onDeletePhase={() => {
                 if (deletePhaseDialogState.phaseIndex !== null) {
-                  onDeletePhase(String(deletePhaseDialogState.phaseIndex))
+                  onDeletePhase(String(deletePhaseDialogState.phaseIndex));
                 }
               }}
             />
@@ -8395,8 +8553,8 @@ const ProjectScope = ({
         </div>
       </ScrollArea>
     </>
-  )
-}
+  );
+};
 
 const durationOptions = [
   {
@@ -8424,9 +8582,30 @@ const durationOptions = [
     unit: "",
     label: "",
   },
-]
+];
 
-const projectDurationUnits = ["days", "weeks", "months", "quarters", "years"]
+const projectDurationUnits = ["days", "weeks", "months", "quarters", "years"];
+
+const getDurationSelectionFromMonths = (months?: number) => {
+  if (typeof months !== "number" || !Number.isFinite(months)) {
+    return "3-months-0";
+  }
+
+  const monthOptionIndex = durationOptions.findIndex(
+    (option) => option.unit === "months" && Number(option.value) === months,
+  );
+
+  if (monthOptionIndex >= 0) {
+    const option = durationOptions[monthOptionIndex];
+    return `${option.value}-${option.unit}-${monthOptionIndex}`;
+  }
+
+  const otherOptionIndex = durationOptions.findIndex(
+    (option) => option.value === "Other",
+  );
+
+  return otherOptionIndex >= 0 ? `Other--${otherOptionIndex}` : "3-months-0";
+};
 
 const serviceToolTags = [
   "Figma",
@@ -8444,184 +8623,219 @@ const serviceToolTags = [
   "Docker",
   "Meta Pixel",
   "Playwright",
-]
+];
 
 const DescribeProjectStep = ({
   setProgress,
   workType,
   jobListingId,
 }: ProgressProps & {
-  workType?: WorkTypeChoice
-  jobListingId?: string | null
+  workType?: WorkTypeChoice;
+  jobListingId?: string | null;
 }) => {
-  const { toggleValidation } = useStepContext()
-  const { toast } = useToast()
-  const { setDetails: setJobListingDraftDetails } = useJobListingDraftContext()
-  const isService = workType === "service"
-  const [description, setDescription] = useState("")
-  const [deliverables, setDeliverables] = useState("")
-  const [successCriteria, setSuccessCriteria] = useState("")
-  const [budget, setBudget] = useState("0.00")
-  const [budgetUnit, setBudgetUnit] = useState("per week")
-  const [duration, setDuration] = useState("3-months-0")
-  const [customDuration, setCustomDuration] = useState("")
-  const [customDurationUnit, setCustomDurationUnit] = useState("months")
-  const [scopeFile, setScopeFile] = useState<File | null>(null)
-  const [scopeUploadProgress, setScopeUploadProgress] = useState(0)
+  const { toggleValidation } = useStepContext();
+  const { toast } = useToast();
+  const { details, setDetails: setJobListingDraftDetails } =
+    useJobListingDraftContext();
+  const isService = workType === "service";
+  const effectiveJobListingId = useMemo(() => {
+    if (jobListingId) return jobListingId;
+    if (typeof window === "undefined") return null;
+
+    const urlJobListingId = new URLSearchParams(window.location.search).get(
+      "jobListingId",
+    );
+    return urlJobListingId && UUID_PATTERN.test(urlJobListingId)
+      ? urlJobListingId
+      : null;
+  }, [jobListingId]);
+  const [description, setDescription] = useState(details.description ?? "");
+  const [deliverables, setDeliverables] = useState(details.deliverables ?? "");
+  const [successCriteria, setSuccessCriteria] = useState(
+    details.successCriteria ?? "",
+  );
+  const [budget, setBudget] = useState(
+    typeof details.budgetAmount === "number"
+      ? String(details.budgetAmount)
+      : "0.00",
+  );
+  const [budgetUnit, setBudgetUnit] = useState(
+    details.budgetFrequency === "per_month" ? "per month" : "per week",
+  );
+  const [duration, setDuration] = useState(
+    getDurationSelectionFromMonths(details.durationMonths),
+  );
+  const [customDuration, setCustomDuration] = useState(
+    typeof details.durationMonths === "number" &&
+      getDurationSelectionFromMonths(details.durationMonths).startsWith(
+        "Other--",
+      )
+      ? String(details.durationMonths)
+      : "",
+  );
+  const [customDurationUnit, setCustomDurationUnit] = useState("months");
+  const [scopeFile, setScopeFile] = useState<File | null>(null);
+  const [scopeUploadProgress, setScopeUploadProgress] = useState(0);
   const [scopeUploadStatus, setScopeUploadStatus] = useState<
     "idle" | "uploading" | "complete" | "error"
-  >("idle")
-  const [scopeUploadError, setScopeUploadError] = useState("")
-  const [isScopeDropActive, setIsScopeDropActive] = useState(false)
-  const scopeUploadTimerRef = useRef<number | null>(null)
-  const contentRef = useRef<HTMLDivElement | null>(null)
+  >("idle");
+  const [scopeUploadError, setScopeUploadError] = useState("");
+  const [isScopeDropActive, setIsScopeDropActive] = useState(false);
+  const scopeUploadTimerRef = useRef<number | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const lastHydratedDraftDetailsSignatureRef = useRef("");
+  const fetchedPersistedDescribeListingIdRef = useRef<string | null>(null);
+  const skipNextDraftDetailsWriteRef = useRef(false);
+  const previousIsServiceRef = useRef(isService);
+  const hasUserEditedDetailsRef = useRef(false);
   const clearScopeUploadTimer = useCallback(() => {
     if (scopeUploadTimerRef.current) {
-      window.clearInterval(scopeUploadTimerRef.current)
-      scopeUploadTimerRef.current = null
+      window.clearInterval(scopeUploadTimerRef.current);
+      scopeUploadTimerRef.current = null;
     }
-  }, [])
+  }, []);
   const getScopeFileContentType = useCallback((file: File) => {
-    const fileName = file.name.toLowerCase()
+    const fileName = file.name.toLowerCase();
     if (file.type === "application/pdf" || fileName.endsWith(".pdf")) {
-      return "application/pdf"
+      return "application/pdf";
     }
     if (fileName.endsWith(".docx")) {
-      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     }
-    return ""
-  }, [])
+    return "";
+  }, []);
   const resetScopeFile = useCallback(() => {
-    clearScopeUploadTimer()
-    setScopeFile(null)
-    setScopeUploadProgress(0)
-    setScopeUploadStatus("idle")
-    setScopeUploadError("")
+    clearScopeUploadTimer();
+    setScopeFile(null);
+    setScopeUploadProgress(0);
+    setScopeUploadStatus("idle");
+    setScopeUploadError("");
     setJobListingDraftDetails((currentDetails) => ({
       ...currentDetails,
       briefR2Key: undefined,
       briefFilename: undefined,
       briefSizeBytes: undefined,
-    }))
-  }, [clearScopeUploadTimer, setJobListingDraftDetails])
+    }));
+  }, [clearScopeUploadTimer, setJobListingDraftDetails]);
   const startLocalScopeUploadProgress = useCallback(() => {
-    clearScopeUploadTimer()
-    setScopeUploadProgress(8)
+    clearScopeUploadTimer();
+    setScopeUploadProgress(8);
     scopeUploadTimerRef.current = window.setInterval(() => {
       setScopeUploadProgress((currentProgress) =>
         currentProgress >= 92
           ? currentProgress
-          : Math.min(92, currentProgress + 14)
-      )
-    }, 180)
-  }, [clearScopeUploadTimer])
+          : Math.min(92, currentProgress + 14),
+      );
+    }, 180);
+  }, [clearScopeUploadTimer]);
   const completeScopeUpload = useCallback(
     (file: File, briefR2Key?: string) => {
-      clearScopeUploadTimer()
-      setScopeUploadProgress(100)
-      setScopeUploadStatus("complete")
-      setScopeUploadError("")
+      clearScopeUploadTimer();
+      setScopeUploadProgress(100);
+      setScopeUploadStatus("complete");
+      setScopeUploadError("");
       setJobListingDraftDetails((currentDetails) => ({
         ...currentDetails,
         briefR2Key,
         briefFilename: file.name,
         briefSizeBytes: file.size,
-      }))
+      }));
     },
-    [clearScopeUploadTimer, setJobListingDraftDetails]
-  )
+    [clearScopeUploadTimer, setJobListingDraftDetails],
+  );
   const uploadScopeFile = useCallback(
     async (file: File, contentType: string) => {
-      setScopeFile(file)
-      setScopeUploadStatus("uploading")
-      setScopeUploadError("")
-      startLocalScopeUploadProgress()
+      setScopeFile(file);
+      setScopeUploadStatus("uploading");
+      setScopeUploadError("");
+      startLocalScopeUploadProgress();
 
-      if (!jobListingId) {
-        completeScopeUpload(file)
-        return
+      if (!effectiveJobListingId) {
+        throw new Error(
+          "Job listing draft is still being prepared. Please try the upload again.",
+        );
       }
 
       try {
         const presignResponse = await JobListingAPI.PresignBriefUpload(
-          jobListingId,
+          effectiveJobListingId,
           {
             filename: file.name,
             contentType,
             sizeBytes: file.size,
-          }
-        )
-        const { presignedUrl, key } = presignResponse?.data ?? {}
+          },
+        );
+        const { presignedUrl, key } = presignResponse?.data ?? {};
 
         if (!presignedUrl || !key) {
-          throw new Error("Brief upload URL was not returned.")
+          throw new Error("Brief upload URL was not returned.");
         }
 
         const uploadResponse = await fetch(presignedUrl, {
           method: "PUT",
           headers: { "Content-Type": contentType },
           body: file,
-        })
+        });
 
         if (!uploadResponse.ok) {
-          throw new Error("Brief upload failed.")
+          throw new Error("Brief upload failed.");
         }
 
-        await JobListingAPI.SaveBriefMetadata(jobListingId, {
+        await JobListingAPI.SaveBriefMetadata(effectiveJobListingId, {
           briefR2Key: key,
           briefFilename: file.name,
           briefSizeBytes: file.size,
-        })
+        });
 
-        completeScopeUpload(file, key)
+        completeScopeUpload(file, key);
       } catch (error) {
-        clearScopeUploadTimer()
-        setScopeUploadStatus("error")
-        setScopeUploadProgress(0)
+        clearScopeUploadTimer();
+        setScopeUploadStatus("error");
+        setScopeUploadProgress(0);
         setScopeUploadError(
           error instanceof Error
             ? error.message
-            : "Brief upload failed. Please try again."
-        )
+            : "Brief upload failed. Please try again.",
+        );
         toast({
           title: "Brief upload failed. Please try again.",
           variant: "destructive",
-        })
+        });
       }
     },
     [
       clearScopeUploadTimer,
       completeScopeUpload,
-      jobListingId,
+      effectiveJobListingId,
       startLocalScopeUploadProgress,
       toast,
-    ]
-  )
+    ],
+  );
   const acceptScopeFile = useCallback(
     (file?: File | null) => {
-      if (!file) return
-      const contentType = getScopeFileContentType(file)
+      if (!file) return;
+      const contentType = getScopeFileContentType(file);
 
       if (!contentType) {
         toast({
           title: "Please upload a PDF or DOCX file.",
           variant: "destructive",
-        })
-        return
+        });
+        return;
       }
 
       if (file.size > 26_214_400) {
         toast({
           title: "Please upload a file smaller than 25 MB.",
           variant: "destructive",
-        })
-        return
+        });
+        return;
       }
 
-      void uploadScopeFile(file, contentType)
+      void uploadScopeFile(file, contentType);
     },
-    [getScopeFileContentType, toast, uploadScopeFile]
-  )
+    [getScopeFileContentType, toast, uploadScopeFile],
+  );
   const tipItems = isService
     ? [
         "What kind of work should be done regularly",
@@ -8636,35 +8850,283 @@ const DescribeProjectStep = ({
         "How it should be done",
         "What the end result should look like",
         "Any tools or skills that are important",
-      ]
+      ];
   const selectedDurationOption = durationOptions.find(
-    (option, index) => `${option.value}-${option.unit}-${index}` === duration
-  )
-  const isCustomDurationSelected = selectedDurationOption?.value === "Other"
-  const customDurationAmount = Number(customDuration)
+    (option, index) => `${option.value}-${option.unit}-${index}` === duration,
+  );
+  const isCustomDurationSelected = selectedDurationOption?.value === "Other";
+  const customDurationAmount = Number(customDuration);
   const hasValidCustomDuration =
     !isCustomDurationSelected ||
-    (Number.isFinite(customDurationAmount) && customDurationAmount > 0)
+    (Number.isFinite(customDurationAmount) && customDurationAmount > 0);
   const isValid =
     description.trim().length > 0 &&
     deliverables.trim().length > 0 &&
     (isService || successCriteria.trim().length > 0) &&
     Number(budget.replace(/,/g, "")) >= 0 &&
-    (isService || hasValidCustomDuration)
-  const budgetAmount = Number(budget.replace(/,/g, "")) || 0
+    (isService || hasValidCustomDuration);
+  const budgetAmount = Number(budget.replace(/,/g, "")) || 0;
   const budgetFrequency =
-    budgetUnit === "per month" ? ("per_month" as const) : ("per_week" as const)
+    budgetUnit === "per month" ? ("per_month" as const) : ("per_week" as const);
   const durationMonths =
     selectedDurationOption?.unit === "months"
       ? Number(selectedDurationOption.value)
       : isCustomDurationSelected && customDurationUnit === "months"
         ? customDurationAmount || undefined
-        : undefined
-  useIsomorphicLayoutEffect(() => {
-    toggleValidation(isValid)
-  }, [isValid])
+        : undefined;
+  const getDraftDurationMonths = useCallback(
+    (
+      nextDuration = duration,
+      nextCustomDuration = customDuration,
+      nextCustomDurationUnit = customDurationUnit,
+    ) => {
+      const nextSelectedDurationOption = durationOptions.find(
+        (option, index) =>
+          `${option.value}-${option.unit}-${index}` === nextDuration,
+      );
+      const nextCustomDurationAmount = Number(nextCustomDuration);
+
+      if (nextSelectedDurationOption?.unit === "months") {
+        return Number(nextSelectedDurationOption.value);
+      }
+
+      if (
+        nextSelectedDurationOption?.value === "Other" &&
+        nextCustomDurationUnit === "months"
+      ) {
+        return nextCustomDurationAmount || undefined;
+      }
+
+      return undefined;
+    },
+    [customDuration, customDurationUnit, duration],
+  );
+  const updateDraftDetails = useCallback(
+    (nextDetails: Partial<JobListingDraftDetails>) => {
+      hasUserEditedDetailsRef.current = true;
+      setJobListingDraftDetails((currentDetails) => ({
+        ...currentDetails,
+        ...nextDetails,
+      }));
+    },
+    [setJobListingDraftDetails],
+  );
+  useEffect(() => {
+    if (hasUserEditedDetailsRef.current) return;
+
+    const hasHydratableDetails =
+      Boolean(details.description) ||
+      Boolean(details.deliverables) ||
+      Boolean(details.successCriteria) ||
+      typeof details.budgetAmount === "number" ||
+      typeof details.durationMonths === "number" ||
+      Boolean(details.briefFilename);
+
+    if (!hasHydratableDetails) return;
+    const signature = JSON.stringify({
+      jobListingId: details.jobListingId ?? effectiveJobListingId,
+      description: details.description,
+      deliverables: details.deliverables,
+      successCriteria: details.successCriteria,
+      budgetAmount: details.budgetAmount,
+      budgetFrequency: details.budgetFrequency,
+      durationMonths: details.durationMonths,
+      briefFilename: details.briefFilename,
+    });
+    if (signature === lastHydratedDraftDetailsSignatureRef.current) return;
+
+    lastHydratedDraftDetailsSignatureRef.current = signature;
+    skipNextDraftDetailsWriteRef.current = true;
+    setDescription(details.description ?? "");
+    setDeliverables(details.deliverables ?? "");
+    setSuccessCriteria(details.successCriteria ?? "");
+    setBudget(
+      typeof details.budgetAmount === "number"
+        ? String(details.budgetAmount)
+        : "0.00",
+    );
+    setBudgetUnit(
+      details.budgetFrequency === "per_month" ? "per month" : "per week",
+    );
+
+    const hydratedDuration = getDurationSelectionFromMonths(
+      details.durationMonths,
+    );
+    setDuration(hydratedDuration);
+    if (hydratedDuration.startsWith("Other--")) {
+      setCustomDuration(
+        typeof details.durationMonths === "number"
+          ? String(details.durationMonths)
+          : "",
+      );
+      setCustomDurationUnit("months");
+    } else {
+      setCustomDuration("");
+    }
+
+    if (details.briefFilename) {
+      setScopeFile(new File([], details.briefFilename));
+      setScopeUploadProgress(100);
+      setScopeUploadStatus("complete");
+      setScopeUploadError("");
+    }
+  }, [
+    details.briefFilename,
+    details.budgetAmount,
+    details.budgetFrequency,
+    details.deliverables,
+    details.description,
+    details.durationMonths,
+    details.jobListingId,
+    details.successCriteria,
+    effectiveJobListingId,
+  ]);
 
   useEffect(() => {
+    if (
+      !effectiveJobListingId ||
+      fetchedPersistedDescribeListingIdRef.current === effectiveJobListingId
+    ) {
+      return;
+    }
+    if (hasUserEditedDetailsRef.current) {
+      return;
+    }
+
+    fetchedPersistedDescribeListingIdRef.current = effectiveJobListingId;
+    let cancelled = false;
+
+    const loadPersistedDescribeDetails = async () => {
+      try {
+        const response = await JobListingAPI.Get(effectiveJobListingId);
+        if (cancelled) return;
+
+        const listing = getResponsePayload(response);
+        const nextDescription =
+          typeof listing?.description === "string"
+            ? listing.description
+            : undefined;
+        const nextDeliverables =
+          typeof listing?.deliverables === "string"
+            ? listing.deliverables
+            : undefined;
+        const nextSuccessCriteria =
+          typeof listing?.successCriteria === "string"
+            ? listing.successCriteria
+            : undefined;
+        const nextBudgetAmount =
+          toFiniteNumber(listing?.budgetAmount) ??
+          toUsdAmountFromCents(listing?.budgetAmountUsdCents);
+        const nextDurationMonths = toFiniteNumber(listing?.durationMonths);
+        const nextBriefFilename =
+          typeof listing?.briefFilename === "string"
+            ? listing.briefFilename
+            : undefined;
+
+        const hasPersistedDetails =
+          Boolean(nextDescription) ||
+          Boolean(nextDeliverables) ||
+          Boolean(nextSuccessCriteria) ||
+          typeof nextBudgetAmount === "number" ||
+          typeof nextDurationMonths === "number" ||
+          Boolean(nextBriefFilename);
+
+        if (!hasPersistedDetails || hasUserEditedDetailsRef.current) return;
+
+        lastHydratedDraftDetailsSignatureRef.current = JSON.stringify({
+          jobListingId: effectiveJobListingId,
+          description: nextDescription,
+          deliverables: nextDeliverables,
+          successCriteria: nextSuccessCriteria,
+          budgetAmount: nextBudgetAmount,
+          budgetFrequency: listing?.budgetFrequency,
+          durationMonths: nextDurationMonths,
+          briefFilename: nextBriefFilename,
+        });
+        skipNextDraftDetailsWriteRef.current = true;
+        setDescription(nextDescription ?? "");
+        setDeliverables(nextDeliverables ?? "");
+        setSuccessCriteria(nextSuccessCriteria ?? "");
+        setBudget(
+          typeof nextBudgetAmount === "number"
+            ? String(nextBudgetAmount)
+            : "0.00",
+        );
+        setBudgetUnit(
+          listing?.budgetFrequency === "per_month" ? "per month" : "per week",
+        );
+
+        const hydratedDuration =
+          getDurationSelectionFromMonths(nextDurationMonths);
+        setDuration(hydratedDuration);
+        if (hydratedDuration.startsWith("Other--")) {
+          setCustomDuration(
+            typeof nextDurationMonths === "number"
+              ? String(nextDurationMonths)
+              : "",
+          );
+          setCustomDurationUnit("months");
+        } else {
+          setCustomDuration("");
+        }
+
+        if (nextBriefFilename) {
+          setScopeFile(new File([], nextBriefFilename));
+          setScopeUploadProgress(100);
+          setScopeUploadStatus("complete");
+          setScopeUploadError("");
+        }
+
+        setJobListingDraftDetails((currentDetails) => ({
+          ...currentDetails,
+          jobListingId: effectiveJobListingId,
+          description: nextDescription,
+          deliverables: nextDeliverables,
+          successCriteria: nextSuccessCriteria,
+          budgetAmount: nextBudgetAmount,
+          budgetFrequency:
+            listing?.budgetFrequency === "per_month"
+              ? "per_month"
+              : listing?.budgetFrequency === "per_week"
+                ? "per_week"
+                : currentDetails.budgetFrequency,
+          durationMonths: nextDurationMonths,
+          isOngoing:
+            typeof listing?.isOngoing === "boolean"
+              ? listing.isOngoing
+              : currentDetails.isOngoing,
+          briefFilename: nextBriefFilename,
+          briefSizeBytes:
+            toFiniteNumber(listing?.briefSizeBytes) ??
+            currentDetails.briefSizeBytes,
+        }));
+      } catch (error) {
+        console.error("Failed to load saved job listing details", error);
+      }
+    };
+
+    void loadPersistedDescribeDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveJobListingId, setJobListingDraftDetails]);
+
+  useIsomorphicLayoutEffect(() => {
+    toggleValidation(isValid);
+  }, [isValid]);
+
+  useEffect(() => {
+    if (!hasUserEditedDetailsRef.current) {
+      skipNextDraftDetailsWriteRef.current = false;
+      return;
+    }
+
+    if (skipNextDraftDetailsWriteRef.current) {
+      skipNextDraftDetailsWriteRef.current = false;
+      return;
+    }
+
     setJobListingDraftDetails((currentDetails) => ({
       ...currentDetails,
       description: description.trim(),
@@ -8674,7 +9136,7 @@ const DescribeProjectStep = ({
       budgetFrequency,
       durationMonths: isService ? undefined : durationMonths,
       isOngoing: isService ? true : undefined,
-    }))
+    }));
   }, [
     budgetAmount,
     budgetFrequency,
@@ -8684,26 +9146,74 @@ const DescribeProjectStep = ({
     isService,
     setJobListingDraftDetails,
     successCriteria,
-  ])
+  ]);
 
   useEffect(() => {
-    setProgress?.(20)
-  }, [setProgress])
+    if (!effectiveJobListingId || !hasUserEditedDetailsRef.current) return;
 
-  useEffect(() => clearScopeUploadTimer, [clearScopeUploadTimer])
+    const hasUserEnteredDetails =
+      Boolean(description.trim()) ||
+      Boolean(deliverables.trim()) ||
+      Boolean(successCriteria.trim()) ||
+      budgetAmount > 0 ||
+      typeof durationMonths === "number";
+
+    if (!hasUserEnteredDetails) return;
+
+    const timeout = window.setTimeout(() => {
+      const saveDescribeStep = async () => {
+        try {
+          await JobListingAPI.Update(effectiveJobListingId, {
+            description: description.trim(),
+            deliverables: deliverables.trim(),
+            successCriteria: isService ? undefined : successCriteria.trim(),
+            budgetAmount,
+            budgetDisplayCurrency: "USD",
+            budgetFrequency,
+            durationMonths: isService ? undefined : durationMonths,
+            isOngoing: isService ? true : undefined,
+          });
+        } catch (error) {
+          console.error("Failed to save job listing details", error);
+        }
+      };
+
+      void saveDescribeStep();
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    budgetAmount,
+    budgetFrequency,
+    deliverables,
+    description,
+    durationMonths,
+    effectiveJobListingId,
+    isService,
+    successCriteria,
+  ]);
 
   useEffect(() => {
-    setDescription("")
-    setDeliverables("")
-    setSuccessCriteria("")
-    resetScopeFile()
-    setDuration("3-months-0")
-    setCustomDuration("")
+    setProgress?.(20);
+  }, [setProgress]);
+
+  useEffect(() => clearScopeUploadTimer, [clearScopeUploadTimer]);
+
+  useEffect(() => {
+    if (previousIsServiceRef.current === isService) return;
+    previousIsServiceRef.current = isService;
+    if (!hasUserEditedDetailsRef.current) return;
+    setDescription("");
+    setDeliverables("");
+    setSuccessCriteria("");
+    resetScopeFile();
+    setDuration("3-months-0");
+    setCustomDuration("");
     const viewport = contentRef.current?.closest(
-      "[data-radix-scroll-area-viewport]"
-    ) as HTMLElement | null
-    viewport?.scrollTo({ top: 0 })
-  }, [isService, resetScopeFile])
+      "[data-radix-scroll-area-viewport]",
+    ) as HTMLElement | null;
+    viewport?.scrollTo({ top: 0 });
+  }, [isService, resetScopeFile]);
 
   return (
     <ScrollArea
@@ -8734,7 +9244,11 @@ const DescribeProjectStep = ({
             <Textarea
               maxLength={100}
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDescription(value);
+                updateDraftDetails({ description: value.trim() });
+              }}
               placeholder={
                 isService
                   ? "I need ongoing design and development support for my e-commerce store..."
@@ -8758,7 +9272,11 @@ const DescribeProjectStep = ({
             <Textarea
               maxLength={100}
               value={deliverables}
-              onChange={(event) => setDeliverables(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDeliverables(value);
+                updateDraftDetails({ deliverables: value.trim() });
+              }}
               placeholder="UX design, front-end development, database setup"
               className="h-20 text-sm"
             />
@@ -8780,7 +9298,7 @@ const DescribeProjectStep = ({
                 className={cn(
                   "rounded-lg border border-gray-200 bg-white px-4 py-3",
                   scopeUploadStatus === "error" &&
-                    "border-error-300 bg-error-25"
+                    "border-error-300 bg-error-25",
                 )}
               >
                 <div className="flex items-start gap-x-3">
@@ -8788,7 +9306,7 @@ const DescribeProjectStep = ({
                     className={cn(
                       "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
                       scopeUploadStatus === "error" &&
-                        "border-error-50 bg-error-100 text-error-500"
+                        "border-error-50 bg-error-100 text-error-500",
                     )}
                   >
                     {scopeUploadStatus === "error" ? (
@@ -8801,7 +9319,7 @@ const DescribeProjectStep = ({
                     <p
                       className={cn(
                         "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
-                        scopeUploadStatus === "error" && "text-error-500"
+                        scopeUploadStatus === "error" && "text-error-500",
                       )}
                     >
                       {scopeFile.name}
@@ -8809,7 +9327,7 @@ const DescribeProjectStep = ({
                     <p
                       className={cn(
                         "text-xs leading-[18px] text-gray-500",
-                        scopeUploadStatus === "error" && "text-error-500"
+                        scopeUploadStatus === "error" && "text-error-500",
                       )}
                     >
                       {convertToKbOrMb(scopeFile.size)}
@@ -8844,9 +9362,9 @@ const DescribeProjectStep = ({
                       variant="link"
                       visual="error"
                       onClick={() => {
-                        const contentType = getScopeFileContentType(scopeFile)
+                        const contentType = getScopeFileContentType(scopeFile);
                         if (contentType) {
-                          void uploadScopeFile(scopeFile, contentType)
+                          void uploadScopeFile(scopeFile, contentType);
                         }
                       }}
                     >
@@ -8859,24 +9377,24 @@ const DescribeProjectStep = ({
               <label
                 className={cn(
                   "flex h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center focus-within:ring-2 focus-within:ring-primary-500",
-                  isScopeDropActive && "border-primary-500"
+                  isScopeDropActive && "border-primary-500",
                 )}
                 onDragEnter={(event) => {
-                  event.preventDefault()
-                  setIsScopeDropActive(true)
+                  event.preventDefault();
+                  setIsScopeDropActive(true);
                 }}
                 onDragLeave={(event) => {
-                  event.preventDefault()
-                  setIsScopeDropActive(false)
+                  event.preventDefault();
+                  setIsScopeDropActive(false);
                 }}
                 onDragOver={(event) => {
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = "copy"
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
                 }}
                 onDrop={(event) => {
-                  event.preventDefault()
-                  setIsScopeDropActive(false)
-                  acceptScopeFile(event.dataTransfer.files?.[0])
+                  event.preventDefault();
+                  setIsScopeDropActive(false);
+                  acceptScopeFile(event.dataTransfer.files?.[0]);
                 }}
               >
                 <input
@@ -8884,8 +9402,8 @@ const DescribeProjectStep = ({
                   type="file"
                   accept=".pdf,.docx"
                   onChange={(event) => {
-                    acceptScopeFile(event.target.files?.[0])
-                    event.target.value = ""
+                    acceptScopeFile(event.target.files?.[0]);
+                    event.target.value = "";
                   }}
                 />
                 <span className="inline-flex size-10 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100">
@@ -8928,7 +9446,13 @@ const DescribeProjectStep = ({
                     className="h-8 text-xs"
                     inputMode="decimal"
                     value={budget}
-                    onChange={(event) => setBudget(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setBudget(value);
+                      updateDraftDetails({
+                        budgetAmount: Number(value.replace(/,/g, "")) || 0,
+                      });
+                    }}
                   />
                 </InputGroup>
                 <DropdownMenu>
@@ -8947,7 +9471,13 @@ const DescribeProjectStep = ({
                     {["per week", "per month"].map((unit) => (
                       <DropdownMenuItem
                         key={unit}
-                        onSelect={() => setBudgetUnit(unit)}
+                        onSelect={() => {
+                          setBudgetUnit(unit);
+                          updateDraftDetails({
+                            budgetFrequency:
+                              unit === "per month" ? "per_month" : "per_week",
+                          });
+                        }}
                       >
                         {unit}
                       </DropdownMenuItem>
@@ -8966,19 +9496,26 @@ const DescribeProjectStep = ({
                 </Label>
                 <RadioGroup
                   value={duration}
-                  onValueChange={setDuration}
+                  onValueChange={(value) => {
+                    setDuration(value);
+                    updateDraftDetails({
+                      durationMonths: isService
+                        ? undefined
+                        : getDraftDurationMonths(value),
+                    });
+                  }}
                   className="grid gap-3 md:grid-cols-2"
                 >
                   {durationOptions.map((option, index) => {
-                    const id = `${option.value}-${option.unit}-${index}`
-                    const selected = duration === id
-                    const isOther = option.value === "Other"
+                    const id = `${option.value}-${option.unit}-${index}`;
+                    const selected = duration === id;
+                    const isOther = option.value === "Other";
                     return (
                       <HeadlessRadioGroupItem key={id} value={id} asChild>
                         <div
                           className={cn(
                             "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                            selected && "border-primary-500"
+                            selected && "border-primary-500",
                           )}
                         >
                           <span className="flex items-center justify-between gap-x-4">
@@ -8994,7 +9531,7 @@ const DescribeProjectStep = ({
                             <span
                               className={cn(
                                 "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                selected && "border-[5px] border-primary-500"
+                                selected && "border-[5px] border-primary-500",
                               )}
                             />
                           </span>
@@ -9010,9 +9547,19 @@ const DescribeProjectStep = ({
                                 placeholder="Enter duration"
                                 value={customDuration}
                                 onClick={(event) => event.stopPropagation()}
-                                onChange={(event) =>
-                                  setCustomDuration(event.target.value)
-                                }
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  setCustomDuration(value);
+                                  updateDraftDetails({
+                                    durationMonths: isService
+                                      ? undefined
+                                      : getDraftDurationMonths(
+                                          duration,
+                                          value,
+                                          customDurationUnit,
+                                        ),
+                                  });
+                                }}
                               />
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -9034,9 +9581,18 @@ const DescribeProjectStep = ({
                                   {projectDurationUnits.map((unit) => (
                                     <DropdownMenuItem
                                       key={unit}
-                                      onSelect={() =>
-                                        setCustomDurationUnit(unit)
-                                      }
+                                      onSelect={() => {
+                                        setCustomDurationUnit(unit);
+                                        updateDraftDetails({
+                                          durationMonths: isService
+                                            ? undefined
+                                            : getDraftDurationMonths(
+                                                duration,
+                                                customDuration,
+                                                unit,
+                                              ),
+                                        });
+                                      }}
                                     >
                                       {unit}
                                     </DropdownMenuItem>
@@ -9047,7 +9603,7 @@ const DescribeProjectStep = ({
                           ) : null}
                         </div>
                       </HeadlessRadioGroupItem>
-                    )
+                    );
                   })}
                 </RadioGroup>
               </div>
@@ -9064,7 +9620,13 @@ const DescribeProjectStep = ({
                 <Textarea
                   maxLength={100}
                   value={successCriteria}
-                  onChange={(event) => setSuccessCriteria(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSuccessCriteria(value);
+                    updateDraftDetails({
+                      successCriteria: isService ? undefined : value.trim(),
+                    });
+                  }}
                   placeholder="Launch MVP by October, increase signups by 20, working prototype demo"
                   className="h-20 text-sm"
                 />
@@ -9100,33 +9662,49 @@ const DescribeProjectStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const ReviewToolsTechnologiesStep = ({
   setProgress,
   source = "project",
   jobListingId,
 }: ProgressProps & {
-  source?: "project" | "service" | "roles"
-  jobListingId?: string | null
+  source?: "project" | "service" | "roles";
+  jobListingId?: string | null;
 }) => {
-  const { toggleValidation } = useStepContext()
-  const { details } = useJobListingDraftContext()
-  const [tools, setTools] = useState(serviceToolTags)
-  const didRequestGeneratedToolsRef = useRef(false)
+  const { toggleValidation } = useStepContext();
+  const { details, setDetails } = useJobListingDraftContext();
+  const [tools, setTools] = useState(() =>
+    details.tools?.length ? details.tools : serviceToolTags,
+  );
+  const didRequestGeneratedToolsRef = useRef(false);
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true)
-  }, [])
+    toggleValidation(true);
+  }, []);
 
   useEffect(() => {
-    setProgress?.(20)
-  }, [setProgress])
+    setProgress?.(20);
+  }, [setProgress]);
 
   useEffect(() => {
-    if (!jobListingId || didRequestGeneratedToolsRef.current) return
-    didRequestGeneratedToolsRef.current = true
+    if (details.tools?.length) {
+      setTools(details.tools);
+    }
+  }, [details.tools]);
+
+  const updateTools = useCallback(
+    (nextTools: string[]) => {
+      setTools(nextTools);
+      setDetails((current) => ({ ...current, tools: nextTools }));
+    },
+    [setDetails],
+  );
+
+  useEffect(() => {
+    if (!jobListingId || didRequestGeneratedToolsRef.current) return;
+    didRequestGeneratedToolsRef.current = true;
 
     const generateTools = async () => {
       try {
@@ -9134,18 +9712,24 @@ const ReviewToolsTechnologiesStep = ({
           workType: source === "service" ? "service" : "project",
           description: details.description,
           deliverables: details.deliverables,
-        })
-        const generatedTools = response?.data?.tools
+        });
+        const generatedTools = response?.data?.tools;
         if (Array.isArray(generatedTools) && generatedTools.length > 0) {
-          setTools(generatedTools)
+          updateTools(generatedTools);
         }
       } catch (error) {
-        console.error("Failed to generate tools and technologies", error)
+        console.error("Failed to generate tools and technologies", error);
       }
-    }
+    };
 
-    void generateTools()
-  }, [details.deliverables, details.description, jobListingId, source])
+    void generateTools();
+  }, [
+    details.deliverables,
+    details.description,
+    jobListingId,
+    source,
+    updateTools,
+  ]);
 
   return (
     <ScrollArea
@@ -9170,7 +9754,7 @@ const ReviewToolsTechnologiesStep = ({
 
           <TagsInputRoot
             value={tools}
-            onValueChange={(details) => setTools(details.value)}
+            onValueChange={(details) => updateTools(details.value)}
             className="mt-5"
           >
             <TagsInputContext>
@@ -9242,19 +9826,19 @@ const ReviewToolsTechnologiesStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 type TeamRoleRow = {
-  role: string
-  assignee: string
-  location: string
-  experience: ExperienceLevel
-  schedule: "Full-time" | "Part-time"
-  length: string
-  estimate: string
-  editable: boolean
-}
+  role: string;
+  assignee: string;
+  location: string;
+  experience: ExperienceLevel;
+  schedule: "Full-time" | "Part-time";
+  length: string;
+  estimate: string;
+  editable: boolean;
+};
 
 const teamRoleRows: TeamRoleRow[] = [
   {
@@ -9297,34 +9881,37 @@ const teamRoleRows: TeamRoleRow[] = [
     estimate: "$25 - $40",
     editable: false,
   },
-]
+];
 
-const teamRoleLocationOptions = ["USA", "India", "Pakistan", "Canada", "UK"]
-const teamRoleLocationFlags: Record<string, string> = {
-  USA: "🇺🇸",
-  India: "🇮🇳",
-  Pakistan: "🇵🇰",
-  Canada: "🇨🇦",
-  UK: "🇬🇧",
-}
+const teamRoleLocationOptions = ["USA", "India", "Pakistan", "Canada", "UK"];
+const teamRolePillClassName =
+  "h-7 w-max rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-sm font-normal leading-5 text-dark-blue-400";
 
-const renderLocationOptionLabel = (location?: string) => (
-  <>
-    <span className="text-sm leading-none">
-      {teamRoleLocationFlags[location ?? ""] ?? "🌐"}
-    </span>
-    <span>{location}</span>
-  </>
-)
+const renderLocationOptionLabel = (location?: string) => {
+  const flagUrl = location ? getFlagUrlByName(location) : null;
+
+  return (
+    <>
+      {flagUrl ? (
+        <img
+          alt=""
+          src={flagUrl}
+          className="h-[14px] w-[18px] rounded-[2px] object-cover"
+        />
+      ) : null}
+      <span>{location}</span>
+    </>
+  );
+};
 const teamRoleScheduleOptions: TeamRoleRow["schedule"][] = [
   "Full-time",
   "Part-time",
-]
-const teamRoleLengthOptions = ["1 month", "2 months", "3 months", "6 months"]
+];
+const teamRoleLengthOptions = ["1 month", "2 months", "3 months", "6 months"];
 
 const createTeamRoleRow = (
   index: number,
-  overrides: Partial<TeamRoleRow> = {}
+  overrides: Partial<TeamRoleRow> = {},
 ): TeamRoleRow => ({
   role: `New Team Member ${index + 1}`,
   assignee: "Unassigned Member",
@@ -9335,7 +9922,7 @@ const createTeamRoleRow = (
   estimate: "$25 - $40",
   editable: true,
   ...overrides,
-})
+});
 
 const serviceScopePhases = [
   {
@@ -9405,17 +9992,21 @@ const serviceScopePhases = [
       },
     ],
   },
-]
+];
 
 type ServiceScopeRow = (typeof serviceScopePhases)[number]["rows"][number] & {
-  workSchedule?: JobListingWorkSchedule
-  customHours?: number
-  customFrequency?: string
-}
+  id?: string;
+  workSchedule?: JobListingWorkSchedule;
+  customHours?: number;
+  customFrequency?: string;
+  contractLengthMonths?: number;
+  hourlyRateLowUsdCents?: number;
+  hourlyRateHighUsdCents?: number;
+};
 
 type ServiceScopePhase = Omit<(typeof serviceScopePhases)[number], "rows"> & {
-  rows: ServiceScopeRow[]
-}
+  rows: ServiceScopeRow[];
+};
 
 const serviceScopePhaseTypeOptions = [
   {
@@ -9433,34 +10024,34 @@ const serviceScopePhaseTypeOptions = [
     label: "Ongoing",
     description: "Continuous work without a set end date",
   },
-]
+];
 
 const createServicePhasesFromGeneratedScope = (
-  scope: any
+  scope: any,
 ): ServiceScopePhase[] => {
-  const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : []
+  const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : [];
 
   return generatedPhases
     .map((phase: any, phaseIndex: number) => {
       const phaseType =
         phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
           ? phase.phaseType
-          : "setup"
+          : "setup";
       const phaseOption = serviceScopePhaseTypeOptions.find(
-        (option) => option.value === phaseType
-      )
-      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly"
-      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3
+        (option) => option.value === phaseType,
+      );
+      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
+      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
       const status =
         phaseType === "ongoing"
           ? "Ongoing"
           : phaseType === "recurring"
             ? `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
-            : "2 weeks"
+            : "2 weeks";
 
       return {
         name: String(
-          phase?.phaseName ?? phaseOption?.label ?? `Phase ${phaseIndex + 1}`
+          phase?.phaseName ?? phaseOption?.label ?? `Phase ${phaseIndex + 1}`,
         ),
         customName: "",
         status,
@@ -9491,81 +10082,82 @@ const createServicePhasesFromGeneratedScope = (
                     : "full_time",
             }))
           : [],
-      }
+      };
     })
-    .filter((phase: ServiceScopePhase) => phase.name && phase.rows.length > 0)
-}
+    .filter((phase: ServiceScopePhase) => phase.name && phase.rows.length > 0);
+};
 
 const getServicePhaseDisplayParts = (
   phaseType: ServiceScopePhase["phaseType"],
   phaseName: string,
-  phaseIndex: number
+  phaseIndex: number,
 ) => {
   if (phaseType === "ongoing") {
     return {
       name: "Ongoing",
       customName: phaseName.replace(/^Ongoing\s*/i, "").trim(),
-    }
+    };
   }
 
   if (phaseType === "recurring") {
-    const recurringNameMatch = phaseName.match(/^Recurring(?:\s+\d+)?/i)
-    const name = recurringNameMatch?.[0] ?? `Recurring ${phaseIndex + 1}`
+    const recurringNameMatch = phaseName.match(/^Recurring(?:\s+\d+)?/i);
+    const name = recurringNameMatch?.[0] ?? `Recurring ${phaseIndex + 1}`;
 
     return {
       name,
       customName: phaseName.replace(name, "").trim(),
-    }
+    };
   }
 
   return {
     name: "Setup",
     customName: phaseName.replace(/^Setup\s*/i, "").trim(),
-  }
-}
+  };
+};
 
 const createServicePhasesFromPersistedJobListing = (
-  phases: any
+  phases: any,
 ): ServiceScopePhase[] => {
-  const persistedPhases = Array.isArray(phases) ? phases : []
+  const persistedPhases = Array.isArray(phases) ? phases : [];
 
   return persistedPhases
     .map((phase: any, phaseIndex: number) => {
       const phaseType: ServiceScopePhase["phaseType"] =
         phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
           ? phase.phaseType
-          : "setup"
+          : "setup";
       const phaseName = String(
-        phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`
-      )
+        phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`,
+      );
       const { name, customName } = getServicePhaseDisplayParts(
         phaseType,
         phaseName,
-        phaseIndex
-      )
-      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly"
-      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3
+        phaseIndex,
+      );
+      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
+      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
       const sourceRows = Array.isArray(phase?.rows)
         ? phase.rows
         : Array.isArray(phase?.tasks)
           ? phase.tasks
-          : []
+          : [];
       const rows = sourceRows.map((row: any) => {
         const durationValue =
           typeof row?.duration === "object"
-            ? Number(row.duration?.value)
-            : Number(row?.estimatedHours ?? row?.durationHours)
+            ? toFiniteNumber(row.duration?.value)
+            : toFiniteNumber(row?.estimatedHours ?? row?.durationHours);
         const durationType =
           typeof row?.duration === "object" && row.duration?.type
             ? String(row.duration.type)
-            : "hours"
+            : "hours";
 
         return {
+          id: toNullableString(row?.id),
           task: String(row?.task ?? row?.taskName ?? "New Task"),
           role: String(row?.role ?? row?.roleTitle ?? "Specialist"),
           location: String(row?.location ?? "USA"),
           experience: String(
-            row?.experience ?? row?.experienceLevel ?? "Junior"
+            row?.experience ?? row?.experienceLevel ?? "Junior",
           ),
           duration: `${durationValue || 10} ${durationType}`,
           workSchedule:
@@ -9582,8 +10174,11 @@ const createServicePhasesFromPersistedJobListing = (
             row?.workSchedule === "custom"
               ? (row?.customFrequency ?? undefined)
               : undefined,
-        }
-      })
+          contractLengthMonths: toFiniteNumber(row?.contractLengthMonths),
+          hourlyRateLowUsdCents: toFiniteNumber(row?.hourlyRateLowUsdCents),
+          hourlyRateHighUsdCents: toFiniteNumber(row?.hourlyRateHighUsdCents),
+        };
+      });
 
       return {
         name,
@@ -9612,13 +10207,13 @@ const createServicePhasesFromPersistedJobListing = (
               ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
               : "One-time starting work that begins on Day X and will not repeat again.",
         rows,
-      }
+      };
     })
     .filter(
       (phase: ServiceScopePhase) =>
-        phase.name && phase.customName !== undefined && phase.rows.length > 0
-    )
-}
+        phase.name && phase.customName !== undefined && phase.rows.length > 0,
+    );
+};
 
 const projectScopeEditPhases = [
   "Phase One Research",
@@ -9626,7 +10221,7 @@ const projectScopeEditPhases = [
   "Phase Three Research",
   "Phase Four Research",
   "Phase Five Research",
-]
+];
 
 const projectScopeEditRows = [
   {
@@ -9661,33 +10256,33 @@ const projectScopeEditRows = [
     experience: "Medior",
     duration: "40 hours",
   },
-]
+];
 
 const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
-  const { toggleValidation } = useStepContext()
-  const { setDetails } = useJobListingDraftContext()
-  const { projectScopeMethods } = useProjectScopeContext()
-  const [, setProjectScopeState] = projectScopeMethods
-  const [roleDescription, setRoleDescription] = useState("")
-  const [headcount, setHeadcount] = useState("2")
-  const seededRowIdRef = useRef(String(getId()))
+  const { toggleValidation } = useStepContext();
+  const { setDetails } = useJobListingDraftContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [, setProjectScopeState] = projectScopeMethods;
+  const [roleDescription, setRoleDescription] = useState("");
+  const [headcount, setHeadcount] = useState("2");
+  const seededRowIdRef = useRef(String(getId()));
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(Boolean(roleDescription.trim()) && Boolean(headcount))
-  }, [roleDescription, headcount])
+    toggleValidation(Boolean(roleDescription.trim()) && Boolean(headcount));
+  }, [roleDescription, headcount]);
 
   useEffect(() => {
-    const trimmedDescription = roleDescription.trim()
-    const parsedHeadcount = Math.max(1, Number.parseInt(headcount, 10) || 1)
+    const trimmedDescription = roleDescription.trim();
+    const parsedHeadcount = Math.max(1, Number.parseInt(headcount, 10) || 1);
 
     setDetails((previous) => ({
       ...previous,
       description: trimmedDescription || previous.description,
       deliverables: trimmedDescription || previous.deliverables,
       headcount: parsedHeadcount,
-    }))
+    }));
 
-    if (!trimmedDescription) return
+    if (!trimmedDescription) return;
 
     setProjectScopeState([
       {
@@ -9705,12 +10300,12 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
           },
         ],
       },
-    ])
-  }, [headcount, roleDescription, setDetails, setProjectScopeState])
+    ]);
+  }, [headcount, roleDescription, setDetails, setProjectScopeState]);
 
   useEffect(() => {
-    setProgress?.(10)
-  }, [setProgress])
+    setProgress?.(10);
+  }, [setProgress]);
 
   return (
     <ScrollArea
@@ -9785,50 +10380,50 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const NoScopeRoleInfoStep = ({
   setProgress,
   hiringMode,
 }: ProgressProps & { hiringMode?: HiringModeChoice }) => {
-  const { toggleValidation } = useStepContext()
-  const { setDetails } = useJobListingDraftContext()
-  const { projectScopeMethods } = useProjectScopeContext()
-  const [, setProjectScopeState] = projectScopeMethods
-  const isTeamMode = hiringMode !== "individual"
-  const [roleDescription, setRoleDescription] = useState("")
-  const [headcount, setHeadcount] = useState(isTeamMode ? "2" : "1")
-  const [budget, setBudget] = useState("500.00")
+  const { toggleValidation } = useStepContext();
+  const { setDetails } = useJobListingDraftContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [, setProjectScopeState] = projectScopeMethods;
+  const isTeamMode = hiringMode !== "individual";
+  const [roleDescription, setRoleDescription] = useState("");
+  const [headcount, setHeadcount] = useState(isTeamMode ? "2" : "1");
+  const [budget, setBudget] = useState("500.00");
   const [budgetFrequency, setBudgetFrequency] = useState<
     "per_week" | "per_month"
-  >("per_week")
-  const [durationChoice, setDurationChoice] = useState("Other")
-  const [customDuration, setCustomDuration] = useState("")
-  const [customDurationUnit, setCustomDurationUnit] = useState("months")
+  >("per_week");
+  const [durationChoice, setDurationChoice] = useState("Other");
+  const [customDuration, setCustomDuration] = useState("");
+  const [customDurationUnit, setCustomDurationUnit] = useState("months");
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
       Boolean(roleDescription.trim()) &&
         Boolean(headcount.trim()) &&
-        Boolean(budget.trim())
-    )
-  }, [roleDescription, headcount, budget])
+        Boolean(budget.trim()),
+    );
+  }, [roleDescription, headcount, budget]);
 
   useEffect(() => {
-    setProgress?.(12)
-  }, [setProgress])
+    setProgress?.(12);
+  }, [setProgress]);
 
   useEffect(() => {
-    const trimmedDescription = roleDescription.trim()
-    const parsedHeadcount = Math.max(1, Number.parseInt(headcount, 10) || 1)
-    const parsedBudget = Number.parseFloat(budget)
+    const trimmedDescription = roleDescription.trim();
+    const parsedHeadcount = Math.max(1, Number.parseInt(headcount, 10) || 1);
+    const parsedBudget = Number.parseFloat(budget);
     const durationMonths =
       durationChoice === "Other"
         ? customDurationUnit === "weeks"
           ? Math.max(1, Math.ceil((Number(customDuration) || 0) / 4))
           : Number(customDuration) || undefined
-        : Number.parseInt(durationChoice, 10) || undefined
+        : Number.parseInt(durationChoice, 10) || undefined;
 
     setDetails((previous) => ({
       ...previous,
@@ -9841,9 +10436,9 @@ const NoScopeRoleInfoStep = ({
       budgetFrequency,
       durationMonths,
       isOngoing: durationChoice === "24 months" ? true : previous.isOngoing,
-    }))
+    }));
 
-    if (!trimmedDescription) return
+    if (!trimmedDescription) return;
 
     setProjectScopeState([
       {
@@ -9859,7 +10454,7 @@ const NoScopeRoleInfoStep = ({
           workSchedule: "full_time",
         })),
       },
-    ])
+    ]);
   }, [
     budget,
     budgetFrequency,
@@ -9871,7 +10466,7 @@ const NoScopeRoleInfoStep = ({
     roleDescription,
     setDetails,
     setProjectScopeState,
-  ])
+  ]);
 
   const durationOptions = [
     {
@@ -9890,7 +10485,7 @@ const NoScopeRoleInfoStep = ({
       label: "24 months",
       description: "Ongoing responsibilities or evolving team needs",
     },
-  ]
+  ];
 
   return (
     <ScrollArea
@@ -10001,7 +10596,7 @@ const NoScopeRoleInfoStep = ({
                     value={option.label}
                     className={cn(
                       "flex min-h-[84px] items-start gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                      durationChoice === option.label && "border-primary-500"
+                      durationChoice === option.label && "border-primary-500",
                     )}
                   >
                     <span className="min-w-0 flex-auto">
@@ -10016,7 +10611,7 @@ const NoScopeRoleInfoStep = ({
                       className={cn(
                         "mt-1 inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
                         durationChoice === option.label &&
-                          "border-[5px] border-primary-500"
+                          "border-[5px] border-primary-500",
                       )}
                     />
                   </HeadlessRadioGroupItem>
@@ -10027,13 +10622,13 @@ const NoScopeRoleInfoStep = ({
                   tabIndex={0}
                   className={cn(
                     "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                    durationChoice === "Other" && "border-primary-500"
+                    durationChoice === "Other" && "border-primary-500",
                   )}
                   onClick={() => setDurationChoice("Other")}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault()
-                      setDurationChoice("Other")
+                      event.preventDefault();
+                      setDurationChoice("Other");
                     }
                   }}
                 >
@@ -10047,7 +10642,7 @@ const NoScopeRoleInfoStep = ({
                       className={cn(
                         "mt-1 inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
                         durationChoice === "Other" &&
-                          "border-[5px] border-primary-500"
+                          "border-[5px] border-primary-500",
                       )}
                     />
                   </div>
@@ -10111,14 +10706,14 @@ const NoScopeRoleInfoStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const createProjectScopeRow = (
   row: (typeof projectScopeEditRows)[number],
-  idSuffix: string
+  idSuffix: string,
 ): PhaseRow => {
-  const [durationValue, durationType = "hours"] = row.duration.split(/\s+/)
+  const [durationValue, durationType = "hours"] = row.duration.split(/\s+/);
 
   return {
     id: `project-scope-${idSuffix}-${getId()}`,
@@ -10131,25 +10726,25 @@ const createProjectScopeRow = (
       type: durationType as (typeof DURATION_TYPE)[number],
     },
     workSchedule: "full_time",
-  }
-}
+  };
+};
 
 const formatProjectRowDuration = (row: PhaseRow) =>
-  `${row.duration?.value ?? 1} ${row.duration?.type ?? "hours"}`
+  `${row.duration?.value ?? 1} ${row.duration?.type ?? "hours"}`;
 
 const formatProjectRowSchedule = (row: PhaseRow) => {
-  if (row.workSchedule === "part_time") return "Part-time"
+  if (row.workSchedule === "part_time") return "Part-time";
   if (row.workSchedule === "custom") {
     return `${row.customHours ?? row.duration?.value ?? 1} hours ${
       row.customFrequency ?? "per week"
-    }`
+    }`;
   }
-  return "Full-time"
-}
+  return "Full-time";
+};
 
 const createPhaseRowFromGeneratedTask = (
   task: any,
-  idSuffix: string
+  idSuffix: string,
 ): PhaseRow => ({
   id: String(task?.id ?? `generated-scope-${idSuffix}-${getId()}`),
   task: String(task?.taskName ?? task?.task ?? "New Task"),
@@ -10157,7 +10752,7 @@ const createPhaseRowFromGeneratedTask = (
   location: String(task?.location ?? "USA"),
   experience: (task?.experienceLevel ?? "Junior") as ExperienceLevel,
   duration: {
-    value: Number(task?.estimatedHours ?? task?.durationHours ?? 10) || 10,
+    value: toFiniteNumber(task?.estimatedHours ?? task?.durationHours) ?? 10,
     type: "hours",
   },
   workSchedule:
@@ -10168,24 +10763,27 @@ const createPhaseRowFromGeneratedTask = (
         : "full_time",
   customHours:
     task?.workSchedule === "custom"
-      ? Number(task?.customHours) || undefined
+      ? toFiniteNumber(task?.customHours)
       : undefined,
   customFrequency:
     task?.workSchedule === "custom"
       ? (task?.customFrequency ?? undefined)
       : undefined,
-})
+  contractLengthMonths: toFiniteNumber(task?.contractLengthMonths),
+  hourlyRateLowUsdCents: toFiniteNumber(task?.hourlyRateLowUsdCents),
+  hourlyRateHighUsdCents: toFiniteNumber(task?.hourlyRateHighUsdCents),
+});
 
 const createPhasesFromGeneratedScope = (scope: any): Phase[] => {
-  const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : []
+  const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : [];
 
   return generatedPhases
     .map((phase: any, phaseIndex: number) => {
       const rows = Array.isArray(phase?.tasks)
         ? phase.tasks.map((task: any, taskIndex: number) =>
-            createPhaseRowFromGeneratedTask(task, `${phaseIndex}-${taskIndex}`)
+            createPhaseRowFromGeneratedTask(task, `${phaseIndex}-${taskIndex}`),
           )
-        : []
+        : [];
 
       return {
         phaseName: String(phase?.phaseName ?? `Phase ${phaseIndex + 1}`),
@@ -10193,20 +10791,20 @@ const createPhasesFromGeneratedScope = (scope: any): Phase[] => {
         recurrenceSchedule: phase?.recurrenceSchedule,
         recurrenceCount: phase?.recurrenceCount,
         rows,
-      }
+      };
     })
-    .filter((phase: Phase) => phase.phaseName && (phase.rows ?? []).length > 0)
-}
+    .filter((phase: Phase) => phase.phaseName && (phase.rows ?? []).length > 0);
+};
 
 const createPhasesFromPersistedJobListing = (phases: any): Phase[] => {
-  const persistedPhases = Array.isArray(phases) ? phases : []
+  const persistedPhases = Array.isArray(phases) ? phases : [];
 
   return persistedPhases
     .map((phase: any, phaseIndex: number) => {
-      const tasks = Array.isArray(phase?.tasks) ? phase.tasks : []
+      const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
       const rows = tasks.map((task: any, taskIndex: number) =>
-        createPhaseRowFromGeneratedTask(task, `${phaseIndex}-${taskIndex}`)
-      )
+        createPhaseRowFromGeneratedTask(task, `${phaseIndex}-${taskIndex}`),
+      );
 
       return {
         phaseName: String(phase?.phaseName ?? `Phase ${phaseIndex + 1}`),
@@ -10217,53 +10815,55 @@ const createPhasesFromPersistedJobListing = (phases: any): Phase[] => {
             ? phase.recurrenceCount
             : undefined,
         rows,
-      }
+      };
     })
-    .filter((phase: Phase) => phase.phaseName && (phase.rows ?? []).length > 0)
-}
+    .filter((phase: Phase) => phase.phaseName && (phase.rows ?? []).length > 0);
+};
 
 const createProjectScopePhase = (
   phaseName: string,
-  phaseIndex: number
+  phaseIndex: number,
 ): Phase => ({
   phaseName,
   phaseType: "setup",
   rows: projectScopeEditRows.map((row, rowIndex) =>
-    createProjectScopeRow(row, `${phaseIndex}-${rowIndex}`)
+    createProjectScopeRow(row, `${phaseIndex}-${rowIndex}`),
   ),
-})
+});
 
 const ProjectScopeEditStep = ({
   setProgress,
   jobListingId,
 }: ProgressProps & { jobListingId?: string | null }) => {
-  const { toggleValidation } = useStepContext()
-  const { projectScopeMethods } = useProjectScopeContext()
-  const [projectScopeState, setProjectScopeState] = projectScopeMethods
+  const { toggleValidation } = useStepContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods;
   const [phases, setPhases] = useState<Phase[]>(() =>
     projectScopeEditPhases.map((phase, phaseIndex) =>
-      createProjectScopePhase(phase, phaseIndex)
-    )
-  )
+      createProjectScopePhase(phase, phaseIndex),
+    ),
+  );
   const [expandedPhaseNames, setExpandedPhaseNames] = useState(() => [
     ...projectScopeEditPhases,
-  ])
-  const [searchValue, setSearchValue] = useState("")
-  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null)
-  const [draftRole, setDraftRole] = useState("")
+  ]);
+  const [searchValue, setSearchValue] = useState("");
+  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null);
+  const [draftRole, setDraftRole] = useState("");
   const [draftSchedule, setDraftSchedule] =
-    useState<JobListingWorkSchedule>("full_time")
-  const [draftCustomHours, setDraftCustomHours] = useState("15")
-  const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week")
-  const [assistantMessage, setAssistantMessage] = useState("")
-  const [assistantResult, setAssistantResult] = useState("")
-  const [isAssistantLoading, setIsAssistantLoading] = useState(false)
-  const didGenerateInitialScopeRef = useRef(false)
-  const didApplyPersistedScopeRef = useRef(false)
-  const [budgetAmount, setBudgetAmount] = useState(5000)
-  const [projectTimelineMonths, setProjectTimelineMonths] = useState(3)
-  const [budgetFrequency, setBudgetFrequency] = useState("week")
-  const normalizedSearchValue = normalizeSearchText(searchValue)
+    useState<JobListingWorkSchedule>("full_time");
+  const [draftCustomHours, setDraftCustomHours] = useState("15");
+  const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week");
+  const [assistantMessage, setAssistantMessage] = useState("");
+  const [assistantResult, setAssistantResult] = useState("");
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const didGenerateInitialScopeRef = useRef(false);
+  const didApplyPersistedScopeRef = useRef(false);
+  const skipNextProjectScopeSaveRef = useRef(false);
+  const lastSavedProjectScopeSignatureRef = useRef("");
+  const [budgetAmount, setBudgetAmount] = useState(5000);
+  const [projectTimelineMonths, setProjectTimelineMonths] = useState(3);
+  const [budgetFrequency, setBudgetFrequency] = useState("week");
+  const normalizedSearchValue = normalizeSearchText(searchValue);
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
         const phaseText = normalizeSearchText(
@@ -10277,41 +10877,42 @@ const ProjectScopeEditStep = ({
               formatProjectRowDuration(row),
               formatProjectRowSchedule(row),
             ]) ?? []),
-          ].join(" ")
-        )
+          ].join(" "),
+        );
 
-        return phaseText.includes(normalizedSearchValue)
+        return phaseText.includes(normalizedSearchValue);
       })
-    : phases
+    : phases;
 
   const isScopeValid = phases.some(
-    (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0
-  )
+    (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0,
+  );
 
   useEffect(() => {
-    if (didApplyPersistedScopeRef.current) return
+    if (didApplyPersistedScopeRef.current) return;
 
     const persistedPhases = Array.isArray(projectScopeState)
       ? projectScopeState.filter(
-          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0
+          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0,
         )
-      : []
+      : [];
 
-    if (persistedPhases.length === 0) return
+    if (persistedPhases.length === 0) return;
 
-    didApplyPersistedScopeRef.current = true
-    didGenerateInitialScopeRef.current = true
-    setPhases(persistedPhases)
+    didApplyPersistedScopeRef.current = true;
+    didGenerateInitialScopeRef.current = true;
+    skipNextProjectScopeSaveRef.current = true;
+    setPhases(persistedPhases);
     setExpandedPhaseNames(
       persistedPhases
         .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name))
-    )
-  }, [projectScopeState])
+        .filter((name): name is string => Boolean(name)),
+    );
+  }, [projectScopeState]);
 
   useEffect(() => {
-    if (!jobListingId || didGenerateInitialScopeRef.current) return
-    didGenerateInitialScopeRef.current = true
+    if (!jobListingId || didGenerateInitialScopeRef.current) return;
+    didGenerateInitialScopeRef.current = true;
 
     const generateScope = async () => {
       try {
@@ -10319,37 +10920,37 @@ const ProjectScopeEditStep = ({
           workType: "project",
           durationMonths: projectTimelineMonths,
           budgetUsdCents: budgetAmount * 100,
-        })
+        });
         const generatedPhases = createPhasesFromGeneratedScope(
-          response?.data?.scope
-        )
+          response?.data?.scope,
+        );
 
         if (generatedPhases.length > 0) {
-          setPhases(generatedPhases)
+          setPhases(generatedPhases);
           setExpandedPhaseNames(
-            generatedPhases.map((phase) => phase.phaseName ?? "")
-          )
+            generatedPhases.map((phase) => phase.phaseName ?? ""),
+          );
         }
       } catch (error) {
-        console.error("Failed to generate project scope", error)
+        console.error("Failed to generate project scope", error);
       }
-    }
+    };
 
-    void generateScope()
-  }, [budgetAmount, jobListingId, projectTimelineMonths])
+    void generateScope();
+  }, [budgetAmount, jobListingId, projectTimelineMonths]);
 
   const updatePhase = (phaseName: string, nextValues: Partial<Phase>) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.phaseName !== phaseName ? phase : { ...phase, ...nextValues }
-      )
-    )
-  }
+        phase.phaseName !== phaseName ? phase : { ...phase, ...nextValues },
+      ),
+    );
+  };
 
   const updateRow = (
     phaseName: string,
     rowId: string,
-    nextValues: Partial<PhaseRow>
+    nextValues: Partial<PhaseRow>,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -10358,21 +10959,21 @@ const ProjectScopeEditStep = ({
           : {
               ...phase,
               rows: (phase.rows ?? []).map((row) =>
-                row.id === rowId ? { ...row, ...nextValues } : row
+                row.id === rowId ? { ...row, ...nextValues } : row,
               ),
-            }
-      )
-    )
-  }
+            },
+      ),
+    );
+  };
 
   const addPhase = () => {
-    const nextPhaseName = `Phase ${phases.length + 1} Research`
+    const nextPhaseName = `Phase ${phases.length + 1} Research`;
     setPhases((currentPhases) => [
       ...currentPhases,
       createProjectScopePhase(nextPhaseName, currentPhases.length),
-    ])
-    setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName])
-  }
+    ]);
+    setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName]);
+  };
 
   const addTask = (phaseName: string) => {
     setPhases((currentPhases) =>
@@ -10393,20 +10994,20 @@ const ProjectScopeEditStep = ({
                   workSchedule: "full_time",
                 },
               ],
-            }
-      )
-    )
+            },
+      ),
+    );
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames
-        : [...currentNames, phaseName]
-    )
-  }
+        : [...currentNames, phaseName],
+    );
+  };
 
   const addProjectQualityTask = () => {
-    const targetPhaseName = phases[0]?.phaseName
+    const targetPhaseName = phases[0]?.phaseName;
 
-    if (!targetPhaseName) return false
+    if (!targetPhaseName) return false;
 
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -10415,7 +11016,7 @@ const ProjectScopeEditStep = ({
           : {
               ...phase,
               rows: (phase.rows ?? []).some(
-                (row) => row.task === "Quality Review"
+                (row) => row.task === "Quality Review",
               )
                 ? phase.rows
                 : [
@@ -10430,70 +11031,70 @@ const ProjectScopeEditStep = ({
                       workSchedule: "full_time",
                     },
                   ],
-            }
-      )
-    )
+            },
+      ),
+    );
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(targetPhaseName)
         ? currentNames
-        : [...currentNames, targetPhaseName]
-    )
+        : [...currentNames, targetPhaseName],
+    );
 
-    return true
-  }
+    return true;
+  };
 
   const applyProjectAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message)
+    const normalizedMessage = normalizeSearchText(message);
 
-    if (!normalizedMessage) return false
+    if (!normalizedMessage) return false;
 
     if (normalizedMessage.includes("budget")) {
       setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8))
+        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
         setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`
-        )
-        return nextAmount
-      })
-      return true
+          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`,
+        );
+        return nextAmount;
+      });
+      return true;
     } else if (
       normalizedMessage.includes("timeline") ||
       normalizedMessage.includes("shorten")
     ) {
       setProjectTimelineMonths((currentMonths) => {
-        const nextMonths = Math.max(1, currentMonths - 1)
+        const nextMonths = Math.max(1, currentMonths - 1);
         setAssistantResult(
-          `Applied: project timeline shortened to ${nextMonths} ${nextMonths === 1 ? "month" : "months"}.`
-        )
-        return nextMonths
-      })
-      return true
+          `Applied: project timeline shortened to ${nextMonths} ${nextMonths === 1 ? "month" : "months"}.`,
+        );
+        return nextMonths;
+      });
+      return true;
     } else if (
       normalizedMessage.includes("quality") ||
       normalizedMessage.includes("scope") ||
       normalizedMessage.includes("improve")
     ) {
-      const didAddTask = addProjectQualityTask()
+      const didAddTask = addProjectQualityTask();
       setAssistantResult(
         didAddTask
           ? "Applied: added a Quality Review task to the first phase."
-          : "No available phase found to update."
-      )
-      return true
+          : "No available phase found to update.",
+      );
+      return true;
     } else {
       setAssistantResult(
-        "Try one of the suggested actions: reduce the budget, shorten the timeline, or improve scope quality."
-      )
+        "Try one of the suggested actions: reduce the budget, shorten the timeline, or improve scope quality.",
+      );
     }
 
-    return false
-  }
+    return false;
+  };
 
   const buildProjectAssistantScope = () => ({
     phases: phases.map((phase, phaseIndex) => {
-      const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
+      const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`;
       const { phaseType, durationDays, recurrenceSchedule, recurrenceCount } =
-        getJobListingPhaseFields(phase, phaseName, phases, phaseIndex)
+        getJobListingPhaseFields(phase, phaseName, phases, phaseIndex);
 
       return {
         phaseName,
@@ -10511,16 +11112,16 @@ const ProjectScopeEditStep = ({
           customFrequency: row.customFrequency,
           estimatedHours: toEstimatedHours(row),
         })),
-      }
+      };
     }),
-  })
+  });
 
   const applyGeneratedProjectScope = (generatedScope: any) => {
     const generatedPhases = Array.isArray(generatedScope?.phases)
       ? generatedScope.phases
-      : []
+      : [];
 
-    if (!generatedPhases.length) return false
+    if (!generatedPhases.length) return false;
 
     const nextPhases: Phase[] = generatedPhases.map(
       (phase: any, phaseIndex: number) => ({
@@ -10542,96 +11143,96 @@ const ProjectScopeEditStep = ({
             workSchedule: task?.workSchedule ?? "full_time",
             customHours: task?.customHours ?? undefined,
             customFrequency: task?.customFrequency ?? undefined,
-          })
+          }),
         ),
-      })
-    )
+      }),
+    );
 
-    setPhases(nextPhases)
+    setPhases(nextPhases);
     setExpandedPhaseNames(
       nextPhases
         .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name))
-    )
-    return true
-  }
+        .filter((name): name is string => Boolean(name)),
+    );
+    return true;
+  };
 
   const runProjectAssistant = async (message: string) => {
-    if (!message.trim()) return
+    if (!message.trim()) return;
 
     if (!jobListingId) {
-      applyProjectAssistantFallback(message)
-      setAssistantMessage("")
-      return
+      applyProjectAssistantFallback(message);
+      setAssistantMessage("");
+      return;
     }
 
-    setIsAssistantLoading(true)
+    setIsAssistantLoading(true);
     try {
       const response = await JobListingAPI.SmartAssistant(jobListingId, {
         mode: "scope",
         command: message,
         currentScope: buildProjectAssistantScope(),
         workType: "project",
-      })
-      const data = response?.data ?? {}
+      });
+      const data = response?.data ?? {};
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyProjectAssistantFallback(message)
+        applyProjectAssistantFallback(message);
         setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable."
-        )
-        return
+          data.message ?? "Smart Assistant is temporarily unavailable.",
+        );
+        return;
       }
 
       if (applyGeneratedProjectScope(data.updatedScope)) {
         setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the project scope."
-        )
+          data.summary ?? "Applied: Smart Assistant updated the project scope.",
+        );
       } else {
         setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope."
-        )
+          data.summary ?? "Smart Assistant did not return an updated scope.",
+        );
       }
     } catch (error: any) {
-      applyProjectAssistantFallback(message)
+      applyProjectAssistantFallback(message);
       setAssistantResult(
         error?.response?.data?.message ||
           error?.message ||
-          "Smart Assistant is temporarily unavailable."
-      )
+          "Smart Assistant is temporarily unavailable.",
+      );
     } finally {
-      setAssistantMessage("")
-      setIsAssistantLoading(false)
+      setAssistantMessage("");
+      setIsAssistantLoading(false);
     }
-  }
+  };
 
   const removePhase = (phaseName: string) => {
     setPhases((currentPhases) =>
       currentPhases.length <= 1
         ? currentPhases
-        : currentPhases.filter((phase) => phase.phaseName !== phaseName)
-    )
+        : currentPhases.filter((phase) => phase.phaseName !== phaseName),
+    );
     setExpandedPhaseNames((currentNames) =>
-      currentNames.filter((name) => name !== phaseName)
-    )
-  }
+      currentNames.filter((name) => name !== phaseName),
+    );
+  };
 
   const togglePhase = (phaseName: string) => {
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames.filter((name) => name !== phaseName)
-        : [...currentNames, phaseName]
-    )
-  }
+        : [...currentNames, phaseName],
+    );
+  };
 
   const openRoleEditor = (phaseName: string, row: PhaseRow) => {
-    const key = `${phaseName}-${row.id}`
-    setActiveRoleKey(key)
-    setDraftRole(row.role ?? "")
-    setDraftSchedule(row.workSchedule ?? "full_time")
-    setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15))
-    setDraftCustomFrequency(row.customFrequency ?? "per_week")
-  }
+    const key = `${phaseName}-${row.id}`;
+    setActiveRoleKey(key);
+    setDraftRole(row.role ?? "");
+    setDraftSchedule(row.workSchedule ?? "full_time");
+    setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15));
+    setDraftCustomFrequency(row.customFrequency ?? "per_week");
+  };
 
   const saveRoleEditor = (phaseName: string, rowId: string) => {
     updateRow(phaseName, rowId, {
@@ -10643,21 +11244,54 @@ const ProjectScopeEditStep = ({
           : undefined,
       customFrequency:
         draftSchedule === "custom" ? draftCustomFrequency : undefined,
-    })
-    setActiveRoleKey(null)
-  }
+    });
+    setActiveRoleKey(null);
+  };
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(isScopeValid)
-  }, [isScopeValid])
+    toggleValidation(isScopeValid);
+  }, [isScopeValid]);
 
   useEffect(() => {
-    setProgress?.(22.5)
-  }, [setProgress])
+    setProgress?.(22.5);
+  }, [setProgress]);
 
   useEffect(() => {
-    setProjectScopeState(phases)
-  }, [phases, setProjectScopeState])
+    setProjectScopeState(phases);
+  }, [phases, setProjectScopeState]);
+
+  useEffect(() => {
+    if (!jobListingId || !isScopeValid) return;
+
+    const payload = buildProjectAssistantScope();
+    const signature = JSON.stringify(payload);
+
+    if (skipNextProjectScopeSaveRef.current) {
+      skipNextProjectScopeSaveRef.current = false;
+      lastSavedProjectScopeSignatureRef.current = signature;
+      return;
+    }
+
+    if (signature === lastSavedProjectScopeSignatureRef.current) return;
+
+    const timeout = window.setTimeout(() => {
+      const saveScope = async () => {
+        try {
+          await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+            hasScope: true,
+            phases: payload.phases,
+          });
+          lastSavedProjectScopeSignatureRef.current = signature;
+        } catch (error) {
+          console.error("Failed to save project job listing scope", error);
+        }
+      };
+
+      void saveScope();
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [phases, isScopeValid, jobListingId]);
 
   return (
     <ScrollArea
@@ -10777,7 +11411,7 @@ const ProjectScopeEditStep = ({
                     setExpandedPhaseNames(
                       phases
                         .map((phase) => phase.phaseName)
-                        .filter((name): name is string => Boolean(name))
+                        .filter((name): name is string => Boolean(name)),
                     )
                   }
                 >
@@ -10818,8 +11452,8 @@ const ProjectScopeEditStep = ({
 
             <div className="mt-6 space-y-3">
               {visiblePhases.map((phase, phaseIndex) => {
-                const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
-                const isExpanded = expandedPhaseNames.includes(phaseName)
+                const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`;
+                const isExpanded = expandedPhaseNames.includes(phaseName);
 
                 return (
                   <div
@@ -10841,7 +11475,7 @@ const ProjectScopeEditStep = ({
                           <ChevronDown
                             className={cn(
                               "size-5 text-gray-500",
-                              isExpanded && "rotate-180"
+                              isExpanded && "rotate-180",
                             )}
                           />
                         </button>
@@ -10911,8 +11545,8 @@ const ProjectScopeEditStep = ({
                           <span>Duration</span>
                         </div>
                         {(phase.rows ?? []).map((row) => {
-                          const roleKey = `${phaseName}-${row.id}`
-                          const isRoleOpen = activeRoleKey === roleKey
+                          const roleKey = `${phaseName}-${row.id}`;
+                          const isRoleOpen = activeRoleKey === roleKey;
 
                           return (
                             <div
@@ -10978,17 +11612,17 @@ const ProjectScopeEditStep = ({
                                 value={formatProjectRowDuration(row)}
                                 onChange={(event) => {
                                   const [value, type = "hours"] =
-                                    event.target.value.split(/\s+/)
+                                    event.target.value.split(/\s+/);
                                   updateRow(phaseName, row.id, {
                                     duration: {
                                       value: Number(value) || 1,
                                       type: DURATION_TYPE.includes(
-                                        type as (typeof DURATION_TYPE)[number]
+                                        type as (typeof DURATION_TYPE)[number],
                                       )
                                         ? (type as (typeof DURATION_TYPE)[number])
                                         : "hours",
                                     },
-                                  })
+                                  });
                                 }}
                               />
 
@@ -11012,7 +11646,7 @@ const ProjectScopeEditStep = ({
                                       value={draftSchedule}
                                       onValueChange={(value) =>
                                         setDraftSchedule(
-                                          value as JobListingWorkSchedule
+                                          value as JobListingWorkSchedule,
                                         )
                                       }
                                     >
@@ -11057,9 +11691,9 @@ const ProjectScopeEditStep = ({
                                           visual="gray"
                                           aria-label="Clear custom schedule"
                                           onClick={() => {
-                                            setDraftCustomHours("")
-                                            setDraftCustomFrequency("per_week")
-                                            setDraftSchedule("full_time")
+                                            setDraftCustomHours("");
+                                            setDraftCustomFrequency("per_week");
+                                            setDraftSchedule("full_time");
                                           }}
                                         >
                                           <X className="size-4" />
@@ -11071,7 +11705,7 @@ const ProjectScopeEditStep = ({
                                           value={draftCustomHours}
                                           onChange={(event) =>
                                             setDraftCustomHours(
-                                              event.target.value
+                                              event.target.value,
                                             )
                                           }
                                         />
@@ -11128,12 +11762,12 @@ const ProjectScopeEditStep = ({
                                 </div>
                               ) : null}
                             </div>
-                          )
+                          );
                         })}
                       </>
                     ) : null}
                   </div>
-                )
+                );
               })}
               {visiblePhases.length === 0 ? (
                 <div className="rounded-lg border border-gray-200 bg-white px-6 py-8 text-center text-sm leading-5 text-gray-500 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -11203,8 +11837,8 @@ const ProjectScopeEditStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const finalReviewRoles = [
   "Front-End Developer",
@@ -11212,15 +11846,15 @@ const finalReviewRoles = [
   "UX Designer",
   "Q/A Engineer",
   "Project Manager",
-]
+];
 
-const finalReviewSkills = ["HTML5", "CSS3", "Bootstrap", "JavaScript", "WCAG"]
+const finalReviewSkills = ["HTML5", "CSS3", "Bootstrap", "JavaScript", "WCAG"];
 
 const finalReviewRichTextEditorClassName =
-  "mt-3 rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500"
+  "mt-3 rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500";
 
 const finalReviewRichTextEditorContentClassName =
-  "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+  "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7";
 
 const ndaPreviewSections = [
   {
@@ -11243,69 +11877,69 @@ const ndaPreviewSections = [
     title: "Duration",
     body: "Confidentiality obligations continue after the job ends unless the information becomes public through no fault of the receiving party.",
   },
-]
+];
 
 const NDA_OFF_WARNING =
-  "Without an NDA, your scope and team details will be publicly visible to all talent on Marketeq."
+  "Without an NDA, your scope and team details will be publicly visible to all talent on Marketeq.";
 
 const INHERITED_NDA_MESSAGE =
-  "NDA settings are inherited from the parent contract."
+  "NDA settings are inherited from the parent contract.";
 
 const NdaPreviewDialog = ({
   trigger,
   ndaDocumentId,
 }: {
-  trigger: React.ReactNode
-  ndaDocumentId?: string | null
+  trigger: React.ReactNode;
+  ndaDocumentId?: string | null;
 }) => {
-  const [open, setOpen] = useState(false)
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [open, setOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !ndaDocumentId) {
-      return
+      return;
     }
 
-    let cancelled = false
+    let cancelled = false;
 
     const loadPreview = async () => {
-      setIsLoading(true)
-      setErrorMessage(null)
+      setIsLoading(true);
+      setErrorMessage(null);
 
       try {
-        const response = await LegalAPI.GetNdaPreview(ndaDocumentId)
-        const nextPdfUrl = response?.data?.pdfUrl
+        const response = await LegalAPI.GetNdaPreview(ndaDocumentId);
+        const nextPdfUrl = response?.data?.pdfUrl;
 
         if (!cancelled) {
-          setPdfUrl(typeof nextPdfUrl === "string" ? nextPdfUrl : null)
+          setPdfUrl(typeof nextPdfUrl === "string" ? nextPdfUrl : null);
           if (!nextPdfUrl) {
-            setErrorMessage("The NDA preview file is not available yet.")
+            setErrorMessage("The NDA preview file is not available yet.");
           }
         }
       } catch (error: any) {
         if (!cancelled) {
-          setPdfUrl(null)
+          setPdfUrl(null);
           setErrorMessage(
             error?.response?.data?.message ||
               error?.message ||
-              "Unable to load the NDA preview."
-          )
+              "Unable to load the NDA preview.",
+          );
         }
       } finally {
         if (!cancelled) {
-          setIsLoading(false)
+          setIsLoading(false);
         }
       }
-    }
+    };
 
-    void loadPreview()
+    void loadPreview();
 
     return () => {
-      cancelled = true
-    }
-  }, [open, ndaDocumentId])
+      cancelled = true;
+    };
+  }, [open, ndaDocumentId]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -11374,60 +12008,60 @@ const NdaPreviewDialog = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
 
 const renderNdaPreviewDialog = (
   trigger: React.ReactNode,
-  ndaDocumentId?: string | null
-) => <NdaPreviewDialog trigger={trigger} ndaDocumentId={ndaDocumentId} />
+  ndaDocumentId?: string | null,
+) => <NdaPreviewDialog trigger={trigger} ndaDocumentId={ndaDocumentId} />;
 
 const useDynamicFinalReviewSkills = () => {
-  const [skills, setSkills] = useState(finalReviewSkills)
-  const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false)
-  const [draftSkill, setDraftSkill] = useState("")
+  const [skills, setSkills] = useState(finalReviewSkills);
+  const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false);
+  const [draftSkill, setDraftSkill] = useState("");
 
   const addSkill = () => {
-    setDraftSkill("")
-    setAddSkillDialogOpen(true)
-  }
+    setDraftSkill("");
+    setAddSkillDialogOpen(true);
+  };
 
   const closeAddSkillDialog = () => {
-    setAddSkillDialogOpen(false)
-    setDraftSkill("")
-  }
+    setAddSkillDialogOpen(false);
+    setDraftSkill("");
+  };
 
   const saveSkill = () => {
-    const nextSkill = draftSkill.trim()
+    const nextSkill = draftSkill.trim();
 
-    if (!nextSkill) return
+    if (!nextSkill) return;
 
     setSkills((currentSkills) =>
       currentSkills.some(
-        (skill) => skill.toLowerCase() === nextSkill.toLowerCase()
+        (skill) => skill.toLowerCase() === nextSkill.toLowerCase(),
       )
         ? currentSkills
-        : [...currentSkills, nextSkill]
-    )
-    closeAddSkillDialog()
-  }
+        : [...currentSkills, nextSkill],
+    );
+    closeAddSkillDialog();
+  };
 
   const removeSkill = (skillToRemove: string) => {
     setSkills((currentSkills) =>
-      currentSkills.filter((skill) => skill !== skillToRemove)
-    )
-  }
+      currentSkills.filter((skill) => skill !== skillToRemove),
+    );
+  };
 
   const addSkillDialog = (
     <Dialog
       open={isAddSkillDialogOpen}
       onOpenChange={(isOpen) => {
         if (isOpen) {
-          setAddSkillDialogOpen(true)
-          return
+          setAddSkillDialogOpen(true);
+          return;
         }
 
-        closeAddSkillDialog()
+        closeAddSkillDialog();
       }}
     >
       <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
@@ -11450,8 +12084,8 @@ const useDynamicFinalReviewSkills = () => {
             onChange={(event) => setDraftSkill(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
-                event.preventDefault()
-                saveSkill()
+                event.preventDefault();
+                saveSkill();
               }
             }}
           />
@@ -11475,10 +12109,10 @@ const useDynamicFinalReviewSkills = () => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 
-  return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
-}
+  return { skills, setSkills, addSkill, removeSkill, addSkillDialog };
+};
 
 const FinalReviewRichTextField = ({
   title,
@@ -11487,24 +12121,24 @@ const FinalReviewRichTextField = ({
   counterLabel,
   onChange,
 }: {
-  title: string
-  initialValue?: string
-  placeholder: string
-  counterLabel?: string
-  onChange?: (value: string) => void
+  title: string;
+  initialValue?: string;
+  placeholder: string;
+  counterLabel?: string;
+  onChange?: (value: string) => void;
 }) => {
-  const [value, setValue] = useState(initialValue)
+  const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
-    setValue(initialValue)
-  }, [initialValue])
+    setValue(initialValue);
+  }, [initialValue]);
 
-  const characterCount = getRichTextCharacterCount(value)
+  const characterCount = getRichTextCharacterCount(value);
 
   const handleChange = (html: string) => {
-    setValue(html)
-    onChange?.(html)
-  }
+    setValue(html);
+    onChange?.(html);
+  };
 
   return (
     <>
@@ -11527,8 +12161,8 @@ const FinalReviewRichTextField = ({
         onBlur={handleChange}
       />
     </>
-  )
-}
+  );
+};
 
 const FinalReviewTextSection = ({
   title,
@@ -11537,11 +12171,11 @@ const FinalReviewTextSection = ({
   onChange,
   children,
 }: {
-  title: string
-  initialValue?: string
-  placeholder: string
-  onChange?: (value: string) => void
-  children?: React.ReactNode
+  title: string;
+  initialValue?: string;
+  placeholder: string;
+  onChange?: (value: string) => void;
+  children?: React.ReactNode;
 }) => (
   <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
     <FinalReviewRichTextField
@@ -11552,7 +12186,7 @@ const FinalReviewTextSection = ({
     />
     {children}
   </div>
-)
+);
 
 const useFinalReviewSmartAssistant = ({
   jobListingId,
@@ -11560,34 +12194,34 @@ const useFinalReviewSmartAssistant = ({
   getValue,
   onApply,
 }: {
-  jobListingId?: string | null
-  ensureJobListingDraft?: EnsureJobListingDraft
-  getValue: (field: SmartAssistantEditableField) => string
-  onApply: (field: SmartAssistantEditableField, value: string) => void
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
+  getValue: (field: SmartAssistantEditableField) => string;
+  onApply: (field: SmartAssistantEditableField, value: string) => void;
 }) => {
-  const [message, setMessage] = useState("")
-  const [result, setResult] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const run = useCallback(
     async (command: string, field: SmartAssistantEditableField) => {
-      const trimmedCommand = command.trim()
+      const trimmedCommand = command.trim();
 
       if (!trimmedCommand) {
-        return
+        return;
       }
 
-      setIsLoading(true)
-      setResult("")
+      setIsLoading(true);
+      setResult("");
 
       try {
-        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.());
 
         if (!listingId) {
           setResult(
-            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment."
-          )
-          return
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
+          );
+          return;
         }
 
         const response = await JobListingAPI.SmartAssistant(listingId, {
@@ -11595,46 +12229,46 @@ const useFinalReviewSmartAssistant = ({
           command: trimmedCommand,
           field,
           currentValue: getValue(field),
-        })
+        });
         const data = response.data as {
-          aiStatus?: "OK" | "AI_UNAVAILABLE"
-          updatedValue?: string
-          suggestions?: string[]
-          message?: string
-        }
+          aiStatus?: "OK" | "AI_UNAVAILABLE";
+          updatedValue?: string;
+          suggestions?: string[];
+          message?: string;
+        };
 
         if (data.aiStatus === "AI_UNAVAILABLE") {
           setResult(
-            data.message ?? "Smart Assistant is temporarily unavailable."
-          )
-          return
+            data.message ?? "Smart Assistant is temporarily unavailable.",
+          );
+          return;
         }
 
         if (data.updatedValue) {
           const updatedValue = clampSmartAssistantFieldValue(
             field,
-            data.updatedValue
-          )
-          onApply(field, updatedValue)
+            data.updatedValue,
+          );
+          onApply(field, updatedValue);
           setResult(
             field === "title"
               ? `Suggested title: ${updatedValue}`
-              : "Smart Assistant updated this section."
-          )
-          setMessage("")
-          return
+              : "Smart Assistant updated this section.",
+          );
+          setMessage("");
+          return;
         }
 
-        setResult("Smart Assistant did not return an update for this section.")
+        setResult("Smart Assistant did not return an update for this section.");
       } catch (error) {
-        console.error("Smart Assistant field edit failed", error)
-        setResult("Smart Assistant is temporarily unavailable.")
+        console.error("Smart Assistant field edit failed", error);
+        setResult("Smart Assistant is temporarily unavailable.");
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
     },
-    [ensureJobListingDraft, getValue, jobListingId, onApply]
-  )
+    [ensureJobListingDraft, getValue, jobListingId, onApply],
+  );
 
   return {
     message,
@@ -11642,32 +12276,32 @@ const useFinalReviewSmartAssistant = ({
     result,
     isLoading,
     run,
-  }
-}
+  };
+};
 
 const resolveFinalReviewAssistantField = (
-  command: string
+  command: string,
 ): SmartAssistantEditableField => {
-  const normalized = command.toLowerCase()
+  const normalized = command.toLowerCase();
 
   if (
     /\b(title|project title|service title|headline|name)\b/.test(normalized)
   ) {
-    return "title"
+    return "title";
   }
 
   if (
     /\b(overview|summary|description|intro|introduction)\b/.test(normalized)
   ) {
-    return "overview"
+    return "overview";
   }
 
   if (/\b(benefit|benefits|why join|value proposition)\b/.test(normalized)) {
-    return "benefits"
+    return "benefits";
   }
 
-  return "responsibilities"
-}
+  return "responsibilities";
+};
 
 const useRoleDescriptionPersistence = ({
   jobListingId,
@@ -11679,116 +12313,134 @@ const useRoleDescriptionPersistence = ({
   skills,
   onLoad,
 }: {
-  jobListingId?: string | null
-  ensureJobListingDraft?: EnsureJobListingDraft
-  roleTitle: string
-  overview?: string
-  benefits?: string
-  responsibilities?: string
-  skills?: string[]
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
+  roleTitle: string;
+  overview?: string;
+  benefits?: string;
+  responsibilities?: string;
+  skills?: string[];
   onLoad?: (draft: {
-    overview?: string
-    benefits?: string
-    responsibilities?: string
-    skills?: string[]
-  }) => void
+    overview?: string;
+    benefits?: string;
+    responsibilities?: string;
+    skills?: string[];
+  }) => void;
 }) => {
-  const loadedKeyRef = useRef("")
-  const lastSavedPayloadRef = useRef("")
+  const loadedKeyRef = useRef("");
+  const lastSavedPayloadRef = useRef("");
+  const [loadedPersistenceKey, setLoadedPersistenceKey] = useState("");
 
   useEffect(() => {
-    const listingId = jobListingId
-    const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : ""
-    if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return
-    loadedKeyRef.current = loadKey
+    const listingId = jobListingId;
+    const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : "";
+    if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return;
+    loadedKeyRef.current = loadKey;
+    setLoadedPersistenceKey("");
 
     const loadRoleDescription = async () => {
       try {
-        const response = await JobListingAPI.GetRoleDescriptions(listingId)
-        const descriptions = Array.isArray(response?.data) ? response.data : []
+        const response = await JobListingAPI.GetRoleDescriptions(listingId);
+        const descriptions = Array.isArray(response?.data) ? response.data : [];
         const description = descriptions.find(
-          (item: any) => item?.roleTitle === roleTitle
-        )
-        if (!description) return
+          (item: any) => item?.roleTitle === roleTitle,
+        );
+        if (!description) return;
 
-        onLoad?.({
+        const loadedPayload = {
           overview: description.overview ?? undefined,
           benefits: description.benefits ?? undefined,
           responsibilities: description.responsibilities ?? undefined,
           skills: Array.isArray(description.skills)
             ? description.skills
             : undefined,
-        })
+        };
+        lastSavedPayloadRef.current = JSON.stringify({
+          roleTitle,
+          payload: loadedPayload,
+        });
+        onLoad?.(loadedPayload);
       } catch (error) {
-        console.error("Failed to load role description", error)
+        console.error("Failed to load role description", error);
+      } finally {
+        setLoadedPersistenceKey(loadKey);
       }
-    }
+    };
 
-    void loadRoleDescription()
-  }, [jobListingId, onLoad, roleTitle])
+    void loadRoleDescription();
+  }, [jobListingId, onLoad, roleTitle]);
 
   useEffect(() => {
-    if (!roleTitle) return
+    if (!roleTitle) return;
 
     const payload = {
       overview,
       benefits,
       responsibilities,
       skills,
-    }
+    };
     const serializedPayload = JSON.stringify({
       roleTitle,
       payload,
-    })
+    });
+    const loadKey =
+      jobListingId && roleTitle ? `${jobListingId}:${roleTitle}` : "";
 
-    if (serializedPayload === lastSavedPayloadRef.current) return
+    if (loadKey && loadedPersistenceKey !== loadKey) return;
+
+    if (serializedPayload === lastSavedPayloadRef.current) return;
 
     const previousPayload = lastSavedPayloadRef.current
       ? JSON.parse(lastSavedPayloadRef.current)
-      : null
+      : null;
     const textSignature = JSON.stringify({
       overview,
       benefits,
       responsibilities,
-    })
+    });
     const previousTextSignature = JSON.stringify({
       overview: previousPayload?.payload?.overview,
       benefits: previousPayload?.payload?.benefits,
       responsibilities: previousPayload?.payload?.responsibilities,
-    })
+    });
     const skillsChanged =
       JSON.stringify(skills ?? []) !==
-      JSON.stringify(previousPayload?.payload?.skills ?? [])
-    const textChanged = textSignature !== previousTextSignature
-    const saveDelay = textChanged && !skillsChanged ? 500 : 0
+      JSON.stringify(previousPayload?.payload?.skills ?? []);
+    const textChanged = textSignature !== previousTextSignature;
+    const saveDelay = textChanged && !skillsChanged ? 500 : 0;
 
     const timeout = window.setTimeout(() => {
       const saveRoleDescription = async () => {
         try {
-          const listingId = jobListingId ?? (await ensureJobListingDraft?.())
-          if (!listingId) return
+          const listingId = jobListingId ?? (await ensureJobListingDraft?.());
+          if (!listingId) return;
 
-          await JobListingAPI.SaveRoleDescription(listingId, roleTitle, payload)
-          lastSavedPayloadRef.current = serializedPayload
+          await JobListingAPI.SaveRoleDescription(
+            listingId,
+            roleTitle,
+            payload,
+          );
+          lastSavedPayloadRef.current = serializedPayload;
         } catch (error) {
-          console.error("Failed to save role description", error)
+          console.error("Failed to save role description", error);
         }
-      }
+      };
 
-      void saveRoleDescription()
-    }, saveDelay)
+      void saveRoleDescription();
+    }, saveDelay);
 
-    return () => window.clearTimeout(timeout)
+    return () => window.clearTimeout(timeout);
   }, [
     benefits,
     ensureJobListingDraft,
     jobListingId,
+    loadedPersistenceKey,
     overview,
     responsibilities,
     roleTitle,
     skills,
-  ])
-}
+  ]);
+};
 
 const ReviewEditableTags = ({
   fieldName,
@@ -11798,18 +12450,18 @@ const ReviewEditableTags = ({
   fallbackOptions,
   max,
 }: {
-  fieldName: "industry" | "languages"
-  label: string
-  addLabel: string
-  autocompleteType: string
-  fallbackOptions: string[]
-  max: number
+  fieldName: "industry" | "languages";
+  label: string;
+  addLabel: string;
+  autocompleteType: string;
+  fallbackOptions: string[];
+  max: number;
 }) => {
-  const methods = useProjectInfoContext()
-  const values = useWatch({ control: methods.control, name: fieldName }) ?? []
-  const [isEditing, setIsEditing] = useState(false)
-  const [options, setOptions] = useState<string[]>(fallbackOptions)
-  const requestRef = useRef(0)
+  const methods = useProjectInfoContext();
+  const values = useWatch({ control: methods.control, name: fieldName }) ?? [];
+  const [isEditing, setIsEditing] = useState(false);
+  const [options, setOptions] = useState<string[]>(fallbackOptions);
+  const requestRef = useRef(0);
 
   const updateValues = useCallback(
     (nextValues: string[]) => {
@@ -11817,51 +12469,51 @@ const ReviewEditableTags = ({
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: true,
-      })
-      methods.clearErrors(fieldName)
-      void methods.trigger(fieldName)
+      });
+      methods.clearErrors(fieldName);
+      void methods.trigger(fieldName);
     },
-    [fieldName, max, methods]
-  )
+    [fieldName, max, methods],
+  );
 
   const removeValue = useCallback(
     (value: string) => {
-      updateValues(values.filter((item) => item !== value))
+      updateValues(values.filter((item) => item !== value));
     },
-    [updateValues, values]
-  )
+    [updateValues, values],
+  );
 
   const loadOptions = useCallback(
     async (query: string) => {
-      const requestId = requestRef.current + 1
-      requestRef.current = requestId
+      const requestId = requestRef.current + 1;
+      requestRef.current = requestId;
 
       try {
         const response = await AutocompleteAPI.getByType(
           autocompleteType,
-          query
-        )
-        if (requestRef.current !== requestId) return
+          query,
+        );
+        if (requestRef.current !== requestId) return;
 
         const nextOptions = Array.isArray(response?.data)
           ? getUniqueOptions(
               response.data
                 .map((item: AutocompleteTypeSuggestion) =>
-                  normalizeAutocompleteLabel(item)
+                  normalizeAutocompleteLabel(item),
                 )
-                .filter(Boolean)
+                .filter(Boolean),
             )
-          : []
+          : [];
 
-        setOptions(nextOptions.length ? nextOptions : fallbackOptions)
+        setOptions(nextOptions.length ? nextOptions : fallbackOptions);
       } catch {
         if (requestRef.current === requestId) {
-          setOptions(fallbackOptions)
+          setOptions(fallbackOptions);
         }
       }
     },
-    [autocompleteType, fallbackOptions]
-  )
+    [autocompleteType, fallbackOptions],
+  );
 
   return (
     <div>
@@ -11941,13 +12593,13 @@ const ReviewEditableTags = ({
         </TagsInputRoot>
       )}
     </div>
-  )
-}
+  );
+};
 
 const ReviewEditableTitle = ({ label }: { label: string }) => {
-  const methods = useProjectInfoContext()
-  const value = useWatch({ control: methods.control, name: "title" }) ?? ""
-  const titleHasError = methods.getFieldState("title").invalid
+  const methods = useProjectInfoContext();
+  const value = useWatch({ control: methods.control, name: "title" }) ?? "";
+  const titleHasError = methods.getFieldState("title").invalid;
 
   const updateTitle = useCallback(
     (nextTitle: string) => {
@@ -11955,13 +12607,13 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: false,
-      })
+      });
       if (methods.getFieldState("title").error?.type === "manual") {
-        methods.clearErrors("title")
+        methods.clearErrors("title");
       }
     },
-    [methods]
-  )
+    [methods],
+  );
 
   return (
     <div>
@@ -11984,8 +12636,8 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         )}
       />
     </div>
-  )
-}
+  );
+};
 
 const FinalServiceReviewStep = ({
   setProgress,
@@ -11993,36 +12645,42 @@ const FinalServiceReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null
-  jobListingId?: string | null
-  ensureJobListingDraft?: EnsureJobListingDraft
+  ndaDocumentId?: string | null;
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
 }) => {
-  const { toggleValidation } = useStepContext()
-  const { details, setDetails } = useJobListingDraftContext()
-  const projectInfoMethods = useProjectInfoContext()
+  const { toggleValidation } = useStepContext();
+  const { details, setDetails } = useJobListingDraftContext();
+  const projectInfoMethods = useProjectInfoContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [projectScopeState] = projectScopeMethods;
+  const roleOptions = useMemo(
+    () => getScopeRoleOptions(projectScopeState),
+    [projectScopeState],
+  );
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
-    details.ndaEnabled === true ? "yes" : "no"
-  )
-  const [selectedRole, setSelectedRole] = useState(finalReviewRoles[0])
-  const [responsibilities, setResponsibilities] = useState("")
-  const didGenerateRoleDescriptionsRef = useRef(false)
+    details.ndaEnabled === true ? "yes" : "no",
+  );
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0]);
+  const [responsibilities, setResponsibilities] = useState("");
+  const didGenerateRoleDescriptionsRef = useRef(false);
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills()
+    useDynamicFinalReviewSkills();
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
-      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
-      if (field === "overview") return details.description ?? ""
-      if (field === "benefits") return details.successCriteria ?? ""
-      if (field === "responsibilities") return responsibilities
-      return ""
+      if (field === "title") return projectInfoMethods.getValues("title") ?? "";
+      if (field === "overview") return details.description ?? "";
+      if (field === "benefits") return details.successCriteria ?? "";
+      if (field === "responsibilities") return responsibilities;
+      return "";
     },
     [
       details.description,
       details.successCriteria,
       projectInfoMethods,
       responsibilities,
-    ]
-  )
+    ],
+  );
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "title") {
@@ -12030,48 +12688,53 @@ const FinalServiceReviewStep = ({
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: true,
-        })
+        });
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }))
+        setDetails((current) => ({ ...current, description: value }));
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }))
+        setDetails((current) => ({ ...current, successCriteria: value }));
       } else if (field === "responsibilities") {
-        setResponsibilities(value)
+        setResponsibilities(value);
       }
     },
-    [projectInfoMethods, setDetails]
-  )
+    [projectInfoMethods, setDetails],
+  );
   const serviceAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  })
+  });
+  useEffect(() => {
+    if (!roleOptions.includes(selectedRole)) {
+      setSelectedRole(roleOptions[0]);
+    }
+  }, [roleOptions, selectedRole]);
   const loadSavedRoleDescription = useCallback(
     (draft: {
-      overview?: string
-      benefits?: string
-      responsibilities?: string
-      skills?: string[]
+      overview?: string;
+      benefits?: string;
+      responsibilities?: string;
+      skills?: string[];
     }) => {
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }))
+        setDetails((current) => ({ ...current, description: draft.overview }));
       }
       if (draft.benefits !== undefined) {
         setDetails((current) => ({
           ...current,
           successCriteria: draft.benefits,
-        }))
+        }));
       }
       if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities)
+        setResponsibilities(draft.responsibilities);
       }
       if (draft.skills) {
-        setSkills(draft.skills)
+        setSkills(draft.skills);
       }
     },
-    [setDetails, setSkills]
-  )
+    [setDetails, setSkills],
+  );
   useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
@@ -12081,12 +12744,12 @@ const FinalServiceReviewStep = ({
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
-  })
+  });
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
-    if (responsibilities) return
-    didGenerateRoleDescriptionsRef.current = true
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
+    if (responsibilities) return;
+    didGenerateRoleDescriptionsRef.current = true;
 
     const generateRoleDescriptions = async () => {
       try {
@@ -12095,59 +12758,60 @@ const FinalServiceReviewStep = ({
           {
             workType: "service",
             description: details.description ?? "",
-            roles: finalReviewRoles.map((roleTitle) => ({ roleTitle })),
-          }
-        )
-        const descriptions = response?.data?.roleDescriptions
+            roles: roleOptions.map((roleTitle) => ({ roleTitle })),
+          },
+        );
+        const descriptions = response?.data?.roleDescriptions;
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null
+          : null;
 
         if (description?.overview) {
           setDetails((current) => ({
             ...current,
             description: description.overview,
-          }))
+          }));
         }
         if (description?.benefits) {
           setDetails((current) => ({
             ...current,
             successCriteria: description.benefits,
-          }))
+          }));
         }
         if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities)
+          setResponsibilities(description.responsibilities);
         }
         if (Array.isArray(description?.skills)) {
-          setSkills(description.skills)
+          setSkills(description.skills);
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error)
+        console.error("Failed to generate role descriptions", error);
       }
-    }
+    };
 
-    void generateRoleDescriptions()
+    void generateRoleDescriptions();
   }, [
     details.description,
     jobListingId,
+    roleOptions,
     responsibilities,
     selectedRole,
     setDetails,
     setSkills,
-  ])
+  ]);
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true)
-  }, [])
+    toggleValidation(true);
+  }, []);
 
   useEffect(() => {
-    setProgress?.(17.5)
-  }, [setProgress])
+    setProgress?.(17.5);
+  }, [setProgress]);
   useEffect(() => {
     if (details.ndaEnabled === undefined) {
-      setDetails((current) => ({ ...current, ndaEnabled: false }))
+      setDetails((current) => ({ ...current, ndaEnabled: false }));
     }
-  }, [details.ndaEnabled, setDetails])
+  }, [details.ndaEnabled, setDetails]);
 
   return (
     <ScrollArea
@@ -12219,14 +12883,14 @@ const FinalServiceReviewStep = ({
                     className={cn(
                       "inline-flex h-9 items-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none",
                       ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700"
+                        "border-primary-500 bg-primary-50 text-primary-700",
                     )}
                     onClick={() => {
-                      setNdaChoice(option.value)
+                      setNdaChoice(option.value);
                       setDetails((current) => ({
                         ...current,
                         ndaEnabled: option.value === "yes",
-                      }))
+                      }));
                     }}
                   >
                     {option.label}
@@ -12246,7 +12910,7 @@ const FinalServiceReviewStep = ({
                     >
                       View NDA
                     </Button>,
-                    ndaDocumentId
+                    ndaDocumentId,
                   )}
                 </div>
               ) : (
@@ -12282,14 +12946,14 @@ const FinalServiceReviewStep = ({
 
               <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                 <div className="flex flex-wrap gap-2">
-                  {finalReviewRoles.map((role) => (
+                  {roleOptions.map((role) => (
                     <button
                       key={role}
                       type="button"
                       className={cn(
                         "h-8 rounded-full border border-gray-300 bg-white px-3 text-xs leading-[18px] font-semibold text-dark-blue-400",
                         selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700"
+                          "border-primary-500 bg-primary-50 text-primary-700",
                       )}
                       onClick={() => setSelectedRole(role)}
                     >
@@ -12379,7 +13043,7 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         item,
-                        field as SmartAssistantEditableField
+                        field as SmartAssistantEditableField,
                       )
                     }
                   >
@@ -12415,8 +13079,8 @@ const FinalServiceReviewStep = ({
                       serviceAssistant.run(
                         serviceAssistant.message,
                         resolveFinalReviewAssistantField(
-                          serviceAssistant.message
-                        )
+                          serviceAssistant.message,
+                        ),
                       )
                     }
                   >
@@ -12429,8 +13093,8 @@ const FinalServiceReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const FinalProjectReviewStep = ({
   setProgress,
@@ -12438,36 +13102,42 @@ const FinalProjectReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null
-  jobListingId?: string | null
-  ensureJobListingDraft?: EnsureJobListingDraft
+  ndaDocumentId?: string | null;
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
 }) => {
-  const { toggleValidation } = useStepContext()
-  const { details, setDetails } = useJobListingDraftContext()
-  const projectInfoMethods = useProjectInfoContext()
+  const { toggleValidation } = useStepContext();
+  const { details, setDetails } = useJobListingDraftContext();
+  const projectInfoMethods = useProjectInfoContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [projectScopeState] = projectScopeMethods;
+  const roleOptions = useMemo(
+    () => getScopeRoleOptions(projectScopeState),
+    [projectScopeState],
+  );
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
-    details.ndaEnabled === true ? "yes" : "no"
-  )
-  const [selectedRole, setSelectedRole] = useState(finalReviewRoles[0])
-  const [responsibilities, setResponsibilities] = useState("")
-  const didGenerateRoleDescriptionsRef = useRef(false)
+    details.ndaEnabled === true ? "yes" : "no",
+  );
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0]);
+  const [responsibilities, setResponsibilities] = useState("");
+  const didGenerateRoleDescriptionsRef = useRef(false);
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills()
+    useDynamicFinalReviewSkills();
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
-      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
-      if (field === "overview") return details.description ?? ""
-      if (field === "benefits") return details.successCriteria ?? ""
-      if (field === "responsibilities") return responsibilities
-      return ""
+      if (field === "title") return projectInfoMethods.getValues("title") ?? "";
+      if (field === "overview") return details.description ?? "";
+      if (field === "benefits") return details.successCriteria ?? "";
+      if (field === "responsibilities") return responsibilities;
+      return "";
     },
     [
       details.description,
       details.successCriteria,
       projectInfoMethods,
       responsibilities,
-    ]
-  )
+    ],
+  );
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "title") {
@@ -12475,48 +13145,53 @@ const FinalProjectReviewStep = ({
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: true,
-        })
+        });
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }))
+        setDetails((current) => ({ ...current, description: value }));
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }))
+        setDetails((current) => ({ ...current, successCriteria: value }));
       } else if (field === "responsibilities") {
-        setResponsibilities(value)
+        setResponsibilities(value);
       }
     },
-    [projectInfoMethods, setDetails]
-  )
+    [projectInfoMethods, setDetails],
+  );
   const projectAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  })
+  });
+  useEffect(() => {
+    if (!roleOptions.includes(selectedRole)) {
+      setSelectedRole(roleOptions[0]);
+    }
+  }, [roleOptions, selectedRole]);
   const loadSavedRoleDescription = useCallback(
     (draft: {
-      overview?: string
-      benefits?: string
-      responsibilities?: string
-      skills?: string[]
+      overview?: string;
+      benefits?: string;
+      responsibilities?: string;
+      skills?: string[];
     }) => {
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }))
+        setDetails((current) => ({ ...current, description: draft.overview }));
       }
       if (draft.benefits !== undefined) {
         setDetails((current) => ({
           ...current,
           successCriteria: draft.benefits,
-        }))
+        }));
       }
       if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities)
+        setResponsibilities(draft.responsibilities);
       }
       if (draft.skills) {
-        setSkills(draft.skills)
+        setSkills(draft.skills);
       }
     },
-    [setDetails, setSkills]
-  )
+    [setDetails, setSkills],
+  );
   useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
@@ -12526,12 +13201,12 @@ const FinalProjectReviewStep = ({
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
-  })
+  });
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
-    if (responsibilities) return
-    didGenerateRoleDescriptionsRef.current = true
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
+    if (responsibilities) return;
+    didGenerateRoleDescriptionsRef.current = true;
 
     const generateRoleDescriptions = async () => {
       try {
@@ -12540,59 +13215,60 @@ const FinalProjectReviewStep = ({
           {
             workType: "project",
             description: details.description ?? "",
-            roles: finalReviewRoles.map((roleTitle) => ({ roleTitle })),
-          }
-        )
-        const descriptions = response?.data?.roleDescriptions
+            roles: roleOptions.map((roleTitle) => ({ roleTitle })),
+          },
+        );
+        const descriptions = response?.data?.roleDescriptions;
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null
+          : null;
 
         if (description?.overview) {
           setDetails((current) => ({
             ...current,
             description: description.overview,
-          }))
+          }));
         }
         if (description?.benefits) {
           setDetails((current) => ({
             ...current,
             successCriteria: description.benefits,
-          }))
+          }));
         }
         if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities)
+          setResponsibilities(description.responsibilities);
         }
         if (Array.isArray(description?.skills)) {
-          setSkills(description.skills)
+          setSkills(description.skills);
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error)
+        console.error("Failed to generate role descriptions", error);
       }
-    }
+    };
 
-    void generateRoleDescriptions()
+    void generateRoleDescriptions();
   }, [
     details.description,
     jobListingId,
+    roleOptions,
     responsibilities,
     selectedRole,
     setDetails,
     setSkills,
-  ])
+  ]);
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true)
-  }, [])
+    toggleValidation(true);
+  }, []);
 
   useEffect(() => {
-    setProgress?.(17.5)
-  }, [setProgress])
+    setProgress?.(17.5);
+  }, [setProgress]);
   useEffect(() => {
     if (details.ndaEnabled === undefined) {
-      setDetails((current) => ({ ...current, ndaEnabled: false }))
+      setDetails((current) => ({ ...current, ndaEnabled: false }));
     }
-  }, [details.ndaEnabled, setDetails])
+  }, [details.ndaEnabled, setDetails]);
 
   return (
     <ScrollArea
@@ -12664,14 +13340,14 @@ const FinalProjectReviewStep = ({
                     className={cn(
                       "inline-flex h-9 items-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none",
                       ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700"
+                        "border-primary-500 bg-primary-50 text-primary-700",
                     )}
                     onClick={() => {
-                      setNdaChoice(option.value)
+                      setNdaChoice(option.value);
                       setDetails((current) => ({
                         ...current,
                         ndaEnabled: option.value === "yes",
-                      }))
+                      }));
                     }}
                   >
                     {option.label}
@@ -12691,7 +13367,7 @@ const FinalProjectReviewStep = ({
                     >
                       View NDA
                     </Button>,
-                    ndaDocumentId
+                    ndaDocumentId,
                   )}
                 </div>
               ) : (
@@ -12727,14 +13403,14 @@ const FinalProjectReviewStep = ({
 
               <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                 <div className="flex flex-wrap gap-2">
-                  {finalReviewRoles.map((role) => (
+                  {roleOptions.map((role) => (
                     <button
                       key={role}
                       type="button"
                       className={cn(
                         "h-8 rounded-full border border-gray-300 bg-white px-3 text-xs leading-[18px] font-semibold text-dark-blue-400",
                         selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700"
+                          "border-primary-500 bg-primary-50 text-primary-700",
                       )}
                       onClick={() => setSelectedRole(role)}
                     >
@@ -12824,7 +13500,7 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         item,
-                        field as SmartAssistantEditableField
+                        field as SmartAssistantEditableField,
                       )
                     }
                   >
@@ -12860,8 +13536,8 @@ const FinalProjectReviewStep = ({
                       projectAssistant.run(
                         projectAssistant.message,
                         resolveFinalReviewAssistantField(
-                          projectAssistant.message
-                        )
+                          projectAssistant.message,
+                        ),
                       )
                     }
                   >
@@ -12874,51 +13550,53 @@ const FinalProjectReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const ServiceScopeEditStep = ({
   setProgress,
   jobListingId,
 }: ProgressProps & { jobListingId?: string | null }) => {
-  const { toggleValidation } = useStepContext()
-  const { projectScopeMethods } = useProjectScopeContext()
-  const [projectScopeState, setProjectScopeState] = projectScopeMethods
+  const { toggleValidation } = useStepContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods;
   const [phases, setPhases] = useState<ServiceScopePhase[]>(() =>
     serviceScopePhases.map((phase) => ({
       ...phase,
       rows: phase.rows.map((row) => ({ ...row, workSchedule: "full_time" })),
-    }))
-  )
+    })),
+  );
   const [expandedPhaseNames, setExpandedPhaseNames] = useState(() =>
-    serviceScopePhases.map((phase) => phase.name)
-  )
-  const [searchValue, setSearchValue] = useState("")
-  const [isAddPhaseDialogOpen, setAddPhaseDialogOpen] = useState(false)
-  const [newPhaseName, setNewPhaseName] = useState("")
+    serviceScopePhases.map((phase) => phase.name),
+  );
+  const [searchValue, setSearchValue] = useState("");
+  const [isAddPhaseDialogOpen, setAddPhaseDialogOpen] = useState(false);
+  const [newPhaseName, setNewPhaseName] = useState("");
   const [newPhaseType, setNewPhaseType] = useState<
     (typeof serviceScopePhaseTypeOptions)[number]["value"] | ""
-  >("")
-  const [assistantMessage, setAssistantMessage] = useState("")
-  const [assistantResult, setAssistantResult] = useState("")
-  const [isAssistantLoading, setIsAssistantLoading] = useState(false)
-  const didGenerateInitialScopeRef = useRef(false)
-  const [budgetAmount, setBudgetAmount] = useState(5000)
-  const [budgetFrequency, setBudgetFrequency] = useState("week")
+  >("");
+  const [assistantMessage, setAssistantMessage] = useState("");
+  const [assistantResult, setAssistantResult] = useState("");
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const didGenerateInitialScopeRef = useRef(false);
+  const [budgetAmount, setBudgetAmount] = useState(5000);
+  const [budgetFrequency, setBudgetFrequency] = useState("week");
   const [activeServicePhaseNote, setActiveServicePhaseNote] = useState<
     string | null
-  >(null)
+  >(null);
   const [activeServiceRoleKey, setActiveServiceRoleKey] = useState<
     string | null
-  >(null)
-  const [draftServiceRole, setDraftServiceRole] = useState("")
+  >(null);
+  const [draftServiceRole, setDraftServiceRole] = useState("");
   const [draftServiceSchedule, setDraftServiceSchedule] =
-    useState<JobListingWorkSchedule>("full_time")
-  const [draftServiceCustomHours, setDraftServiceCustomHours] = useState("15")
+    useState<JobListingWorkSchedule>("full_time");
+  const [draftServiceCustomHours, setDraftServiceCustomHours] = useState("15");
   const [draftServiceCustomFrequency, setDraftServiceCustomFrequency] =
-    useState("per_week")
-  const didApplyPersistedScopeRef = useRef(false)
-  const normalizedSearchValue = normalizeSearchText(searchValue)
+    useState("per_week");
+  const didApplyPersistedScopeRef = useRef(false);
+  const skipNextServiceScopeSaveRef = useRef(false);
+  const lastSavedServiceScopeSignatureRef = useRef("");
+  const normalizedSearchValue = normalizeSearchText(searchValue);
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
         const phaseText = normalizeSearchText(
@@ -12933,57 +13611,58 @@ const ServiceScopeEditStep = ({
               row.experience,
               row.duration,
             ]),
-          ].join(" ")
-        )
+          ].join(" "),
+        );
 
-        return phaseText.includes(normalizedSearchValue)
+        return phaseText.includes(normalizedSearchValue);
       })
-    : phases
+    : phases;
 
   useEffect(() => {
-    if (didApplyPersistedScopeRef.current) return
+    if (didApplyPersistedScopeRef.current) return;
 
     const persistedPhases =
-      createServicePhasesFromPersistedJobListing(projectScopeState)
+      createServicePhasesFromPersistedJobListing(projectScopeState);
 
-    if (persistedPhases.length === 0) return
+    if (persistedPhases.length === 0) return;
 
-    didApplyPersistedScopeRef.current = true
-    didGenerateInitialScopeRef.current = true
-    setPhases(persistedPhases)
-    setExpandedPhaseNames(persistedPhases.map((phase) => phase.name))
-  }, [projectScopeState])
+    didApplyPersistedScopeRef.current = true;
+    didGenerateInitialScopeRef.current = true;
+    skipNextServiceScopeSaveRef.current = true;
+    setPhases(persistedPhases);
+    setExpandedPhaseNames(persistedPhases.map((phase) => phase.name));
+  }, [projectScopeState]);
 
   useEffect(() => {
-    if (!jobListingId || didGenerateInitialScopeRef.current) return
-    didGenerateInitialScopeRef.current = true
+    if (!jobListingId || didGenerateInitialScopeRef.current) return;
+    didGenerateInitialScopeRef.current = true;
 
     const generateScope = async () => {
       try {
         const response = await JobListingAPI.GenerateScope(jobListingId, {
           workType: "service",
           budgetUsdCents: budgetAmount * 100,
-        })
+        });
         const generatedPhases = createServicePhasesFromGeneratedScope(
-          response?.data?.scope
-        )
+          response?.data?.scope,
+        );
 
         if (generatedPhases.length > 0) {
-          setPhases(generatedPhases)
-          setExpandedPhaseNames(generatedPhases.map((phase) => phase.name))
+          setPhases(generatedPhases);
+          setExpandedPhaseNames(generatedPhases.map((phase) => phase.name));
         }
       } catch (error) {
-        console.error("Failed to generate service scope", error)
+        console.error("Failed to generate service scope", error);
       }
-    }
+    };
 
-    void generateScope()
-  }, [budgetAmount, jobListingId])
+    void generateScope();
+  }, [budgetAmount, jobListingId]);
 
   const updateRow = (
     phaseName: string,
     taskName: string,
-    nextValues: Partial<ServiceScopeRow>
+    nextValues: Partial<ServiceScopeRow>,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -12992,39 +13671,39 @@ const ServiceScopeEditStep = ({
           : {
               ...phase,
               rows: phase.rows.map((row) =>
-                row.task === taskName ? { ...row, ...nextValues } : row
+                row.task === taskName ? { ...row, ...nextValues } : row,
               ),
-            }
-      )
-    )
-  }
+            },
+      ),
+    );
+  };
 
   const formatServiceRowSchedule = (row: ServiceScopeRow) => {
-    if (row.workSchedule === "part_time") return "Part-time"
+    if (row.workSchedule === "part_time") return "Part-time";
     if (row.workSchedule === "custom") {
       return `${row.customHours ?? 15} hours ${
         row.customFrequency ?? "per week"
-      }`
+      }`;
     }
 
-    return "Full-time"
-  }
+    return "Full-time";
+  };
 
   const openServiceRoleEditor = (phaseName: string, row: ServiceScopeRow) => {
-    const key = `${phaseName}-${row.task}`
-    const [durationValue] = row.duration.split(/\s+/)
+    const key = `${phaseName}-${row.task}`;
+    const [durationValue] = row.duration.split(/\s+/);
 
-    setActiveServiceRoleKey(key)
-    setDraftServiceRole(row.role ?? "")
-    setDraftServiceSchedule(row.workSchedule ?? "full_time")
+    setActiveServiceRoleKey(key);
+    setDraftServiceRole(row.role ?? "");
+    setDraftServiceSchedule(row.workSchedule ?? "full_time");
     setDraftServiceCustomHours(
-      String(row.customHours ?? (Number(durationValue) || 15))
-    )
-    setDraftServiceCustomFrequency(row.customFrequency ?? "per_week")
-  }
+      String(row.customHours ?? (Number(durationValue) || 15)),
+    );
+    setDraftServiceCustomFrequency(row.customFrequency ?? "per_week");
+  };
 
   const saveServiceRoleEditor = (phaseName: string, taskName: string) => {
-    const nextHours = Number(draftServiceCustomHours) || 15
+    const nextHours = Number(draftServiceCustomHours) || 15;
 
     updateRow(phaseName, taskName, {
       role: draftServiceRole.trim() || "Specialist",
@@ -13037,19 +13716,19 @@ const ServiceScopeEditStep = ({
       ...(draftServiceSchedule === "custom"
         ? { duration: `${nextHours} hours` }
         : {}),
-    })
-    setActiveServiceRoleKey(null)
-  }
+    });
+    setActiveServiceRoleKey(null);
+  };
 
   const updatePhaseRecurrence = (
     phaseName: string,
     recurrenceSchedule: "monthly" | "weekly",
-    recurrenceCount: number
+    recurrenceCount: number,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) => {
         if (phase.name !== phaseName || phase.phaseType !== "recurring") {
-          return phase
+          return phase;
         }
 
         return {
@@ -13057,65 +13736,65 @@ const ServiceScopeEditStep = ({
           recurrenceSchedule,
           recurrenceCount,
           status: `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`,
-        }
-      })
-    )
-  }
+        };
+      }),
+    );
+  };
 
   const formatServiceRecurringStatus = (phase: {
-    recurrenceSchedule?: string
-    recurrenceCount?: number
+    recurrenceSchedule?: string;
+    recurrenceCount?: number;
   }) => {
     const scheduleLabel =
-      phase.recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"
-    const count = phase.recurrenceCount ?? 3
+      phase.recurrenceSchedule === "weekly" ? "Weekly" : "Monthly";
+    const count = phase.recurrenceCount ?? 3;
 
-    return `${scheduleLabel}, ${count} ${count === 1 ? "time" : "times"}`
-  }
+    return `${scheduleLabel}, ${count} ${count === 1 ? "time" : "times"}`;
+  };
 
   const isPhaseTypeUnavailable = (
-    phaseType: (typeof serviceScopePhaseTypeOptions)[number]["value"]
+    phaseType: (typeof serviceScopePhaseTypeOptions)[number]["value"],
   ) =>
     phaseType !== "recurring" &&
-    phases.some((phase) => phase.phaseType === phaseType)
+    phases.some((phase) => phase.phaseType === phaseType);
 
   const getFirstAvailablePhaseType = () =>
     serviceScopePhaseTypeOptions.find(
-      (option) => !isPhaseTypeUnavailable(option.value)
-    )?.value ?? "recurring"
+      (option) => !isPhaseTypeUnavailable(option.value),
+    )?.value ?? "recurring";
 
   const selectedPhaseTypeLabel =
     serviceScopePhaseTypeOptions.find((option) => option.value === newPhaseType)
-      ?.label ?? "Select phase type"
+      ?.label ?? "Select phase type";
 
   const canCreatePhase =
     Boolean(newPhaseName.trim()) &&
     Boolean(newPhaseType) &&
-    (newPhaseType ? !isPhaseTypeUnavailable(newPhaseType) : false)
+    (newPhaseType ? !isPhaseTypeUnavailable(newPhaseType) : false);
 
   const openAddPhaseDialog = () => {
-    setNewPhaseName("")
-    setNewPhaseType(getFirstAvailablePhaseType())
-    setAddPhaseDialogOpen(true)
-  }
+    setNewPhaseName("");
+    setNewPhaseType(getFirstAvailablePhaseType());
+    setAddPhaseDialogOpen(true);
+  };
 
   const addPhase = () => {
     if (!canCreatePhase || !newPhaseType) {
-      return
+      return;
     }
 
     const selectedOption = serviceScopePhaseTypeOptions.find(
-      (option) => option.value === newPhaseType
-    )
-    const phaseTypeLabel = selectedOption?.label ?? "Recurring"
+      (option) => option.value === newPhaseType,
+    );
+    const phaseTypeLabel = selectedOption?.label ?? "Recurring";
     const recurringCount = phases.filter(
-      (phase) => phase.phaseType === "recurring"
-    ).length
+      (phase) => phase.phaseType === "recurring",
+    ).length;
     const nextName =
       newPhaseType === "recurring" && recurringCount > 0
         ? `Recurring ${recurringCount + 1}`
-        : phaseTypeLabel
-    const trimmedPhaseName = newPhaseName.trim()
+        : phaseTypeLabel;
+    const trimmedPhaseName = newPhaseName.trim();
     const nextPhase =
       newPhaseType === "setup"
         ? {
@@ -13171,14 +13850,14 @@ const ServiceScopeEditStep = ({
                   duration: "10 hours",
                 },
               ],
-            }
+            };
 
-    setPhases((currentPhases) => [...currentPhases, nextPhase])
-    setExpandedPhaseNames((currentNames) => [...currentNames, nextName])
-    setAddPhaseDialogOpen(false)
-    setNewPhaseName("")
-    setNewPhaseType("")
-  }
+    setPhases((currentPhases) => [...currentPhases, nextPhase]);
+    setExpandedPhaseNames((currentNames) => [...currentNames, nextName]);
+    setAddPhaseDialogOpen(false);
+    setNewPhaseName("");
+    setNewPhaseType("");
+  };
 
   const addTask = (phaseName: string) => {
     setPhases((currentPhases) =>
@@ -13197,20 +13876,20 @@ const ServiceScopeEditStep = ({
                   duration: "10 hours",
                 },
               ],
-            }
-      )
-    )
+            },
+      ),
+    );
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames
-        : [...currentNames, phaseName]
-    )
-  }
+        : [...currentNames, phaseName],
+    );
+  };
 
   const addServiceQualityTask = () => {
-    const targetPhaseName = phases[0]?.name
+    const targetPhaseName = phases[0]?.name;
 
-    if (!targetPhaseName) return false
+    if (!targetPhaseName) return false;
 
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -13230,52 +13909,52 @@ const ServiceScopeEditStep = ({
                       duration: "10 hours",
                     },
                   ],
-            }
-      )
-    )
+            },
+      ),
+    );
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(targetPhaseName)
         ? currentNames
-        : [...currentNames, targetPhaseName]
-    )
+        : [...currentNames, targetPhaseName],
+    );
 
-    return true
-  }
+    return true;
+  };
 
   const applyServiceAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message)
+    const normalizedMessage = normalizeSearchText(message);
 
-    if (!normalizedMessage) return false
+    if (!normalizedMessage) return false;
 
     if (normalizedMessage.includes("budget")) {
       setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8))
+        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
         setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`
-        )
-        return nextAmount
-      })
-      return true
+          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`,
+        );
+        return nextAmount;
+      });
+      return true;
     } else if (
       normalizedMessage.includes("quality") ||
       normalizedMessage.includes("scope") ||
       normalizedMessage.includes("improve")
     ) {
-      const didAddTask = addServiceQualityTask()
+      const didAddTask = addServiceQualityTask();
       setAssistantResult(
         didAddTask
           ? "Applied: added a Quality Review task to the setup phase."
-          : "No available phase found to update."
-      )
-      return true
+          : "No available phase found to update.",
+      );
+      return true;
     } else {
       setAssistantResult(
-        "Try one of the suggested actions: reduce the budget or improve scope quality."
-      )
+        "Try one of the suggested actions: reduce the budget or improve scope quality.",
+      );
     }
 
-    return false
-  }
+    return false;
+  };
 
   const buildServiceAssistantScope = () => ({
     phases: phases.map((phase) => ({
@@ -13284,7 +13963,7 @@ const ServiceScopeEditStep = ({
       recurrenceSchedule: phase.recurrenceSchedule,
       recurrenceCount: phase.recurrenceCount,
       tasks: phase.rows.map((row) => {
-        const [durationValue] = row.duration.split(/\s+/)
+        const [durationValue] = row.duration.split(/\s+/);
 
         return {
           taskName: row.task,
@@ -13298,29 +13977,29 @@ const ServiceScopeEditStep = ({
             row.workSchedule === "custom"
               ? Number(row.customHours) || 1
               : Number(durationValue) || 1,
-        }
+        };
       }),
     })),
-  })
+  });
 
   const applyGeneratedServiceScope = (generatedScope: any) => {
     const generatedPhases = Array.isArray(generatedScope?.phases)
       ? generatedScope.phases
-      : []
+      : [];
 
-    if (!generatedPhases.length) return false
+    if (!generatedPhases.length) return false;
 
     const nextPhases: ServiceScopePhase[] = generatedPhases.map(
       (phase: any, index: number) => {
-        const phaseType = phase?.phaseType ?? "recurring"
+        const phaseType = phase?.phaseType ?? "recurring";
         const phaseName = String(
           phase?.phaseName ??
             (phaseType === "setup"
               ? "Setup"
               : phaseType === "ongoing"
                 ? "Ongoing"
-                : `Recurring ${index + 1}`)
-        )
+                : `Recurring ${index + 1}`),
+        );
 
         return {
           name:
@@ -13375,98 +14054,98 @@ const ServiceScopeEditStep = ({
               workSchedule: task?.workSchedule ?? "full_time",
               customHours: task?.customHours ?? undefined,
               customFrequency: task?.customFrequency ?? undefined,
-            })
+            }),
           ),
-        }
-      }
-    )
+        };
+      },
+    );
 
-    setPhases(nextPhases)
-    setExpandedPhaseNames(nextPhases.map((phase) => phase.name))
-    return true
-  }
+    setPhases(nextPhases);
+    setExpandedPhaseNames(nextPhases.map((phase) => phase.name));
+    return true;
+  };
 
   const runServiceAssistant = async (message: string) => {
-    if (!message.trim()) return
+    if (!message.trim()) return;
 
     if (!jobListingId) {
-      applyServiceAssistantFallback(message)
-      setAssistantMessage("")
-      return
+      applyServiceAssistantFallback(message);
+      setAssistantMessage("");
+      return;
     }
 
-    setIsAssistantLoading(true)
+    setIsAssistantLoading(true);
     try {
       const response = await JobListingAPI.SmartAssistant(jobListingId, {
         mode: "scope",
         command: message,
         currentScope: buildServiceAssistantScope(),
         workType: "service",
-      })
-      const data = response?.data ?? {}
+      });
+      const data = response?.data ?? {};
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyServiceAssistantFallback(message)
+        applyServiceAssistantFallback(message);
         setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable."
-        )
-        return
+          data.message ?? "Smart Assistant is temporarily unavailable.",
+        );
+        return;
       }
 
       if (applyGeneratedServiceScope(data.updatedScope)) {
         setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the service scope."
-        )
+          data.summary ?? "Applied: Smart Assistant updated the service scope.",
+        );
       } else {
         setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope."
-        )
+          data.summary ?? "Smart Assistant did not return an updated scope.",
+        );
       }
     } catch (error: any) {
-      applyServiceAssistantFallback(message)
+      applyServiceAssistantFallback(message);
       setAssistantResult(
         error?.response?.data?.message ||
           error?.message ||
-          "Smart Assistant is temporarily unavailable."
-      )
+          "Smart Assistant is temporarily unavailable.",
+      );
     } finally {
-      setAssistantMessage("")
-      setIsAssistantLoading(false)
+      setAssistantMessage("");
+      setIsAssistantLoading(false);
     }
-  }
+  };
 
   const removePhase = (phaseName: string) => {
     setPhases((currentPhases) =>
       currentPhases.length <= 1
         ? currentPhases
-        : currentPhases.filter((phase) => phase.name !== phaseName)
-    )
+        : currentPhases.filter((phase) => phase.name !== phaseName),
+    );
     setExpandedPhaseNames((currentNames) =>
-      currentNames.filter((name) => name !== phaseName)
-    )
-  }
+      currentNames.filter((name) => name !== phaseName),
+    );
+  };
 
   const togglePhase = (phaseName: string) => {
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames.filter((name) => name !== phaseName)
-        : [...currentNames, phaseName]
-    )
-  }
+        : [...currentNames, phaseName],
+    );
+  };
 
   const toggleServicePhaseNote = (phaseName: string) => {
     setActiveServicePhaseNote((currentName) =>
-      currentName === phaseName ? null : phaseName
-    )
-  }
+      currentName === phaseName ? null : phaseName,
+    );
+  };
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true)
-  }, [])
+    toggleValidation(true);
+  }, []);
 
   useEffect(() => {
-    setProgress?.(22.5)
-  }, [setProgress])
+    setProgress?.(22.5);
+  }, [setProgress]);
 
   useEffect(() => {
     setProjectScopeState(
@@ -13477,7 +14156,7 @@ const ServiceScopeEditStep = ({
         recurrenceCount: phase.recurrenceCount,
         rows: phase.rows.map((row) => {
           const [durationValue, durationType = "hours"] =
-            row.duration.split(/\s+/)
+            row.duration.split(/\s+/);
 
           return {
             id: String(getId()),
@@ -13492,11 +14171,44 @@ const ServiceScopeEditStep = ({
               value: Number(durationValue) || 1,
               type: durationType as (typeof DURATION_TYPE)[number],
             },
-          }
+          };
         }),
-      }))
-    )
-  }, [phases, setProjectScopeState])
+      })),
+    );
+  }, [phases, setProjectScopeState]);
+
+  useEffect(() => {
+    if (!jobListingId || phases.length === 0) return;
+
+    const payload = buildServiceAssistantScope();
+    const signature = JSON.stringify(payload);
+
+    if (skipNextServiceScopeSaveRef.current) {
+      skipNextServiceScopeSaveRef.current = false;
+      lastSavedServiceScopeSignatureRef.current = signature;
+      return;
+    }
+
+    if (signature === lastSavedServiceScopeSignatureRef.current) return;
+
+    const timeout = window.setTimeout(() => {
+      const saveScope = async () => {
+        try {
+          await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+            hasScope: true,
+            phases: payload.phases,
+          });
+          lastSavedServiceScopeSignatureRef.current = signature;
+        } catch (error) {
+          console.error("Failed to save service job listing scope", error);
+        }
+      };
+
+      void saveScope();
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [phases, jobListingId]);
 
   return (
     <>
@@ -13625,17 +14337,17 @@ const ServiceScopeEditStep = ({
 
               <div className="mt-6 space-y-3">
                 {visiblePhases.map((phase) => {
-                  const isExpanded = expandedPhaseNames.includes(phase.name)
+                  const isExpanded = expandedPhaseNames.includes(phase.name);
                   const phaseIndex = phases.findIndex(
                     (candidate) =>
                       candidate.name === phase.name &&
-                      candidate.customName === phase.customName
-                  )
+                      candidate.customName === phase.customName,
+                  );
                   const shouldShowPhaseNote =
                     phaseIndex > -1 &&
                     phases.findIndex(
-                      (candidate) => candidate.phaseType === phase.phaseType
-                    ) === phaseIndex
+                      (candidate) => candidate.phaseType === phase.phaseType,
+                    ) === phaseIndex;
 
                   return (
                     <div
@@ -13652,7 +14364,7 @@ const ServiceScopeEditStep = ({
                             <ChevronDown
                               className={cn(
                                 "size-5 text-gray-500",
-                                isExpanded && "rotate-180"
+                                isExpanded && "rotate-180",
                               )}
                             />
                           </button>
@@ -13714,7 +14426,7 @@ const ServiceScopeEditStep = ({
                                         updatePhaseRecurrence(
                                           phase.name,
                                           option.recurrenceSchedule,
-                                          option.recurrenceCount
+                                          option.recurrenceCount,
                                         )
                                       }
                                     >
@@ -13864,7 +14576,7 @@ const ServiceScopeEditStep = ({
                                       value={draftServiceSchedule}
                                       onValueChange={(value) =>
                                         setDraftServiceSchedule(
-                                          value as JobListingWorkSchedule
+                                          value as JobListingWorkSchedule,
                                         )
                                       }
                                     >
@@ -13907,7 +14619,7 @@ const ServiceScopeEditStep = ({
                                           value={draftServiceCustomHours}
                                           onChange={(event) =>
                                             setDraftServiceCustomHours(
-                                              event.target.value
+                                              event.target.value,
                                             )
                                           }
                                         />
@@ -13959,7 +14671,7 @@ const ServiceScopeEditStep = ({
                                       onClick={() =>
                                         saveServiceRoleEditor(
                                           phase.name,
-                                          row.task
+                                          row.task,
                                         )
                                       }
                                     >
@@ -13981,7 +14693,7 @@ const ServiceScopeEditStep = ({
                             "pointer-events-none absolute hidden w-[230px] rounded-[5px] bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400 shadow-xs min-[1180px]:block",
                             phase.phaseType === "recurring"
                               ? "left-[38%] top-[-22px]"
-                              : "left-[52%] top-[-16px]"
+                              : "left-[52%] top-[-16px]",
                           )}
                         >
                           {phase.note}
@@ -13989,7 +14701,7 @@ const ServiceScopeEditStep = ({
                         </div>
                       ) : null}
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -14021,7 +14733,7 @@ const ServiceScopeEditStep = ({
                         <Copy className="size-4 text-gray-400" />
                         {item}
                       </Button>
-                    )
+                    ),
                   )}
                 </div>
                 {assistantResult ? (
@@ -14083,7 +14795,7 @@ const ServiceScopeEditStep = ({
                     type="button"
                     className={cn(
                       "mt-2 flex h-11 w-full items-center justify-between rounded-[5px] border border-gray-300 bg-white px-3 text-left text-sm leading-5 shadow-xs focus-visible:outline-none",
-                      newPhaseType ? "text-dark-blue-400" : "text-gray-400"
+                      newPhaseType ? "text-dark-blue-400" : "text-gray-400",
                     )}
                   >
                     {selectedPhaseTypeLabel}
@@ -14092,7 +14804,7 @@ const ServiceScopeEditStep = ({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-[360px]">
                   {serviceScopePhaseTypeOptions.map((option) => {
-                    const isUnavailable = isPhaseTypeUnavailable(option.value)
+                    const isUnavailable = isPhaseTypeUnavailable(option.value);
 
                     return (
                       <DropdownMenuItem
@@ -14100,7 +14812,7 @@ const ServiceScopeEditStep = ({
                         disabled={isUnavailable}
                         onSelect={() => {
                           if (!isUnavailable) {
-                            setNewPhaseType(option.value)
+                            setNewPhaseType(option.value);
                           }
                         }}
                       >
@@ -14110,7 +14822,7 @@ const ServiceScopeEditStep = ({
                               "text-sm leading-5 font-semibold",
                               isUnavailable
                                 ? "text-gray-400"
-                                : "text-dark-blue-400"
+                                : "text-dark-blue-400",
                             )}
                           >
                             {option.label}
@@ -14122,7 +14834,7 @@ const ServiceScopeEditStep = ({
                           </p>
                         </div>
                       </DropdownMenuItem>
-                    )
+                    );
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -14147,8 +14859,8 @@ const ServiceScopeEditStep = ({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
+  );
+};
 
 const ExistingContractFinalReviewStep = ({
   setProgress,
@@ -14157,49 +14869,49 @@ const ExistingContractFinalReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null
-  inheritedNda?: boolean
-  jobListingId?: string | null
-  ensureJobListingDraft?: EnsureJobListingDraft
+  ndaDocumentId?: string | null;
+  inheritedNda?: boolean;
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
 }) => {
-  const { toggleValidation } = useStepContext()
-  const { setDetails } = useJobListingDraftContext()
-  const [selectedRole, setSelectedRole] = useState("Front-End Developer")
-  const [includeNda, setIncludeNda] = useState(false)
-  const [responsibilities, setResponsibilities] = useState("")
-  const didGenerateRoleDescriptionsRef = useRef(false)
+  const { toggleValidation } = useStepContext();
+  const { setDetails } = useJobListingDraftContext();
+  const [selectedRole, setSelectedRole] = useState("Front-End Developer");
+  const [includeNda, setIncludeNda] = useState(false);
+  const [responsibilities, setResponsibilities] = useState("");
+  const didGenerateRoleDescriptionsRef = useRef(false);
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills()
+    useDynamicFinalReviewSkills();
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) =>
       field === "responsibilities" ? responsibilities : "",
-    [responsibilities]
-  )
+    [responsibilities],
+  );
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "responsibilities") {
-        setResponsibilities(value)
+        setResponsibilities(value);
       }
     },
-    []
-  )
+    [],
+  );
   const roleAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  })
+  });
   const loadSavedRoleDescription = useCallback(
     (draft: { responsibilities?: string; skills?: string[] }) => {
       if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities)
+        setResponsibilities(draft.responsibilities);
       }
       if (draft.skills) {
-        setSkills(draft.skills)
+        setSkills(draft.skills);
       }
     },
-    [setSkills]
-  )
+    [setSkills],
+  );
   useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
@@ -14207,12 +14919,12 @@ const ExistingContractFinalReviewStep = ({
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
-  })
+  });
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
-    if (responsibilities) return
-    didGenerateRoleDescriptionsRef.current = true
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
+    if (responsibilities) return;
+    didGenerateRoleDescriptionsRef.current = true;
 
     const generateRoleDescriptions = async () => {
       try {
@@ -14221,34 +14933,34 @@ const ExistingContractFinalReviewStep = ({
           {
             workType: "project",
             roles: [selectedRole].map((roleTitle) => ({ roleTitle })),
-          }
-        )
-        const descriptions = response?.data?.roleDescriptions
+          },
+        );
+        const descriptions = response?.data?.roleDescriptions;
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null
+          : null;
 
         if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities)
+          setResponsibilities(description.responsibilities);
         }
         if (Array.isArray(description?.skills)) {
-          setSkills(description.skills)
+          setSkills(description.skills);
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error)
+        console.error("Failed to generate role descriptions", error);
       }
-    }
+    };
 
-    void generateRoleDescriptions()
-  }, [jobListingId, responsibilities, selectedRole, setSkills])
+    void generateRoleDescriptions();
+  }, [jobListingId, responsibilities, selectedRole, setSkills]);
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true)
-  }, [])
+    toggleValidation(true);
+  }, []);
 
   useEffect(() => {
-    setProgress?.(17.5)
-  }, [setProgress])
+    setProgress?.(17.5);
+  }, [setProgress]);
 
   return (
     <ScrollArea
@@ -14291,7 +15003,7 @@ const ExistingContractFinalReviewStep = ({
                         >
                           View NDA
                         </Button>,
-                        ndaDocumentId
+                        ndaDocumentId,
                       )
                     : null}
                 </div>
@@ -14305,13 +15017,13 @@ const ExistingContractFinalReviewStep = ({
                     className="mt-5 flex flex-wrap gap-2"
                     value={includeNda ? "yes" : "no"}
                     onValueChange={(value) => {
-                      const nextIncludeNda = value === "yes"
+                      const nextIncludeNda = value === "yes";
 
-                      setIncludeNda(nextIncludeNda)
+                      setIncludeNda(nextIncludeNda);
                       setDetails((current) => ({
                         ...current,
                         ndaEnabled: nextIncludeNda,
-                      }))
+                      }));
                     }}
                   >
                     {[
@@ -14324,7 +15036,7 @@ const ExistingContractFinalReviewStep = ({
                         className={cn(
                           "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 shadow-xs focus-visible:outline-none",
                           (includeNda ? "yes" : "no") === option.value &&
-                            "border-primary-500 text-primary-500"
+                            "border-primary-500 text-primary-500",
                         )}
                       >
                         {option.label}
@@ -14347,7 +15059,7 @@ const ExistingContractFinalReviewStep = ({
                         >
                           View NDA
                         </Button>,
-                        ndaDocumentId
+                        ndaDocumentId,
                       )}
                     </div>
                   ) : (
@@ -14376,7 +15088,7 @@ const ExistingContractFinalReviewStep = ({
                     className={cn(
                       "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none",
                       selectedRole === role &&
-                        "border-primary-500 text-primary-500"
+                        "border-primary-500 text-primary-500",
                     )}
                   >
                     {role}
@@ -14486,7 +15198,7 @@ const ExistingContractFinalReviewStep = ({
                     onClick={() =>
                       roleAssistant.run(
                         roleAssistant.message,
-                        "responsibilities"
+                        "responsibilities",
                       )
                     }
                   >
@@ -14499,8 +15211,8 @@ const ExistingContractFinalReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  )
-}
+  );
+};
 
 const TeamRoles = ({
   setProgress,
@@ -14508,24 +15220,24 @@ const TeamRoles = ({
   existingContractId,
   hiringMode,
 }: ProgressProps & {
-  initialValid?: boolean
-  existingContractId?: string | null
-  hiringMode?: HiringModeChoice
+  initialValid?: boolean;
+  existingContractId?: string | null;
+  hiringMode?: HiringModeChoice;
 }) => {
-  const { toggleValidation } = useStepContext()
-  const { setDetails } = useJobListingDraftContext()
-  const { projectScopeMethods } = useProjectScopeContext()
-  const [projectScopeState, setProjectScopeState] = projectScopeMethods
-  const isExistingProject = existingContractId === "marketeq-projects-network"
-  const isIndividualMode = hiringMode === "individual"
-  const [budgetFrequency, setBudgetFrequency] = useState("week")
+  const { toggleValidation } = useStepContext();
+  const { setDetails } = useJobListingDraftContext();
+  const { projectScopeMethods } = useProjectScopeContext();
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods;
+  const isExistingProject = existingContractId === "marketeq-projects-network";
+  const isIndividualMode = hiringMode === "individual";
+  const [budgetFrequency, setBudgetFrequency] = useState("week");
   const [roleDialogMode, setRoleDialogMode] = useState<"add" | "rename" | null>(
-    null
-  )
-  const [activeRoleIndex, setActiveRoleIndex] = useState<number | null>(null)
-  const [draftRoleTitle, setDraftRoleTitle] = useState("")
+    null,
+  );
+  const [activeRoleIndex, setActiveRoleIndex] = useState<number | null>(null);
+  const [draftRoleTitle, setDraftRoleTitle] = useState("");
   const [rows, setRows] = useState<TeamRoleRow[]>(() => {
-    const scopedRows = projectScopeState?.[0]?.rows ?? []
+    const scopedRows = projectScopeState?.[0]?.rows ?? [];
 
     if (scopedRows.length > 0 && !existingContractId) {
       return scopedRows.map((row, index) =>
@@ -14535,47 +15247,47 @@ const TeamRoles = ({
           experience: (row.experience as ExperienceLevel) || "Junior",
           schedule:
             row.workSchedule === "part_time" ? "Part-time" : "Full-time",
-        })
-      )
+        }),
+      );
     }
 
     if (isIndividualMode) {
-      return [createTeamRoleRow(0, { role: "Individual Role" })]
+      return [createTeamRoleRow(0, { role: "Individual Role" })];
     }
 
-    return teamRoleRows
-  })
+    return teamRoleRows;
+  });
   const updateRow = (rowIndex: number, nextValues: Partial<TeamRoleRow>) => {
     setRows((currentRows) =>
       currentRows.map((row, index) =>
-        index === rowIndex ? { ...row, ...nextValues } : row
-      )
-    )
-  }
+        index === rowIndex ? { ...row, ...nextValues } : row,
+      ),
+    );
+  };
   const closeRoleDialog = () => {
-    setRoleDialogMode(null)
-    setActiveRoleIndex(null)
-    setDraftRoleTitle("")
-  }
+    setRoleDialogMode(null);
+    setActiveRoleIndex(null);
+    setDraftRoleTitle("");
+  };
   const openAddRoleDialog = () => {
-    setRoleDialogMode("add")
-    setActiveRoleIndex(null)
-    setDraftRoleTitle("")
-  }
+    setRoleDialogMode("add");
+    setActiveRoleIndex(null);
+    setDraftRoleTitle("");
+  };
   const openRenameRoleDialog = (rowIndex: number) => {
-    setRoleDialogMode("rename")
-    setActiveRoleIndex(rowIndex)
-    setDraftRoleTitle(rows[rowIndex]?.role ?? "")
-  }
+    setRoleDialogMode("rename");
+    setActiveRoleIndex(rowIndex);
+    setDraftRoleTitle(rows[rowIndex]?.role ?? "");
+  };
   const saveRoleDialog = () => {
-    const role = draftRoleTitle.trim()
+    const role = draftRoleTitle.trim();
 
     if (roleDialogMode === "rename" && activeRoleIndex !== null) {
       if (role) {
-        updateRow(activeRoleIndex, { role })
+        updateRow(activeRoleIndex, { role });
       }
-      closeRoleDialog()
-      return
+      closeRoleDialog();
+      return;
     }
 
     setRows((currentRows) => [
@@ -14584,13 +15296,13 @@ const TeamRoles = ({
         role: role || `New Team Member ${currentRows.length + 1}`,
         length: isExistingProject ? "3 months" : "1 month",
       }),
-    ])
-    closeRoleDialog()
-  }
+    ]);
+    closeRoleDialog();
+  };
   const duplicateRow = (rowIndex: number) => {
     setRows((currentRows) => {
-      const rowToCopy = currentRows[rowIndex]
-      if (!rowToCopy) return currentRows
+      const rowToCopy = currentRows[rowIndex];
+      if (!rowToCopy) return currentRows;
 
       return [
         ...currentRows.slice(0, rowIndex + 1),
@@ -14601,20 +15313,30 @@ const TeamRoles = ({
           editable: true,
         },
         ...currentRows.slice(rowIndex + 1),
-      ]
-    })
-  }
+      ];
+    });
+  };
   const removeRow = (rowIndex: number) => {
     setRows((currentRows) =>
       currentRows.length > 1
         ? currentRows.filter((_, index) => index !== rowIndex)
-        : currentRows
-    )
-  }
+        : currentRows,
+    );
+  };
+  const rowsAreValid =
+    rows.length > 0 &&
+    rows.every(
+      (row) =>
+        Boolean(row.role.trim()) &&
+        Boolean(row.location.trim()) &&
+        Boolean(row.experience.trim()) &&
+        Boolean(row.schedule.trim()) &&
+        Boolean(row.length.trim()),
+    );
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(initialValid)
-  }, [initialValid])
+    toggleValidation(initialValid || rowsAreValid);
+  }, [initialValid, rowsAreValid]);
 
   useEffect(() => {
     setDetails((previous) => ({
@@ -14624,7 +15346,7 @@ const TeamRoles = ({
       budgetFrequency: budgetFrequency === "month" ? "per_month" : "per_week",
       durationMonths: isExistingProject ? 6 : previous.durationMonths,
       isOngoing: isExistingProject ? previous.isOngoing : true,
-    }))
+    }));
 
     setProjectScopeState([
       {
@@ -14633,28 +15355,37 @@ const TeamRoles = ({
           : "Existing Service Team",
         phaseType: isExistingProject ? "setup" : "ongoing",
         rows: rows.map((row, index) => ({
-          id: `existing-team-role-${index}`,
-          task: row.role,
-          role: row.role,
-          location: row.location,
-          experience: row.experience as ExperienceLevel,
-          duration: { value: 40, type: "hours" },
-          workSchedule:
-            row.schedule === "Part-time" ? "part_time" : "full_time",
+          ...(() => {
+            const estimate = parseHourlyEstimateCents(row.estimate);
+
+            return {
+              id: `existing-team-role-${index}`,
+              task: row.role,
+              role: row.role,
+              location: row.location,
+              experience: row.experience as ExperienceLevel,
+              duration: { value: 40, type: "hours" },
+              workSchedule:
+                row.schedule === "Part-time" ? "part_time" : "full_time",
+              contractLengthMonths: parseMonthCount(row.length),
+              hourlyRateLowUsdCents: estimate.low,
+              hourlyRateHighUsdCents: estimate.high,
+            };
+          })(),
         })),
       },
-    ])
+    ]);
   }, [
     budgetFrequency,
     isExistingProject,
     rows,
     setDetails,
     setProjectScopeState,
-  ])
+  ]);
 
   useEffect(() => {
-    setProgress?.(22.5)
-  }, [setProgress])
+    setProgress?.(22.5);
+  }, [setProgress]);
 
   return (
     <>
@@ -14691,31 +15422,29 @@ const TeamRoles = ({
               </div>
 
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="min-w-[920px] table-fixed">
                   <TableHeader>
                     <TableRow>
-                      {[
-                        "Role",
-                        "Location",
-                        "Experience",
-                        "Schedule",
-                        "Contract Length",
-                        "Hourly est.",
-                        "",
-                      ].map((head) => (
-                        <TableHead key={head}>{head}</TableHead>
-                      ))}
+                      <TableHead className="w-[220px]">Role</TableHead>
+                      <TableHead className="w-[190px]">Location</TableHead>
+                      <TableHead className="w-[150px]">Experience</TableHead>
+                      <TableHead className="w-[170px]">Schedule</TableHead>
+                      <TableHead className="w-[190px]">
+                        Contract Length
+                      </TableHead>
+                      <TableHead className="w-[120px]">Hourly est.</TableHead>
+                      <TableHead className="w-[56px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((row, index) => (
                       <TableRow key={`${row.role}-${index}`}>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm leading-5 font-semibold text-dark-blue-400">
+                        <TableCell className="w-[220px]">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold leading-5 text-dark-blue-400">
                               {row.role}
                             </p>
-                            <p className="text-sm leading-5 text-gray-500">
+                            <p className="truncate text-sm leading-5 text-gray-500">
                               {row.assignee}
                             </p>
                           </div>
@@ -14728,13 +15457,13 @@ const TeamRoles = ({
                                 updateRow(index, { location })
                               }
                               placeholder="Select country"
-                              triggerClassName="h-7 rounded-full border-solid border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400"
+                              triggerClassName={teamRolePillClassName}
                             />
                           ) : (
                             <Badge
-                              size="sm"
+                              size="lg"
                               visual="gray"
-                              className="border border-gray-200 bg-white"
+                              className={teamRolePillClassName}
                             >
                               {renderLocationOptionLabel(row.location)}
                             </Badge>
@@ -14750,7 +15479,7 @@ const TeamRoles = ({
                                 })
                               }
                             >
-                              <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                              <SelectTrigger className={teamRolePillClassName}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -14766,9 +15495,9 @@ const TeamRoles = ({
                             </Select>
                           ) : (
                             <Badge
-                              size="sm"
+                              size="lg"
                               visual="gray"
-                              className="border border-gray-200 bg-white"
+                              className={teamRolePillClassName}
                             >
                               {row.experience}
                             </Badge>
@@ -14784,7 +15513,7 @@ const TeamRoles = ({
                                 })
                               }
                             >
-                              <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                              <SelectTrigger className={teamRolePillClassName}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -14797,9 +15526,9 @@ const TeamRoles = ({
                             </Select>
                           ) : (
                             <Badge
-                              size="sm"
+                              size="lg"
                               visual="gray"
-                              className="border border-gray-200 bg-white"
+                              className={teamRolePillClassName}
                             >
                               {row.schedule}
                             </Badge>
@@ -14813,7 +15542,7 @@ const TeamRoles = ({
                                 updateRow(index, { length })
                               }
                             >
-                              <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-gray-50 px-2 py-1 text-sm leading-5 text-dark-blue-400">
+                              <SelectTrigger className={teamRolePillClassName}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -14826,9 +15555,9 @@ const TeamRoles = ({
                             </Select>
                           ) : (
                             <Badge
-                              size="sm"
+                              size="lg"
                               visual="gray"
-                              className="border border-gray-200 bg-white"
+                              className={teamRolePillClassName}
                             >
                               {row.length}
                             </Badge>
@@ -14839,7 +15568,7 @@ const TeamRoles = ({
                             {row.estimate}
                           </span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-[56px]">
                           {row.editable ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -14865,7 +15594,17 @@ const TeamRoles = ({
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          ) : null}
+                          ) : (
+                            <IconButton
+                              aria-hidden="true"
+                              tabIndex={-1}
+                              variant="ghost"
+                              visual="gray"
+                              className="invisible"
+                            >
+                              <MoreHorizontal className="size-4" />
+                            </IconButton>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -14919,7 +15658,7 @@ const TeamRoles = ({
         open={roleDialogMode !== null}
         onOpenChange={(isOpen) => {
           if (!isOpen) {
-            closeRoleDialog()
+            closeRoleDialog();
           }
         }}
       >
@@ -14947,8 +15686,8 @@ const TeamRoles = ({
               onChange={(event) => setDraftRoleTitle(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  event.preventDefault()
-                  saveRoleDialog()
+                  event.preventDefault();
+                  saveRoleDialog();
                 }
               }}
             />
@@ -14969,8 +15708,8 @@ const TeamRoles = ({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
+  );
+};
 
 const steps: Steps[] = [
   { label: "Project Info", isValid: false, disabled: false },
@@ -14978,46 +15717,46 @@ const steps: Steps[] = [
   { label: "Project Scope", isValid: false, disabled: false },
   { label: "Team Roles", isValid: false, disabled: false },
   { label: "Final Check", isValid: false, disabled: false },
-]
+];
 
 const [ProjectInfoProvider, useProjectInfoContext] = createContext<
   UseFormReturn<ProjectInfoFormValues>
 >({
   displayName: "ProjectInfoProvider",
   errorMessage: `useProjectInfoContext returned is 'undefined'. Seems you forgot to wrap the components in "<ProjectInfoPopover />"`,
-})
+});
 
 const [MediaProvider, useMediaContext] = createContext<
   UseFormReturn<MediaFormValues>
 >({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
-})
+});
 
 const [JobListingDraftProvider, useJobListingDraftContext] = createContext<{
-  details: JobListingDraftDetails
-  setDetails: React.Dispatch<React.SetStateAction<JobListingDraftDetails>>
+  details: JobListingDraftDetails;
+  setDetails: React.Dispatch<React.SetStateAction<JobListingDraftDetails>>;
 }>({
   displayName: "JobListingDraftProvider",
   errorMessage: `useJobListingDraftContext returned is 'undefined'. Seems you forgot to wrap the components in "<JobListingDraftProvider />"`,
-})
+});
 
-type EnsureJobListingDraft = () => Promise<string | null>
+type EnsureJobListingDraft = () => Promise<string | null>;
 
 const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
-  projectScopeMethods: [Phase[], React.Dispatch<React.SetStateAction<Phase[]>>]
-  isProjectSubmitted: boolean
-  setIsProjectSubmitted: React.Dispatch<React.SetStateAction<boolean>>
-  submissionOutcome: SubmissionOutcome | null
+  projectScopeMethods: [Phase[], React.Dispatch<React.SetStateAction<Phase[]>>];
+  isProjectSubmitted: boolean;
+  setIsProjectSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
+  submissionOutcome: SubmissionOutcome | null;
   setSubmissionOutcome: React.Dispatch<
     React.SetStateAction<SubmissionOutcome | null>
-  >
-  isTaskSearchDialogOpen: boolean
-  setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
+  >;
+  isTaskSearchDialogOpen: boolean;
+  setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
-})
+});
 
 function PublishProject({
   media,
@@ -15025,19 +15764,23 @@ function PublishProject({
   projectScope,
   teamRoles,
 }: {
-  projectInfo?: React.ReactElement<ProjectInfoProps>
+  projectInfo?: React.ReactElement<ProjectInfoProps>;
   media?: React.ReactElement<
     ProgressProps & { workType?: WorkTypeChoice; jobListingId?: string | null }
-  >
-  projectScope?: React.ReactElement<ProgressProps>
-  teamRoles?: React.ReactElement<ProgressProps>
+  >;
+  projectScope?: React.ReactElement<ProgressProps>;
+  teamRoles?: React.ReactElement<ProgressProps>;
 }) {
   const initialStep = useMemo(() => {
-    if (typeof window === "undefined") return undefined
+    if (typeof window === "undefined") return undefined;
 
-    const urlParams = new URLSearchParams(window.location.search)
-    return urlParams.get("edit") === "1" ? 1 : undefined
-  }, [])
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlJobListingId = urlParams.get("jobListingId");
+    return urlParams.get("edit") === "1" ||
+      Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId))
+      ? 1
+      : undefined;
+  }, []);
   const {
     nextStep,
     prevStep,
@@ -15048,12 +15791,12 @@ function PublishProject({
   } = useStepper({
     steps,
     currentStep: initialStep,
-  })
+  });
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
-    [nextStep, prevStep, setStep, toggleStepValidation]
-  )
+    [nextStep, prevStep, setStep, toggleStepValidation],
+  );
   const stepperRootValue = useMemo(
     () => ({
       currentStep,
@@ -15062,10 +15805,10 @@ function PublishProject({
       totalSteps,
       stepsState,
     }),
-    [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
-  )
-  const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
-  const router = useRouter()
+    [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState],
+  );
+  const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false);
+  const router = useRouter();
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {
@@ -15084,70 +15827,85 @@ function PublishProject({
       tags: ["website", "e-commerce", "launch"],
       skills: ["UI/UX Design"],
     },
-  })
+  });
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
     defaultValues: {
       featuredVideo: "",
     },
-  })
-  const projectScopeMethods = useState<Phase[]>([{}])
-  const [isProjectSubmitted, setIsProjectSubmitted] = useState(false)
+  });
+  const projectScopeMethods = useState<Phase[]>([{}]);
+  const [isProjectSubmitted, setIsProjectSubmitted] = useState(false);
   const [submissionOutcome, setSubmissionOutcome] =
-    useState<SubmissionOutcome | null>(null)
-  const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
+    useState<SubmissionOutcome | null>(null);
+  const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false);
   const [jobListingDraftDetails, setJobListingDraftDetails] =
-    useState<JobListingDraftDetails>({})
-  const [selectedWorkType, setSelectedWorkType] = useState<WorkTypeChoice>(null)
+    useState<JobListingDraftDetails>({});
+  const [selectedWorkType, setSelectedWorkType] =
+    useState<WorkTypeChoice>(null);
   const [selectedHiringMode, setSelectedHiringMode] =
-    useState<HiringModeChoice>(null)
-  const [isExistingContractFlow, setIsExistingContractFlow] = useState(false)
-  const [isNoScopeFlow, setIsNoScopeFlow] = useState(false)
+    useState<HiringModeChoice>(null);
+  const [isExistingContractFlow, setIsExistingContractFlow] = useState(false);
+  const [isNoScopeFlow, setIsNoScopeFlow] = useState(false);
   const [selectedExistingContractId, setSelectedExistingContractId] = useState<
     string | null
-  >(null)
-  const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
-  const [jobListingId, setJobListingId] = useState<string | null>(null)
-  const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  >(null);
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
+  const [jobListingId, setJobListingId] = useState<string | null>(null);
+  const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true);
   const persistedMediaRef = useRef<{
-    featuredImage?: string
-    additionalImages?: string[]
-    featuredVideo?: string
-  } | null>(null)
-  const lastDraftPayloadRef = useRef<string>("")
-  const lastScopePayloadRef = useRef<string>("")
-  const lastMediaPayloadRef = useRef<string>("")
-  const didInitializeLocalJobListingRef = useRef(false)
-  const didApplyEditResumeFallbackRef = useRef(false)
+    featuredImage?: string;
+    additionalImages?: string[];
+    featuredVideo?: string;
+  } | null>(null);
+  const lastDraftPayloadRef = useRef<string>("");
+  const lastScopePayloadRef = useRef<string>("");
+  const lastMediaPayloadRef = useRef<string>("");
+  const skipNextJobListingDraftSaveRef = useRef(false);
+  const didInitializeLocalJobListingRef = useRef(false);
+  const didApplyEditResumeFallbackRef = useRef(false);
   const ensureJobListingDraftPromiseRef = useRef<Promise<string | null> | null>(
-    null
-  )
-  const ensureJobListingDraftFailedUntilRef = useRef(0)
-  const watchedProjectInfo = useWatch({ control: projectInfoMethods.control })
+    null,
+  );
+  const ensureJobListingDraftFailedUntilRef = useRef(0);
+  const watchedProjectInfo = useWatch({ control: projectInfoMethods.control });
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    if (didInitializeLocalJobListingRef.current) return
-    didInitializeLocalJobListingRef.current = true
+    if (typeof window === "undefined") return;
+    if (didInitializeLocalJobListingRef.current) return;
+    didInitializeLocalJobListingRef.current = true;
 
-    let cancelled = false
+    let cancelled = false;
 
     const hydrateDraft = async () => {
-      const urlParams = new URLSearchParams(window.location.search)
-      const existingDraftId = urlParams.get("draftId")
+      const urlParams = new URLSearchParams(window.location.search);
+      const existingDraftId = urlParams.get("draftId");
       const storedJobListingId = window.sessionStorage.getItem(
-        "marketeq-job-listing-id"
-      )
+        "marketeq-job-listing-id",
+      );
       const existingJobListingId =
         urlParams.get("jobListingId") ??
         existingDraftId ??
         (storedJobListingId && UUID_PATTERN.test(storedJobListingId)
           ? storedJobListingId
-          : null)
-      const type = urlParams.get("type") ?? "project"
-      const shouldResumeExistingListing = urlParams.get("edit") === "1"
+          : null);
+      const type = urlParams.get("type") ?? "project";
+      const shouldResumeExistingListing = urlParams.get("edit") === "1";
       const isJobListingFlow =
-        window.location.pathname.startsWith("/job-listing")
+        window.location.pathname.startsWith("/job-listing");
+
+      if (
+        isJobListingFlow &&
+        shouldResumeExistingListing &&
+        existingJobListingId &&
+        UUID_PATTERN.test(existingJobListingId)
+      ) {
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `/job-listing?jobListingId=${encodeURIComponent(existingJobListingId)}`,
+        );
+      }
 
       try {
         if (isJobListingFlow) {
@@ -15158,86 +15916,175 @@ function PublishProject({
                   contractType: "new",
                   scopeKnowledge: "has_scope",
                   workType: "project",
-                })
+                });
 
-          if (cancelled) return
+          if (cancelled) return;
 
-          const listing = response?.data ?? {}
+          const listing = getResponsePayload(response);
           const nextJobListingId = String(
-            listing?.id ?? existingJobListingId ?? ""
-          )
-          setJobListingId(nextJobListingId || null)
-          setDraftProjectId(null)
+            listing?.id ?? existingJobListingId ?? "",
+          );
+          const hydratedWorkType = toWorkTypeChoice(
+            listing?.workType ?? listing?.listingType,
+          );
+          const hydratedHiringMode = toHiringModeChoice(listing?.hiringType);
+
+          setJobListingId(nextJobListingId || null);
+          setDraftProjectId(null);
+          setSelectedWorkType(hydratedWorkType);
+          setSelectedHiringMode(hydratedHiringMode);
+          setIsNoScopeFlow(isNoScopeKnowledge(listing?.scopeKnowledge));
+          setIsExistingContractFlow(listing?.contractType === "existing");
 
           if (nextJobListingId) {
             window.sessionStorage.setItem(
               "marketeq-job-listing-id",
-              nextJobListingId
-            )
+              nextJobListingId,
+            );
             const nextUrl = `/job-listing?jobListingId=${encodeURIComponent(
-              nextJobListingId
-            )}`
-            window.history.replaceState(window.history.state, "", nextUrl)
+              nextJobListingId,
+            )}`;
+            window.history.replaceState(window.history.state, "", nextUrl);
           }
 
           const basicInformation = Array.isArray(listing?.basicInformation)
             ? listing.basicInformation[0]
-            : undefined
+            : typeof listing?.basicInformation === "object" &&
+                listing?.basicInformation !== null
+              ? listing.basicInformation
+              : undefined;
           if (basicInformation || listing?.description) {
-            const currentProjectInfo = projectInfoMethods.getValues()
+            const currentProjectInfo = projectInfoMethods.getValues();
             projectInfoMethods.reset({
               ...currentProjectInfo,
               title: basicInformation?.title ?? currentProjectInfo.title,
+              category: Array.isArray(listing?.categorySelections)
+                ? listing.categorySelections
+                : currentProjectInfo.category,
               industry: Array.isArray(basicInformation?.industries)
                 ? basicInformation.industries
                 : currentProjectInfo.industry,
               languages: Array.isArray(basicInformation?.languages)
                 ? basicInformation.languages
                 : currentProjectInfo.languages,
+              tags: Array.isArray(listing?.tags)
+                ? listing.tags
+                : currentProjectInfo.tags,
+              skills: Array.isArray(listing?.skills)
+                ? listing.skills
+                : currentProjectInfo.skills,
               shortDescription:
                 listing?.description ?? currentProjectInfo.shortDescription,
               fullDescription:
                 listing?.deliverables ?? currentProjectInfo.fullDescription,
-            })
+            });
           }
+          const listingMedia =
+            listing?.media &&
+            typeof listing.media === "object" &&
+            !Array.isArray(listing.media)
+              ? listing.media
+              : null;
+          const featuredImageName =
+            typeof listingMedia?.featuredImageName === "string"
+              ? listingMedia.featuredImageName
+              : "featured-image.jpg";
+          const featuredImageUrl =
+            typeof listingMedia?.featuredImage === "string"
+              ? listingMedia.featuredImage
+              : "";
+          const additionalImageUrls = Array.isArray(
+            listingMedia?.additionalImages,
+          )
+            ? listingMedia.additionalImages.filter(
+                (url: unknown): url is string => typeof url === "string",
+              )
+            : [];
+          const additionalImageNames = Array.isArray(
+            listingMedia?.additionalImageNames,
+          )
+            ? listingMedia.additionalImageNames.filter(
+                (name: unknown): name is string => typeof name === "string",
+              )
+            : [];
+          const hydratedFeaturedImage = featuredImageUrl
+            ? await hydrateRemoteMediaFile(featuredImageUrl, featuredImageName)
+            : typeof listingMedia?.featuredImageName === "string"
+              ? new File([""], listingMedia.featuredImageName, {
+                  type: "image/jpeg",
+                })
+              : null;
+          const hydratedAdditionalImages = await Promise.all(
+            (additionalImageUrls.length > 0
+              ? additionalImageUrls
+              : additionalImageNames
+            ).map((value: string, index: number) =>
+              additionalImageUrls.length > 0
+                ? hydrateRemoteMediaFile(
+                    value,
+                    additionalImageNames[index] ?? "additional-image.jpg",
+                  )
+                : Promise.resolve(
+                    new File([""], value, { type: "image/jpeg" }),
+                  ),
+            ),
+          );
+
+          mediaMethods.reset({
+            featuredImages: hydratedFeaturedImage
+              ? [
+                  {
+                    meta: hydratedFeaturedImage,
+                    progress: 100,
+                    hasError: false,
+                  },
+                ]
+              : [],
+            additionalImages: hydratedAdditionalImages.map((file) => [
+              {
+                meta: file,
+                progress: 100,
+                hasError: false,
+              },
+            ]),
+            featuredVideo:
+              typeof listingMedia?.featuredVideo === "string"
+                ? listingMedia.featuredVideo
+                : "",
+          });
+          const nextBudgetAmount =
+            toFiniteNumber(listing?.budgetAmount) ??
+            toUsdAmountFromCents(listing?.budgetAmountUsdCents);
+          const nextHeadcount =
+            toFiniteNumber(listing?.headcount) ??
+            (Array.isArray(listing?.teamMemberRows) &&
+            listing.teamMemberRows.length > 0
+              ? listing.teamMemberRows.length
+              : undefined);
+          const nextDurationMonths = toFiniteNumber(listing?.durationMonths);
+          const nextBriefSizeBytes = toFiniteNumber(listing?.briefSizeBytes);
           setJobListingDraftDetails({
-            description: listing?.description ?? undefined,
-            deliverables: listing?.deliverables ?? undefined,
-            successCriteria: listing?.successCriteria ?? undefined,
-            headcount:
-              typeof listing?.headcount === "number"
-                ? listing.headcount
-                : undefined,
-            budgetAmount:
-              typeof listing?.budgetAmount === "number"
-                ? listing.budgetAmount
-                : undefined,
+            jobListingId: nextJobListingId || undefined,
+            description: toNullableString(listing?.description),
+            deliverables: toNullableString(listing?.deliverables),
+            successCriteria: toNullableString(listing?.successCriteria),
+            headcount: nextHeadcount,
+            budgetAmount: nextBudgetAmount,
             budgetFrequency:
               listing?.budgetFrequency === "per_month"
                 ? "per_month"
                 : listing?.budgetFrequency === "per_week"
                   ? "per_week"
                   : undefined,
-            durationMonths:
-              typeof listing?.durationMonths === "number"
-                ? listing.durationMonths
-                : undefined,
+            durationMonths: nextDurationMonths,
             isOngoing:
               typeof listing?.isOngoing === "boolean"
                 ? listing.isOngoing
                 : undefined,
-            briefR2Key:
-              typeof listing?.briefR2Key === "string"
-                ? listing.briefR2Key
-                : undefined,
-            briefFilename:
-              typeof listing?.briefFilename === "string"
-                ? listing.briefFilename
-                : undefined,
-            briefSizeBytes:
-              typeof listing?.briefSizeBytes === "number"
-                ? listing.briefSizeBytes
-                : undefined,
+            briefR2Key: toNullableString(listing?.briefR2Key),
+            briefFilename: toNullableString(listing?.briefFilename),
+            briefSizeBytes: nextBriefSizeBytes,
+            tools: Array.isArray(listing?.tools) ? listing.tools : undefined,
             ndaEnabled:
               typeof listing?.ndaEnabled === "boolean"
                 ? listing.ndaEnabled
@@ -15246,61 +16093,72 @@ function PublishProject({
               typeof listing?.ndaDocumentId === "string"
                 ? listing.ndaDocumentId
                 : null,
-          })
+          });
           const persistedJobListingScope =
             listing?.workType === "service"
               ? createServicePhasesFromPersistedJobListing(listing?.phases)
-              : createPhasesFromPersistedJobListing(listing?.phases)
+              : createPhasesFromPersistedJobListing(listing?.phases);
           if (persistedJobListingScope.length > 0) {
-            projectScopeMethods[1](persistedJobListingScope as Phase[])
+            projectScopeMethods[1](persistedJobListingScope as Phase[]);
           }
 
-          lastDraftPayloadRef.current = ""
-          lastScopePayloadRef.current = ""
+          lastDraftPayloadRef.current = "";
+          skipNextJobListingDraftSaveRef.current = true;
+          lastScopePayloadRef.current = "";
           lastMediaPayloadRef.current = JSON.stringify({
-            featuredImage: "",
-            additionalImages: [],
-            featuredVideo: "",
-          })
+            featuredImage: featuredImageUrl,
+            featuredImageName,
+            additionalImages: additionalImageUrls,
+            additionalImageNames,
+            featuredVideo:
+              typeof listingMedia?.featuredVideo === "string"
+                ? listingMedia.featuredVideo
+                : "",
+          });
           const lastCompletedStep =
             typeof listing?.lastCompletedStep === "number"
               ? listing.lastCompletedStep
-              : null
+              : null;
           if (lastCompletedStep && lastCompletedStep > 0) {
-            setStep(Math.min(lastCompletedStep, totalSteps - 1))
+            setStep(Math.min(lastCompletedStep, totalSteps - 1));
           } else if (shouldResumeExistingListing) {
-            setStep(Math.min(1, totalSteps - 1))
+            setStep(Math.min(1, totalSteps - 1));
+          } else if (
+            existingJobListingId &&
+            (listing?.description || Array.isArray(listing?.phases))
+          ) {
+            setStep(Math.min(1, totalSteps - 1));
           }
-          setIsDraftBootstrapping(false)
-          return
+          setIsDraftBootstrapping(false);
+          return;
         }
 
-        let response
+        let response;
 
         if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
-          response = await ProjectAPI.GetProjectDraft(existingDraftId)
+          response = await ProjectAPI.GetProjectDraft(existingDraftId);
         } else {
-          response = await ProjectAPI.CreateProjectDraft({})
-          const nextDraftId = String(response?.data?.id ?? "")
+          response = await ProjectAPI.CreateProjectDraft({});
+          const nextDraftId = String(response?.data?.id ?? "");
           if (nextDraftId) {
             const nextPath = isJobListingFlow
               ? "/job-listing"
-              : "/publish-project"
+              : "/publish-project";
             const nextUrl = `${nextPath}?type=${encodeURIComponent(
-              type
-            )}&draftId=${encodeURIComponent(nextDraftId)}`
-            window.history.replaceState(window.history.state, "", nextUrl)
+              type,
+            )}&draftId=${encodeURIComponent(nextDraftId)}`;
+            window.history.replaceState(window.history.state, "", nextUrl);
           }
         }
 
-        if (cancelled) return
+        if (cancelled) return;
 
-        const draft = response?.data ?? {}
-        const nextDraftId = String(draft?.id ?? existingDraftId ?? "")
-        setDraftProjectId(nextDraftId || null)
+        const draft = response?.data ?? {};
+        const nextDraftId = String(draft?.id ?? existingDraftId ?? "");
+        setDraftProjectId(nextDraftId || null);
 
-        const currentProjectInfo = projectInfoMethods.getValues()
-        const shouldKeepCurrentDefaults = isJobListingFlow && !existingDraftId
+        const currentProjectInfo = projectInfoMethods.getValues();
+        const shouldKeepCurrentDefaults = isJobListingFlow && !existingDraftId;
         const nextProjectInfo = {
           title:
             shouldKeepCurrentDefaults && !draft?.title
@@ -15345,12 +16203,12 @@ function PublishProject({
               : shouldKeepCurrentDefaults
                 ? (currentProjectInfo.skills ?? [])
                 : [],
-        }
+        };
 
-        projectInfoMethods.reset(nextProjectInfo)
+        projectInfoMethods.reset(nextProjectInfo);
         lastDraftPayloadRef.current = shouldKeepCurrentDefaults
           ? ""
-          : JSON.stringify(buildProjectDraftPayload(nextProjectInfo))
+          : JSON.stringify(buildProjectDraftPayload(nextProjectInfo));
 
         const persistedMedia = draft?.media
           ? {
@@ -15360,20 +16218,20 @@ function PublishProject({
                 : [],
               featuredVideo: draft.media.featuredVideo ?? "",
             }
-          : null
-        persistedMediaRef.current = persistedMedia
+          : null;
+        persistedMediaRef.current = persistedMedia;
 
         const hydratedFeaturedImage = persistedMedia?.featuredImage
           ? await hydrateRemoteMediaFile(
               persistedMedia.featuredImage,
-              "featured-image.jpg"
+              "featured-image.jpg",
             )
-          : null
+          : null;
         const hydratedAdditionalImages = await Promise.all(
           (persistedMedia?.additionalImages ?? []).map((url: string) =>
-            hydrateRemoteMediaFile(url, "additional-image.jpg")
-          )
-        )
+            hydrateRemoteMediaFile(url, "additional-image.jpg"),
+          ),
+        );
 
         mediaMethods.reset({
           featuredImages: hydratedFeaturedImage
@@ -15393,21 +16251,21 @@ function PublishProject({
             },
           ]),
           featuredVideo: persistedMedia?.featuredVideo ?? "",
-        })
+        });
         lastMediaPayloadRef.current = JSON.stringify({
           featuredImage: persistedMedia?.featuredImage ?? "",
           additionalImages: persistedMedia?.additionalImages ?? [],
           featuredVideo: persistedMedia?.featuredVideo ?? "",
-        })
+        });
 
         const scope = Array.isArray(draft?.scope)
           ? draft.scope.map((phase: any) => ({
               phaseName: phase?.name ?? "",
               rows: Array.isArray(phase?.task)
                 ? phase.task.map((task: any) => {
-                    const durationRaw = String(task?.duration ?? "").trim()
+                    const durationRaw = String(task?.duration ?? "").trim();
                     const [durationValue, ...durationTypeParts] =
-                      durationRaw.split(/\s+/)
+                      durationRaw.split(/\s+/);
                     return {
                       id: String(task?.id ?? getId()),
                       task: task?.taskName ?? "",
@@ -15426,61 +16284,66 @@ function PublishProject({
                             | "weeks"
                             | "hours") || "weeks",
                       },
-                    }
+                    };
                   })
                 : [],
             }))
-          : []
+          : [];
 
-        projectScopeMethods[1](scope.length > 0 ? scope : [{}])
+        projectScopeMethods[1](scope.length > 0 ? scope : [{}]);
         lastScopePayloadRef.current = JSON.stringify(
-          buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : [])
-        )
+          buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : []),
+        );
       } catch (error) {
-        console.error("Failed to hydrate project draft", error)
+        console.error("Failed to hydrate project draft", error);
       } finally {
         if (!cancelled) {
-          setIsDraftBootstrapping(false)
+          setIsDraftBootstrapping(false);
         }
       }
-    }
+    };
 
-    void hydrateDraft()
+    void hydrateDraft();
 
     return () => {
-      cancelled = true
-    }
+      cancelled = true;
+    };
   }, [
     mediaMethods,
     projectInfoMethods,
     projectScopeMethods,
     setStep,
     totalSteps,
-  ])
+  ]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    if (isDraftBootstrapping) return
-    if (didApplyEditResumeFallbackRef.current) return
+    if (typeof window === "undefined") return;
+    if (isDraftBootstrapping) return;
+    if (didApplyEditResumeFallbackRef.current) return;
 
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get("edit") !== "1") return
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlJobListingId = urlParams.get("jobListingId");
+    const shouldResumeListing =
+      urlParams.get("edit") === "1" ||
+      Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId));
 
-    didApplyEditResumeFallbackRef.current = true
+    if (!shouldResumeListing) return;
+
+    didApplyEditResumeFallbackRef.current = true;
     if (currentStep === 0) {
       window.setTimeout(() => {
-        setStep(Math.min(1, totalSteps - 1))
-      }, 0)
+        setStep(Math.min(1, totalSteps - 1));
+      }, 0);
     }
-  }, [currentStep, isDraftBootstrapping, setStep, totalSteps])
+  }, [currentStep, isDraftBootstrapping, setStep, totalSteps]);
 
   const ensureJobListingDraft = useCallback(async () => {
-    if (jobListingId) return jobListingId
+    if (jobListingId) return jobListingId;
     if (ensureJobListingDraftPromiseRef.current) {
-      return ensureJobListingDraftPromiseRef.current
+      return ensureJobListingDraftPromiseRef.current;
     }
     if (Date.now() < ensureJobListingDraftFailedUntilRef.current) {
-      return null
+      return null;
     }
 
     ensureJobListingDraftPromiseRef.current = JobListingAPI.Create({
@@ -15490,39 +16353,39 @@ function PublishProject({
         : undefined,
       scopeKnowledge: getJobListingScopeKnowledge(
         selectedWorkType,
-        isNoScopeFlow
+        isNoScopeFlow,
       ),
       workType: getJobListingWorkType(selectedWorkType),
       hiringType: getJobListingHiringType(selectedHiringMode),
     })
       .then((response) => {
-        const nextJobListingId = String(response?.data?.id ?? "")
+        const nextJobListingId = String(response?.data?.id ?? "");
 
         if (nextJobListingId && typeof window !== "undefined") {
-          ensureJobListingDraftFailedUntilRef.current = 0
-          setJobListingId(nextJobListingId)
+          ensureJobListingDraftFailedUntilRef.current = 0;
+          setJobListingId(nextJobListingId);
           window.sessionStorage.setItem(
             "marketeq-job-listing-id",
-            nextJobListingId
-          )
+            nextJobListingId,
+          );
           const nextUrl = `/job-listing?jobListingId=${encodeURIComponent(
-            nextJobListingId
-          )}`
-          window.history.replaceState(window.history.state, "", nextUrl)
+            nextJobListingId,
+          )}`;
+          window.history.replaceState(window.history.state, "", nextUrl);
         }
 
-        return nextJobListingId || null
+        return nextJobListingId || null;
       })
       .catch((error) => {
-        console.error("Failed to create job listing draft", error)
-        ensureJobListingDraftFailedUntilRef.current = Date.now() + 10_000
-        return null
+        console.error("Failed to create job listing draft", error);
+        ensureJobListingDraftFailedUntilRef.current = Date.now() + 10_000;
+        return null;
       })
       .finally(() => {
-        ensureJobListingDraftPromiseRef.current = null
-      })
+        ensureJobListingDraftPromiseRef.current = null;
+      });
 
-    return ensureJobListingDraftPromiseRef.current
+    return ensureJobListingDraftPromiseRef.current;
   }, [
     isExistingContractFlow,
     isNoScopeFlow,
@@ -15530,23 +16393,26 @@ function PublishProject({
     selectedExistingContractId,
     selectedHiringMode,
     selectedWorkType,
-  ])
+  ]);
 
   useEffect(() => {
-    if (isProjectSubmitted || isDraftBootstrapping) return
+    if (isProjectSubmitted || isDraftBootstrapping) return;
     const isJobListingFlow =
       typeof window !== "undefined" &&
-      window.location.pathname.startsWith("/job-listing")
+      window.location.pathname.startsWith("/job-listing");
 
     if (isJobListingFlow && jobListingId) {
       const info = {
         ...projectInfoMethods.getValues(),
         ...watchedProjectInfo,
-      }
+      };
+      const mediaPayload = buildJobListingMediaPayload(
+        mediaMethods.getValues(),
+      );
       const payload = {
         scopeKnowledge: getJobListingScopeKnowledge(
           selectedWorkType,
-          isNoScopeFlow
+          isNoScopeFlow,
         ),
         workType: getJobListingWorkType(selectedWorkType),
         hiringType: getJobListingHiringType(selectedHiringMode),
@@ -15556,6 +16422,11 @@ function PublishProject({
           jobListingDraftDetails.deliverables ?? info.fullDescription ?? "",
         successCriteria: jobListingDraftDetails.successCriteria,
         headcount: jobListingDraftDetails.headcount,
+        categorySelections: info.category ?? [],
+        tags: info.tags ?? [],
+        skills: info.skills ?? [],
+        tools: jobListingDraftDetails.tools ?? [],
+        media: mediaPayload,
         budgetAmount: jobListingDraftDetails.budgetAmount,
         budgetDisplayCurrency: "USD",
         budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
@@ -15566,19 +16437,19 @@ function PublishProject({
         briefSizeBytes: jobListingDraftDetails.briefSizeBytes,
         ndaEnabled: jobListingDraftDetails.ndaEnabled,
         lastCompletedStep: currentStep,
-      }
+      };
       const basicInfoPayload = {
         title: info.title ?? "",
         jobType: selectedWorkType ?? undefined,
         industries: info.industry ?? [],
         languages: info.languages ?? [],
-      }
+      };
       const textSignature = JSON.stringify({
         title: basicInfoPayload.title,
         description: payload.description,
         deliverables: payload.deliverables,
         successCriteria: payload.successCriteria,
-      })
+      });
       const nonTextSignature = JSON.stringify({
         scopeKnowledge: payload.scopeKnowledge,
         workType: payload.workType,
@@ -15593,56 +16464,67 @@ function PublishProject({
         briefFilename: payload.briefFilename,
         briefSizeBytes: payload.briefSizeBytes,
         ndaEnabled: payload.ndaEnabled,
+        categorySelections: payload.categorySelections,
+        tags: payload.tags,
+        skills: payload.skills,
+        tools: payload.tools,
+        media: payload.media,
         jobType: basicInfoPayload.jobType,
         industries: basicInfoPayload.industries,
         languages: basicInfoPayload.languages,
-      })
+      });
       const serializedPayload = JSON.stringify({
         payload,
         basicInfoPayload,
         textSignature,
         nonTextSignature,
-      })
+      });
 
-      if (serializedPayload === lastDraftPayloadRef.current) return
+      if (skipNextJobListingDraftSaveRef.current) {
+        skipNextJobListingDraftSaveRef.current = false;
+        lastDraftPayloadRef.current = serializedPayload;
+        return;
+      }
+
+      if (serializedPayload === lastDraftPayloadRef.current) return;
 
       const previousPayload = lastDraftPayloadRef.current
         ? JSON.parse(lastDraftPayloadRef.current)
-        : null
-      const textChanged = previousPayload?.textSignature !== textSignature
+        : null;
+      const textChanged = previousPayload?.textSignature !== textSignature;
       const nonTextChanged =
-        previousPayload?.nonTextSignature !== nonTextSignature
-      const saveDelay = textChanged && !nonTextChanged ? 500 : 0
+        previousPayload?.nonTextSignature !== nonTextSignature;
+      const saveDelay = textChanged && !nonTextChanged ? 500 : 0;
 
       const timeout = window.setTimeout(() => {
         const saveJobListingDraft = async () => {
           try {
-            await JobListingAPI.Update(jobListingId, payload)
+            await JobListingAPI.Update(jobListingId, payload);
             await JobListingAPI.UpdateBasicInformation(
               jobListingId,
-              basicInfoPayload
-            )
-            lastDraftPayloadRef.current = serializedPayload
+              basicInfoPayload,
+            );
+            lastDraftPayloadRef.current = serializedPayload;
           } catch (error) {
-            console.error("Failed to save job listing draft", error)
+            console.error("Failed to save job listing draft", error);
           }
-        }
+        };
 
-        void saveJobListingDraft()
-      }, saveDelay)
+        void saveJobListingDraft();
+      }, saveDelay);
 
-      return () => window.clearTimeout(timeout)
+      return () => window.clearTimeout(timeout);
     }
 
     if (isJobListingFlow) {
-      void ensureJobListingDraft()
-      return
+      void ensureJobListingDraft();
+      return;
     }
 
-    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return;
 
     const saveDraft = async () => {
-      const info = projectInfoMethods.getValues()
+      const info = projectInfoMethods.getValues();
       const payload = buildProjectDraftPayload({
         title: info.title ?? "",
         category: info.category ?? [],
@@ -15652,24 +16534,24 @@ function PublishProject({
         skills: info.skills ?? [],
         shortDescription: info.shortDescription ?? "",
         fullDescription: info.fullDescription ?? "",
-      })
+      });
 
-      const serializedPayload = JSON.stringify(payload)
-      if (serializedPayload === lastDraftPayloadRef.current) return
+      const serializedPayload = JSON.stringify(payload);
+      if (serializedPayload === lastDraftPayloadRef.current) return;
 
       try {
-        await ProjectAPI.UpdateProjectDraft(draftProjectId, payload)
-        lastDraftPayloadRef.current = serializedPayload
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, payload);
+        lastDraftPayloadRef.current = serializedPayload;
       } catch (error) {
-        console.error("Failed to save project draft", error)
+        console.error("Failed to save project draft", error);
       }
-    }
+    };
 
-    void saveDraft()
+    void saveDraft();
     const interval = setInterval(() => {
-      void saveDraft()
-    }, 2000)
-    return () => clearInterval(interval)
+      void saveDraft();
+    }, 2000);
+    return () => clearInterval(interval);
   }, [
     draftProjectId,
     ensureJobListingDraft,
@@ -15678,104 +16560,105 @@ function PublishProject({
     isDraftBootstrapping,
     isNoScopeFlow,
     jobListingDraftDetails,
+    mediaMethods,
     projectInfoMethods,
     isProjectSubmitted,
     selectedHiringMode,
     selectedWorkType,
     watchedProjectInfo,
-  ])
+  ]);
 
   useEffect(() => {
-    if (jobListingId) return
-    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+    if (jobListingId) return;
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return;
 
     const saveScope = async () => {
       const payload = buildScopeDraftPayload(
         draftProjectId,
-        projectScopeMethods[0]
-      )
-      const serializedPayload = JSON.stringify(payload)
+        projectScopeMethods[0],
+      );
+      const serializedPayload = JSON.stringify(payload);
 
-      if (serializedPayload === lastScopePayloadRef.current) return
+      if (serializedPayload === lastScopePayloadRef.current) return;
 
       try {
-        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
-        lastScopePayloadRef.current = serializedPayload
+        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload);
+        lastScopePayloadRef.current = serializedPayload;
       } catch (error) {
-        console.error("Failed to save project scope draft", error)
+        console.error("Failed to save project scope draft", error);
       }
-    }
+    };
 
-    void saveScope()
+    void saveScope();
     const interval = setInterval(() => {
-      void saveScope()
-    }, 2000)
+      void saveScope();
+    }, 2000);
 
-    return () => clearInterval(interval)
+    return () => clearInterval(interval);
   }, [
     draftProjectId,
     jobListingId,
     isDraftBootstrapping,
     isProjectSubmitted,
     projectScopeMethods,
-  ])
+  ]);
 
   useEffect(() => {
-    if (jobListingId) return
-    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+    if (jobListingId) return;
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return;
 
     const saveMedia = async () => {
-      const mediaValues = mediaMethods.getValues()
-      const featuredMeta = mediaValues.featuredImages?.[0]?.meta
+      const mediaValues = mediaMethods.getValues();
+      const featuredMeta = mediaValues.featuredImages?.[0]?.meta;
       const additionalMeta =
         mediaValues.additionalImages
           ?.flat()
           .map((item) => item?.meta)
-          .filter(Boolean) ?? []
-      const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
+          .filter(Boolean) ?? [];
+      const videoUrl = mediaValues.featuredVideo?.trim() ?? "";
 
       const signature = JSON.stringify({
         featuredImage: isPersistedMediaFile(featuredMeta)
           ? featuredMeta.__persistedUrl
           : (featuredMeta?.name ?? ""),
         additionalImages: additionalMeta.map((item: any) =>
-          isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
+          isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? ""),
         ),
         featuredVideo: videoUrl,
-      })
+      });
 
-      if (signature === lastMediaPayloadRef.current) return
-      if (!featuredMeta) return
+      if (signature === lastMediaPayloadRef.current) return;
+      if (!featuredMeta) return;
 
-      const formData = new FormData()
-      formData.append("projectId", draftProjectId)
+      const formData = new FormData();
+      formData.append("projectId", draftProjectId);
 
       const resolvedFeatured = await resolveMediaFileForUpload(
         featuredMeta,
-        "featured-image.jpg"
-      )
-      if (!resolvedFeatured) return
-      formData.append("featuredImage", resolvedFeatured)
+        "featured-image.jpg",
+      );
+      if (!resolvedFeatured) return;
+      formData.append("featuredImage", resolvedFeatured);
 
       for (const file of additionalMeta) {
         const resolvedAdditional = await resolveMediaFileForUpload(
           file,
-          "additional-image.jpg"
-        )
+          "additional-image.jpg",
+        );
         if (resolvedAdditional) {
-          formData.append("additionalImages", resolvedAdditional)
+          formData.append("additionalImages", resolvedAdditional);
         }
       }
 
       if (videoUrl) {
         formData.append(
           "videoUrl",
-          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
-        )
+          videoUrl.replace(/^(https?:\/\/)+/i, "https://"),
+        );
       }
 
       try {
-        const response = await ProjectAPI.UploadMedia(formData)
+        const response = await ProjectAPI.UploadMedia(formData);
         const nextMedia = {
           featuredImage:
             response?.data?.featuredImage ??
@@ -15789,10 +16672,10 @@ function PublishProject({
             response?.data?.featuredVideo ??
             response?.data?.videoUrl ??
             videoUrl,
-        }
+        };
 
-        persistedMediaRef.current = nextMedia
-        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
+        persistedMediaRef.current = nextMedia;
+        lastMediaPayloadRef.current = JSON.stringify(nextMedia);
 
         mediaMethods.reset({
           featuredImages: nextMedia.featuredImage
@@ -15800,7 +16683,7 @@ function PublishProject({
                 {
                   meta: buildPersistedMediaFile(
                     nextMedia.featuredImage,
-                    "featured-image.jpg"
+                    "featured-image.jpg",
                   ),
                   progress: 100,
                   hasError: false,
@@ -15814,27 +16697,27 @@ function PublishProject({
                 progress: 100,
                 hasError: false,
               },
-            ]
+            ],
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
-        })
+        });
       } catch (error) {
-        console.error("Failed to save project media draft", error)
+        console.error("Failed to save project media draft", error);
       }
-    }
+    };
 
     const interval = setInterval(() => {
-      void saveMedia()
-    }, 2000)
+      void saveMedia();
+    }, 2000);
 
-    return () => clearInterval(interval)
+    return () => clearInterval(interval);
   }, [
     draftProjectId,
     jobListingId,
     isDraftBootstrapping,
     isProjectSubmitted,
     mediaMethods,
-  ])
+  ]);
 
   const projectScopeValue = useMemo(
     () => ({
@@ -15854,60 +16737,47 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
-    ]
-  )
+    ],
+  );
   const jobListingDraftValue = useMemo(
     () => ({
       details: jobListingDraftDetails,
       setDetails: setJobListingDraftDetails,
     }),
-    [jobListingDraftDetails]
-  )
+    [jobListingDraftDetails],
+  );
   //  Validate the current step when Next is clicked
   const validateCurrentStep = React.useCallback(async () => {
     if (currentStep === 0) {
       const isStepValid = await projectInfoMethods.trigger(undefined, {
         shouldFocus: true,
-      })
+      });
 
       if (!isStepValid) {
         const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
-          ({ name }) => projectInfoMethods.getFieldState(name).invalid
-        )
+          ({ name }) => projectInfoMethods.getFieldState(name).invalid,
+        );
         if (firstInvalidTarget) {
-          scrollToPublishField(firstInvalidTarget.targetId)
+          scrollToPublishField(firstInvalidTarget.targetId);
         }
       }
 
-      return isStepValid
+      return isStepValid;
     }
     if (currentStep === 1) {
-      const isStepValid = await mediaMethods.trigger(undefined, {
-        shouldFocus: true,
-      })
-
-      if (!isStepValid) {
-        const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(
-          ({ name }) => mediaMethods.getFieldState(name).invalid
-        )
-        if (firstInvalidTarget) {
-          scrollToPublishField(firstInvalidTarget.targetId)
-        }
-      }
-
-      return isStepValid
+      return Boolean(stepsState[currentStep]?.isValid);
     }
     // Step 3 uses its own schema checks
-    return true
-  }, [currentStep, projectInfoMethods, mediaMethods])
+    return true;
+  }, [currentStep, projectInfoMethods, stepsState]);
 
   //  NEW: Track cumulative progress for all steps
-  const [projectInfoProgress, setProjectInfoProgress] = useState(0)
+  const [projectInfoProgress, setProjectInfoProgress] = useState(0);
 
-  const [mediaProgress, setMediaProgress] = useState(0)
-  const [projectScopeProgress, setProjectScopeProgress] = useState(0)
-  const [teamRolesProgress, setTeamRolesProgress] = useState(0)
-  const [finalReviewProgress, setFinalReviewProgress] = useState(0)
+  const [mediaProgress, setMediaProgress] = useState(0);
+  const [projectScopeProgress, setProjectScopeProgress] = useState(0);
+  const [teamRolesProgress, setTeamRolesProgress] = useState(0);
+  const [finalReviewProgress, setFinalReviewProgress] = useState(0);
 
   const overallProgress = useMemo(() => {
     return (
@@ -15916,22 +16786,22 @@ function PublishProject({
       projectScopeProgress +
       teamRolesProgress +
       finalReviewProgress
-    )
+    );
   }, [
     projectInfoProgress,
     mediaProgress,
     projectScopeProgress,
     teamRolesProgress,
     finalReviewProgress,
-  ])
+  ]);
 
   const handleSaveExit = React.useCallback(() => {
-    toggleIsSaveExitDialogOpen(false)
-    router.push("/my-listings")
-  }, [toggleIsSaveExitDialogOpen, router])
+    toggleIsSaveExitDialogOpen(false);
+    router.push("/my-listings");
+  }, [toggleIsSaveExitDialogOpen, router]);
   const isJobListingRoute =
     typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/job-listing")
+    window.location.pathname.startsWith("/job-listing");
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
@@ -16103,23 +16973,23 @@ function PublishProject({
         </div>
       </StepRootProvider>
     </StepperProvider>
-  )
+  );
 }
 
 export default function PublishRootProject() {
-  const [mounted, setMounted] = useState(false)
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (typeof document !== "undefined") {
-      document.title = "Create a Project | Marketeq"
+      document.title = "Create a Project | Marketeq";
     }
-  }, [])
+  }, []);
 
   if (!mounted) {
-    return null
+    return null;
   }
 
   return (
@@ -16132,5 +17002,5 @@ export default function PublishRootProject() {
       />
       <Toaster />
     </>
-  )
+  );
 }

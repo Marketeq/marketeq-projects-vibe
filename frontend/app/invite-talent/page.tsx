@@ -16,6 +16,7 @@ import {
 } from "@/service/http/checkout"
 import { JobListingAPI } from "@/service/http/job-listing"
 import {
+  type TalentUser,
   talentToCardProps,
   useRecommendedTalentUsers,
 } from "@/src/lib/api/talent-users"
@@ -198,6 +199,16 @@ const getUniqueStrings = (values: unknown[]) => {
     })
 }
 
+const getNonEmptyString = (value: unknown) =>
+  typeof value === "string" ? value.trim() : ""
+
+const getTalentSkillNames = (skills: TalentUser["skills"] = []) =>
+  skills
+    .map((skill) =>
+      typeof skill === "string" ? skill : getNonEmptyString(skill?.name)
+    )
+    .filter(Boolean)
+
 const getRolesFromListing = (listing: any) => {
   const roleValues = [
     ...(Array.isArray(listing?.teamMemberRows)
@@ -289,10 +300,10 @@ type InviteTalentCandidate = {
   title: string
   experience: string
   location: string
-  level: string
+  level?: string
   hourlyRate: string
   skillsMatch: string
-  availability: string
+  availability?: string
   avatar: string
   skills: string[]
   rating: number
@@ -482,6 +493,8 @@ export function InviteTalentFlow({
   const [selectedExperiences, setSelectedExperiences] = useState<string[]>([])
   const [selectedSchedules, setSelectedSchedules] = useState<string[]>([])
   const [selectedRate, setSelectedRate] = useState("")
+  const [appliedFilterSet, setAppliedFilterSet] =
+    useState<InviteFilterSet>(emptyInviteFilterSet)
   const [applyToAllRoles, setApplyToAllRoles] = useState(false)
   const [roleFilterSets, setRoleFilterSets] = useState<
     Record<string, InviteFilterSet>
@@ -503,11 +516,18 @@ export function InviteTalentFlow({
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
     "monthly" | "annual"
   >("monthly")
-  const [selectedPaymentOption, setSelectedPaymentOption] = useState("card")
+  const [selectedPaymentOption, setSelectedPaymentOption] = useState("")
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<CheckoutPaymentMethod>("card")
   const [showPaymentMethodPicker, setShowPaymentMethodPicker] = useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = useState(false)
+  const [showPromoCodeInput, setShowPromoCodeInput] = useState(false)
+  const [promoCodeInput, setPromoCodeInput] = useState("")
+  const [appliedPromoCode, setAppliedPromoCode] = useState("")
+  const [giftCardAmount, setGiftCardAmount] = useState(0)
+  const [isApplyingPromoCode, setIsApplyingPromoCode] = useState(false)
+  const [walletBalance, setWalletBalance] = useState(0)
+  const [paymentCooldownMessage, setPaymentCooldownMessage] = useState("")
   const allRoleTitles = useMemo(
     () => roleOptions.map((role) => role.label).filter(Boolean),
     [roleOptions]
@@ -538,10 +558,10 @@ export function InviteTalentFlow({
             deliverables: listingContext.deliverables,
             successCriteria: listingContext.successCriteria,
             skills: listingSkills,
-            locations: selectedLocations,
-            experienceLevels: selectedExperiences,
-            workSchedules: selectedSchedules,
-            hourlyRate: normalizeRateFilter(selectedRate),
+            locations: appliedFilterSet.locations,
+            experienceLevels: appliedFilterSet.experiences,
+            workSchedules: appliedFilterSet.schedules,
+            hourlyRate: normalizeRateFilter(appliedFilterSet.rate),
             limit: 30,
           }
         : null,
@@ -550,10 +570,7 @@ export function InviteTalentFlow({
       listingContext,
       listingSkills,
       recommendationRoleTitle,
-      selectedExperiences,
-      selectedLocations,
-      selectedRate,
-      selectedSchedules,
+      appliedFilterSet,
     ]
   )
   const {
@@ -566,23 +583,41 @@ export function InviteTalentFlow({
     return talents
       .map((talent, index) => {
         const card = talentToCardProps(talent, index)
+        const profileSkills = getTalentSkillNames(talent.skills)
         const rawSkills = getUniqueStrings([
           ...(Array.isArray(talent.aiMatchedSkills)
             ? talent.aiMatchedSkills
             : []),
-          ...(Array.isArray(talent.skills) ? talent.skills : []),
+          ...profileSkills,
         ])
-        const rate = card.rate.split("-")[0]?.trim() || "$85"
-        const yearsOfExperience = Number(
-          talent.overview?.yearsOfExperience ?? NaN
-        )
-        const experience = Number.isNaN(yearsOfExperience)
-          ? card.experience
-          : `${yearsOfExperience} years of experience`
+        const exactRate = Number(talent.rate)
+        const minRate = Number(talent.rateMin)
+        const maxRate = Number(talent.rateMax)
+        const rate =
+          Number.isFinite(exactRate) && exactRate > 0
+            ? `$${exactRate}`
+            : Number.isFinite(minRate) &&
+                minRate > 0 &&
+                Number.isFinite(maxRate) &&
+                maxRate > 0
+              ? `$${minRate} - $${maxRate}`
+              : Number.isFinite(minRate) && minRate > 0
+                ? `$${minRate}`
+                : ""
+        const yearsValue = talent.overview?.yearsOfExperience
+        const yearsOfExperience = Number(yearsValue)
+        const hasYearsOfExperience =
+          yearsValue !== null &&
+          yearsValue !== undefined &&
+          yearsValue !== "" &&
+          Number.isFinite(yearsOfExperience)
+        const experience = hasYearsOfExperience
+          ? `${yearsOfExperience} year${yearsOfExperience === 1 ? "" : "s"} of experience`
+          : ""
         const level =
-          typeof talent.overview?.experienceLevel === "string"
-            ? talent.overview.experienceLevel
-            : yearsOfExperience >= 10
+          getNonEmptyString(talent.overview?.experienceLevel) ||
+          (hasYearsOfExperience
+            ? yearsOfExperience >= 10
               ? "Guru"
               : yearsOfExperience >= 5
                 ? "Senior"
@@ -591,26 +626,36 @@ export function InviteTalentFlow({
                   : yearsOfExperience >= 2
                     ? "Junior"
                     : "Student"
+            : undefined)
         const availability =
-          typeof talent.overview?.workSchedule === "string"
-            ? talent.overview.workSchedule
-            : talent.availability || "Available 40 hrs/week"
+          getNonEmptyString(talent.overview?.workSchedule) ||
+          getNonEmptyString(talent.availability)
+        const location =
+          getNonEmptyString(talent.country) ||
+          getNonEmptyString(talent.location)
+        const rating = Number(talent.rating)
+        const projects = Number(
+          talent.totalProjectsCompleted ?? talent.reviewsCount ?? 0
+        )
 
         return {
           id: card.id,
           name: card.name,
           handle: card.handle,
-          title: card.role || roleFilter,
+          title:
+            card.role && card.role !== "Marketing Technologist"
+              ? card.role
+              : roleFilter,
           experience,
-          location: card.country,
+          location,
           level,
           hourlyRate: rate,
           skillsMatch: `${rawSkills.length} Matching Skills`,
           availability,
           avatar: card.photo === "/man.jpg" ? "" : card.photo,
           skills: rawSkills.slice(0, INVITE_VISIBLE_SKILL_COUNT + 5),
-          rating: card.rating,
-          projects: card.projects,
+          rating: Number.isFinite(rating) ? rating : 0,
+          projects: Number.isFinite(projects) ? projects : 0,
           match: talent.aiMatchScore ?? 0,
         }
       })
@@ -641,21 +686,11 @@ export function InviteTalentFlow({
   )
 
   useEffect(() => {
-    if (!roleFilter) return
+    if (roleFilter) return
 
-    setRoleFilterSets((current) => {
-      const next = { ...current }
-      const targetRoles = applyToAllRoles
-        ? roleOptions
-        : roleOptions.filter((role) => role.label === roleFilter)
-
-      targetRoles.forEach((role) => {
-        next[role.id] = currentFilterSet
-      })
-
-      return next
-    })
-  }, [applyToAllRoles, currentFilterSet, roleFilter, roleOptions])
+    applyFilterSet(emptyInviteFilterSet)
+    setAppliedFilterSet(emptyInviteFilterSet)
+  }, [roleFilter])
 
   useEffect(() => {
     if (!jobListingId) {
@@ -746,10 +781,10 @@ export function InviteTalentFlow({
   }, [jobListingId, toast])
 
   const activeFilterCount =
-    selectedLocations.length +
-    selectedExperiences.length +
-    selectedSchedules.length +
-    (selectedRate ? 1 : 0)
+    appliedFilterSet.locations.length +
+    appliedFilterSet.experiences.length +
+    appliedFilterSet.schedules.length +
+    (appliedFilterSet.rate ? 1 : 0)
   const filteredRoleCount = applyToAllRoles
     ? roleOptions.length
     : roleOptions.filter((role) =>
@@ -795,12 +830,19 @@ export function InviteTalentFlow({
     setSelectedSchedules(filterSet.schedules)
     setSelectedRate(filterSet.rate)
   }
-  const persistCurrentRoleFilters = () => {
+  const handleFilterPopoverOpenChange =
+    (setter: Dispatch<SetStateAction<boolean>>) => (open: boolean) => {
+      setter(open)
+      if (!open) {
+        applyFilterSet(appliedFilterSet)
+      }
+    }
+  const persistCurrentRoleFilters = (filterSet = currentFilterSet) => {
     if (!roleFilter) return
 
     setRoleFilterSets((current) => ({
       ...current,
-      [normalizeRoleId(roleFilter)]: currentFilterSet,
+      [normalizeRoleId(roleFilter)]: filterSet,
     }))
   }
   const handleRoleChange = (role: TeamRoleOption) => {
@@ -809,16 +851,17 @@ export function InviteTalentFlow({
       return
     }
 
-    persistCurrentRoleFilters()
     setRoleFilter(role.label)
-    applyFilterSet(roleFilterSets[role.id] ?? emptyInviteFilterSet)
+    const nextFilterSet = roleFilterSets[role.id] ?? emptyInviteFilterSet
+    applyFilterSet(nextFilterSet)
+    setAppliedFilterSet(nextFilterSet)
     setIsRoleOpen(false)
   }
-  const applyCurrentFiltersToAllRoles = () => {
+  const applyCurrentFiltersToAllRoles = (filterSet = currentFilterSet) => {
     setRoleFilterSets((current) => {
       const next = { ...current }
       roleOptions.forEach((role) => {
-        next[role.id] = currentFilterSet
+        next[role.id] = filterSet
       })
       return next
     })
@@ -826,15 +869,18 @@ export function InviteTalentFlow({
   const commitCurrentFilters = () => {
     if (applyToAllRoles) {
       applyCurrentFiltersToAllRoles()
+      setAppliedFilterSet(currentFilterSet)
       return
     }
 
     persistCurrentRoleFilters()
+    setAppliedFilterSet(currentFilterSet)
   }
   const handleApplyToAllRolesChange = (checked: boolean) => {
     setApplyToAllRoles(checked)
     if (checked) {
       applyCurrentFiltersToAllRoles()
+      setAppliedFilterSet(currentFilterSet)
       setIsRoleOpen(false)
       return
     }
@@ -846,8 +892,10 @@ export function InviteTalentFlow({
 
       setRoleFilterSets({ [activeRoleId]: activeRoleFilterSet })
       applyFilterSet(activeRoleFilterSet)
+      setAppliedFilterSet(activeRoleFilterSet)
     } else {
       setRoleFilterSets({})
+      setAppliedFilterSet(emptyInviteFilterSet)
     }
   }
   const selectedInvitePackPrice =
@@ -865,10 +913,9 @@ export function InviteTalentFlow({
     selectedBillingCycle === "annual" ? "year" : "month"
   const selectedPlanCheckoutSuffix =
     selectedBillingCycle === "annual" ? "/yr" : "/mo"
-  const selectedPaymentOptionDetails =
-    invitePaymentOptions.find(
-      (option) => option.id === selectedPaymentOption
-    ) || invitePaymentOptions[0]
+  const selectedPaymentOptionDetails = invitePaymentOptions.find(
+    (option) => option.id === selectedPaymentOption
+  )
   const inviteBalanceLabel =
     inviteBalance >= 100
       ? `${inviteBalance} / 100 invites left`
@@ -879,6 +926,57 @@ export function InviteTalentFlow({
     inviteCheckoutMode === "upgrade"
       ? parseCurrencyAmount(selectedPlanPrice)
       : parseCurrencyAmount(selectedInvitePackPrice)
+  const discountedCheckoutAmount = Math.max(0, checkoutAmount - giftCardAmount)
+  const checkoutTotalLabel = `$${discountedCheckoutAmount.toLocaleString(
+    undefined,
+    {
+      minimumFractionDigits: discountedCheckoutAmount % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    }
+  )}`
+
+  useEffect(() => {
+    if (!inviteCheckoutMode) return
+
+    let isMounted = true
+
+    const loadPaymentReadiness = async () => {
+      try {
+        const [walletResponse, cooldownResponse] = await Promise.allSettled([
+          CheckoutAPI.GetWalletBalance(),
+          CheckoutAPI.CheckCooldown(),
+        ])
+
+        if (!isMounted) return
+
+        if (walletResponse.status === "fulfilled") {
+          setWalletBalance(Number(walletResponse.value?.data?.balance || 0))
+        }
+
+        if (cooldownResponse.status === "fulfilled") {
+          const cooldown = cooldownResponse.value?.data
+          if (cooldown?.onCooldown) {
+            const endsAt = cooldown.cooldownEndsAt
+              ? new Date(cooldown.cooldownEndsAt).toLocaleString()
+              : "later"
+            setPaymentCooldownMessage(
+              `Payment attempts are temporarily paused until ${endsAt}.`
+            )
+          } else {
+            setPaymentCooldownMessage("")
+          }
+        }
+      } catch {
+        if (isMounted) setPaymentCooldownMessage("")
+      }
+    }
+
+    void loadPaymentReadiness()
+
+    return () => {
+      isMounted = false
+    }
+  }, [inviteCheckoutMode])
 
   useEffect(() => {
     if (!inviteSuccessMessage) return
@@ -889,6 +987,11 @@ export function InviteTalentFlow({
 
     return () => window.clearTimeout(timeoutId)
   }, [inviteSuccessMessage])
+
+  useEffect(() => {
+    if (!appliedPromoCode) return
+    setGiftCardAmount((amount) => Math.min(amount, checkoutAmount))
+  }, [appliedPromoCode, checkoutAmount])
 
   const handleSendInvites = async () => {
     if (!hasAnyInvites) {
@@ -950,6 +1053,51 @@ export function InviteTalentFlow({
     }
   }
 
+  const applyPromoCode = async () => {
+    const normalizedCode = promoCodeInput.trim().toUpperCase()
+    if (!normalizedCode) {
+      toast({
+        title: "Enter a gift card or promo code first.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsApplyingPromoCode(true)
+      const response = await CheckoutAPI.ApplyGiftCard({ code: normalizedCode })
+      const isValid = Boolean(response?.data?.valid)
+      const amount = Number(response?.data?.amount || 0)
+
+      if (!isValid || amount <= 0) {
+        setAppliedPromoCode("")
+        setGiftCardAmount(0)
+        toast({
+          title: "That gift card or promo code is not valid.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setAppliedPromoCode(normalizedCode)
+      setGiftCardAmount(Math.min(amount, checkoutAmount))
+      setShowPromoCodeInput(false)
+      toast({
+        title: "Gift card applied.",
+      })
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.message ||
+          error?.message ||
+          "Unable to apply this code right now.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsApplyingPromoCode(false)
+    }
+  }
+
   const submitInvitePayment = async () => {
     if (!jobListingId) {
       toast({
@@ -962,6 +1110,14 @@ export function InviteTalentFlow({
     if (!user?.id) {
       toast({
         title: "Please sign in before submitting payment.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!selectedPaymentOptionDetails) {
+      toast({
+        title: "Select a payment method before submitting payment.",
         variant: "destructive",
       })
       return
@@ -980,6 +1136,7 @@ export function InviteTalentFlow({
               : "monthly"
             : "full",
         amount: checkoutAmount,
+        giftCardCode: appliedPromoCode || undefined,
         successUrl: `${window.location.origin}/invite-talent?jobListingId=${encodeURIComponent(
           jobListingId
         )}&inviteCheckoutSessionId={CHECKOUT_SESSION_ID}&inviteCheckoutMode=${inviteCheckoutMode}&invitePack=${encodeURIComponent(
@@ -1001,6 +1158,8 @@ export function InviteTalentFlow({
               invitePack: selectedInvitePack,
               plan: selectedPlan,
               billingCycle: selectedBillingCycle,
+              giftCardCode: appliedPromoCode || undefined,
+              giftCardAmount,
               applyToAllRoles,
               ...inviteRolePayload,
               talentUserIds: inviteCandidateIds,
@@ -1042,6 +1201,7 @@ export function InviteTalentFlow({
         setIsCompletingPayment(true)
         window.sessionStorage.setItem(processedKey, "in_progress")
 
+        await CheckoutAPI.Confirm({ sessionId: checkoutSessionId })
         const statusResponse = await CheckoutAPI.GetStatus(checkoutSessionId)
         const checkoutStatus = statusResponse?.data?.status
         const paymentVerified = Boolean(statusResponse?.data?.paymentVerified)
@@ -1287,7 +1447,9 @@ export function InviteTalentFlow({
 
                     <Popover
                       open={isLocationOpen}
-                      onOpenChange={setIsLocationOpen}
+                      onOpenChange={handleFilterPopoverOpenChange(
+                        setIsLocationOpen
+                      )}
                     >
                       <PopoverTrigger asChild>
                         <Button
@@ -1351,7 +1513,6 @@ export function InviteTalentFlow({
                           </Button>
                           <Button
                             size="sm"
-                            disabled={selectedLocations.length === 0}
                             onClick={() => {
                               commitCurrentFilters()
                               setIsLocationOpen(false)
@@ -1365,7 +1526,9 @@ export function InviteTalentFlow({
 
                     <Popover
                       open={isExperienceOpen}
-                      onOpenChange={setIsExperienceOpen}
+                      onOpenChange={handleFilterPopoverOpenChange(
+                        setIsExperienceOpen
+                      )}
                     >
                       <PopoverTrigger asChild>
                         <Button
@@ -1412,7 +1575,6 @@ export function InviteTalentFlow({
                           </Button>
                           <Button
                             size="sm"
-                            disabled={selectedExperiences.length === 0}
                             onClick={() => {
                               commitCurrentFilters()
                               setIsExperienceOpen(false)
@@ -1426,7 +1588,9 @@ export function InviteTalentFlow({
 
                     <Popover
                       open={isScheduleOpen}
-                      onOpenChange={setIsScheduleOpen}
+                      onOpenChange={handleFilterPopoverOpenChange(
+                        setIsScheduleOpen
+                      )}
                     >
                       <PopoverTrigger asChild>
                         <Button
@@ -1473,7 +1637,6 @@ export function InviteTalentFlow({
                           </Button>
                           <Button
                             size="sm"
-                            disabled={selectedSchedules.length === 0}
                             onClick={() => {
                               commitCurrentFilters()
                               setIsScheduleOpen(false)
@@ -1485,7 +1648,12 @@ export function InviteTalentFlow({
                       </PopoverContent>
                     </Popover>
 
-                    <Popover open={isRateOpen} onOpenChange={setIsRateOpen}>
+                    <Popover
+                      open={isRateOpen}
+                      onOpenChange={handleFilterPopoverOpenChange(
+                        setIsRateOpen
+                      )}
+                    >
                       <PopoverTrigger asChild>
                         <Button
                           variant="outlined"
@@ -1541,7 +1709,6 @@ export function InviteTalentFlow({
                           </Button>
                           <Button
                             size="sm"
-                            disabled={!selectedRate}
                             onClick={() => {
                               commitCurrentFilters()
                               setIsRateOpen(false)
@@ -1930,7 +2097,7 @@ export function InviteTalentFlow({
         </Dialog>
 
         {inviteCheckoutMode ? (
-          <div className="fixed inset-0 z-50 h-screen overflow-hidden bg-gray-25">
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-25 scrollbar-none">
             <div className="flex h-16 items-center border-b border-gray-200 bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.08)]">
               <div className="mx-auto flex w-[min(1140px,calc(100vw-48px))] items-center gap-6 text-[18px] font-semibold leading-none text-dark-blue-400">
                 <Logo3 className="h-[18.81px] w-[128px] shrink-0" />
@@ -2047,25 +2214,37 @@ export function InviteTalentFlow({
                   <div className="flex items-start justify-between border-b border-gray-200 p-4">
                     <div>
                       <h3 className="text-[17px] font-semibold leading-none text-dark-blue-400">
-                        Payment Method
+                        {selectedPaymentOptionDetails
+                          ? "Payment Method"
+                          : "Select payment method"}
                       </h3>
-                      <p className="mt-3 text-[13px] font-light leading-normal text-gray-500">
-                        {selectedPaymentOptionDetails.title}
-                      </p>
+                      {selectedPaymentOptionDetails ? (
+                        <p className="mt-3 text-[13px] font-light leading-normal text-gray-500">
+                          {selectedPaymentOptionDetails.title}
+                        </p>
+                      ) : null}
                     </div>
-                    <Button
-                      type="button"
-                      variant="link"
-                      visual="primary"
-                      onClick={() =>
-                        setShowPaymentMethodPicker((isOpen) => !isOpen)
+                    {selectedPaymentOptionDetails ? (
+                      <Button
+                        type="button"
+                        variant="link"
+                        visual="primary"
+                        onClick={() =>
+                          setShowPaymentMethodPicker((isOpen) => !isOpen)
+                        }
+                      >
+                        Edit
+                      </Button>
+                    ) : null}
+                  </div>
+                  {showPaymentMethodPicker || !selectedPaymentOptionDetails ? (
+                    <div
+                      className={
+                        selectedPaymentOptionDetails
+                          ? "border-b border-gray-200 p-4"
+                          : "p-4"
                       }
                     >
-                      Edit
-                    </Button>
-                  </div>
-                  {showPaymentMethodPicker ? (
-                    <div className="border-b border-gray-200 p-4">
                       <div className="grid gap-3 md:grid-cols-3">
                         {invitePaymentOptions.map((option) => (
                           <button
@@ -2097,64 +2276,67 @@ export function InviteTalentFlow({
                       </div>
                     </div>
                   ) : null}
-                  <div className="p-4">
-                    <div className="flex gap-4">
-                      <span className="flex h-[30px] min-w-[45px] items-center justify-center rounded bg-primary-500 px-2 text-[10px] font-bold uppercase leading-none text-white">
-                        {selectedPaymentMethod === "card"
-                          ? "AMEX"
-                          : selectedPaymentOptionDetails.icons[0]}
-                      </span>
-                      <div className="grid flex-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                        <div>
-                          <p className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                            {selectedPaymentMethod === "card"
-                              ? "AMEX credit card ending in *1234"
-                              : selectedPaymentOptionDetails.title}
-                          </p>
-                          <p className="text-[13px] font-light leading-normal text-gray-500">
-                            {selectedPaymentMethod === "card"
-                              ? "Expires: 09/2027"
-                              : selectedPaymentOptionDetails.description}
-                          </p>
-                          <p className="text-[13px] font-light leading-normal text-gray-500">
-                            Payment Amount:{" "}
-                            <span className="font-semibold text-dark-blue-400">
-                              {inviteCheckoutMode === "upgrade"
-                                ? selectedPlanPrice
-                                : selectedInvitePackPrice}
-                            </span>
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold leading-normal text-dark-blue-400">
-                            Billing Address
-                          </p>
-                          <p className="text-[13px] font-light leading-normal text-gray-500">
-                            2125 Chestnut Street, San Francisco, CA 94123
-                          </p>
+                  {selectedPaymentOptionDetails && !showPaymentMethodPicker ? (
+                    <div className="p-4">
+                      <div className="flex gap-4">
+                        <span className="flex h-[30px] min-w-[45px] items-center justify-center rounded bg-primary-500 px-2 text-[10px] font-bold uppercase leading-none text-white">
+                          {selectedPaymentMethod === "card"
+                            ? "AMEX"
+                            : selectedPaymentOptionDetails.icons[0]}
+                        </span>
+                        <div className="grid flex-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                          <div>
+                            <p className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                              {selectedPaymentMethod === "card"
+                                ? "AMEX credit card ending in *1234"
+                                : selectedPaymentOptionDetails.title}
+                            </p>
+                            <p className="text-[13px] font-light leading-normal text-gray-500">
+                              {selectedPaymentMethod === "card"
+                                ? "Expires: 09/2027"
+                                : selectedPaymentOptionDetails.description}
+                            </p>
+                            <p className="text-[13px] font-light leading-normal text-gray-500">
+                              Payment Amount:{" "}
+                              <span className="font-semibold text-dark-blue-400">
+                                {checkoutTotalLabel}
+                              </span>
+                            </p>
+                            {walletBalance > 0 ? (
+                              <p className="text-[12px] font-light leading-normal text-gray-500">
+                                Wallet balance available: ${walletBalance}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-semibold leading-normal text-dark-blue-400">
+                              Billing Address
+                            </p>
+                            <p className="text-[13px] font-light leading-normal text-gray-500">
+                              2125 Chestnut Street, San Francisco, CA 94123
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="mt-4 border-t border-gray-200 pt-4">
-                      <label className="flex items-center gap-3 text-[13px] font-light leading-normal text-dark-blue-400">
-                        <Checkbox
-                          checked={hasAuthorizedPayment}
-                          onCheckedChange={(checked) =>
-                            setHasAuthorizedPayment(Boolean(checked))
-                          }
-                        />
-                        <span>
-                          I hereby authorize Marketeq to charge the selected
-                          payment method for the total one-time amount of{" "}
-                          <span className="font-semibold">
-                            {inviteCheckoutMode === "upgrade"
-                              ? selectedPlanPrice
-                              : selectedInvitePackPrice}
+                      <div className="mt-4 border-t border-gray-200 pt-4">
+                        <label className="flex items-center gap-3 text-[13px] font-light leading-normal text-dark-blue-400">
+                          <Checkbox
+                            checked={hasAuthorizedPayment}
+                            onCheckedChange={(checked) =>
+                              setHasAuthorizedPayment(Boolean(checked))
+                            }
+                          />
+                          <span>
+                            I hereby authorize Marketeq to charge the selected
+                            payment method for the total one-time amount of{" "}
+                            <span className="font-semibold">
+                              {checkoutTotalLabel}
+                            </span>
                           </span>
-                        </span>
-                      </label>
+                        </label>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </Card>
               </div>
 
@@ -2181,24 +2363,31 @@ export function InviteTalentFlow({
                   </div>
                   <div className="flex justify-between text-gray-500">
                     <span>Gift card applied</span>
-                    <span>$0</span>
+                    <span>
+                      {giftCardAmount > 0
+                        ? `-$${giftCardAmount.toLocaleString()}`
+                        : "$0"}
+                    </span>
                   </div>
                   <div className="flex justify-between text-[16px] font-bold text-dark-blue-400">
                     <span>Total</span>
-                    <span>
-                      {inviteCheckoutMode === "upgrade"
-                        ? `${selectedPlanPrice}${selectedPlanCheckoutSuffix}`
-                        : selectedInvitePackPrice}
-                    </span>
+                    <span>{checkoutTotalLabel}</span>
                   </div>
                 </div>
+                {paymentCooldownMessage ? (
+                  <p className="mt-4 rounded-[6px] bg-warning-50 px-3 py-2 text-[11px] leading-normal text-warning-700">
+                    {paymentCooldownMessage}
+                  </p>
+                ) : null}
                 <Button
                   className="mt-5 h-10 w-full"
                   onClick={submitInvitePayment}
                   disabled={
                     isSubmittingPayment ||
                     isCompletingPayment ||
-                    !hasAuthorizedPayment
+                    !selectedPaymentOptionDetails ||
+                    !hasAuthorizedPayment ||
+                    Boolean(paymentCooldownMessage)
                   }
                   loading={isSubmittingPayment || isCompletingPayment}
                   loadingIcon={<Spinner size={16} strokeWidth={2} />}
@@ -2209,9 +2398,58 @@ export function InviteTalentFlow({
                   By submitting your payment, you agree to Marketeq&apos;s Terms
                   of Use and Privacy Policy
                 </p>
-                <Button className="mt-4 w-full" variant="link" visual="gray">
-                  Add Gift Card / Promo Code
-                </Button>
+                {showPromoCodeInput ? (
+                  <div className="mt-4 space-y-2">
+                    <Input
+                      aria-label="Gift card or promo code"
+                      className="h-10 text-[13px]"
+                      placeholder="Gift card or promo code"
+                      value={promoCodeInput}
+                      onChange={(event) =>
+                        setPromoCodeInput(event.target.value.toUpperCase())
+                      }
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        className="h-9"
+                        type="button"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => {
+                          setShowPromoCodeInput(false)
+                          setPromoCodeInput(appliedPromoCode)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        className="h-9"
+                        type="button"
+                        onClick={applyPromoCode}
+                        disabled={isApplyingPromoCode}
+                        loading={isApplyingPromoCode}
+                        loadingIcon={<Spinner size={16} strokeWidth={2} />}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    className="mt-4 w-full"
+                    variant="link"
+                    visual="gray"
+                    type="button"
+                    onClick={() => {
+                      setPromoCodeInput(appliedPromoCode)
+                      setShowPromoCodeInput(true)
+                    }}
+                  >
+                    {appliedPromoCode
+                      ? `${appliedPromoCode} applied`
+                      : "Add Gift Card / Promo Code"}
+                  </Button>
+                )}
               </Card>
             </div>
           </div>

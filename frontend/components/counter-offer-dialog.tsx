@@ -561,7 +561,6 @@ export function CounterOfferDialog({
                     }))
                   }
                   placeholder="Select a date"
-                  displayFormat="MMMM do, yyyy"
                   indicator={null}
                   inputClassName="w-full justify-start px-[14px] text-left text-[15px] font-normal leading-7 text-gray-500"
                 />

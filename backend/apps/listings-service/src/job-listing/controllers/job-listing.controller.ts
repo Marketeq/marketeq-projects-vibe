@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UnauthorizedException,
@@ -247,6 +248,13 @@ export class JobListingController {
   @HttpCode(HttpStatus.CREATED)
   createRoleRow(@Param("id") id: string, @Body() dto: CreateRoleRowDto) {
     return this.jobListingService.createRoleRow(id, dto);
+  }
+
+  @Put(":id/roles")
+  @UseGuards(JobListingOwnerGuard)
+  @HttpCode(HttpStatus.OK)
+  replaceRoleRows(@Param("id") id: string, @Body() dto: CreateRoleRowDto[]) {
+    return this.jobListingService.replaceRoleRows(id, dto);
   }
 
   // ── POST /v1/job-listings/:id/smart-assistant ─────────────────────────────

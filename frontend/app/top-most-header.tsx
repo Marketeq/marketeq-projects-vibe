@@ -1216,6 +1216,12 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                   My Listings
                 </DropdownMenuItem>
               )}
+              {user?.accountType !== "TALENT" && (
+                <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-jobs") }}>
+                  <List className="size-4" />
+                  My Jobs
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-contracts") }}>
                 <FileCheck02 className="size-4" />
                 My Contracts

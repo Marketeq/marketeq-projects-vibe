@@ -21,6 +21,7 @@ import NextImage from "./next-image"
 import NextLink from "./next-link"
 import {
   Button,
+  CircularProgress,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -152,6 +153,10 @@ export const TalentSearchCard = ({
   level,
 }: TalentSearchCardProps) => {
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
+  const normalizedMatchScore =
+    typeof matchScore === "number"
+      ? Math.max(0, Math.min(100, Math.round(matchScore)))
+      : undefined
 
   if (variant === "compact") {
     const visibleSkills = skillsList.slice(0, 3)
@@ -159,6 +164,10 @@ export const TalentSearchCard = ({
       0,
       skillsList.length - visibleSkills.length
     )
+    const compactRate = rate.split("-")[0]?.trim() || rate.trim()
+    const compactRating = Number.isFinite(rating) ? rating : 0
+    const roundedRating = Math.round(compactRating)
+    const hasRatingSummary = compactRating > 0 || projects > 0
 
     return (
       <article className="border-b border-gray-200 bg-white py-5">
@@ -166,27 +175,42 @@ export const TalentSearchCard = ({
           <div className="flex w-[118px] shrink-0 flex-col items-center justify-start">
             <NextLink
               href={profileHref}
-              className="relative block h-[76px] w-[76px] overflow-hidden rounded-full border-[4px] border-primary-500 bg-gray-100"
+              className="relative block h-[84px] w-[84px] rounded-full"
             >
-              {photo ? (
-                <NextImage
-                  src={photo}
-                  sizes="76px"
-                  fill
-                  loading={imageLoading}
-                  className="object-cover"
-                  alt={name}
+              {typeof normalizedMatchScore === "number" ? (
+                <CircularProgress
+                  aria-label={`${normalizedMatchScore}% match`}
+                  className="absolute inset-0"
+                  size={84}
+                  strokeWidth={4}
+                  value={normalizedMatchScore}
+                  trackClassName="stroke-gray-100"
                 />
-              ) : (
-                <span className="grid h-full w-full place-items-center text-[24px] font-bold text-dark-blue-400">
-                  {name.charAt(0)}
-                </span>
-              )}
+              ) : null}
+              <span className="absolute inset-[4px] overflow-hidden rounded-full bg-gray-100">
+                {photo ? (
+                  <NextImage
+                    src={photo}
+                    sizes="76px"
+                    fill
+                    loading={imageLoading}
+                    className="object-cover"
+                    alt={name}
+                  />
+                ) : (
+                  <span className="grid h-full w-full place-items-center text-[24px] font-bold text-dark-blue-400">
+                    {name.charAt(0)}
+                  </span>
+                )}
+              </span>
+              {typeof normalizedMatchScore !== "number" ? (
+                <span className="absolute inset-0 rounded-full border-[4px] border-gray-100" />
+              ) : null}
             </NextLink>
 
-            {typeof matchScore === "number" ? (
+            {typeof normalizedMatchScore === "number" ? (
               <span className="mt-2 text-[11px] font-semibold leading-normal text-dark-blue-400">
-                {matchScore}% match
+                {normalizedMatchScore}% match
               </span>
             ) : null}
           </div>
@@ -207,29 +231,44 @@ export const TalentSearchCard = ({
             <div className="mt-1 text-[12px] font-semibold leading-normal text-dark-blue-400">
               {role}
             </div>
-            <div className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
-              {experience}
-            </div>
+            {experience ? (
+              <div className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
+                {experience}
+              </div>
+            ) : null}
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold leading-none text-dark-blue-400">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    className="size-3 fill-dark-blue-400 text-dark-blue-400"
-                  />
-                ))}
-                {rating}
-              </span>
-              <span className="text-[11px] font-semibold leading-none text-dark-blue-400">
-                {projects} projects
-              </span>
-            </div>
+            {hasRatingSummary ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {compactRating > 0 ? (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold leading-none text-dark-blue-400">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={
+                          star <= roundedRating
+                            ? "size-3 fill-dark-blue-400 text-dark-blue-400"
+                            : "size-3 fill-gray-200 text-gray-200"
+                        }
+                      />
+                    ))}
+                    {compactRating.toFixed(2)}
+                  </span>
+                ) : null}
+                {projects > 0 ? (
+                  <span className="text-[11px] font-semibold leading-none text-dark-blue-400">
+                    {projects} projects
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-2 flex flex-wrap gap-2">
-              <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
-                Top Match
-              </span>
+              {typeof normalizedMatchScore !== "number" ||
+              normalizedMatchScore >= 80 ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  Top Match
+                </span>
+              ) : null}
               {availability ? (
                 <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
                   {availability}
@@ -238,15 +277,21 @@ export const TalentSearchCard = ({
             </div>
 
             <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
-              <span className="shrink-0 whitespace-nowrap text-dark-blue-400">
-                <span className="text-[18px] font-bold leading-none">
-                  {rate.split("-")[0]?.trim() || rate}
+              {compactRate ? (
+                <span className="shrink-0 whitespace-nowrap text-dark-blue-400">
+                  <span className="text-[18px] font-bold leading-none">
+                    {compactRate}
+                  </span>
+                  <span className="text-[12px] font-light leading-none">
+                    /hr
+                  </span>
                 </span>
-                <span className="text-[12px] font-light leading-none">/hr</span>
-              </span>
-              <span className="shrink-0 whitespace-nowrap text-[12px] font-semibold leading-normal text-dark-blue-400">
-                {skillsList.length} Matching Skills
-              </span>
+              ) : null}
+              {skillsList.length > 0 ? (
+                <span className="shrink-0 whitespace-nowrap text-[12px] font-semibold leading-normal text-dark-blue-400">
+                  {skillsList.length} Matching Skills
+                </span>
+              ) : null}
               {visibleSkills.map((skill, index) => (
                 <span
                   key={`${skill}-${index}`}
@@ -268,16 +313,20 @@ export const TalentSearchCard = ({
             </div>
           </div>
 
-          <div className="mt-1 flex shrink-0 items-center gap-2">
-            {level ? (
-              <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
-                {level}
-              </span>
-            ) : null}
-            <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
-              {country}
-            </span>
-          </div>
+          {level || country ? (
+            <div className="mt-1 flex shrink-0 items-center gap-2">
+              {level ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  {level}
+                </span>
+              ) : null}
+              {country ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  {country}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </article>
     )
