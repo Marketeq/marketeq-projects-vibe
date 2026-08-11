@@ -6,6 +6,7 @@ import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
 import { LogHireInitiatedDto } from '../dtos/log-hire-initiated.dto';
 import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
+import { CreateContractDto } from '../dtos/create-contract.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
 import { AuditLoggerService } from '../services/audit-logger.service';
@@ -67,6 +68,25 @@ export class ContractsController {
     @Req() req: Request & { user: { sub: string } },
   ): Promise<ContractGroupSummaryDto[]> {
     return this.groupsService.getGroupsForClient(req.user.sub);
+  }
+
+  // T2-13: attach a talent to an EXISTING group — see groupsService.addMember
+  // for the ownership/duplicate rules. Three segments (literal "groups",
+  // param, literal "members"), so it can't collide with `groups/mine` (two
+  // segments, GET) or `:id/cms-sync` (two segments, param-first) regardless
+  // of declaration order.
+  @Post('groups/:id/members')
+  async addGroupMember(
+    @Param('id') id: string,
+    @Body() dto: CreateContractDto,
+    @Req() req: Request & { user: { sub: string; role: string } },
+  ) {
+    const contract = await this.groupsService.addMember(id, dto, req.user.sub);
+    await this.auditLoggerService.log(req.user, 'CONTRACT_MEMBER_ADDED', {
+      contractId: contract.id,
+      groupId: id,
+    });
+    return contract;
   }
 
   // List contracts for a client. clientId still comes from the path (kept
