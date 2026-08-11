@@ -70,7 +70,7 @@ const GoogleLoginButtonInner = ({
             if (onSuccess) {
               onSuccess(nextUser as User)
             } else {
-              router.push(resolveDashboardRoute(nextUser as any))
+              router.replace(resolveDashboardRoute(nextUser as any))
             }
           }
         })

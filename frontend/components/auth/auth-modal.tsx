@@ -165,7 +165,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
             <Input
               placeholder="you@email.com"
               {...register("email")}
-              isInvalid={hookFormHasError(errors, "email")}
+              isInvalid={hookFormHasError({ errors, name: "email" })}
             />
             <HookFormErrorMessage
               errors={errors}
@@ -181,7 +181,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
                 type={isVisible ? "text" : "password"}
                 placeholder="enter your password"
                 {...register("password")}
-                isInvalid={hookFormHasError(errors, "password")}
+                isInvalid={hookFormHasError({ errors, name: "password" })}
               />
               <InputRightElement>
                 <button type="button" onClick={toggleIsVisible} className="focus:outline-none">
@@ -353,7 +353,7 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
             <Input
               placeholder="you@email.com"
               {...register("email")}
-              isInvalid={hookFormHasError(errors, "email")}
+              isInvalid={hookFormHasError({ errors, name: "email" })}
             />
             <HookFormErrorMessage
               errors={errors}

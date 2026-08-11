@@ -397,6 +397,11 @@ const PortfolioCards = ({
   )
 }
 import NextLink from "@/components/next-link"
+import {
+  ReadMoreLess,
+  ReadMoreLessComp,
+  ReadMoreLessRoot,
+} from "@/components/read-more-less"
 import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   ShowMoreLess,
@@ -676,62 +681,6 @@ function LineClampText({
   )
 }
 
-// 2-line clamp for work-experience descriptions. Clamps inline (line-clamp
-// utilities are purged from the baked CSS) and shows Read More / View Less only
-// when the text ACTUALLY overflows 2 lines — measured via ResizeObserver so it's
-// accurate and stays correct on resize (not a flaky measure-on-mount, and not a
-// char-count guess that mis-fires on text that fits within 2 lines).
-function ClampedDescription({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false)
-  const [overflowing, setOverflowing] = useState(false)
-  const ref = useRef<HTMLParagraphElement>(null)
-
-  useEffect(() => {
-    // Only measure while collapsed (clamp applied); when expanded there's no
-    // clamp, so keep the last "overflowing" value to preserve View Less.
-    if (expanded) return
-    const el = ref.current
-    if (!el) return
-    const measure = () =>
-      setOverflowing(el.scrollHeight > el.clientHeight + 1)
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [text, expanded])
-
-  return (
-    <div className="mt-3">
-      <p
-        ref={ref}
-        className="text-sm font-extralight text-gray-700 break-words leading-relaxed"
-        style={
-          expanded
-            ? undefined
-            : {
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                overflowWrap: "anywhere",
-              }
-        }
-      >
-        {text}
-      </p>
-      {overflowing && (
-        <button
-          type="button"
-          className="mt-1 text-sm font-semibold text-gray-700 hover:text-gray-900 focus-visible:outline-none"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded ? "View Less" : "...Read More"}
-        </button>
-      )}
-    </div>
-  )
-}
-
 export default function TalentProfilePage() {
   return (
     <Suspense>
@@ -741,7 +690,7 @@ export default function TalentProfilePage() {
 }
 
 function Default() {
-  const { user, isLoading: isAuthLoading } = useAuth()
+  const { user } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
   const handleShareProfile = () => {
@@ -763,7 +712,6 @@ function Default() {
   const [resumeStatus, setResumeStatus] = useState<
     "idle" | "dragging" | "uploading" | "summary" | "uploaded" | "failed" | "size-limit" | "unsupported" | "not_a_resume" | "nothing_found"
   >("idle")
-  const [resumeLoadingMessage, setResumeLoadingMessage] = useState("Reading your resume...")
 
   type ResumeSummaryData = {
     skills: { count: number; items: { name: string }[] }
@@ -805,7 +753,7 @@ function Default() {
     certifications?: { name: string; issuer?: string; issueDate?: string }[]
   } | null>(null)
 
-  const processResumeFile = useCallback(async (file: File) => {
+  const processResumeFile = useCallback((file: File) => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
     if (
       !RESUME_ACCEPTED_TYPES.includes(file.type) &&
@@ -823,105 +771,75 @@ function Default() {
 
     setResumeFile(file)
     setResumeStatus("uploading")
-    setResumeLoadingMessage("Reading your resume...")
     setResumeProgress(0)
     setResumeUploadedSize(0)
 
-    try {
-      const res = await UserAPI.uploadResume(file)
-      const data = res.data
-      setResumeProgress(100)
-      setResumeUploadedSize(file.size)
-      setResumeParseResultId(data.parseResultId || null)
+    UserAPI.uploadResume(file)
+      .then((res) => {
+        const data = res.data
+        setResumeProgress(100)
+        setResumeUploadedSize(file.size)
+        setResumeParseResultId(data.parseResultId || null)
 
-      // Handle classification gate results
-      if (data.status === "not_a_resume") {
-        setResumeStatus("not_a_resume")
-        return
-      }
-      if (data.status === "nothing_found") {
-        setResumeStatus("nothing_found")
-        setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
-        return
-      }
+        // Handle classification gate results
+        if (data.status === "not_a_resume") {
+          setResumeStatus("not_a_resume")
+          return
+        }
+        if (data.status === "nothing_found") {
+          setResumeStatus("nothing_found")
+          setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
+          return
+        }
 
-      // Build parsed data for apply call
-      const additions = data.additions || {}
-      const skills = (additions.skills?.items || []).map((s: any) => ({ name: s.name }))
-      const education = (additions.education?.items || []).map((e: any) => ({
-        school: e.institution || "",
-        degree: e.degree || "",
-        fieldOfStudy: e.fieldOfStudy || "",
-      }))
-      const workExperience = (additions.workExperience?.items || []).map((w: any) => ({
-        title: w.title || "",
-        company: w.company || "",
-        startDate: w.startDate,
-        endDate: w.endDate,
-        description: w.description || "",
-      }))
-      const certifications = (additions.certifications?.items || []).map((c: any) => ({
-        name: c.name || "",
-        issuer: c.issuingBody || "",
-      }))
-      const industries = (additions.industries?.items || []).map((i: any) => ({ name: i.name || "" }))
+        // Build parsed data for apply call (map from LLM snake_case to frontend camelCase)
+        const additions = data.additions || {}
+        const skills = (additions.skills?.items || []).map((s: any) => ({ name: s.name }))
+        const education = (additions.education?.items || []).map((e: any) => ({
+          school: e.institution || "",
+          degree: e.degree || "",
+          fieldOfStudy: e.fieldOfStudy || "",
+        }))
+        const workExperience = (additions.workExperience?.items || []).map((w: any) => ({
+          title: w.title || "",
+          company: w.company || "",
+          startDate: w.startDate,
+          endDate: w.endDate,
+        }))
+        const certifications = (additions.certifications?.items || []).map((c: any) => ({
+          name: c.name || "",
+          issuer: c.issuingBody || "",
+        }))
 
-      setResumeParsedData({
-        parseResultId: data.parseResultId,
-        skills,
-        education,
-        workExperience,
-        certifications,
-      })
-
-      // Set summary for display
-      setResumeSummary(additions)
-
-      // Apply additions immediately (per docs: additive is applied on arrival)
-      try {
-        setResumeLoadingMessage("Updating your profile...")
-        // Show category-specific messages as we apply
-        if (skills.length > 0) setResumeLoadingMessage(`Adding ${skills.length} skill${skills.length !== 1 ? "s" : ""} to your profile...`)
-        await UserAPI.applyResume({
+        setResumeParsedData({
           parseResultId: data.parseResultId,
           skills,
           education,
           workExperience,
           certifications,
-          industries,
         })
-        if (workExperience.length > 0) setResumeLoadingMessage(`Added ${workExperience.length} work experience${workExperience.length !== 1 ? "s" : ""}...`)
-        // Refresh profile to reflect applied data
-        if (profile?.id) {
-          setResumeLoadingMessage("Finishing up...")
-          const profileRes = await UserAPI.getProfile(profile.id)
-          if (profileRes.data) setProfile(profileRes.data)
+
+        // Set summary for display
+        setResumeSummary(additions)
+
+        // Store conflicts
+        if (data.conflicts?.length > 0) {
+          setResumeConflicts(data.conflicts)
+          // Default all conflict checkboxes to checked
+          const checked: Record<string, boolean> = {}
+          data.conflicts.forEach((c: any) => { checked[c.existingId] = true })
+          setResumeConflictChecked(checked)
         }
-      } catch (applyErr) {
-        console.error("Failed to auto-apply resume additions:", applyErr)
-      }
 
-      setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
-      setResumeSkillsExpanded(false)
-      setResumeSummaryScrolled(false)
-
-      // Per docs §5.3: if conflicts exist, show ConflictDialog FIRST, then Summary
-      if (data.conflicts?.length > 0) {
-        setResumeConflicts(data.conflicts)
-        const checked: Record<string, boolean> = {}
-        data.conflicts.forEach((c: any) => { checked[c.existingId] = true })
-        setResumeConflictChecked(checked)
-        setResumeStatus("uploaded")
-        setResumeConflictOpen(true)
-      } else {
-        // No conflicts — show summary dialog directly
+        setResumeSkillsExpanded(false)
+        setResumeSummaryScrolled(false)
         setResumeStatus("summary")
-      }
-    } catch (err) {
-      console.error("Resume upload failed:", err)
-      setResumeStatus("failed")
-    }
-  }, [profile?.id])
+      })
+      .catch((err) => {
+        console.error("Resume upload failed:", err)
+        setResumeStatus("failed")
+      })
+  }, [])
 
   const resetResume = useCallback(() => {
     setResumeFile(null)
@@ -1076,7 +994,6 @@ function Default() {
   const isOwnProfile = Boolean(
     user?.id && profile?.id && user.id === profile.id
   )
-  const canHire = !isAuthLoading && Boolean(user?.id)
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
@@ -1736,7 +1653,7 @@ function Default() {
                           </>
                         ) : (
                           <>
-                            {canHire && <HireMeButton profile={profile} />}
+                            <HireMeButton profile={profile} />
 
                             <SaveTalentButton userId={profile?.id} />
                           </>
@@ -2043,7 +1960,7 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        {canHire && <HireMeButton profile={profile} />}
+                        <HireMeButton profile={profile} />
 
                         <SaveTalentButton userId={profile?.id} />
                       </>
@@ -3015,9 +2932,35 @@ function Default() {
                                                 </div>
 
                                                 {exp.description && (
-                                                  <ClampedDescription
-                                                    text={exp.description}
-                                                  />
+                                                  <ReadMoreLessRoot>
+                                                    <ReadMoreLessComp
+                                                      max={52}
+                                                      text={exp.description}
+                                                    >
+                                                      {({
+                                                        readMore,
+                                                        text,
+                                                        toggle,
+                                                      }) => (
+                                                        <>
+                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
+                                                            {text}{" "}
+                                                            <Button
+                                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
+                                                              size="sm"
+                                                              variant="link"
+                                                              visual="gray"
+                                                              onClick={toggle}
+                                                            >
+                                                              {readMore
+                                                                ? null
+                                                                : "...Read More"}
+                                                            </Button>
+                                                          </p>
+                                                        </>
+                                                      )}
+                                                    </ReadMoreLessComp>
+                                                  </ReadMoreLessRoot>
                                                 )}
                                                 {Array.isArray(exp.skills) && exp.skills.length > 0 && (
                                                   <div className="mt-3 flex flex-wrap gap-2">
@@ -5632,9 +5575,9 @@ function Default() {
               ))}
             </div>
 
-            {/* Status text — live progress message */}
+            {/* Status text — single honest message */}
             <p className="mt-4 text-sm text-gray-500">
-              {resumeLoadingMessage}
+              Reading your resume...
             </p>
           </div>
         </DialogContent>
@@ -5654,9 +5597,7 @@ function Default() {
               Resume Upload Complete
             </h2>
             <p className="mt-1 text-sm text-gray-600">
-              {resumeSummary && (resumeSummary.skills.count + resumeSummary.workExperience.count + resumeSummary.education.count + resumeSummary.certifications.count) > 0
-                ? "We updated your profile with your information from your resume."
-                : "Your resume was uploaded successfully. No new profile data was found to add."}
+              We updated your profile with your information from resume.
             </p>
           </div>
 
@@ -5760,13 +5701,6 @@ function Default() {
                   )}
                 </>
               )}
-
-              {/* Empty state: no additions */}
-              {resumeSummary && (resumeSummary.skills.count + resumeSummary.workExperience.count + resumeSummary.education.count + resumeSummary.certifications.count) === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">
-                  No changes were made to your profile.
-                </p>
-              )}
             </div>
           </div>
 
@@ -5796,10 +5730,37 @@ function Default() {
               Undo Changes
             </Button>
             <Button
-              onClick={() => {
-                // Per docs: "Looks good!" commits nothing — additions were applied on arrival
-                setResumeStatus("uploaded")
-                setResumeSummary(null)
+              onClick={async () => {
+                if (!resumeParsedData) {
+                  setResumeStatus("uploaded")
+                  setResumeUploadedDate(new Date())
+                  setResumeSummary(null)
+                  return
+                }
+                try {
+                  await UserAPI.applyResume({
+                    parseResultId: resumeParsedData.parseResultId,
+                    skills: resumeParsedData.skills,
+                    education: resumeParsedData.education,
+                    workExperience: resumeParsedData.workExperience,
+                    certifications: resumeParsedData.certifications,
+                  })
+                  setResumeStatus("uploaded")
+                  setResumeUploadedDate(new Date())
+                  setResumeSummary(null)
+                  if (resumeConflicts.length > 0) {
+                    setResumeConflictOpen(true)
+                  }
+                  if (profile?.id) {
+                    const res = await UserAPI.getProfile(profile.id)
+                    if (res.data) setProfile(res.data)
+                  }
+                } catch (err) {
+                  console.error("Failed to apply resume data:", err)
+                  setResumeStatus("uploaded")
+                  setResumeUploadedDate(new Date())
+                  setResumeSummary(null)
+                }
               }}
             >
               Looks good!
@@ -5857,7 +5818,7 @@ function Default() {
               Update Current Information?
             </h2>
             <p className="mt-1 text-sm text-gray-600">
-              We found work history and education entries that already exist in your profile. You can keep your current information or replace it with information from your resume.
+              We found entries that already exist in your profile. Select which ones you'd like to update with information from your resume.
             </p>
           </div>
 
@@ -5907,8 +5868,6 @@ function Default() {
               visual="gray"
               onClick={() => {
                 setResumeConflictOpen(false)
-                // Show summary dialog as receipt after declining conflicts
-                setResumeStatus("summary")
               }}
             >
               Keep Existing
@@ -5933,8 +5892,8 @@ function Default() {
                   console.error("Failed to apply conflict resolutions:", err)
                 } finally {
                   setResumeConflictOpen(false)
-                  // Show summary dialog as receipt after conflict resolution
-                  setResumeStatus("summary")
+                  setResumeConflicts([])
+                  setResumeConflictChecked({})
                 }
               }}
             >

@@ -128,17 +128,25 @@ All four must pass before merge. See §5 for details on each.
 
 ### 3.5 Merging
 
-Only one approved merge command:
+Approved merge commands:
 
 ```bash
+# Full merge (all code in the PR is being merged):
 gh pr merge <NUMBER> --squash --delete-branch
+
+# Cherry-pick or partial merge (only some changes taken):
+gh pr merge <NUMBER> --squash
+# Do NOT use --delete-branch — the source branch may still have unmerged work
 ```
+
+**Branch deletion rule:** Only delete a branch when merging ALL of its code. If cherry-picking or partially merging, keep the original branch intact.
 
 **Never:**
 - `--admin` (bypasses checks)
 - `--merge` (pollutes history — disabled server-side anyway)
 - `--rebase` without user approval (disabled server-side anyway)
 - `--no-verify`
+- Delete a branch that still has unmerged work
 
 After merge, verify:
 ```bash

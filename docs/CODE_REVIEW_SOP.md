@@ -258,8 +258,15 @@ gh pr update-branch <NUMBER>  # or ask the author to rebase
 Only after the branch is up to date, merge with:
 
 ```bash
+# Full merge (all code in the PR is being merged):
 gh pr merge <NUMBER> --squash --delete-branch
+
+# Cherry-pick or partial merge (only some commits/changes taken):
+gh pr merge <NUMBER> --squash
+# Do NOT use --delete-branch — the source branch may still have unmerged work
 ```
+
+**Branch deletion rule:** Only delete a branch when merging ALL of its code. If you are cherry-picking, partially merging, or not taking every change from the branch, keep the original branch intact.
 
 **Never:**
 - `--admin` (bypasses checks) — **HARD BLOCK, no exceptions unless CTO explicitly types "use --admin"**
@@ -267,6 +274,7 @@ gh pr merge <NUMBER> --squash --delete-branch
 - `--rebase` without user approval
 - Skip `--delete-branch` — stale branches accumulate
 - Merge a branch that is behind the base — **this causes silent code loss** (see §8.11)
+- Delete a branch that still has unmerged work
 
 **After merging, verify:**
 
@@ -283,7 +291,7 @@ git fetch origin dev-main
 # Optional: quick sanity checkout of dev-main and look for obvious build breakage
 ```
 
-Branches are only deleted by `gh pr merge --delete-branch`. **Do not manually `git push origin --delete` remote branches** unless the user explicitly tells you to.
+Branches are only deleted when ALL code from the branch has been merged. If a cherry-pick or partial merge was done, the branch must be kept. **Do not manually `git push origin --delete` remote branches** unless the user explicitly tells you to.
 
 ---
 
@@ -564,6 +572,8 @@ branch if it passes every one of the following checks:
 
 If every check passes, merge with:
   gh pr merge <N> --squash --delete-branch
+  # Only use --delete-branch when merging ALL code from the branch.
+  # For cherry-picks or partial merges, omit --delete-branch.
 
 Then verify with:
   gh pr view <N> --json state,mergedAt,mergeCommit
@@ -635,8 +645,10 @@ gh pr diff <N> > /tmp/pr<N>.diff
 # Check CI status
 gh pr checks <N>
 
-# Merge (the only approved form)
+# Merge (full merge — all code taken, delete branch)
 gh pr merge <N> --squash --delete-branch
+# Merge (partial/cherry-pick — keep branch for remaining work)
+gh pr merge <N> --squash
 
 # Verify merge
 gh pr view <N> --json state,mergedAt,mergeCommit
