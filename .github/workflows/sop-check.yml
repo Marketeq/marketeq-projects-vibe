@@ -154,6 +154,12 @@ jobs:
             add "🧩 **TypeORM entity changed without a migration** — \`synchronize: false\` is enforced. Add a migration file under \`backend/apps/<service>/src/migrations/\`. See SOP §3.4."
           fi
 
+          # --- Section 4b: synchronize must always be false ---
+          SYNC_TRUE=$(git diff "$BASE_SHA"...HEAD -- 'backend/apps/**/*.ts' 2>/dev/null | grep -E '^\+[^+].*synchronize:' | grep -vE 'synchronize:\s*false' || true)
+          if [ -n "$SYNC_TRUE" ]; then
+            add "🔥 **TypeORM \`synchronize\` is not \`false\`** — all environments share the same production database. Any value other than \`synchronize: false\` will auto-drop/alter production tables. This caused a P0 outage on 2026-08-04 (5,286 DROP COLUMN statements). Use migrations instead. See SOP §3.4."
+          fi
+
           # --- Section 5: Junk files ---
           while IFS= read -r f; do
             case "$f" in

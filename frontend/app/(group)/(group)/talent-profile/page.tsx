@@ -468,6 +468,7 @@ import {
   tabsListVariants,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const variants: Variants = {
   expanded: {
@@ -710,8 +711,9 @@ function Default() {
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [resumeUploadedDate, setResumeUploadedDate] = useState<Date | null>(null)
   const [resumeStatus, setResumeStatus] = useState<
-    "idle" | "dragging" | "uploading" | "summary" | "uploaded" | "failed" | "size-limit" | "unsupported" | "not_a_resume" | "nothing_found"
+    "idle" | "dragging" | "uploading" | "summary" | "uploaded" | "failed" | "size-limit" | "unsupported" | "not_a_resume" | "nothing_found" | "name_mismatch"
   >("idle")
+  const [resumeLoadingMessage, setResumeLoadingMessage] = useState("Reading your resume...")
 
   type ResumeSummaryData = {
     skills: { count: number; items: { name: string }[] }
@@ -728,7 +730,7 @@ function Default() {
     type: "work" | "education" | "certification"
     existingId: string
     existing: { label: string; detail: string }
-    incoming: { label: string; detail: string }
+    incoming: { label: string; detail: string; company?: string; startDate?: string; endDate?: string; degree?: string; fieldOfStudy?: string; issuer?: string }
   }
   const [resumeConflicts, setResumeConflicts] = useState<ResumeConflict[]>([])
   const [resumeConflictOpen, setResumeConflictOpen] = useState(false)
@@ -753,7 +755,7 @@ function Default() {
     certifications?: { name: string; issuer?: string; issueDate?: string }[]
   } | null>(null)
 
-  const processResumeFile = useCallback((file: File) => {
+  const processResumeFile = useCallback(async (file: File) => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
     if (
       !RESUME_ACCEPTED_TYPES.includes(file.type) &&
@@ -771,75 +773,111 @@ function Default() {
 
     setResumeFile(file)
     setResumeStatus("uploading")
+    setResumeLoadingMessage("Reading your resume...")
     setResumeProgress(0)
     setResumeUploadedSize(0)
 
-    UserAPI.uploadResume(file)
-      .then((res) => {
-        const data = res.data
-        setResumeProgress(100)
-        setResumeUploadedSize(file.size)
-        setResumeParseResultId(data.parseResultId || null)
+    try {
+      const res = await UserAPI.uploadResume(file)
+      const data = res.data
+      setResumeProgress(100)
+      setResumeUploadedSize(file.size)
+      setResumeParseResultId(data.parseResultId || null)
 
-        // Handle classification gate results
-        if (data.status === "not_a_resume") {
-          setResumeStatus("not_a_resume")
-          return
-        }
-        if (data.status === "nothing_found") {
-          setResumeStatus("nothing_found")
-          setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
-          return
-        }
+      // Handle classification gate results
+      if (data.status === "not_a_resume") {
+        setResumeStatus("not_a_resume")
+        return
+      }
+      if (data.status === "nothing_found") {
+        setResumeStatus("nothing_found")
+        setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
+        return
+      }
 
-        // Build parsed data for apply call (map from LLM snake_case to frontend camelCase)
-        const additions = data.additions || {}
-        const skills = (additions.skills?.items || []).map((s: any) => ({ name: s.name }))
-        const education = (additions.education?.items || []).map((e: any) => ({
-          school: e.institution || "",
-          degree: e.degree || "",
-          fieldOfStudy: e.fieldOfStudy || "",
-        }))
-        const workExperience = (additions.workExperience?.items || []).map((w: any) => ({
-          title: w.title || "",
-          company: w.company || "",
-          startDate: w.startDate,
-          endDate: w.endDate,
-        }))
-        const certifications = (additions.certifications?.items || []).map((c: any) => ({
-          name: c.name || "",
-          issuer: c.issuingBody || "",
-        }))
+      // Build parsed data for apply call
+      const additions = data.additions || {}
+      const skills = (additions.skills?.items || []).map((s: any) => ({ name: s.name }))
+      const education = (additions.education?.items || []).map((e: any) => ({
+        school: e.institution || "",
+        degree: e.degree || "",
+        fieldOfStudy: e.fieldOfStudy || "",
+      }))
+      const workExperience = (additions.workExperience?.items || []).map((w: any) => ({
+        title: w.title || "",
+        company: w.company || "",
+        startDate: w.startDate,
+        endDate: w.endDate,
+        description: w.description || "",
+      }))
+      const certifications = (additions.certifications?.items || []).map((c: any) => ({
+        name: c.name || "",
+        issuer: c.issuingBody || "",
+      }))
+      const industries = (additions.industries?.items || []).map((i: any) => ({ name: i.name || "" }))
 
-        setResumeParsedData({
+      setResumeParsedData({
+        parseResultId: data.parseResultId,
+        skills,
+        education,
+        workExperience,
+        certifications,
+      })
+
+      // Set summary for display
+      setResumeSummary(additions)
+
+      // Name mismatch guard: if the resume belongs to someone else, block auto-apply
+      if (data.nameMismatch) {
+        setResumeStatus("name_mismatch")
+        return
+      }
+
+      // Apply additions immediately (per docs: additive is applied on arrival)
+      try {
+        setResumeLoadingMessage("Updating your profile...")
+        // Show category-specific messages as we apply
+        if (skills.length > 0) setResumeLoadingMessage(`Adding ${skills.length} skill${skills.length !== 1 ? "s" : ""} to your profile...`)
+        await UserAPI.applyResume({
           parseResultId: data.parseResultId,
           skills,
           education,
           workExperience,
           certifications,
+          industries,
         })
-
-        // Set summary for display
-        setResumeSummary(additions)
-
-        // Store conflicts
-        if (data.conflicts?.length > 0) {
-          setResumeConflicts(data.conflicts)
-          // Default all conflict checkboxes to checked
-          const checked: Record<string, boolean> = {}
-          data.conflicts.forEach((c: any) => { checked[c.existingId] = true })
-          setResumeConflictChecked(checked)
+        if (workExperience.length > 0) setResumeLoadingMessage(`Added ${workExperience.length} work experience${workExperience.length !== 1 ? "s" : ""}...`)
+        // Refresh profile to reflect applied data
+        if (profile?.id) {
+          setResumeLoadingMessage("Finishing up...")
+          const profileRes = await UserAPI.getProfile(profile.id)
+          if (profileRes.data) setProfile(profileRes.data)
         }
+      } catch (applyErr) {
+        console.error("Failed to auto-apply resume additions:", applyErr)
+      }
 
-        setResumeSkillsExpanded(false)
-        setResumeSummaryScrolled(false)
+      setResumeUploadedDate(data.uploadedAt ? new Date(data.uploadedAt) : new Date())
+      setResumeSkillsExpanded(false)
+      setResumeSummaryScrolled(false)
+
+      // Per docs §5.3: if conflicts exist, show ConflictDialog FIRST, then Summary
+      if (data.conflicts?.length > 0) {
+        setResumeConflicts(data.conflicts)
+        const checked: Record<string, boolean> = {}
+        data.conflicts.forEach((c: any) => { checked[c.existingId] = true })
+        setResumeConflictChecked(checked)
+        setResumeStatus("uploaded")
+        setResumeConflictOpen(true)
+      } else {
+        // No conflicts — show summary dialog directly
         setResumeStatus("summary")
-      })
-      .catch((err) => {
-        console.error("Resume upload failed:", err)
-        setResumeStatus("failed")
-      })
-  }, [])
+      }
+    } catch (err) {
+      console.error("Resume upload failed:", err)
+      setResumeStatus("failed")
+    }
+  }, [profile?.id])
 
   const resetResume = useCallback(() => {
     setResumeFile(null)
@@ -4898,7 +4936,7 @@ function Default() {
                     />
 
                     {/* Error states: failed, size-limit, unsupported, not_a_resume, nothing_found */}
-                    {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found") && (
+                    {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found" || resumeStatus === "name_mismatch") && (
                       <div className="mt-4 rounded-lg border border-error-200 bg-error-25 p-6 flex flex-col items-center">
                         <div className="size-10 rounded-full bg-error-50 inline-flex items-center justify-center">
                           <AlertTriangle className="size-5 text-error-500" />
@@ -4920,6 +4958,8 @@ function Default() {
                             "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format."}
                           {resumeStatus === "nothing_found" &&
                             "We couldn't pull any details out of this file. Please try uploading a different resume."}
+                          {resumeStatus === "name_mismatch" &&
+                            "This resume appears to belong to someone else. Please upload your own resume."}
                         </p>
 
                         <button
@@ -5575,9 +5615,9 @@ function Default() {
               ))}
             </div>
 
-            {/* Status text — single honest message */}
+            {/* Status text — live progress message */}
             <p className="mt-4 text-sm text-gray-500">
-              Reading your resume...
+              {resumeLoadingMessage}
             </p>
           </div>
         </DialogContent>
@@ -5597,7 +5637,9 @@ function Default() {
               Resume Upload Complete
             </h2>
             <p className="mt-1 text-sm text-gray-600">
-              We updated your profile with your information from resume.
+              {resumeSummary && (resumeSummary.skills.count + resumeSummary.workExperience.count + resumeSummary.education.count + resumeSummary.certifications.count) > 0
+                ? "We updated your profile with your information from your resume."
+                : "Your resume was uploaded successfully. No new profile data was found to add."}
             </p>
           </div>
 
@@ -5701,6 +5743,13 @@ function Default() {
                   )}
                 </>
               )}
+
+              {/* Empty state: no additions */}
+              {resumeSummary && (resumeSummary.skills.count + resumeSummary.workExperience.count + resumeSummary.education.count + resumeSummary.certifications.count) === 0 && (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No changes were made to your profile.
+                </p>
+              )}
             </div>
           </div>
 
@@ -5730,37 +5779,10 @@ function Default() {
               Undo Changes
             </Button>
             <Button
-              onClick={async () => {
-                if (!resumeParsedData) {
-                  setResumeStatus("uploaded")
-                  setResumeUploadedDate(new Date())
-                  setResumeSummary(null)
-                  return
-                }
-                try {
-                  await UserAPI.applyResume({
-                    parseResultId: resumeParsedData.parseResultId,
-                    skills: resumeParsedData.skills,
-                    education: resumeParsedData.education,
-                    workExperience: resumeParsedData.workExperience,
-                    certifications: resumeParsedData.certifications,
-                  })
-                  setResumeStatus("uploaded")
-                  setResumeUploadedDate(new Date())
-                  setResumeSummary(null)
-                  if (resumeConflicts.length > 0) {
-                    setResumeConflictOpen(true)
-                  }
-                  if (profile?.id) {
-                    const res = await UserAPI.getProfile(profile.id)
-                    if (res.data) setProfile(res.data)
-                  }
-                } catch (err) {
-                  console.error("Failed to apply resume data:", err)
-                  setResumeStatus("uploaded")
-                  setResumeUploadedDate(new Date())
-                  setResumeSummary(null)
-                }
+              onClick={() => {
+                // Per docs: "Looks good!" commits nothing — additions were applied on arrival
+                setResumeStatus("uploaded")
+                setResumeSummary(null)
               }}
             >
               Looks good!
@@ -5810,55 +5832,93 @@ function Default() {
 
       {/* Update current information conflict dialog */}
       <Dialog open={resumeConflictOpen} onOpenChange={setResumeConflictOpen}>
-        <DialogContent className="max-w-[620px] max-h-[80vh] rounded-[12px] p-0 flex flex-col">
+        <DialogContent
+          className="max-w-[620px] max-h-[80vh] rounded-[12px] p-0 flex flex-col"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogTitle className="sr-only">Update Current Information</DialogTitle>
           <DialogDescription className="sr-only">Choose which entries to update with resume data</DialogDescription>
           <div className="px-8 pt-8 pb-4 shrink-0">
             <h2 className="text-xl font-bold text-dark-blue-400">
               Update Current Information?
             </h2>
-            <p className="mt-1 text-sm text-gray-600">
-              We found entries that already exist in your profile. Select which ones you'd like to update with information from your resume.
+            <p className="mt-2 text-sm text-gray-600">
+              We found work history and education entries that already exist in your profile. You can keep your current information or replace it with information from your resume.
             </p>
           </div>
 
           <div className="px-8 pb-4 overflow-y-auto flex-1 min-h-0">
-            <div className="space-y-4">
-              {resumeConflicts.map((conflict) => (
-                <label
-                  key={conflict.existingId}
-                  className="flex items-start gap-x-3 rounded-lg border border-gray-200 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-1 size-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
-                    checked={resumeConflictChecked[conflict.existingId] ?? true}
-                    onChange={(e) => {
-                      setResumeConflictChecked((prev) => ({
-                        ...prev,
-                        [conflict.existingId]: e.target.checked,
-                      }))
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 mb-2">
-                      {conflict.type === "work" ? "Work History" : conflict.type === "education" ? "Education" : "Certification"}
-                    </span>
-                    <div className="grid grid-cols-2 gap-x-4">
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Current</p>
-                        <p className="text-sm font-bold text-dark-blue-400">{conflict.existing.label}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{conflict.existing.detail}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">From Resume</p>
-                        <p className="text-sm font-bold text-dark-blue-400">{conflict.incoming.label}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{conflict.incoming.detail}</p>
+            <div className="rounded-lg border border-gray-200">
+              {(() => {
+                let lastType = ""
+                return resumeConflicts.map((conflict) => {
+                  const showHeader = conflict.type !== lastType
+                  lastType = conflict.type
+                  return (
+                    <div key={conflict.existingId} className="px-5">
+                      {showHeader && (
+                        <p className="pt-4 pb-2 text-xs font-semibold text-primary-500">
+                          {conflict.type === "work"
+                            ? "Replace this work history"
+                            : conflict.type === "education"
+                            ? "Replace this education"
+                            : "Replace this certification"}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-x-3 py-3">
+                        <RefreshCw className="size-4 text-gray-400 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-dark-blue-400">
+                            {conflict.incoming.label}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {conflict.type === "work" && (
+                              <>
+                                {conflict.incoming.company}
+                                {conflict.incoming.startDate && (
+                                  <>
+                                    {" "}&middot;{" "}
+                                    <span className="font-bold">
+                                      {conflict.incoming.startDate} - {conflict.incoming.endDate || "Present"}
+                                    </span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                            {conflict.type === "education" && (
+                              <>
+                                {conflict.incoming.degree}
+                                {conflict.incoming.fieldOfStudy && (
+                                  <>
+                                    {" "}&middot;{" "}
+                                    <span className="font-bold">{conflict.incoming.fieldOfStudy}</span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                            {conflict.type === "certification" && (
+                              <>{conflict.incoming.issuer || conflict.incoming.detail}</>
+                            )}
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-x-2 shrink-0 cursor-pointer">
+                          <span className="text-sm text-gray-600">Apply Update</span>
+                          <Checkbox
+                            checked={resumeConflictChecked[conflict.existingId] ?? true}
+                            onCheckedChange={(checked) => {
+                              setResumeConflictChecked((prev) => ({
+                                ...prev,
+                                [conflict.existingId]: !!checked,
+                              }))
+                            }}
+                          />
+                        </label>
                       </div>
                     </div>
-                  </div>
-                </label>
-              ))}
+                  )
+                })
+              })()}
             </div>
           </div>
 
@@ -5868,6 +5928,7 @@ function Default() {
               visual="gray"
               onClick={() => {
                 setResumeConflictOpen(false)
+                setResumeStatus("summary")
               }}
             >
               Keep Existing
@@ -5892,8 +5953,7 @@ function Default() {
                   console.error("Failed to apply conflict resolutions:", err)
                 } finally {
                   setResumeConflictOpen(false)
-                  setResumeConflicts([])
-                  setResumeConflictChecked({})
+                  setResumeStatus("summary")
                 }
               }}
             >
