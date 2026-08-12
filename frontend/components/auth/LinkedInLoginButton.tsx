@@ -17,7 +17,8 @@ import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
 const LinkedInLogin = ({
   onSuccess,
-}: { onSuccess?: (user: User) => void } = {}) => {
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   const hasLoggedInRef = useRef(false)
   const popupRef = useRef<Window | null>(null)
   const popupPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -186,8 +187,7 @@ const LinkedInLogin = ({
           />
         ) : (
           <>
-            <LinkedInDefault className="size-5 md:size-6" /> Sign in with
-            Linkedin
+            <LinkedInDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with LinkedIn" : "Sign in with LinkedIn"}
           </>
         )}
       </Button>

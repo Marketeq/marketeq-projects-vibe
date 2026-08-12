@@ -206,15 +206,22 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
                 control={control}
                 name="rememberMe"
                 render={({ field }) => (
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
+                  <>
+                    <Checkbox
+                      id="rememberMe"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    <Label
+                      htmlFor="rememberMe"
+                      className="font-normal text-gray-400 cursor-pointer"
+                      size="sm"
+                    >
+                      Keep me signed in
+                    </Label>
+                  </>
                 )}
               />
-              <Label className="font-normal text-gray-400" size="sm">
-                Keep me signed in
-              </Label>
             </div>
             <Button
               className="underline"
@@ -329,8 +336,8 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
-          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <GoogleLoginButton mode="sign-up" onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton mode="sign-up" onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -367,16 +374,23 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
               control={control}
               name="agreesToTermsPrivacyPolicy"
               render={({ field }) => (
-                <Checkbox
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  className="mt-0.5"
-                />
+                <>
+                  <Checkbox
+                    id="agreesToTerms"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="agreesToTerms"
+                    className="font-normal text-gray-400 leading-5 cursor-pointer"
+                    size="sm"
+                  >
+                    I agree to Marketeq's Terms of Use and Privacy Policy
+                  </Label>
+                </>
               )}
             />
-            <Label className="font-normal text-gray-400 leading-5" size="sm">
-              I agree to Marketeq's Terms of Use and Privacy Policy
-            </Label>
           </div>
           <HookFormErrorMessage
             errors={errors}
