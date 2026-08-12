@@ -18,8 +18,10 @@ import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
 const GoogleLoginButtonInner = ({
   onSuccess,
+  mode = "sign-in",
 }: {
   onSuccess?: (user: User) => void
+  mode?: "sign-in" | "sign-up"
 }) => {
   const router = useRouter()
 
@@ -70,7 +72,7 @@ const GoogleLoginButtonInner = ({
             if (onSuccess) {
               onSuccess(nextUser as User)
             } else {
-              router.push(resolveDashboardRoute(nextUser as any))
+              router.replace(resolveDashboardRoute(nextUser as any))
             }
           }
         })
@@ -108,7 +110,7 @@ const GoogleLoginButtonInner = ({
         />
       ) : (
         <>
-          <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+          <GoogleDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with Google" : "Sign in with Google"}
         </>
       )}
     </Button>
@@ -117,7 +119,8 @@ const GoogleLoginButtonInner = ({
 
 const GoogleLoginButton = ({
   onSuccess,
-}: { onSuccess?: (user: User) => void } = {}) => {
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
     return (
       <Button
@@ -128,12 +131,12 @@ const GoogleLoginButton = ({
         disabled
         title="Google sign-in is not configured"
       >
-        <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+        <GoogleDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with Google" : "Sign in with Google"}
       </Button>
     )
   }
 
-  return <GoogleLoginButtonInner onSuccess={onSuccess} />
+  return <GoogleLoginButtonInner onSuccess={onSuccess} mode={mode} />
 }
 
 export default GoogleLoginButton

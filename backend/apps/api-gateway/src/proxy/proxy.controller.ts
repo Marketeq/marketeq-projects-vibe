@@ -60,6 +60,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'counter-offers': 'offers',     // offer-service counter-offer endpoints
   legal: 'legal',                  // legal-service NDA, documents, acceptance
   nda: 'legal',                    // legal-service NDA endpoints
+  resume: 'users',                  // resume upload/parse lives in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([

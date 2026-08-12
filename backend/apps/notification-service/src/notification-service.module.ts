@@ -44,7 +44,7 @@ function resolveDatabaseSsl(config: ConfigService) {
         url: config.get<string>('DATABASE_URL'),
         schema: config.get<string>('DATABASE_SCHEMA') || 'public',
         entities: [Notification, UserPreference],
-        synchronize: config.get('NODE_ENV') !== 'production',
+        synchronize: false,
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: resolveDatabaseSsl(config),

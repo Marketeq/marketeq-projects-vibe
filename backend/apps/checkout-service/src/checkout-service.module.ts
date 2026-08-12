@@ -30,7 +30,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         WalletTransaction, PaymentFailure, InstallmentPayment,
         SavedBankAccount, WireTransfer, StripeMetadata,
       ],
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: false,
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,

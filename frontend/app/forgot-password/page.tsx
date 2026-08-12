@@ -247,7 +247,7 @@ function ForgotPassword() {
           <div className="mt-2.5">
             <span className="text-sm leading-5 text-dark-blue-400">
               Marketeq will never ask for your password over email. Always make
-              sure you're on marketeq.com before entering your credentials.
+              sure you're on marketeqdigital.com before entering your credentials.
             </span>
           </div>
         </div>
