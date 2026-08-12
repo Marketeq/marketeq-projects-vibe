@@ -741,7 +741,12 @@ export default function TalentProfilePage() {
 }
 
 function Default() {
-  const { user, isLoading: isAuthLoading } = useAuth()
+  const {
+    user,
+    isLoading: isAuthLoading,
+    openAuthModal,
+    setPendingRedirect,
+  } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
   const handleShareProfile = () => {
@@ -1076,7 +1081,18 @@ function Default() {
   const isOwnProfile = Boolean(
     user?.id && profile?.id && user.id === profile.id
   )
-  const canHire = !isAuthLoading && Boolean(user?.id)
+  const canHire = !isAuthLoading
+  const handleHireButtonClick = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    if (user?.id) return
+
+    event.preventDefault()
+    const query = searchParams.toString()
+    const returnTo = query ? `/talent-profile?${query}` : "/talent-profile"
+    setPendingRedirect(returnTo)
+    openAuthModal("sign-in")
+  }
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
@@ -1736,7 +1752,12 @@ function Default() {
                           </>
                         ) : (
                           <>
-                            {canHire && <HireMeButton profile={profile} />}
+                            {canHire && (
+                              <HireMeButton
+                                profile={profile}
+                                buttonProps={{ onClick: handleHireButtonClick }}
+                              />
+                            )}
 
                             <SaveTalentButton userId={profile?.id} />
                           </>
@@ -2043,7 +2064,12 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        {canHire && <HireMeButton profile={profile} />}
+                        {canHire && (
+                          <HireMeButton
+                            profile={profile}
+                            buttonProps={{ onClick: handleHireButtonClick }}
+                          />
+                        )}
 
                         <SaveTalentButton userId={profile?.id} />
                       </>
