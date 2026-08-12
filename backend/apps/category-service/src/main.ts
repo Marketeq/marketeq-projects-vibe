@@ -41,6 +41,31 @@ async function bootstrap() {
       },
     })
     logger.log('RabbitMQ microservice connected (queue: cms.category.category)')
+
+    // Second, separate connection for request/response calls from other
+    // services (category.match / match_filter / names).
+    //
+    // It cannot share the queue above: that one carries raw CMS payloads and
+    // installs a deserializer that overwrites `pattern` with the publisher's
+    // `event` field. A ClientProxy.send() envelope has no `event`, so every
+    // RPC would arrive as "Pattern: undefined" and be nacked. Default
+    // deserializer + own queue keeps the two message shapes apart.
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'category_rpc_queue',
+        queueOptions: { durable: true },
+        // Auto-ack, unlike the CMS event queue above. That queue runs
+        // noAck:false because its @EventPattern handlers ack manually to get
+        // redelivery on failure; these RPC handlers never ack, so inheriting
+        // that setting would leave the first request unacked and — with any
+        // prefetch limit — wedge the consumer permanently. A dropped RPC just
+        // times out on the caller, which already degrades gracefully.
+        noAck: true,
+      },
+    })
+    logger.log('RabbitMQ RPC microservice connected (queue: category_rpc_queue)')
   } else {
     logger.warn('RABBITMQ_URL not set — category event consumer disabled')
   }

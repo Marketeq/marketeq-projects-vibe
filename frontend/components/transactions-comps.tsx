@@ -9,6 +9,7 @@ import { loadStripe, type Stripe as StripeJSInstance } from "@stripe/stripe-js"
 import { getEarningsSummary, getEarnings, getEarningDetail, getBalance, type EarningsSummary, type EarningsListResponse, type EarningsRow, type BalanceResponse, type EarningDetail } from "@/service/http/earnings"
 import { UserAPI } from "@/service/http/user"
 import { useAuth } from "@/contexts/auth"
+import { useEarningsChannel } from "@/utils/useEarningsChannel"
 import { formatDistanceToNowStrict } from "date-fns"
 import { PayPalDefault, PayoneerDefault, StripeDefault } from "@blend-metrics/icons/payment-methods"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
@@ -1529,34 +1530,68 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
     getBalance().then(setBalance).catch((e) => { console.error("Balance fetch failed:", e); setBalanceError(true) })
   }, [])
 
-  // US-02/US-94: no Ably (or any real-time transport) exists anywhere in this
-  // codebase for earnings, so a genuine push-based "balance.updated" story
-  // isn't buildable here — this is the honest fallback the spec itself
-  // describes for when real-time is unavailable: a 60s poll. Deliberately NOT
-  // pairing this with a "Live" badge (US-03) — that would claim an active
-  // real-time connection that doesn't exist, which is exactly what Doc07
-  // "never fabricate" rules out.
-  React.useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) loadBalance() }, 60_000)
-    return () => clearInterval(id)
-  }, [loadBalance])
-
-  React.useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) loadRecentEarnings() }, 60_000)
-    return () => clearInterval(id)
-  }, [loadRecentEarnings])
-
   const loadSummary = React.useCallback(() => {
     setSummaryError(false)
     getEarningsSummary().then(setSummary).catch((e) => { console.error("Earnings summary fetch failed:", e); setSummaryError(true) })
   }, [])
 
-  // US-92: same "no real-time transport" constraint as above — reversal
-  // detection is polling-based too. Each poll re-fetches Recent Earnings and
-  // diffs entry.status against what was last seen; an entry that flips to
-  // "failed" (this codebase's reversed-entry status, see EarningsRow.status)
-  // since the previous poll gets a toast. Never toasts on first load (nothing
-  // to diff against yet) or for entries already known to be failed.
+  // US-91–94: live balance/earnings push over Ably, replacing the old
+  // always-on 60s poll as the primary path. isLive gates the polling
+  // effects below (fallback-only now) and drives the Live badge.
+  const [livePulseTick, setLivePulseTick] = React.useState(0)
+  const { isLive } = useEarningsChannel({
+    // US-91: balance card + all four summary cards re-fetch immediately.
+    onBalanceUpdated: React.useCallback(() => {
+      loadBalance()
+      loadSummary()
+      setLivePulseTick((t) => t + 1)
+    }, [loadBalance, loadSummary]),
+    // US-92: re-fetch Recent Earnings immediately — the status-diff effect
+    // below (which owns the exact toast copy) fires as soon as it sees the
+    // entry flip to "failed", now within ~200ms instead of up to 60s.
+    onTransactionReversed: React.useCallback(() => {
+      loadRecentEarnings()
+      setLivePulseTick((t) => t + 1)
+    }, [loadRecentEarnings]),
+    // US-93: persistent failure banner — re-fetch immediately.
+    onPayoutFailed: React.useCallback(() => {
+      loadRecentActivity()
+      loadFailedPayout()
+      setLivePulseTick((t) => t + 1)
+    }, [loadRecentActivity, loadFailedPayout]),
+    // US-94.05: on reconnect, one immediate re-fetch across the board — the
+    // polling effects below stop on their own the same render (isLive is
+    // already true by the time this fires).
+    onReconnected: React.useCallback(() => {
+      loadBalance()
+      loadSummary()
+      loadRecentEarnings()
+      loadRecentActivity()
+      loadFailedPayout()
+    }, [loadBalance, loadSummary, loadRecentEarnings, loadRecentActivity, loadFailedPayout]),
+  })
+
+  // US-94: polling now runs only as a fallback while the Ably channel is
+  // disconnected — stops the instant isLive flips true.
+  React.useEffect(() => {
+    if (isLive) return
+    const id = setInterval(() => { if (!document.hidden) loadBalance() }, 60_000)
+    return () => clearInterval(id)
+  }, [isLive, loadBalance])
+
+  React.useEffect(() => {
+    if (isLive) return
+    const id = setInterval(() => { if (!document.hidden) loadRecentEarnings() }, 60_000)
+    return () => clearInterval(id)
+  }, [isLive, loadRecentEarnings])
+
+  // US-92: reversal detection stays diff-based regardless of transport —
+  // it re-fetches Recent Earnings (either from the Ably handler above, or
+  // from the polling fallback) and diffs entry.status against what was last
+  // seen; an entry that flips to "failed" (this codebase's reversed-entry
+  // status, see EarningsRow.status) since the previous fetch gets a toast.
+  // Never toasts on first load (nothing to diff against yet) or for entries
+  // already known to be failed.
   const knownEntryStatusRef = React.useRef<Map<string, string>>(new Map())
   React.useEffect(() => {
     const seen = knownEntryStatusRef.current
@@ -1634,14 +1669,16 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
 
   // US-93.01: the persistent failure banner must be able to appear live, not
   // only on page load — recentActivity (its data source) previously fetched
-  // once on mount only, same "no Ably" polling-fallback pattern as balance
-  // and recentEarnings above.
+  // once on mount only. Now driven primarily by the onPayoutFailed Ably
+  // handler above; this interval is the polling fallback, gated the same
+  // way as the balance/recentEarnings polls (US-94).
   React.useEffect(() => {
+    if (isLive) return
     const id = setInterval(() => {
       if (!document.hidden) { loadRecentActivity(); loadFailedPayout() }
     }, 60_000)
     return () => clearInterval(id)
-  }, [loadRecentActivity, loadFailedPayout])
+  }, [isLive, loadRecentActivity, loadFailedPayout])
 
   // Congrats + promo banners share one carousel slot, picked at random exactly
   // once per page load — not re-randomized on every poll/re-render, and once
@@ -3364,7 +3401,23 @@ export const OverviewTab = ({ onNavigateTab, onEditPayoutSchedule, onOpenHelp }:
                 <p className="text-xs text-gray-400 mb-2">{balance.availableBalanceLocal} {balance.localCurrency}</p>
               )}
               {balance?.cachedAt && (
-                <p className="text-xs text-gray-400 mb-2">{formatRelativeMinutes(balance.cachedAt, nowTick)}</p>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <p className="text-xs text-gray-400">{formatRelativeMinutes(balance.cachedAt, nowTick)}</p>
+                  {/* US-91.03: pulses once on receipt of a real-time update —
+                      remounted via the livePulseTick key so the animate-ping
+                      restarts on every event instead of only playing once. Only
+                      rendered while isLive, so it never claims a live connection
+                      that isn't actually there (US-94). */}
+                  {isLive && (
+                    <span key={livePulseTick} className="flex items-center gap-1 text-[10px] font-medium text-success-600">
+                      <span className="relative flex size-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success-400 opacity-75" />
+                        <span className="relative inline-flex size-1.5 rounded-full bg-success-500" />
+                      </span>
+                      Live
+                    </span>
+                  )}
+                </div>
               )}
               <div className="flex items-center gap-2 mb-4">
                 {defaultMethod && (
@@ -4934,7 +4987,14 @@ export interface PayoutDepositStatus {
   amountUsd: string | null
 }
 
-export const PayoutsTab = ({ onDepositStatusChange }: { onDepositStatusChange?: (status: PayoutDepositStatus) => void } = {}) => {
+export interface PayoutsFilters {
+  dateRange: string
+  statusFilter: string
+  depositMethodId: string
+  search: string
+}
+
+export const PayoutsTab = ({ onDepositStatusChange, onFiltersChange }: { onDepositStatusChange?: (status: PayoutDepositStatus) => void; onFiltersChange?: (filters: PayoutsFilters) => void } = {}) => {
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   // SCR-16: real, server-side status filter — replaces the previously cosmetic
@@ -5052,6 +5112,12 @@ export const PayoutsTab = ({ onDepositStatusChange }: { onDepositStatusChange?: 
   }, [currentPage, statusFilter, searchQuery, dateRange, depositMethodId])
 
   useEffect(() => { loadPayouts() }, [loadPayouts])
+
+  // Export reuses whatever the contractor currently has the Payouts table
+  // filtered to, same pattern as EarningsTab's onFiltersChange.
+  useEffect(() => {
+    onFiltersChange?.({ dateRange, statusFilter, depositMethodId, search: searchQuery.trim().length >= 2 ? searchQuery.trim() : "" })
+  }, [onFiltersChange, dateRange, statusFilter, depositMethodId, searchQuery])
 
   // AC-29.01/29.02/29.03: poll every 15s (no flicker — silent refetch) as long as
   // any row on this page hasn't reached a terminal status. No SSE/WebSocket infra

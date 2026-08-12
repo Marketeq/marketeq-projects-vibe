@@ -619,9 +619,28 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         : undefined;
 
     if (resetUrl) {
+      // Try to fetch the user's first name from user-service for a friendlier email
+      let displayName = user.username;
+      try {
+        const userServiceUrl =
+          this.configService.get<string>('USER_SERVICE_URL') ?? 'http://localhost:3002';
+        const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+        const profileRes = await axios.get(
+          `${userServiceUrl.replace(/\/$/, '')}/internal/users/${user.id}/summary`,
+          {
+            headers: internalToken ? { 'x-internal-token': internalToken } : {},
+            timeout: 3000,
+          },
+        );
+        const firstName = profileRes?.data?.firstName;
+        if (firstName) displayName = firstName;
+      } catch {
+        // fall back to username
+      }
+
       try {
         await this.brevoService.sendPasswordResetEmail(user.email, {
-          firstName: user.username,
+          firstName: displayName,
           resetUrl,
         });
       } catch (error) {
@@ -1012,15 +1031,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
-      if (createdUser) {
-        // New user: rollback the auth record so the user can retry cleanly.
-        await this.userRepository.delete({ id: user.id });
-        throw error;
-      }
-      // Existing user: profile already exists in user-service — do not
-      // block login just because the sync refresh failed.
+      // Profile sync failure should never block OAuth login.
+      // For new users the profile will be created during onboarding.
+      // For existing users the profile already exists in user-service.
       this.logger.warn(
-        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+        `[google] sync failed for ${createdUser ? 'new' : 'existing'} user ${user.id} but proceeding with login: ${(error as Error)?.message}`,
       );
     }
 
@@ -1149,12 +1164,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
-      if (createdUser) {
-        await this.userRepository.delete({ id: user.id });
-        throw error;
-      }
+      // Profile sync failure should never block OAuth login.
+      // For new users the profile will be created during onboarding.
+      // For existing users the profile already exists in user-service.
       this.logger.warn(
-        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+        `[linkedin] sync failed for ${createdUser ? 'new' : 'existing'} user ${user.id} but proceeding with login: ${(error as Error)?.message}`,
       );
     }
 

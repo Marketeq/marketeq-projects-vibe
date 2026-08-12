@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useMemo, useState } from "react"
+import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -136,6 +136,18 @@ export default function InboxRoot() {
   const [messagesByConversation, setMessagesByConversation] = useState<
     Record<string, Message[]>
   >({})
+
+  // Set by LeftSidebar so other panes can patch its conversation list
+  // directly (e.g. the open thread's header star) instead of waiting on
+  // an Ably round-trip to reflect the change in the list.
+  const patchConversationRef = useRef<
+    (id: string, patch: Partial<Conversation>) => void
+  >(() => {})
+  const patchConversation = useCallback(
+    (id: string, patch: Partial<Conversation>) =>
+      patchConversationRef.current(id, patch),
+    []
+  )
 
   const [token, setToken] = useState("")
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
@@ -348,11 +360,16 @@ export default function InboxRoot() {
             searchIndex={searchIndex}
             onHighlightMessage={setHighlightMessageId}
             privateKey={privateKey}
+            registerPatchConversation={(fn) => {
+              patchConversationRef.current = fn
+            }}
           />
 
           {/* pass only the conversation and token into Chats */}
           <Chats
             selectedConversation={selectedConversation}
+            setSelectedConversation={setSelectedConversation}
+            onPatchConversation={patchConversation}
             jwtToken={token}
             privateKey={privateKey}
             currentUserProfile={currentUserProfile}

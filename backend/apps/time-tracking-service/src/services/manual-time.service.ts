@@ -36,6 +36,12 @@ export class ManualTimeService {
     if (start < earliestAllowed) {
       throw new BadRequestException(`Entries cannot start more than ${MAX_PAST_DAYS} days in the past`);
     }
+    // AC-79.02: future-dated entries are rejected server-side too — the
+    // frontend already blocks this client-side, but that's bypassable via a
+    // direct API call, and this is the only real enforcement point.
+    if (start > new Date()) {
+      throw new BadRequestException('Entries cannot be logged for a future date or time');
+    }
 
     // US-78: overlap is a soft, dismissible warning, not a hard block — the
     // first submit (confirmOverlap unset/false) throws ERR_MANUAL_TIME_OVERLAP

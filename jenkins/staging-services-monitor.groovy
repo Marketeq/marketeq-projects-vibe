@@ -1,3 +1,32 @@
+// =============================================================================
+// WARNING: THIS FILE IS NOT WHAT JENKINS RUNS.
+//
+// The `staging-services-monitor` job stores its pipeline INLINE in the job config
+// (<definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition">),
+// so Jenkins never reads this file. Editing it -- or approving a PR that
+// changes it -- has ZERO effect on the pipeline that actually executes.
+//
+// Verified 2026-08-07 against the Jenkins API: all four pipeline files in this
+// repo are inline-backed, none are read from SCM.
+//
+// This has already caused one incident. PR #421 changed the /services/health
+// behaviour and was reviewed and merged against this file on the assumption it
+// was live. It was not, the live monitor kept its old logic, and PR #422 had to
+// revert it.
+//
+// TO ACTUALLY CHANGE THE PIPELINE, do one of:
+//   1. Edit the inline script in the Jenkins UI
+//      (Job -> Configure -> Pipeline -> Script), then mirror the change here; or
+//   2. Convert the job to CpsScmFlowDefinition so this file becomes
+//      authoritative. NOTE: this repo is private, so the SCM checkout needs a
+//      git credential (username/password or SSH). The existing `github-token`
+//      credential is secret-text, which hudson.plugins.git.GitSCM cannot use --
+//      a new credential must be created first or the job will fail to check out.
+//
+// Until a conversion happens, treat this file as DOCUMENTATION ONLY and keep it
+// in sync by hand.
+// =============================================================================
+
 // staging-services-monitor.groovy
 // Jenkins DevOps Agent: Ensures ALL backend microservices are running
 // on staging at 100% health. Auto-remediates failures.

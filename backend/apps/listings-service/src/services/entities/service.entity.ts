@@ -63,8 +63,17 @@ export class Service {
   @Column('jsonb', { nullable: true, default: '[]' })
   faqs: { question: string; answer: string }[];
 
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  scope: any;
+
   @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.Draft })
   status: ListingStatus;
+
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  publishedSnapshot: Record<string, any> | null;
+
+  @Column({ name: 'teamMemberIds', type: 'uuid', array: true, default: [] })
+  teamMemberIds: string[];
 
   @Column({ nullable: true, type: 'decimal', precision: 10, scale: 2 })
   priceMin: number;
@@ -95,6 +104,9 @@ export class Service {
 
   @Column({ nullable: true })
   createdBy: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
   payloadId: string | null;

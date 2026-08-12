@@ -818,10 +818,6 @@ const certificationsFormSchema = z
       path: ["issuedDate"],
     }
   )
-  .refine((data) => data.canNotExpire || Boolean(data.expirationDate), {
-    message: "Expiration date is required.",
-    path: ["expirationDate"],
-  })
   .refine(
     (data) => {
       if (data.canNotExpire || !data.expirationDate) return true
@@ -2336,6 +2332,7 @@ export const WorkExperienceDialog = ({
     handleSubmit,
     formState: { errors, isValid, isDirty, isSubmitting },
     trigger,
+    getValues,
     setValue,
     register,
     reset,
@@ -2647,7 +2644,8 @@ export const WorkExperienceDialog = ({
                               value={value ?? null}
                               onChange={(v) => {
                                 onChange(v)
-                                trigger("endDate.year")
+                                if (getValues("endDate.year"))
+                                  trigger("endDate.year")
                               }}
                             >
                               <ListboxButton
@@ -2697,7 +2695,8 @@ export const WorkExperienceDialog = ({
                               value={value ?? null}
                               onChange={(v) => {
                                 onChange(v)
-                                trigger("endDate.year")
+                                if (getValues("endDate.year"))
+                                  trigger("endDate.year")
                               }}
                             >
                               <ListboxButton
@@ -4527,7 +4526,7 @@ export const CertificationsDialog = ({
         credentialsUrl: cert.credentialUrl ?? "",
         issuedDate: parseLocalDate(cert.issueDate),
         expirationDate: parseLocalDate(cert.expirationDate),
-        canNotExpire: !cert.expirationDate,
+        canNotExpire: cert.doesntExpire ?? !cert.expirationDate,
         skills: Array.isArray(cert.skills)
           ? cert.skills.map((name: string, i: number) => ({
               id: `${cert.id}-${i}`,
@@ -4777,7 +4776,7 @@ export const CertificationsDialog = ({
                   )}
                 >
                   <Label htmlFor="expiration-date" size="sm">
-                    Expiration Date
+                    Expiration Date <span className="font-light">(optional)</span>
                   </Label>
                   <Controller
                     control={control}

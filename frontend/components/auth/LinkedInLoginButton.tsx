@@ -17,7 +17,8 @@ import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
 const LinkedInLogin = ({
   onSuccess,
-}: { onSuccess?: (user: User) => void } = {}) => {
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   const hasLoggedInRef = useRef(false)
   const popupRef = useRef<Window | null>(null)
   const popupPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -53,6 +54,9 @@ const LinkedInLogin = ({
       redirect_uri: redirectUrl,
       state: "1234",
       scope: "openid profile email",
+      // Force the LinkedIn login / account chooser instead of silently reusing
+      // the browser's existing LinkedIn session after a Marketeq logout.
+      prompt: "login",
     })
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
@@ -61,7 +65,7 @@ const LinkedInLogin = ({
     popupRef.current = window.open(
       authUrl,
       "Linkedin",
-      "menubar=no,location=no,resizable=no,scrollbars=no,status=no,width=550,height=730"
+      "menubar=no,location=no,resizable=yes,scrollbars=yes,status=no,width=550,height=730"
     )
 
     stopPopupPoll()
@@ -119,7 +123,7 @@ const LinkedInLogin = ({
               if (onSuccess) {
                 onSuccess(nextUser as User)
               } else {
-                router.push(resolveDashboardRoute(nextUser as any))
+                router.replace(resolveDashboardRoute(nextUser as any))
               }
             }
           })
@@ -183,8 +187,7 @@ const LinkedInLogin = ({
           />
         ) : (
           <>
-            <LinkedInDefault className="size-5 md:size-6" /> Sign in with
-            Linkedin
+            <LinkedInDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with LinkedIn" : "Sign in with LinkedIn"}
           </>
         )}
       </Button>

@@ -31,7 +31,7 @@ export interface ConflictEntry {
   type: 'education' | 'work' | 'certification';
   existingId: string;
   existing: { label: string; detail: string };
-  incoming: { label: string; detail: string };
+  incoming: { label: string; detail: string; company?: string; startDate?: string; endDate?: string; degree?: string; fieldOfStudy?: string; issuer?: string };
 }
 
 @Injectable()
@@ -211,6 +211,19 @@ export class ResumeService {
       };
     }
 
+    // Name mismatch detection
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    let nameMismatch = false;
+    if (result.name && user) {
+      const profileName = `${user.firstName || ''} ${user.lastName || ''}`.trim().toLowerCase();
+      const extractedName = result.name.trim().toLowerCase();
+      // Check if the extracted name shares at least one word with the profile name
+      const profileWords = profileName.split(/\s+/).filter((w: string) => w.length > 1);
+      const extractedWords = extractedName.split(/\s+/).filter((w: string) => w.length > 1);
+      const hasOverlap = profileWords.some((pw: string) => extractedWords.some((ew: string) => ew === pw));
+      nameMismatch = !hasOverlap;
+    }
+
     // Detect conflicts
     const conflicts = await this.detectConflicts(userId, result);
 
@@ -227,6 +240,7 @@ export class ResumeService {
       fileName: file.originalname,
       uploadedAt: version.uploadedAt,
       extractedName: result.name,
+      nameMismatch,
       additions,
       conflicts,
       jobTitles: result.job_titles || [],
@@ -302,6 +316,9 @@ export class ResumeService {
             incoming: {
               label: newExp.job_title || '',
               detail: `${newExp.company || ''}${newExp.start_date ? ' - ' + newExp.start_date : ''}`,
+              company: newExp.company || '',
+              startDate: newExp.start_date || undefined,
+              endDate: newExp.end_date || undefined,
             },
           });
         }
@@ -331,6 +348,8 @@ export class ResumeService {
             incoming: {
               label: newEdu.institution || '',
               detail: `${newEdu.degree || ''}${newEdu.field_of_study ? ' - ' + newEdu.field_of_study : ''}`,
+              degree: newEdu.degree || undefined,
+              fieldOfStudy: newEdu.field_of_study || undefined,
             },
           });
         }
@@ -356,6 +375,7 @@ export class ResumeService {
             incoming: {
               label: newCert.name,
               detail: newCert.issuing_body || '',
+              issuer: newCert.issuing_body || undefined,
             },
           });
         }

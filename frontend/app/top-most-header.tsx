@@ -1234,6 +1234,17 @@ const SearchBar = () => {
     }, 300)
   }
 
+  const handleCategoryChange = (newCategory: string) => {
+    setState(newCategory)
+    if (pathname?.startsWith("/search") && query.trim()) {
+      const params = new URLSearchParams()
+      params.set("q", query.trim())
+      if (newCategory) params.set("category", newCategory.toLowerCase())
+      closeDropdown()
+      router.push(`/search?${params.toString()}`)
+    }
+  }
+
   const submitSearch = (term: string) => {
     const trimmed = term.trim()
     if (!trimmed) return
@@ -1407,7 +1418,7 @@ const SearchBar = () => {
               />
             </div>
             <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
-            <Listbox className="w-auto" value={state} onChange={setState}>
+            <Listbox className="w-auto" value={state} onChange={handleCategoryChange}>
               <ListboxButton
                 className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
                 placeholder="View All"

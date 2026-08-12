@@ -265,6 +265,26 @@ export class PublishService {
       if (galleryUrls.length > 0) {
         updatePayload.mediaUrls = galleryUrls;
       }
+
+      const proj = await this.projectRepository.findOne({ id: projectId });
+      if (proj) {
+        updatePayload.publishedSnapshot = {
+          title: proj.title,
+          subtitle: proj.subtitle ?? null,
+          shortDescription: proj.shortDescription ?? null,
+          description: proj.fullDescription ?? null,
+          categories: proj.categories ?? [],
+          subcategories: proj.subCategories ?? [],
+          industry: proj.industries ?? [],
+          tags: proj.tags ?? [],
+          skills: proj.skills ?? [],
+          mediaUrls: galleryUrls,
+          videoUrl: proj.videoUrl ?? null,
+          faqs: proj.faqs ?? [],
+          deliverables: proj.deliverables ?? [],
+          scope: proj.scope ?? null,
+        };
+      }
     }
 
     const moderatedProject = await this.projectRepository.update(
@@ -976,6 +996,9 @@ export class PublishService {
     const scopeSnapshot = scope.map((phase, index) => ({
       phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
       order: phase.order ?? index,
+      phaseType: phase.phaseType ?? null,
+      recurrenceSchedule: phase.recurrenceSchedule ?? null,
+      recurrenceCount: phase.recurrenceCount ?? null,
       tasks: (phase.task ?? []).map((task) => {
         const hours = this.taskHours(task);
         totalHours += hours;
@@ -986,6 +1009,7 @@ export class PublishService {
           experienceLevel:
             task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
           estimatedHours: hours,
+          duration: task.duration ?? null,
         };
       }),
     }));
@@ -1367,6 +1391,9 @@ export class PublishService {
         persistedVideoUrl = resolvedVideoUrl;
       }
 
+      const clearFeatured =
+        (dto as CreateMediaDto & { clearFeatured?: string }).clearFeatured ===
+        'true';
       let featuredImageUrl: string;
       if (files.featuredImage) {
         const featuredImageUpload =
@@ -1377,6 +1404,8 @@ export class PublishService {
         featuredImageUrl = featuredImageUpload.url;
       } else if (dto.featuredImage) {
         featuredImageUrl = dto.featuredImage;
+      } else if (clearFeatured) {
+        featuredImageUrl = '';
       } else {
         throw new BadRequestException('Featured image is required.');
       }
@@ -1393,8 +1422,13 @@ export class PublishService {
         ...(dto.additionalImages ?? []),
         ...uploadedAdditionalUrls,
       ];
+      const replaceAdditional =
+        (dto as CreateMediaDto & { replaceAdditional?: string })
+          .replaceAdditional === 'true';
       const hasProvidedAdditional =
-        dto.additionalImages !== undefined || uploadedAdditionalUrls.length > 0;
+        replaceAdditional ||
+        dto.additionalImages !== undefined ||
+        uploadedAdditionalUrls.length > 0;
 
       // Upsert: update existing media record if one exists, otherwise create
       let media: Media;
@@ -1435,6 +1469,10 @@ export class PublishService {
       if (galleryUrls.length > 0) {
         await this.projectRepository.update(dto.projectId, {
           mediaUrls: galleryUrls,
+        });
+      } else if (clearFeatured) {
+        await this.projectRepository.update(dto.projectId, {
+          mediaUrls: [],
         });
       }
 

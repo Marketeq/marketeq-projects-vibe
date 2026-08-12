@@ -65,6 +65,42 @@ export class R2Service {
     return { key, url };
   }
 
+  async uploadBuffer(
+    key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<{ key: string; url?: string }> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to upload files',
+      );
+    }
+
+    const client = this.getClient();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000',
+      }),
+    );
+
+    return { key, url: this.getPublicUrl(key) };
+  }
+
+  getPublicUrl(key: string): string {
+    const publicBaseUrl = this.getEnv(
+      'CLOUDFLARE_R2_PUBLIC_URL',
+      'CLOUDFLARE_PUBLIC_URL',
+      'R2_PUBLIC_URL',
+    );
+    if (!publicBaseUrl) return key;
+    return `${publicBaseUrl.replace(/\/$/, '')}/${key}`;
+  }
+
   /**
    * Upload an already-buffered object at a caller-chosen key.
    *
@@ -148,6 +184,15 @@ export class R2Service {
       client,
       new GetObjectCommand({ Bucket: bucket, Key: key }),
       { expiresIn: expiresInSeconds },
+    );
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) return;
+    const client = this.getClient();
+    await client.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: key }),
     );
   }
 

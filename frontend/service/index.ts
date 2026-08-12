@@ -95,7 +95,7 @@ axiosInstance.interceptors.response.use(
             originalRequest._retry = true
             resolve(axiosInstance(originalRequest))
           },
-          reject: (err: unknown) => reject(err),
+          reject: () => reject(error),
         })
       })
     }
@@ -109,8 +109,14 @@ axiosInstance.interceptors.response.use(
       return axiosInstance(originalRequest)
     } catch (refreshError) {
       processQueue(refreshError)
-      // Refresh failed — clear tokens, user will need to re-login
-      return Promise.reject(refreshError)
+      // Refresh failed, so the session is genuinely over. Reject with the
+      // caller's own 401 rather than the refresh call's error: the caller's
+      // payload already reads "Your session has expired. Please log in again
+      // to continue.", whereas the refresh error surfaces the internal
+      // "Invalid refresh token" — which is what onboarding was showing users.
+      // Nothing can be cleared here; access_token/refresh_token are httpOnly,
+      // so only a fresh sign-in replaces them.
+      return Promise.reject(error)
     } finally {
       isRefreshing = false
     }

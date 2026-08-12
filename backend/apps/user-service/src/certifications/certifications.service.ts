@@ -23,6 +23,7 @@ export class CertificationsService {
     const certification = this.certificationRepository.create({
       ...dto,
       issueDate: parseLocalDate(dto.issueDate),
+      doesntExpire: dto.doesntExpire ?? false,
       expirationDate:
         dto.doesntExpire === true
           ? undefined
@@ -51,6 +52,7 @@ export class CertificationsService {
     Object.assign(certification, {
       ...dto,
       issueDate: dto.issueDate ? parseLocalDate(dto.issueDate) : certification.issueDate,
+      doesntExpire: dto.doesntExpire ?? certification.doesntExpire,
       expirationDate:
         dto.doesntExpire === true
           ? null

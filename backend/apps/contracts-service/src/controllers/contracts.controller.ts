@@ -1,15 +1,19 @@
-import { Controller, Post, Put, Get, Param, Body, Headers, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenException } from '@nestjs/common';
+import { Request } from 'express';
 import { ContractsService } from '../services/contracts.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
+import { LogHireInitiatedDto } from '../dtos/log-hire-initiated.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
+import { AuditLoggerService } from '../services/audit-logger.service';
 
 @Controller('contracts')
 export class ContractsController {
   constructor(
     private readonly contractsService: ContractsService,
     private readonly configService: ConfigService,
+    private readonly auditLoggerService: AuditLoggerService,
   ) {}
 
   private validateInternalToken(token: string | undefined) {
@@ -17,6 +21,21 @@ export class ContractsController {
     if (!expected || token !== expected) {
       throw new ForbiddenException('Invalid internal token');
     }
+  }
+
+  // FR-11: audit entry for Hire Me flow initiation. Declared as a literal
+  // route ahead of the :id-parameterised routes below — Nest/path-to-regexp
+  // wouldn't actually collide with them (different segment counts/methods),
+  // but this removes any doubt.
+  @Post('audit/hire-initiated')
+  async logHireInitiated(
+    @Req() req: Request & { user: { sub: string; role: string } },
+    @Body() dto: LogHireInitiatedDto,
+  ) {
+    await this.auditLoggerService.log(req.user, 'HIRE_FLOW_INITIATED', {
+      talentId: dto.talentId,
+    });
+    return { ok: true };
   }
 
   // End a single contract
