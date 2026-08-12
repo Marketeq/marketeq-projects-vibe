@@ -1078,9 +1078,7 @@ export function OfferDialog({
                     </div>
                   ) : (
                     <>
-                      {!isEditMode &&
-                      (currentScreen === "select-schedule" ||
-                        currentScreen === "select-contract") ? (
+                      {!isEditMode ? (
                         isFetchingTalent && !fetchedProfile && !fetchError ? (
                           <div className="flex items-center gap-4">
                             <Shimmer className="size-[90px] shrink-0 rounded-full" />
@@ -1390,7 +1388,7 @@ export function OfferDialog({
                       ) : null}
 
                       {isStepThree && selectedContract ? (
-                        <div>
+                        <div className="mt-6">
                           <button
                             type="button"
                             className="flex w-full items-center justify-between rounded-[8px] border-2 border-primary-500 bg-white px-4 py-3 text-left"
@@ -1471,7 +1469,7 @@ export function OfferDialog({
                       screen, which is isStepThree here too, not just
                       isStepFour — see isExistingContractOfferStep above. */}
                       {isStepFour || isExistingContractOfferStep ? (
-                        <div>
+                        <div className={isStepFour ? "mt-6" : undefined}>
                           <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Contract Title
                           </h2>
