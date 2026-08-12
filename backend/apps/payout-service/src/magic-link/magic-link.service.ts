@@ -31,6 +31,7 @@ export class MagicLinkService {
   private readonly redis: Redis;
   private readonly baseUrl: string;
   private readonly ttlSeconds: number;
+  private readonly isProduction: boolean;
 
   constructor(
     @InjectRepository(MagicLinkVerification)
@@ -50,6 +51,18 @@ export class MagicLinkService {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
     this.baseUrl = this.config.get('MAGIC_LINK_BASE_URL', 'http://localhost:3000/verify-withdrawal');
     this.ttlSeconds = parseInt(this.config.get('MAGIC_LINK_TTL_SECONDS', '900'), 10);
+    this.isProduction = this.config.get('NODE_ENV', 'development') === 'production';
+  }
+
+  // The raw token is a bearer credential: it is the single factor that moves
+  // a payout from PENDING_VERIFICATION to QUEUED. Logging the full URL is a
+  // local-debugging affordance only — see the CRITICAL note at the top of
+  // this file. Both deployed environments set NODE_ENV=production (see
+  // backend/.env.staging.example and .env.production.example), so this can
+  // never emit a live token into staging or live logs.
+  private logDevVerifyUrl(magicLinkUrl: string): void {
+    if (this.isProduction) return;
+    this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
   }
 
   /**
@@ -115,7 +128,7 @@ export class MagicLinkService {
 
     if (!contractorEmail) {
       this.logger.warn(`No contractor email available for payout ${payout.id} — magic link cannot be emailed.`);
-      this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
+      this.logDevVerifyUrl(magicLinkUrl);
       return;
     }
 
@@ -125,7 +138,7 @@ export class MagicLinkService {
       // PS-14 / F-18: delivery failure must not block withdrawal initiation —
       // the payout_request already exists; the contractor can use resend (F-19).
       this.logger.error(`Magic link email delivery failed for payout ${payout.id}: ${(err as Error).message}`);
-      this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
+      this.logDevVerifyUrl(magicLinkUrl);
     }
   }
 
