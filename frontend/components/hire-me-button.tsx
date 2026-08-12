@@ -9,6 +9,7 @@ import {
   MapPin,
   Plus,
   SearchMd,
+  UserCircle,
   X,
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
@@ -143,10 +144,6 @@ type ContractRow = {
   subtitle: string
   avatars: ContractRowAvatar[]
   extra?: string
-  // T2-9: raw group members, threaded through unmodified — the pending
-  // badge needs each member's talentId/status, which the flattened
-  // title/subtitle/avatars shape above has nowhere to carry otherwise.
-  members: ContractGroupMemberSummary[]
 }
 
 // Duplicated rather than imported from talent-profile/page.tsx:110-116 —
@@ -162,6 +159,19 @@ const getInitials = (name?: string | null): string => {
   const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : ""
   return (first + last).toUpperCase() || "?"
 }
+
+// T2-17/doc 05: "Talent profile photo is missing in the review popup ->
+// Default silhouette icon shown as fallback avatar" — the only
+// avatar-fallback rule in the epic. Initials still win when a NAME resolved
+// but no photo did (matches the talent profile page, and a real name beats
+// a generic icon); the silhouette is reserved for "neither resolved",
+// i.e. a genuinely failed talent lookup — never a bare "?" glyph.
+const renderAvatarFallbackContent = (name?: string) =>
+  name ? (
+    getInitials(name)
+  ) : (
+    <UserCircle className="size-full text-gray-400" />
+  )
 
 // Edit mode edits one specific, already-known offer directly — it never
 // lists contracts, so it must never depend on the real fetched list below.
@@ -183,19 +193,41 @@ const EDIT_MODE_PLACEHOLDER_CONTRACT: ContractRow = {
     { url: "/man.jpg" },
   ],
   extra: "+5",
-  // T2-9: empty, not just unused — this placeholder is never the target of
-  // a members.some(...) badge check since edit mode never reaches
-  // isStepTwo's row list, but an empty array keeps that true structurally
-  // rather than by coincidence.
-  members: [],
 }
+
+// T2-17: one talent, resolved once, from either UserAPI.getProfile's
+// response or nothing at all (lookup failed or never attempted). Shared
+// shape the per-modal resolution map stores, so both row builders below
+// read from the same place rather than each inventing their own.
+type ResolvedTalent = {
+  avatarUrl?: string
+  name?: string
+}
+
+// T2-17: builds a group's avatars purely from the already-resolved
+// per-modal talent map (see the fetch effect below) — replaces the old
+// per-function avatar logic in both builders. A member absent from the map
+// (lookup failed, or the talentId doesn't resolve to a real user at all)
+// yields {} — renderAvatarFallbackContent's job, not this function's, to
+// turn that into a silhouette instead of a "?".
+const buildAvatarsFromTalentMap = (
+  members: ContractGroupMemberSummary[],
+  talentMap: Map<string, ResolvedTalent>
+): ContractRowAvatar[] =>
+  members.map((member): ContractRowAvatar => {
+    const resolved = talentMap.get(member.talentId)
+    return { url: resolved?.avatarUrl, name: resolved?.name }
+  })
 
 // T2-3 decision 3: a group can be type service/team/job with no projectId
 // — nothing to hydrate for those in this chunk's scope. Also doubles as
 // the per-row failure fallback (T2-3 spec #4): if a project group's own
 // fetch fails (ensureProjectOwnership throwing, network error, etc.), that
 // one row degrades to this rather than the whole list failing.
-const buildFallbackContractRow = (group: ContractGroupSummary): ContractRow => {
+const buildFallbackContractRow = (
+  group: ContractGroupSummary,
+  talentMap: Map<string, ResolvedTalent>
+): ContractRow => {
   const typeLabel = group.projectId
     ? "Project"
     : group.serviceId
@@ -209,16 +241,14 @@ const buildFallbackContractRow = (group: ContractGroupSummary): ContractRow => {
     id: group.id,
     title: typeLabel,
     subtitle: "",
-    // No talent name lives on ContractGroupMemberSummaryDto — only
-    // contractId/talentId/title/status — so a fallback row genuinely has
-    // nothing to compute initials from. Renders "?" via getInitials' own
-    // empty-input handling, not a bug in the initials logic itself.
-    avatars: group.members.map(() => ({})),
+    // T2-17: no longer a blank stub — resolved from the same per-modal
+    // talent map hydrateContractRow uses. A fallback row (no projectId)
+    // has no less reason to show real avatars than a hydrated one.
+    avatars: buildAvatarsFromTalentMap(group.members, talentMap),
     extra:
       group.members.length > 5
         ? `+${group.members.length - 5}`
         : undefined,
-    members: group.members,
   }
 }
 
@@ -229,32 +259,22 @@ const buildFallbackContractRow = (group: ContractGroupSummary): ContractRow => {
 // optimal; a lean batched summary endpoint is the correct fix, raised
 // separately.
 const hydrateContractRow = async (
-  group: ContractGroupSummary
+  group: ContractGroupSummary,
+  talentMap: Map<string, ResolvedTalent>
 ): Promise<ContractRow> => {
-  if (!group.projectId) return buildFallbackContractRow(group)
+  if (!group.projectId) return buildFallbackContractRow(group, talentMap)
 
   const res = await ProjectAPI.GetProjectDraft(group.projectId)
   const projectData = res?.data ?? {}
   const scope = Array.isArray(projectData.scope) ? projectData.scope : []
-  const team = Array.isArray(projectData.team) ? projectData.team : []
 
-  // Decision 1: members[] (the actually-contracted talents) decide who's
-  // in the row — team[] is only an avatarUrl/name lookup by talentId,
-  // never the source of who appears. A contracted talent with no match in
-  // the project's team list falls back to initials-from-nothing ("?"),
-  // same as any other unresolved avatar.
-  const avatars = group.members.map((member): ContractRowAvatar => {
-    const match = team.find(
-      (t: { userId?: string }) => String(t.userId) === String(member.talentId)
-    )
-    return {
-      url: match?.avatarUrl || undefined,
-      // hydrateTeam only ever carries firstName, not lastName (see
-      // user-profile.client.ts:42-68) — getInitials still degrades
-      // correctly on a single word, just to one letter instead of two.
-      name: match?.firstName || match?.username || undefined,
-    }
-  })
+  // T2-17: team[] (the project listing's assigned team) is no longer read
+  // here at all — it was never the right source (members[], who's actually
+  // contracted, and team[], who the client assigned to the listing, are
+  // different sets; a contracted talent absent from team[] resolved to
+  // nothing). Replaced entirely by the per-modal talent map, resolved
+  // directly from each member's talentId via UserAPI.getProfile.
+  const avatars = buildAvatarsFromTalentMap(group.members, talentMap)
 
   return {
     id: group.id,
@@ -269,7 +289,6 @@ const hydrateContractRow = async (
       group.members.length > 5
         ? `+${group.members.length - 5}`
         : undefined,
-    members: group.members,
   }
 }
 
@@ -548,11 +567,13 @@ export function OfferDialog({
   const filteredContracts = existingContracts.filter((contract) =>
     contract.title.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
-  // T2-9: same expression as the FR-11 audit effect below (fetchedProfile
-  // is authoritative once T1-3's self-fetch resolves; profile is the seed
-  // passed in from callers like checkout confirmation's Edit Offer, which
-  // carries no id at all). A separate const rather than reusing that
-  // effect's local — this is a render-time value, not an effect dependency.
+  // T2-14: the talent being hired, sent as addContractGroupMember's
+  // talentId on Send Offer. Same expression as the FR-11 audit effect below
+  // (fetchedProfile is authoritative once T1-3's self-fetch resolves;
+  // profile is the seed passed in from callers like checkout confirmation's
+  // Edit Offer, which carries no id at all). A separate const rather than
+  // reusing that effect's local — this is a render-time value, not an
+  // effect dependency.
   const hiredTalentId = fetchedProfile?.id || profile?.id
   // T2-3: edit mode always resolves to its own static placeholder, never a
   // lookup into the real fetched list — see EDIT_MODE_PLACEHOLDER_CONTRACT.
@@ -788,15 +809,52 @@ export function OfferDialog({
 
     getMyContractGroups()
       .then(async (groups) => {
+        // T2-17: one shared per-modal-open resolution, deduped by
+        // talentId — not one lookup per group. The same talent can be a
+        // member of several groups in this list (e.g. one talent pending
+        // in three separate groups); a per-group lookup would re-fetch
+        // that same user N times. Built once, before hydrating any row,
+        // so every row — hydrated or fallback — reads from the same
+        // resolved map. This also means the skeleton holds until talent
+        // resolution finishes too, not just group hydration: both are
+        // inside this same isLoadingGroups-gated promise chain, so
+        // avatars never pop in after the row already rendered.
+        const uniqueTalentIds = Array.from(
+          new Set(
+            groups.flatMap((group) =>
+              group.members.map((member) => member.talentId)
+            )
+          )
+        )
+        const talentResults = await Promise.allSettled(
+          uniqueTalentIds.map((talentId) => UserAPI.getProfile(talentId))
+        )
+        const talentMap = new Map<string, ResolvedTalent>()
+        talentResults.forEach((result, index) => {
+          // A rejected lookup (talent deleted, network hiccup, or a
+          // talentId with no backing user at all) just leaves that
+          // talentId out of the map — buildAvatarsFromTalentMap already
+          // treats "not in the map" as unresolved, and
+          // renderAvatarFallbackContent turns that into the silhouette,
+          // not a crash and not a "?".
+          if (result.status !== "fulfilled") return
+          const profile = result.value?.data
+          if (!profile) return
+          talentMap.set(uniqueTalentIds[index], {
+            avatarUrl: profile.avatarUrl || undefined,
+            name: profile.firstName || profile.username || undefined,
+          })
+        })
+
         const settled = await Promise.allSettled(
-          groups.map(hydrateContractRow)
+          groups.map((group) => hydrateContractRow(group, talentMap))
         )
         if (!isActive) return
         setExistingContracts(
           settled.map((result, index) =>
             result.status === "fulfilled"
               ? result.value
-              : buildFallbackContractRow(groups[index])
+              : buildFallbackContractRow(groups[index], talentMap)
           )
         )
       })
@@ -1269,32 +1327,11 @@ export function OfferDialog({
                                         <span className="block text-[12px] font-light leading-normal text-gray-500">
                                           {contract.subtitle}
                                         </span>
-                                        {/* FR-8/AC-7.1: per-talent, not
-                                        per-group — this is the person
-                                        currently being hired, not "does this
-                                        group contain anyone pending". "Pending"
-                                        rather than "Pending Invite": status
-                                        PENDING (enums.ts:7) also covers
-                                        accepted-but-awaiting-deposit, which
-                                        would make "Pending Invite" wrong. Not
-                                        reachable today, though —
-                                        respondToOffer's accept path
-                                        (contracts.service.ts:82-87) never
-                                        persists anything, so every PENDING
-                                        contract is still a genuinely
-                                        unanswered invite. Narrower copy is
-                                        the one that stays true once that's
-                                        fixed. */}
-                                        {contract.members.some(
-                                          (member) =>
-                                            member.talentId ===
-                                              hiredTalentId &&
-                                            member.status === "pending"
-                                        ) ? (
-                                          <span className="mt-1.5 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium leading-normal text-gray-500">
-                                            Pending
-                                          </span>
-                                        ) : null}
+                                        {/* T2-9 built a "Pending" badge here for
+                                        FR-8/AC-7.1. Removed: the Figma frame for
+                                        this row doesn't show one, and Figma now
+                                        outranks the ticket's ACs. Not an
+                                        oversight — deliberately absent. */}
                                       </span>
 
                                       <span className="ml-4 flex items-center gap-3">
@@ -1326,7 +1363,9 @@ export function OfferDialog({
                                                     staticAvatarFallbackClassName
                                                   }
                                                 >
-                                                  {getInitials(avatar.name)}
+                                                  {renderAvatarFallbackContent(
+                                                    avatar.name
+                                                  )}
                                                 </AvatarFallback>
                                               </Avatar>
                                             ))}
@@ -1429,7 +1468,9 @@ export function OfferDialog({
                                             staticAvatarFallbackClassName
                                           }
                                         >
-                                          {getInitials(avatar.name)}
+                                          {renderAvatarFallbackContent(
+                                            avatar.name
+                                          )}
                                         </AvatarFallback>
                                       </Avatar>
                                     )
