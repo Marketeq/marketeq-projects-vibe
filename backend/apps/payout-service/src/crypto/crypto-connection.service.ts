@@ -218,8 +218,16 @@ export class CryptoConnectionService {
     // 3. Encrypt address (PS-10 §8 — AES-256-GCM)
     const encrypted = this.encrypt(normalized);
 
-    // 4. Get conversion display (PS-10 §9)
-    const conversion = await this.conversionSvc.getDisplayRate(dto.token, 'USD');
+    // 4. Get conversion display (PS-10 §9). Transak connections get the
+    // real, fee-inclusive quote from Transak's own Get Price API rather
+    // than the generic provider-agnostic market rate every other provider
+    // uses — falls back to the generic rate if Transak's API is
+    // unavailable so a wallet connection never fails just because a
+    // display-only quote call did.
+    const conversion = dto.cryptoProvider === CryptoProvider.TRANSAK
+      ? (await this.conversionSvc.getTransakDisplayRate(dto.token, dto.network))
+          ?? await this.conversionSvc.getDisplayRate(dto.token, 'USD')
+      : await this.conversionSvc.getDisplayRate(dto.token, 'USD');
 
     // 5. Save — VERIFIED immediately (no micro-deposits for crypto)
     const method = await this.methodRepo.save({
