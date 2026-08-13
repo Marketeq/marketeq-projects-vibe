@@ -49,7 +49,7 @@ export interface EarningsRow {
   date: string | null
   weekRange: string | null
   month: string | null
-  project: { id: string; name: string; clientHandle: string } | null
+  project: { id: string; name: string; clientId?: string | null; clientHandle: string } | null
   task: { id: string; name: string | null } | null
   startTime: string | null
   endTime: string | null

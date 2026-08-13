@@ -184,15 +184,15 @@ export class StripeProvider {
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_FC_ACCOUNT_NOT_FOUND');
     }
 
-    // Cross-check the SetupIntent actually belongs to this contractor's own
-    // Stripe customer, not just any SetupIntent ID the caller happened to send.
-    const expectedCustomerId = await this.getOrCreateCustomer(contractorId);
-    if (setupIntent.customer !== expectedCustomerId) {
-      this.logger.warn(`Stripe SetupIntent ${sessionId} customer mismatch for contractor ${contractorId}`);
-      throw new PayoutError('This bank account does not belong to your session.',
-        HttpStatus.FORBIDDEN, 'ERR_STRIPE_FC_ACCOUNT_OWNERSHIP_MISMATCH');
-    }
-
+    // Ownership is already proven above — this contractorId+sessionId pair only
+    // matches a verification row that initiateBankStripe itself created for this
+    // exact contractor, so setupIntent.customer is trustworthy as-is. A second
+    // "expected customer" re-derived here via getOrCreateCustomer()'s
+    // customers.search() was removed: Stripe's Search API lags real-time writes
+    // by up to ~1 minute, so calling it again seconds after initiateBankStripe
+    // created the customer routinely missed it, created a second duplicate
+    // customer, and rejected a legitimate finalise with a false
+    // ERR_STRIPE_FC_ACCOUNT_OWNERSHIP_MISMATCH.
     const paymentMethod = setupIntent.payment_method;
     const usBank = paymentMethod?.us_bank_account;
     if (!usBank) {
@@ -487,8 +487,17 @@ export class StripeProvider {
     // us_bank_account. Finish what finaliseBankStripe's non-instant branch
     // (or initiateManualMicroDeposits, for BANK_MANUAL/US) deferred: attach
     // it as a Connect external_account so the method is actually payable.
+    // Must throw (not silently return) on a miss here — confirmStripe() only
+    // calls applySuccess() (verificationStatus: VERIFIED) when this function
+    // doesn't throw, so returning normally without attaching would mark the
+    // method verified while stripeConnectAccountId/stripeExternalAccountId
+    // stay null forever, permanently failing every payout against it with
+    // ERR_CONNECT_ACCOUNT_NOT_ATTACHED.
     const method = await this.methodRepo.findOne({ where: { id: depositMethodId } });
-    if (!method) return;
+    if (!method) {
+      throw new PayoutError('Deposit method not found. Please try connecting your bank account again.',
+        HttpStatus.NOT_FOUND, 'ERR_DEPOSIT_METHOD_NOT_FOUND');
+    }
 
     const attached = await this.attachVerifiedBankAsExternalAccount(method.contractorId, setupIntentId);
     await this.methodRepo.update(method.id, {
@@ -595,14 +604,20 @@ export class StripeProvider {
   // Connect account lifecycle — keeps connectPayoutsEnabled/connectRequirementsDue
   // in sync so bank-payout-executor's pre-flight check reflects Stripe's own
   // review state instead of assuming "attached = payable".
+  // One Stripe Connect account is shared across every bank deposit method a
+  // contractor adds (see getOrCreateConnectAccount) — updates here must match
+  // by stripeConnectAccountId directly (all rows sharing that account), not
+  // findOne()+update-by-id, which only ever touched one arbitrary row and left
+  // every other method referencing the same Connect account stuck on a stale
+  // connectPayoutsEnabled even after Stripe genuinely approved the account.
   async handleAccountUpdated(account: any) {
-    const method = await this.methodRepo.findOne({ where: { stripeConnectAccountId: account.id } });
-    if (!method) return;
-
-    await this.methodRepo.update(method.id, {
-      connectPayoutsEnabled: !!account.payouts_enabled,
-      connectRequirementsDue: account.requirements?.currently_due ?? null,
-    });
+    await this.methodRepo.update(
+      { stripeConnectAccountId: account.id } as any,
+      {
+        connectPayoutsEnabled: !!account.payouts_enabled,
+        connectRequirementsDue: account.requirements?.currently_due ?? null,
+      },
+    );
   }
 
   // ─── Session restart ──────────────────────────────────────────
