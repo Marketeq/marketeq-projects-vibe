@@ -84,7 +84,7 @@ export class PayoutController {
     @Request() req: any,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.magicLinkService.resendVerification(req.user.userId, id);
+    return this.magicLinkService.resendVerification(req.user.userId, id, req.user.email);
   }
 
   // Cancel a pending/queued withdrawal
