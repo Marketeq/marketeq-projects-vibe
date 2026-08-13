@@ -193,9 +193,9 @@ export default function SignUp() {
             </p>
 
             <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
-              <GoogleLoginButton />
+              <GoogleLoginButton mode="sign-up" />
 
-              <LinkedInLoginButton />
+              <LinkedInLoginButton mode="sign-up" />
             </div>
 
             <div className="flex gap-x-[9px] mt-6 items-center">
