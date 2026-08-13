@@ -11,15 +11,14 @@ const UnauthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const [isPageLoading, setIsPageLoading] = useState(true)
 
   const routeCheck = async () => {
-    setIsPageLoading(true)
+    if (isLoading) return
 
-    if (user && !isLoading) {
-      router.push(resolveDashboardRoute(user))
+    if (user) {
+      router.replace(resolveDashboardRoute(user))
+      return
     }
 
-    if (!isLoading && !user) {
-      setIsPageLoading(false)
-    }
+    setIsPageLoading(false)
   }
 
   useEffect(() => {

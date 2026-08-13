@@ -67,6 +67,8 @@ export function mapProfileToEvent(doc: any) {
     country: doc.country || null,
     status: doc.status || "active",
     timezone: null,
+    rateMin: doc.rateMin ?? null,
+    rateMax: doc.rateMax ?? null,
   };
 
   return result;
