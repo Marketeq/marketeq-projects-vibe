@@ -1166,6 +1166,11 @@ export default function JobScreeningPage() {
                         return next
                       })
                     }}
+                    notesOpen={notesOpen}
+                    onNotesOpenChange={(v) => {
+                      setSelectedCandidateId(candidate.id)
+                      setNotesOpen(v)
+                    }}
                   />
                 ))}
               </div>
@@ -2438,6 +2443,8 @@ function FullWidthCandidateCard({
   onVote,
   superLiked,
   onSuperLike,
+  notesOpen,
+  onNotesOpenChange,
 }: {
   candidate: (typeof mockCandidates)[number]
   isSelected: boolean
@@ -2448,6 +2455,8 @@ function FullWidthCandidateCard({
   onVote?: (v: "like" | "neutral" | "dislike" | null) => void
   superLiked?: boolean
   onSuperLike?: () => void
+  notesOpen?: boolean
+  onNotesOpenChange?: (v: boolean) => void
 }) {
   return (
     <div
@@ -2626,12 +2635,13 @@ function FullWidthCandidateCard({
             ))}
           </div>
 
-          {/* Bottom-right: file plus / minimize icons */}
+          {/* Bottom-right: notes / minimize icons */}
           <div className="flex items-center justify-end gap-3">
             <IconButton
               variant="outlined"
               visual="gray"
               className="size-[35px] rounded-full border-gray-300 shadow-xs"
+              onClick={(e) => { e.stopPropagation(); onNotesOpenChange?.(!notesOpen) }}
             >
               <FilePlus02 className="size-[15px]" />
             </IconButton>
