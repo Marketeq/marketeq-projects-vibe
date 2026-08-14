@@ -268,7 +268,7 @@ export default function MyJobsPage() {
                         ].map((job) => (
                           <Card
                             key={job.id}
-                            className="overflow-hidden hover:border-gray-200 hover:ring-0"
+                            className="overflow-hidden"
                           >
                             <div className="w-full p-5">
                               <div className="flex items-start justify-between gap-3">
@@ -368,7 +368,7 @@ export default function MyJobsPage() {
             </div>
 
             <div className="space-y-6">
-              <Card className="w-full hover:border-gray-200 hover:ring-0">
+              <Card className="w-full">
                 <div className="w-full p-6">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-base font-semibold text-dark-blue-400">

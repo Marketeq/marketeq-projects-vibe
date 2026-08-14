@@ -962,7 +962,7 @@ function ContractCard({ contract }: { contract: Contract }) {
   const isIndividual = contract.type === "individual"
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-sm transition-shadow">
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
       {/* Row 1: Title + Status + Actions */}
       <div className="flex items-start justify-between gap-4">
         <h3 className="text-base font-semibold text-dark-blue-400 leading-snug">

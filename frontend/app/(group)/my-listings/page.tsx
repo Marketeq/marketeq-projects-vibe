@@ -359,7 +359,7 @@ export default function MyListingsPage() {
                     {filteredListings.map((listing) => (
                       <article
                         key={listing.id}
-                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200"
+                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden"
                       >
                         <div className="h-[170px] relative overflow-hidden bg-gray-100">
                           {listing.mediaUrl ? (
