@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
@@ -43,10 +44,14 @@ import {
   IconButton,
   Input,
   Progress,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@/components/ui"
+import { ToggleGroupRoot, ToggleGroupItem } from "@/components/ui/toggle-group/toggle-group"
 
 type ContractType = "project" | "service" | "team" | "individual"
-type ContractStatus = "Active" | "Pending" | "Ended" | "Canceled" | "Disputed"
+type ContractStatus = "Active" | "Pending" | "Paused" | "Completed" | "Ended" | "Canceled" | "Disputed"
 type ViewMode = "grouped" | "individual"
 type SortOption = "recent" | "milestone" | "az" | "za"
 
@@ -418,9 +423,21 @@ const sampleContracts: Contract[] = [
   },
 ]
 
+const statusBadgeVisual: Record<ContractStatus, string> = {
+  Active: "success",
+  Pending: "warning",
+  Paused: "gray",
+  Completed: "primary",
+  Ended: "gray",
+  Canceled: "error",
+  Disputed: "orange",
+}
+
 const statusColors: Record<ContractStatus, string> = {
   Active: "bg-green-50 text-green-700 border-green-200",
   Pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  Paused: "bg-gray-50 text-gray-600 border-gray-200",
+  Completed: "bg-primary-50 text-primary-700 border-primary-200",
   Ended: "bg-gray-50 text-gray-600 border-gray-200",
   Canceled: "bg-red-50 text-red-700 border-red-200",
   Disputed: "bg-orange-50 text-orange-700 border-orange-200",
@@ -667,68 +684,50 @@ export default function MyContractsPage() {
           {/* Tabs row + Filter bar row */}
           <div className="mt-6">
             {/* Tabs + filter actions on same visual row */}
-            <div className="flex items-end justify-between border-b border-gray-200">
+            <div className="flex items-end justify-between">
               {/* Left: search icon + tab triggers */}
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="flex items-center justify-center size-9 text-gray-400 hover:text-gray-600"
+                <IconButton
+                  variant="ghost"
+                  visual="gray"
+                  size="sm"
                   onClick={() => setShowSearch(!showSearch)}
                 >
                   <Search className="size-4" />
-                </button>
+                </IconButton>
 
-                <button
-                  type="button"
-                  className={`px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === "active"
-                      ? "border-primary-500 text-primary-500"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                  onClick={() => setActiveTab("active")}
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(val) => setActiveTab(val as "active" | "pending")}
+                  unanimated
                 >
-                  Active
-                  <span
-                    className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
-                      activeTab === "active"
-                        ? "bg-primary-50 text-primary-500"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {activeCount}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === "pending"
-                      ? "border-primary-500 text-primary-500"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                  onClick={() => setActiveTab("pending")}
-                >
-                  Pending
-                  <span
-                    className={`ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium ${
-                      activeTab === "pending"
-                        ? "bg-primary-50 text-primary-500"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {pendingCount}
-                  </span>
-                </button>
+                  <TabsList className="px-0 pt-0 gap-0">
+                    <TabsTrigger value="active">
+                      Active
+                      <Badge visual={activeTab === "active" ? "primary" : "gray"} size="sm" className="ml-1.5">
+                        {activeCount}
+                      </Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="pending">
+                      Pending
+                      <Badge visual={activeTab === "pending" ? "primary" : "gray"} size="sm" className="ml-1.5">
+                        {pendingCount}
+                      </Badge>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="px-3 pb-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="gap-1"
                     >
                       More
                       <ChevronDown className="size-3.5" />
-                    </button>
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuItem onClick={() => setTypeFilter("all")}>
@@ -820,35 +819,22 @@ export default function MyContractsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <IconButton variant="ghost" visual="gray" size="sm">
+                <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full focus:bg-transparent focus:shadow-none data-[state=open]:bg-gray-100" onPointerDown={(e) => e.preventDefault()}>
                   <Download01 className="size-4" />
                 </IconButton>
 
                 {/* Group / Individual toggle */}
-                <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg p-0.5 ml-1">
-                  <button
-                    type="button"
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      viewMode === "grouped"
-                        ? "bg-gray-100 text-dark-blue-400"
-                        : "text-gray-400 hover:text-gray-600"
-                    }`}
-                    onClick={() => setViewMode("grouped")}
-                  >
-                    Group
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      viewMode === "individual"
-                        ? "bg-gray-100 text-dark-blue-400"
-                        : "text-gray-400 hover:text-gray-600"
-                    }`}
-                    onClick={() => setViewMode("individual")}
-                  >
-                    Individual
-                  </button>
-                </div>
+                <ToggleGroupRoot
+                  value={[viewMode]}
+                  onValueChange={(details) => {
+                    const val = details.value[0] as ViewMode | undefined
+                    if (val) setViewMode(val)
+                  }}
+                  className="ml-1"
+                >
+                  <ToggleGroupItem value="grouped">Group</ToggleGroupItem>
+                  <ToggleGroupItem value="individual">Individual</ToggleGroupItem>
+                </ToggleGroupRoot>
               </div>
             </div>
 
@@ -962,84 +948,67 @@ function ContractCard({ contract }: { contract: Contract }) {
   const isIndividual = contract.type === "individual"
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      {/* Row 1: Title + Status + Actions */}
-      <div className="flex items-start justify-between gap-4">
-        <h3 className="text-base font-semibold text-dark-blue-400 leading-snug">
-          {contract.title}
-        </h3>
-        <div className="flex items-center gap-3 flex-none">
-          <span
-            className={`text-xs font-medium px-3 py-1 rounded-full border ${statusColors[contract.status]}`}
+    <div className="flex flex-col items-start bg-white border border-gray-200 shadow-sm rounded-lg py-4 px-5 gap-6">
+      {/* Row 1: Title + Type badge + Billing info + Status + Actions */}
+      <div className="flex items-start justify-between gap-10 self-stretch">
+        <div className="flex flex-col justify-center items-start gap-1.5 flex-1 min-w-0">
+          <Link href={`/active-project/${contract.id}?title=${encodeURIComponent(contract.title)}&group=${encodeURIComponent(contract.groupName)}`} className="text-sm font-semibold text-dark-blue-400 leading-5 self-stretch hover:underline cursor-pointer">
+            {contract.title}
+          </Link>
+          <div className="flex items-center gap-3">
+            {/* Contract type badge */}
+            {(isProject || isService) && (
+              <Badge visual="success" size="sm" className="rounded-[5px] bg-success-50 text-success-400 text-[10px] font-bold px-1.5 py-1 gap-1">
+                <TypeIcon className="size-[10.8px]" />
+                {typeLabels[contract.type]}
+              </Badge>
+            )}
+            {/* Billing cycle / phase info */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] leading-[13px] text-gray-400">
+                {isIndividual ? "Rate" : "Billing cycle"}
+              </span>
+              <span className="size-0.5 rounded-full bg-gray-400" />
+              <span className="text-[11px] font-semibold leading-[13px] text-gray-500">
+                {isIndividual ? contract.rate : contract.billingCycle}
+              </span>
+            </div>
+            {isIndividual && contract.weeklyLimit && (
+              <span className="text-[11px] leading-[13px] text-gray-400">
+                {contract.weeklyLimit}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-none">
+          {/* Status badge */}
+          <Badge
+            visual={statusBadgeVisual[contract.status] as any}
+            size="sm"
+            className="rounded-full mr-3"
           >
             {contract.status}
-          </span>
+          </Badge>
+          {/* Add Team Member CTA */}
           <Button
             variant="outlined"
             visual="gray"
             size="sm"
-            className="flex-none"
+            leftIcon={<Plus className="size-3.5" />}
           >
-            <Plus className="size-4 mr-1.5" />
             Add Team Member
           </Button>
+          {/* More actions */}
           <ContractActions contract={contract} />
         </div>
       </div>
 
-      {/* Row 2: Subtitle — varies by type */}
-      <div className="flex items-center gap-2.5 mt-1.5">
-        {/* Project & Service: Type badge + Billing cycle */}
-        {(isProject || isService) && (
-          <>
-            <Badge
-              visual={typeColors[contract.type] as any}
-              size="sm"
-              className="rounded-full capitalize gap-1"
-            >
-              <TypeIcon className="size-3.5" />
-              {typeLabels[contract.type]}
-            </Badge>
-            <span className="text-sm text-gray-400">
-              Billing cycle ·{" "}
-              <span className="font-semibold text-dark-blue-400">
-                {contract.billingCycle}
-              </span>
-            </span>
-          </>
-        )}
-        {/* Team: Billing Cycle only (no type badge) */}
-        {isTeam && (
-          <span className="text-sm text-gray-400">
-            Billing Cycle ·{" "}
-            <span className="font-semibold text-dark-blue-400">
-              {contract.billingCycle}
-            </span>
-          </span>
-        )}
-        {/* Individual: Rate + weekly limit */}
-        {isIndividual && (
-          <span className="text-sm text-gray-400">
-            Rate ·{" "}
-            <span className="font-semibold text-dark-blue-400">
-              {contract.rate}
-            </span>
-            {contract.weeklyLimit && (
-              <span className="ml-1.5 text-gray-400">
-                {contract.weeklyLimit}
-              </span>
-            )}
-          </span>
-        )}
-      </div>
-
-      {/* Row 3: People + Time Stats */}
-      <div className="flex items-center justify-between mt-5">
+      {/* Row 2: People + Time Stats */}
+      <div className="flex items-center gap-5 self-stretch">
         {/* Left side: Avatars or single talent */}
         {isIndividual ? (
-          /* Individual: single avatar with name & role */
           <div className="flex items-center gap-3">
-            <Avatar size="md">
+            <Avatar size="md" className="hover:ring-0 active:ring-0">
               <AvatarImage
                 src={contract.talentAvatar}
                 alt={contract.talentName}
@@ -1047,7 +1016,7 @@ function ContractCard({ contract }: { contract: Contract }) {
               <AvatarFallback>{contract.talentName[0]}</AvatarFallback>
             </Avatar>
             <div>
-              <p className="text-sm font-semibold text-dark-blue-400">
+              <p className="text-[13px] font-bold leading-4 text-gray-600">
                 {contract.talentName}{" "}
                 {contract.talentUsername && (
                   <span className="font-normal text-gray-400">
@@ -1056,96 +1025,85 @@ function ContractCard({ contract }: { contract: Contract }) {
                 )}
               </p>
               {contract.talentRole && (
-                <p className="text-xs text-gray-400">{contract.talentRole}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">{contract.talentRole}</p>
               )}
             </div>
           </div>
         ) : (
-          /* Project / Service / Team: avatar group */
-          <AvatarGroup size="md" max={3} excess>
+          <div className="flex items-center flex-none min-w-[423px]">
+          <AvatarGroup size="md" max={4} excess excessClassName="!border-gray-400 !text-gray-500 !text-[13px] !font-medium !bg-white">
             {contract.teamMembers.map((member, i) => (
-              <Avatar key={i} size="md">
+              <Avatar key={i} size="md" className="hover:ring-0 active:ring-0">
                 <AvatarImage src={member.avatar} alt={member.name} />
                 <AvatarFallback>{member.name[0]}</AvatarFallback>
               </Avatar>
             ))}
           </AvatarGroup>
+          </div>
         )}
 
         {/* Right side: Time stats */}
-        <div className="flex items-center gap-6">
-          <div className="text-right">
-            <p className="text-xs text-gray-400">Today</p>
-            <p className="text-sm font-bold text-dark-blue-400">
-              {contract.hoursToday}{" "}
-              <span className="font-normal text-gray-400">Logged</span>
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-400">This Week</p>
-            <p className="text-sm font-bold text-dark-blue-400">
-              {contract.hoursThisWeek}{" "}
-              <span className="font-normal text-gray-400">Logged</span>
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-400">This Month</p>
-            <p className="text-sm font-bold text-dark-blue-400">
-              {contract.hoursThisMonth}{" "}
-              <span className="font-normal text-gray-400">Logged</span>
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-400">Total Hours</p>
-            <p className="text-sm font-bold text-dark-blue-400">
-              {contract.hoursTotal}{" "}
-              <span className="font-normal text-gray-400">Logged</span>
-            </p>
-          </div>
+        <div className="flex items-center gap-[50px] rounded-lg ml-auto">
+          {[
+            { label: "Today", value: contract.hoursToday },
+            { label: "This Week", value: contract.hoursThisWeek },
+            { label: "This Month", value: contract.hoursThisMonth },
+            { label: "Total Hours", value: contract.hoursTotal },
+          ].map((stat) => (
+            <div key={stat.label} className="flex flex-col justify-between items-start gap-0.5 w-[104px]">
+              <p className="text-[11px] font-medium leading-5 text-gray-500">
+                {stat.label}
+              </p>
+              <p className="text-[13px] font-bold leading-4 text-gray-600">
+                {stat.value} <span className="text-[10px] font-normal">Logged</span>
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Row 4: Date range + (optional progress bar) + Last activity */}
-      <div className="flex items-center justify-between mt-5">
-        <div className="flex items-center gap-3 min-w-0 flex-auto mr-6">
-          <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-none">
-            <Calendar className="size-3.5" />
-            <span>
+      {/* Row 3: Date range + Progress bar + Last activity */}
+      <div className="flex items-center justify-between self-stretch">
+        <div className="flex items-center gap-3">
+          {/* Date range */}
+          <div className="flex flex-wrap items-center gap-x-[3px]">
+            <Calendar className="size-3 text-gray-500" strokeWidth={1.5} />
+            <span className="text-[10px] font-medium leading-3 text-gray-500">
               {contract.startDate}
               {contract.startDate && " - "}
               {contract.endDate || "Present"}
             </span>
           </div>
-          {/* Progress bar: only for project type (has fixed end date) */}
+          {/* Progress bar: only for project type */}
           {isProject && contract.progress > 0 && (
-            <div className="flex items-center gap-2.5 flex-auto max-w-[180px]">
-              <div className="relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="flex items-center gap-0.5 h-2 w-[163px]">
                 <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-success-500"
-                  style={{ width: `${Math.min(contract.progress, 100)}%` }}
+                  className="h-2 bg-[#A6F4C5] rounded-l"
+                  style={{ width: `${Math.round(contract.progress * 0.34)}%` }}
                 />
-                {contract.progress < 100 && (
-                  <div
-                    className="absolute inset-y-0 rounded-r-full bg-primary-500"
-                    style={{
-                      left: `${contract.progress}%`,
-                      width: `${Math.min(20, 100 - contract.progress)}%`,
-                    }}
-                  />
-                )}
+                <div
+                  className="h-2 bg-[#98B6FF] rounded-sm"
+                  style={{ width: `${Math.round(contract.progress * 0.41)}%` }}
+                />
+                <div
+                  className="h-2 bg-gray-200 rounded-r flex-1"
+                />
               </div>
-              <span className="text-xs text-gray-500 flex-none">
+              <span className="text-[10px] font-medium leading-3 text-dark-blue-400">
                 {contract.progress}%
               </span>
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-400 flex-none">
-          Last activity{" "}
-          <span className="font-semibold text-dark-blue-400">
+        <div className="flex items-center justify-end gap-[3px]">
+          <span className="text-[10px] leading-3 text-gray-400">
+            Last activity
+          </span>
+          <span className="text-[10px] font-medium leading-3 text-gray-500">
             {contract.lastActivity}
           </span>
-        </p>
+        </div>
       </div>
     </div>
   )
@@ -1235,9 +1193,9 @@ function ContractActions({ contract }: { contract: Contract }) {
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <IconButton variant="ghost" visual="gray" size="sm">
+        <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full focus:!bg-transparent focus-visible:!bg-transparent data-[state=open]:bg-gray-100">
           <MoreHorizontal className="size-4" />
         </IconButton>
       </DropdownMenuTrigger>
