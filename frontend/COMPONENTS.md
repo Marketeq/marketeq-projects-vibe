@@ -89,7 +89,8 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 
 ### Breadcrumb
 - **Import**: `import { Breadcrumb, BreadcrumbItem, BreadcrumbSeparator, BreadcrumbLink } from "@/components/ui"`
-- **Key Props**: `separator?: ReactNode`, `spacing?: string`
+- **Key Props**: `separator?: ReactNode`, `spacing?: string` (default `"0.25rem"`), `listClassName?: string`
+- **Styles**: 13px semibold, leading-6, gray-500, opacity-50, gap-2 (8px), capitalize. Home icon 18px with opacity-50. Separator "/" same styles. Links and separators hover from opacity-50 to opacity-100 with transition. Current page (`isCurrentPage`) stays at opacity-50 with `cursor-default` — NO hover effect (you're already on that page).
 - **Variants**: Default
 - **Storybook**: `components/ui/breadcrumb/breadcrumb.stories.tsx` (Default)
 
