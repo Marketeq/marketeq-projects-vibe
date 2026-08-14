@@ -617,7 +617,7 @@ function ProjectListingCard({
         <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
           {mediaUrl ? (
             <NextImage
-              className="object-cover"
+              className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
               src={mediaUrl}
               alt={title}
               fill

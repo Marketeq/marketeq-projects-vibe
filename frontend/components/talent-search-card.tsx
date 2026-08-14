@@ -187,7 +187,7 @@ export const TalentSearchCard = ({
                 sizes="25vw"
                 fill
                 loading={imageLoading}
-                className="object-cover"
+                className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                 alt={name}
               />
             </div>
