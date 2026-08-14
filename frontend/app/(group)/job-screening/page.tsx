@@ -560,6 +560,7 @@ export default function JobScreeningPage() {
   const [payRateRange, setPayRateRange] = useState<[number, number]>([0, 300])
   const [candidateStatus, setCandidateStatus] = useState("all")
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
+  const [allFiltersOpen, setAllFiltersOpen] = useState(false)
   const [candidateVotes, setCandidateVotes] = useState<Record<string, "like" | "neutral" | "dislike" | null>>({})
   const [candidateSuperLikes, setCandidateSuperLikes] = useState<Set<string>>(new Set())
 
@@ -782,18 +783,18 @@ export default function JobScreeningPage() {
           <div className={`flex items-center justify-between border-gray-200 px-6 py-3 ${isHeaderSticky ? "border-b" : "border-y"}`}>
             <div className="flex items-center gap-[14px]">
               {/* All Candidates / status filter */}
-              <Popover>
+              <Popover open={statusDropdownOpen} onOpenChange={setStatusDropdownOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[14px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
+                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
                     {candidateStatusOptions.find((o) => o.value === candidateStatus)?.label ?? "All Candidates"}
-                    <Badge size="sm" className={`ml-2 rounded-full px-2 text-xs font-medium group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "bg-primary-50 text-primary-500" : "bg-primary-50 text-primary-500"}`}>50</Badge>
+                    <Badge size="sm" className={`ml-1 rounded-full px-1.5 text-xs font-medium group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "bg-primary-50 text-primary-500" : "bg-gray-100 text-gray-500"}`}>50</Badge>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[220px] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
                   {candidateStatusOptions.map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => setCandidateStatus(opt.value)}
+                      onClick={() => { setCandidateStatus(opt.value); setStatusDropdownOpen(false) }}
                       className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${candidateStatus === opt.value ? "bg-primary-50 font-medium text-primary-500" : "text-gray-700 hover:bg-gray-50"}`}
                     >
                       {candidateStatus === opt.value && <Check className="size-3.5 text-primary-500" />}
@@ -806,11 +807,11 @@ export default function JobScreeningPage() {
               {/* Match Score filter */}
               <Popover open={matchScoreOpen} onOpenChange={setMatchScoreOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[14px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${matchScoreRange[0] > 50 || matchScoreRange[1] < 100 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
+                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${matchScoreRange[0] > 50 || matchScoreRange[1] < 100 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
                     Match Score
                     {(matchScoreRange[0] > 50 || matchScoreRange[1] < 100) ? (
-                      <Badge size="sm" className="ml-2 rounded-full bg-primary-50 px-2 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">
-                        {matchScoreRange[0]}-{matchScoreRange[1]}%
+                      <Badge size="sm" className="ml-1 rounded-full bg-primary-50 px-1.5 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">
+                        {matchScoreRange[1] === 100 ? `${matchScoreRange[0]}%+` : `${matchScoreRange[0]}-${matchScoreRange[1]}%`}
                       </Badge>
                     ) : (
                       <ChevronDown className="ml-1 size-[15px] text-gray-500" />
@@ -880,13 +881,13 @@ export default function JobScreeningPage() {
               />
 
               {/* All Filters */}
-              <Popover>
+              <Popover open={allFiltersOpen} onOpenChange={setAllFiltersOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[14px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${activeFilterCount > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
+                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${activeFilterCount > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
                     {activeFilterCount > 0 ? (
                       <>
                         All Filters
-                        <Badge size="sm" className="ml-1 rounded-full bg-primary-50 px-2 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">{activeFilterCount}</Badge>
+                        <Badge size="sm" className="ml-1 rounded-full bg-primary-50 px-1.5 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">{activeFilterCount}</Badge>
                       </>
                     ) : (
                       <>
@@ -982,14 +983,15 @@ export default function JobScreeningPage() {
                       {/* Rating */}
                       <FilterSection title="Rating">
                         {ratingOptions.map((opt) => (
-                          <button
-                            key={opt.label}
-                            onClick={() => setSelectedRating(opt.min)}
-                            className={`flex items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm transition-colors ${selectedRating === opt.min ? "font-medium text-primary-500" : "text-gray-700 hover:bg-gray-50"}`}
-                          >
+                          <label key={opt.label} className="flex cursor-pointer items-center gap-3 rounded-md px-1 py-1.5 hover:bg-gray-50">
+                            <Checkbox
+                              size="sm"
+                              checked={selectedRating === opt.min}
+                              onCheckedChange={() => setSelectedRating(selectedRating === opt.min ? 0 : opt.min)}
+                            />
                             {opt.min > 0 && <Star className="size-3.5 fill-primary-500 text-primary-500" />}
-                            {opt.label}
-                          </button>
+                            <span className="text-sm text-gray-700">{opt.label}</span>
+                          </label>
                         ))}
                       </FilterSection>
                     </div>
@@ -1011,7 +1013,7 @@ export default function JobScreeningPage() {
                     >
                       Clear all
                     </button>
-                    <Button size="sm" className="h-9 rounded-[5px] px-4 text-sm font-semibold">
+                    <Button size="sm" disabled={activeFilterCount === 0} onClick={() => activeFilterCount > 0 && setAllFiltersOpen(false)} className="h-9 rounded-[5px] px-4 text-sm font-semibold">
                       Apply Filters
                     </Button>
                   </div>
@@ -1625,11 +1627,11 @@ function FilterCheckboxDropdown({
           variant="outlined"
           visual="gray"
           size="sm"
-          className={`group h-9 rounded-[5px] px-[14px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${selected.size > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}
+          className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${selected.size > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}
         >
           {label}
           {selected.size > 0 ? (
-            <Badge size="sm" className="ml-2 rounded-full bg-primary-50 px-2 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">
+            <Badge size="sm" className="ml-1 rounded-full bg-primary-50 px-1.5 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">
               {selected.size}
             </Badge>
           ) : (
