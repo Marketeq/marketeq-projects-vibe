@@ -11,7 +11,7 @@ name: Post-Merge SOP Audit
 
 on:
   push:
-    branches: [dev-main, staging, live-mvp]
+    branches: [dev-main, staging, live]
 
 permissions:
   contents: write
@@ -136,7 +136,7 @@ EOF
           CHECKS=$(echo "$PR_JSON" | jq -c '.statusCheckRollup[]? | {name, status, conclusion}')
 
           FAILED=()
-          for needed in "Jenkins / SOP Check" "Jenkins / AI Breakage Detector" "Jenkins / Secret Scan" "Jenkins / Login Gate" "Jenkins / Code Review"; do
+          for needed in "Jenkins / SOP Check" "Jenkins / AI Breakage Detector" "Jenkins / Secret Scan" "Jenkins / Login Gate" "Jenkins / Code Review" "Branch Must Be Up-to-Date"; do
             STATUS=$(echo "$PR_JSON" | jq -r --arg n "$needed" '.statusCheckRollup[]? | select(.name == $n) | .conclusion // "missing"' | head -n1)
             if [ -z "$STATUS" ] || [ "$STATUS" = "missing" ]; then
               FAILED+=("$needed (not found)")
