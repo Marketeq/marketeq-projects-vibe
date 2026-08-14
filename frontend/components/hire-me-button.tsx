@@ -404,9 +404,20 @@ export const offerRates = [
 // not a second invented value on top of the first. Still fabricated data
 // (see the comment above); this only avoids inventing a THIRD number
 // disconnected from what the UI displayed. Returns null if selectedRate
-// doesn't match any tile (e.g. nothing selected yet, or "custom" — see the
-// Custom Rate button below, which has no onClick and is unreachable today).
-const parseFabricatedRateValue = (selectedRateValue: string): number | null => {
+// doesn't match any tile and isn't "custom" (e.g. nothing selected yet).
+//
+// T4-A: "custom" now returns the real entered number instead of falling
+// through to null ?? 0 — the whole point of wiring the Custom Rate button
+// is that this stops being a fabricated tile price and becomes what the
+// user actually typed.
+const parseFabricatedRateValue = (
+  selectedRateValue: string,
+  customRateValue: string
+): number | null => {
+  if (selectedRateValue === "custom") {
+    const parsed = Number(customRateValue)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
   const match = offerRates.find((rate) => rate.value === selectedRateValue)
   if (!match) return null
   const parsed = Number(match.price.replace(/[^0-9.]/g, ""))
@@ -603,6 +614,21 @@ export function OfferDialog({
   // Defaults to "week" per explicit request — not an empty placeholder,
   // and not "day" (Figma's own rest state) — overridden on purpose.
   const [customFrequency, setCustomFrequency] = React.useState("week")
+  // T4-A: selectedRate/selectedDuration double as their own "custom row is
+  // open" flag — the literal value "custom" means the row is showing and
+  // the tiles above it are deselected (RadioGroup/tile highlighting below
+  // already compares against selectedRate/selectedDuration directly, so
+  // this falls out for free rather than needing a second boolean kept in
+  // sync with it, the way customScheduleOpen has to be kept in sync with
+  // schedule).
+  const [customRateValue, setCustomRateValue] = React.useState("")
+  const [customDurationValue, setCustomDurationValue] = React.useState("")
+  // No default named anywhere in the ticket; "Months" chosen only because
+  // it's first in the unit list, same non-empty-default reasoning as
+  // customFrequency above — an empty Select would have no placeholder to
+  // fall back on either.
+  const [customDurationUnit, setCustomDurationUnit] =
+    React.useState<"Months" | "Years">("Months")
   // Same class of blur-vs-click race T1-5 fixed on the Cancel button
   // (onMouseDown + preventDefault, below): a blur fired by clicking
   // somewhere INSIDE this row shouldn't count as "done with the field."
@@ -823,6 +849,15 @@ export function OfferDialog({
       Number(customHours) <= CUSTOM_HOURS_MAX[customFrequency] &&
       customFrequency
     )
+  // T4-A/AC-14.3 & AC-15.3: same shape as isCustomScheduleIncomplete above —
+  // selectedRate/selectedDuration being "custom" is itself the "row is
+  // open" signal (see the state declarations), so a revealed-but-empty (or
+  // zero) custom value is caught here rather than by isOfferReady seeing a
+  // truthy-but-meaningless "custom" string and calling it ready.
+  const isCustomRateIncomplete =
+    selectedRate === "custom" && !(Number(customRateValue) > 0)
+  const isCustomDurationIncomplete =
+    selectedDuration === "custom" && !(Number(customDurationValue) > 0)
   // AC-13.1: "A contract title input field is displayed and required" — doc
   // 04 §6 places it on the Send Offer screen, which is isStepThree here,
   // not just isStepFour. The input was only ever wired to isStepFour; this
@@ -848,7 +883,10 @@ export function OfferDialog({
         ? Boolean(
             schedule && contractTitle.trim() && selectedRate && selectedDuration
           )
-        : false) && !isCustomScheduleIncomplete
+        : false) &&
+    !isCustomScheduleIncomplete &&
+    !isCustomRateIncomplete &&
+    !isCustomDurationIncomplete
   const contractTitleError =
     showValidationErrors &&
     (isStepFour || isExistingContractOfferStep) &&
@@ -894,6 +932,9 @@ export function OfferDialog({
     setShowValidationErrors(false)
     setCustomScheduleOpen(false)
     setCustomHours("")
+    setCustomRateValue("")
+    setCustomDurationValue("")
+    setCustomDurationUnit("Months")
     setCustomFrequency("week")
     setIsFetchingTalent(false)
     setFetchedProfile(null)
@@ -1767,6 +1808,8 @@ export function OfferDialog({
                           <Input
                             className="mt-3"
                             placeholder="Enter your contract title"
+                            // AC-13.2
+                            maxLength={100}
                             value={contractTitle}
                             onChange={(event) =>
                               setContractTitle(event.target.value)
@@ -1815,9 +1858,52 @@ export function OfferDialog({
                               variant="link"
                               visual="gray"
                               className="mt-3 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                              onClick={() => setSelectedRate("custom")}
                             >
                               Custom Rate
                             </Button>
+                            {/* FR-4/AC-14.3: selectedRate === "custom" is the
+                            same value the RadioGroup above compares against,
+                            so a predefined tile click (which sets
+                            selectedRate to that tile's own value) closes
+                            this row for free — no second boolean to keep in
+                            sync, and AC-14.2's "vice versa" falls out of the
+                            same comparison. */}
+                            {selectedRate === "custom" ? (
+                              <div className="mt-3">
+                                <Input
+                                  autoFocus
+                                  className="w-full"
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="Enter hourly rate"
+                                  value={customRateValue}
+                                  onChange={(event) => {
+                                    // T4-A: same keystroke-level whole-value
+                                    // rejection as customHours (T1-6/T1-12)
+                                    // below — reject the candidate outright
+                                    // rather than stripping bad characters,
+                                    // so the caret never jumps. Decimals ARE
+                                    // allowed here unlike customHours — this
+                                    // is a dollar rate, not a whole-hours
+                                    // count, and cents are a normal input.
+                                    const value = event.target.value
+                                    if (/^\d*(\.\d{0,2})?$/.test(value)) {
+                                      setCustomRateValue(value)
+                                    }
+                                  }}
+                                />
+                                {/* No inline "must be greater than zero"
+                                message on purpose — Figma doesn't show one
+                                on this screen and Figma outranks the ticket
+                                (same call already made for custom schedule).
+                                An empty or zero value just keeps Send Offer
+                                disabled via isCustomRateIncomplete; nothing
+                                renders here to say why. The ticket does
+                                specify copy for this state — deliberately
+                                not built, not an oversight. */}
+                              </div>
+                            ) : null}
                             {selectedRateError ? (
                               <ErrorMessage className="mt-2">
                                 {selectedRateError}
@@ -1852,9 +1938,63 @@ export function OfferDialog({
                               variant="link"
                               visual="gray"
                               className="mt-3 ml-auto flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
+                              onClick={() => setSelectedDuration("custom")}
                             >
                               Custom Duration
                             </Button>
+                            {/* FR-6/AC-15.3: same "custom" sentinel doubling
+                            as the open flag as Custom Rate above — a tile
+                            click sets selectedDuration to that tile's own
+                            string, which isn't "custom", so this row and the
+                            tile highlighting above both fall out of the one
+                            comparison (AC-15.2). */}
+                            {selectedDuration === "custom" ? (
+                              <div className="mt-3 flex gap-3">
+                                <Input
+                                  autoFocus
+                                  className="flex-1"
+                                  type="text"
+                                  inputMode="numeric"
+                                  placeholder="Enter duration"
+                                  value={customDurationValue}
+                                  onChange={(event) => {
+                                    // Same whole-value keystroke rejection as
+                                    // customHours/customRateValue — integers
+                                    // only, no fractional months/years.
+                                    const value = event.target.value
+                                    if (/^\d*$/.test(value)) {
+                                      setCustomDurationValue(value)
+                                    }
+                                  }}
+                                />
+                                <Select
+                                  value={customDurationUnit}
+                                  onValueChange={(value) =>
+                                    setCustomDurationUnit(
+                                      value as "Months" | "Years"
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-[140px] shrink-0 text-left">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Months">
+                                      Months
+                                    </SelectItem>
+                                    <SelectItem value="Years">
+                                      Years
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                {/* No inline "must be greater than zero"
+                                message here either — same Figma-outranks-
+                                the-ticket call as Custom Rate above. Empty
+                                or zero keeps Send Offer disabled via
+                                isCustomDurationIncomplete; nothing renders
+                                to explain why. Deliberate, not an oversight. */}
+                              </div>
+                            ) : null}
                             {selectedDurationError ? (
                               <ErrorMessage className="mt-2">
                                 {selectedDurationError}
@@ -2424,11 +2564,27 @@ export function OfferDialog({
                       await addContractGroupMember(selectedContract.id, {
                         talentId: hiredTalentId,
                         title: contractTitle.trim(),
-                        // T2-14 report: fabricated — see offerRates' own
-                        // comment above. Not the talent's real rate.
-                        rate: parseFabricatedRateValue(selectedRate) ?? 0,
+                        // T2-14 report: fabricated for the predefined
+                        // tiles — see offerRates' own comment above. Not the
+                        // talent's real rate. T4-A: when custom is active
+                        // this is the real number the user typed, not a
+                        // fabricated tile price.
+                        rate:
+                          parseFabricatedRateValue(
+                            selectedRate,
+                            customRateValue
+                          ) ?? 0,
                         schedule,
-                        duration: selectedDuration,
+                        // T4-A: selectedDuration holds the literal string
+                        // "custom" while that row is open (see the state
+                        // declaration) — that sentinel is meaningless to
+                        // the backend, so it's formatted into the same
+                        // shape as the predefined tiles ("5 Months") right
+                        // here, at the one place this payload is built.
+                        duration:
+                          selectedDuration === "custom"
+                            ? `${customDurationValue} ${customDurationUnit}`
+                            : selectedDuration,
                       })
                     } catch (error: any) {
                       setIsSubmittingOffer(false)
