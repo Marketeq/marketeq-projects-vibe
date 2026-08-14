@@ -58,12 +58,13 @@ export class RecentlyViewedService {
   }
 
   async getRecommended(userId: string, limit = 8) {
-    // Get user's recent views to build interest profile
-    const views = await this.repo.find({
-      where: { userId },
-      order: { viewedAt: 'DESC' },
-      take: 20,
-    });
+    const views = userId
+      ? await this.repo.find({
+          where: { userId },
+          order: { viewedAt: 'DESC' },
+          take: 20,
+        })
+      : [];
 
     const viewedIds = views.map((v) => v.projectId);
 
@@ -74,7 +75,10 @@ export class RecentlyViewedService {
         order: { featured: 'DESC', rating: 'DESC' },
         take: limit,
       });
-      return popular.map((p) => this.shapeRecommendation(p));
+      const avatars = await this.resolveTeamAvatars(popular);
+      return popular.map((p) =>
+        this.shapeRecommendation(p, avatars.get(String(p.id)) ?? []),
+      );
     }
 
     // Build interest profile from viewed projects
@@ -118,10 +122,14 @@ export class RecentlyViewedService {
 
     scored.sort((a, b) => b.score - a.score);
 
-    return scored.slice(0, limit).map((s) => this.shapeRecommendation(s.project));
+    const top = scored.slice(0, limit).map((s) => s.project);
+    const avatars = await this.resolveTeamAvatars(top);
+    return top.map((p) =>
+      this.shapeRecommendation(p, avatars.get(String(p.id)) ?? []),
+    );
   }
 
-  private shapeRecommendation(p: Project) {
+  private shapeRecommendation(p: Project, teamAvatars: string[] = []) {
     return {
       id: p.id,
       slug: p.slug,
@@ -132,7 +140,45 @@ export class RecentlyViewedService {
       duration: p.duration ?? null,
       rating: p.rating != null ? Number(p.rating) : 0,
       reviewCount: p.reviewCount ?? 0,
+      teamAvatars,
       featured: p.featured ?? false,
     };
+  }
+
+  private async resolveTeamAvatars(
+    projects: Project[],
+  ): Promise<Map<string, string[]>> {
+    const idsByProject = new Map<string, string[]>();
+    const allIds = new Set<string>();
+    for (const p of projects) {
+      const memberIds =
+        Array.isArray(p.teamMemberIds) && p.teamMemberIds.length
+          ? p.teamMemberIds
+          : p.userId
+            ? [String(p.userId)]
+            : [];
+      idsByProject.set(String(p.id), memberIds);
+      memberIds.forEach((id) => allIds.add(id));
+    }
+    if (allIds.size === 0) return new Map();
+
+    const rows: Array<{ id: string; avatarUrl: string | null }> =
+      await this.projectRepo.manager.query(
+        `SELECT id::text, "avatarUrl" FROM user_service.users WHERE id = ANY($1::uuid[])`,
+        [Array.from(allIds)],
+      );
+    const avatarById = new Map(rows.map((r) => [r.id, r.avatarUrl]));
+
+    const result = new Map<string, string[]>();
+    for (const [projectId, memberIds] of idsByProject) {
+      result.set(
+        projectId,
+        memberIds
+          .map((id) => avatarById.get(id))
+          .filter((url): url is string => Boolean(url))
+          .slice(0, 4),
+      );
+    }
+    return result;
   }
 }

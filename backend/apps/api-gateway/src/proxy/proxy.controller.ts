@@ -236,7 +236,12 @@ export class ProxyController {
       prefix = 'users'
     } else if (prefix === 'v1' && USER_SERVICE_V1_RESOURCES.has(segments[1])) {
       prefix = 'users'
-    } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
+    } else if (
+      prefix === 'v1' &&
+      (segments[1] === 'projects' ||
+        segments[1] === 'services' ||
+        segments[1] === 'recently-viewed')
+    ) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
       prefix = 'messages'

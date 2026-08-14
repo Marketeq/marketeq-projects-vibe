@@ -19,6 +19,7 @@ import {
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
 import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
+import { RelatedTermsService } from './related-terms.service';
 
 @Injectable()
 export class ProjectsService {
@@ -39,6 +40,7 @@ export class ProjectsService {
     private readonly algoliaClient: ClientProxy,
     @Inject(FAQ_ADAPTER)
     private readonly faqAdapter: FaqAdapter,
+    private readonly relatedTerms: RelatedTermsService,
   ) {}
 
   async getSuggestedQuestions(projectId: string): Promise<string[]> {
@@ -115,23 +117,42 @@ export class ProjectsService {
   }
 
   async findBySlug(slug: string) {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        slug,
+      );
     const item = await this.repo.findOne({
-      where: { slug, status: ListingStatus.Published, listingType: 'project' },
+      where: {
+        ...(isUuid ? { id: slug } : { slug }),
+        status: ListingStatus.Published,
+        listingType: 'project',
+      },
     });
     if (!item) throw new NotFoundException('Project not found');
 
-    const [similarProjects, projectHistoryRatings, team] = await Promise.all([
+    const [
+      similarProjects,
+      projectHistoryRatings,
+      team,
+      relatedCategories,
+      relatedSkills,
+    ] = await Promise.all([
       this.getSimilarProjects(item),
       this.getProjectHistoryRatings(item),
       this.resolveTeamMembers(item),
+      this.relatedTerms.relatedCategories([
+        ...(item.categories ?? []),
+        ...(item.subcategories ?? []),
+      ]),
+      this.relatedTerms.relatedSkills(this.getSkillsAndTools(item)),
     ]);
 
     return {
       ...this.shapeProject(item),
       ownerId: item.userId ? String(item.userId) : null,
       similarProjects,
-      relatedCategories: this.getRelatedCategories(item),
-      relatedSkills: this.getRelatedSkills(item),
+      relatedCategories,
+      relatedSkills,
       team,
       isTemporarilyUnavailable: team.length === 0,
       projectHistoryRatings,
@@ -191,20 +212,27 @@ export class ProjectsService {
       langsByUser.set(l.userId, arr);
     });
 
-    return users.map((u) => ({
-      id: u.id,
-      firstName: u.firstName ?? '',
-      lastName: u.lastName ?? '',
-      name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
-      username: u.username ?? u.id,
-      avatarUrl: u.avatarUrl ?? null,
-      role: u.recentJobTitle ?? 'Team Member',
-      location: u.location ?? null,
-      isLead: u.id === String(project.userId),
-      isOnline: false,
-      skills: skillsByUser.get(u.id) ?? [],
-      languages: langsByUser.get(u.id) ?? [],
-    }));
+    const ownerUserId = String(project.userId ?? '');
+    return users
+      .map((u) => ({
+        id: u.id,
+        firstName: u.firstName ?? '',
+        lastName: u.lastName ?? '',
+        name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+        username: u.username ?? u.id,
+        avatarUrl: u.avatarUrl ?? null,
+        role: u.recentJobTitle ?? 'Team Member',
+        location: u.location ?? null,
+        isLead: u.id === String(project.userId),
+        isOnline: false,
+        skills: skillsByUser.get(u.id) ?? [],
+        languages: langsByUser.get(u.id) ?? [],
+      }))
+      .sort((a, b) => {
+        if (a.id === ownerUserId) return -1;
+        if (b.id === ownerUserId) return 1;
+        return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
+      });
   }
 
   async seedFromN8n(dto: Record<string, any>) {
@@ -522,31 +550,19 @@ export class ProjectsService {
     );
   }
 
-  private getRelatedCategories(project: Project): string[] {
-    return Array.from(
-      new Set([
-        ...(project.categories ?? []),
-        ...(project.subcategories ?? []),
-      ]),
-    ).filter((value) => value !== project.category);
-  }
-
-  private getRelatedSkills(project: Project): string[] {
-    return this.getSkillsAndTools(project).slice(0, 12);
-  }
 
   private async getSimilarProjects(project: Project) {
     const published = await this.repo.find({
       where: { status: ListingStatus.Published, listingType: 'project' },
       order: { featured: 'DESC', createdAt: 'DESC' },
-      take: 25,
+      take: 200,
     });
 
     const sourceSkills = new Set(project.skills ?? []);
     const sourceTags = new Set(project.tags ?? []);
     const sourceSubcategories = new Set(project.subcategories ?? []);
 
-    return published
+    const top = published
       .filter((candidate) => candidate.id !== project.id)
       .map((candidate) => {
         const score =
@@ -555,16 +571,72 @@ export class ProjectsService {
           this.overlapRatio(sourceSubcategories, candidate.subcategories) * 0.2;
 
         return {
-          id: String(candidate.id),
-          slug: candidate.slug,
-          title: candidate.title,
-          thumbnail: candidate.mediaUrls?.[0] ?? null,
+          candidate,
           score: Number(score.toFixed(3)),
+          engagement: this.engagementScore(candidate),
         };
       })
-      .filter((candidate) => candidate.score > 0)
-      .sort((a, b) => b.score - a.score)
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.engagement - a.engagement || b.score - a.score)
       .slice(0, 6);
+
+    const avatarsByProject = await this.resolveTeamAvatars(
+      top.map((entry) => entry.candidate),
+    );
+
+    return top.map(({ candidate, score }) => ({
+      id: String(candidate.id),
+      slug: candidate.slug,
+      title: candidate.title,
+      shortDescription: candidate.shortDescription ?? null,
+      thumbnail: candidate.mediaUrls?.[0] ?? null,
+      budget:
+        candidate.budget != null && candidate.budget !== ('' as any)
+          ? Number(candidate.budget)
+          : null,
+      duration: candidate.duration ?? null,
+      rating: candidate.rating != null ? Number(candidate.rating) : 0,
+      reviewCount: candidate.reviewCount ?? 0,
+      teamAvatars: avatarsByProject.get(String(candidate.id)) ?? [],
+      score,
+    }));
+  }
+
+  private async resolveTeamAvatars(
+    projects: Project[],
+  ): Promise<Map<string, string[]>> {
+    const idsByProject = new Map<string, string[]>();
+    const allIds = new Set<string>();
+    for (const p of projects) {
+      const memberIds =
+        Array.isArray(p.teamMemberIds) && p.teamMemberIds.length
+          ? p.teamMemberIds
+          : p.userId
+            ? [String(p.userId)]
+            : [];
+      idsByProject.set(String(p.id), memberIds);
+      memberIds.forEach((id) => allIds.add(id));
+    }
+    if (allIds.size === 0) return new Map();
+
+    const rows: Array<{ id: string; avatarUrl: string | null }> =
+      await this.repo.manager.query(
+        `SELECT id::text, "avatarUrl" FROM user_service.users WHERE id = ANY($1::uuid[])`,
+        [Array.from(allIds)],
+      );
+    const avatarById = new Map(rows.map((r) => [r.id, r.avatarUrl]));
+
+    const result = new Map<string, string[]>();
+    for (const [projectId, memberIds] of idsByProject) {
+      result.set(
+        projectId,
+        memberIds
+          .map((id) => avatarById.get(id))
+          .filter((url): url is string => Boolean(url))
+          .slice(0, 4),
+      );
+    }
+    return result;
   }
 
   private async getProjectHistoryRatings(project: Project) {
@@ -653,35 +725,61 @@ export class ProjectsService {
     const project = await this.repo.findOne({ where: { id: projectId } });
     if (!project) throw new NotFoundException('Project not found');
 
-    // Gather seed terms from this project's metadata
-    const seedTerms = new Set<string>([
+    const ownTerms = [
       ...(project.skills ?? []),
       ...(project.tags ?? []),
       ...(project.programmingLanguages ?? []),
       ...(project.developmentTech ?? []),
       ...(project.subcategories ?? []),
-    ]);
+    ]
+      .map((t) => t?.trim())
+      .filter((t): t is string => !!t);
 
-    // Fetch related published projects to expand the term pool
+    const ownSet = new Set(ownTerms.map((t) => t.toLowerCase()));
+
     const related = await this.repo.find({
       where: { status: ListingStatus.Published, listingType: 'project' },
       select: ['skills', 'tags', 'programmingLanguages', 'developmentTech', 'subcategories'],
-      take: 50,
+      take: 200,
     });
 
+    const freq = new Map<string, { term: string; count: number }>();
     for (const r of related) {
-      for (const arr of [r.skills, r.tags, r.programmingLanguages, r.developmentTech, r.subcategories]) {
-        if (!arr) continue;
-        for (const term of arr) {
-          seedTerms.add(term);
-        }
+      const terms = [
+        ...(r.skills ?? []),
+        ...(r.tags ?? []),
+        ...(r.programmingLanguages ?? []),
+        ...(r.developmentTech ?? []),
+        ...(r.subcategories ?? []),
+      ]
+        .map((t) => t?.trim())
+        .filter((t): t is string => !!t);
+
+      if (!terms.some((t) => ownSet.has(t.toLowerCase()))) continue;
+
+      for (const t of terms) {
+        const key = t.toLowerCase();
+        if (ownSet.has(key)) continue;
+        const cur = freq.get(key);
+        if (cur) cur.count++;
+        else freq.set(key, { term: t, count: 1 });
       }
     }
 
-    // Return unique, non-empty terms up to the limit
-    return Array.from(seedTerms)
-      .filter((t) => t && t.trim().length > 0)
-      .slice(0, limit);
+    const expansion = Array.from(freq.values())
+      .sort((a, b) => b.count - a.count)
+      .map((x) => x.term);
+
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of [...ownTerms, ...expansion]) {
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   async getRecommendedBySkills(skills: string[], limit = 10) {
@@ -760,5 +858,16 @@ export class ProjectsService {
     }
 
     return overlap / source.size;
+  }
+
+  private engagementScore(p: Project): number {
+    return (
+      Number(p.views90d ?? 0) * 1 +
+      Number(p.reviewCount ?? 0) * 5 +
+      Number(p.completionsCount ?? 0) * 10 +
+      Number(p.rating ?? 0) * 4 +
+      (p.featured ? 25 : 0) +
+      Number(p.adminBoost ?? 0)
+    );
   }
 }
