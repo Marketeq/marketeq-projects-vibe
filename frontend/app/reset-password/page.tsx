@@ -31,10 +31,7 @@ function ResetPassword() {
 
   const onSubmit = async ({ password }: { password: string }) => {
     if (!token) {
-      toast({
-        title: "Missing or invalid reset token",
-        variant: "destructive",
-      })
+      router.push("/forgot-password")
       return
     }
     setIsLoading(true)
@@ -120,22 +117,7 @@ function ResetPassword() {
         <NavigationForm onContinue={onContinue} isSubmitting={isContinuing} />
       ) : (
         <>
-          {!token && (
-            <div className="max-w-[592px] w-full mx-auto mt-10 px-5 md:px-[50px]">
-              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-dark-blue-400">
-                Missing reset token. Please use the link from your email or{" "}
-                <Link
-                  href="/forgot-password"
-                  className="underline font-semibold text-primary-500"
-                >
-                  request a new one
-                </Link>
-                .
-              </div>
-            </div>
-          )}
-
-          <UpdatePasswordForm onSubmit={onSubmit} />
+          <UpdatePasswordForm onSubmit={onSubmit} isLoading={isLoading} />
 
           <div className="max-w-[592px] mx-auto -mt-6 px-5 md:px-[50px] pb-10 w-full">
             <div className="flex items-center gap-x-2">

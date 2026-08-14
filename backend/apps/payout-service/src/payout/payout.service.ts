@@ -277,7 +277,7 @@ export class PayoutService {
 
     const rawToken = await this.magicLinkService.generateAndStore(request.id, contractorId);
     const expiresAt = new Date(Date.now() + this.magicLinkService.getTtlMs());
-    this.magicLinkService.publishMagicLinkEvent(request, rawToken).catch(err =>
+    this.magicLinkService.publishMagicLinkEvent(request, rawToken, contractorEmail).catch(err =>
       this.logger.error('Magic link send failed', err.message),
     );
 

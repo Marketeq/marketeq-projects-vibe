@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/my-listings"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
+import { DashboardAmount } from "@/components/dashboard-amount"
 import { useEditable } from "@ark-ui/react"
 import {
   AlertCircle,
@@ -984,17 +985,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                 </div>
 
                 <div className="space-y-2.5">
-                  <div className="flex items-center gap-x-0.5">
-                    <span className="text-xl leading-6 text-dark-blue-400/50">
-                      $
-                    </span>
-                    <h1 className="text-2xl leading-[29.05px] font-semibold text-dark-blue-400">
-                      66,777
-                      <span className="text-sm leading-[16.94px] text-dark-blue-400">
-                        .00
-                      </span>
-                    </h1>
-                  </div>
+                  <DashboardAmount whole="66,777" cents="00" />
 
                   <p className="text-[11px] leading-[13.31px] text-dark-blue-400">
                     Earnings since Jun 24, 2021
@@ -1017,17 +1008,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                 </div>
 
                 <div className="space-y-2.5">
-                  <div className="flex items-center gap-x-0.5">
-                    <span className="text-xl leading-6 text-dark-blue-400/50">
-                      $
-                    </span>
-                    <h1 className="text-2xl leading-[29.05px] font-semibold text-dark-blue-400">
-                      4,566
-                      <span className="text-sm leading-[16.94px] text-dark-blue-400">
-                        .00
-                      </span>
-                    </h1>
-                  </div>
+                  <DashboardAmount whole="4,566" cents="00" />
 
                   <p className="text-[11px] leading-[13.31px] text-dark-blue-400">
                     Earnings in August
@@ -1065,17 +1046,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                 <div className="flex items-center md:gap-x-[25px] min-[1024px]:gap-x-[30px] min-[1440px]:gap-x-[37px] xl:gap-x-[57px] 2xl:gap-x-[75px] justify-between">
                   <div className="space-y-2.5">
                     <div className="flex gap-x-1 items-center">
-                      <div className="flex items-center gap-x-0.5">
-                        <span className="text-xl leading-6 text-dark-blue-400/50">
-                          $
-                        </span>
-                        <h1 className="text-2xl leading-[29.05px] font-semibold text-dark-blue-400">
-                          800
-                          <span className="text-sm leading-[16.94px] text-dark-blue-400">
-                            .00
-                          </span>
-                        </h1>
-                      </div>
+                      <DashboardAmount whole="800" cents="00" />
 
                       <Badge visual="primary">Processing</Badge>
                     </div>

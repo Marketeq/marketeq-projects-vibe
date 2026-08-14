@@ -28,11 +28,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **PR gate checks (posted as GitHub commit statuses):**
 1. `Jenkins / SOP Check` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
-2. `Jenkins / AI Breakage Detector` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code.
-3. `Jenkins / Secret Scan` — gitleaks secret scanning on every PR.
-4. `Jenkins / Login Gate` — blocks PRs touching login/auth files unless repo owner approves.
-5. `Jenkins / Code Review` — AI code review on every PR to protected branches.
-6. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
+2. `Jenkins / Deep Regression Check` — Claude Sonnet 4.6 deep regression detector. Reads full before/after files, traces import chains, checks API contracts, verifies data flows against REGRESSION_MANIFEST.json. BLOCKs PRs with critical regressions.
+3. `Jenkins / Branch Freshness` — blocks stale PRs. Detects when a branch is behind the base and has conflicting files (same file changed in both). Prevents regressions from merging outdated branches that silently overwrite newer code.
+4. `Jenkins / Secret Scan` — gitleaks secret scanning on every PR.
+5. `Jenkins / Login Gate` — blocks PRs touching login/auth files unless repo owner approves.
+6. `Jenkins / Code Review` — AI code review on every PR to protected branches.
+7. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
 
 **Post-merge enforcement (triggered on push to protected branches):**
 7. `post-merge-audit` — auto-reverts merges that bypassed SOP checks.
