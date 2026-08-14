@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
@@ -134,7 +135,7 @@ export default function ActiveProjectPage() {
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/">Dashboard</BreadcrumbLink>
+              <BreadcrumbLink href="/client-dashboard">Dashboard</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbItem>
               <BreadcrumbLink href="/my-contracts">My Contracts</BreadcrumbLink>
@@ -233,9 +234,11 @@ export default function ActiveProjectPage() {
                       </Avatar>
                     ))}
                   </AvatarGroup>
-                  <Button variant="outlined" visual="gray" size="sm" leftIcon={<FileCheck02 className="size-[15px]" />} className="rounded-[5px]">
-                    View Billing
-                  </Button>
+                  <Link href="/billing">
+                    <Button variant="outlined" visual="gray" size="sm" leftIcon={<FileCheck02 className="size-[15px]" />} className="rounded-[5px]">
+                      View Billing
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -288,7 +291,7 @@ export default function ActiveProjectPage() {
                         <div className="border border-gray-200 rounded-lg p-6 space-y-6">
                           <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold text-dark-blue-400">Tasks Progress</h3>
-                            <Button variant="link" visual="primary" size="sm" className="capitalize">View Tasks</Button>
+                            <Button variant="link" visual="primary" size="sm" className="capitalize" onClick={() => setActiveTab("tasks")}>View Tasks</Button>
                           </div>
                           <div>
                             <p className="text-xs font-medium text-gray-400 mb-4">
@@ -328,7 +331,9 @@ export default function ActiveProjectPage() {
                         <div className="border border-gray-200 rounded-lg p-6 space-y-6">
                           <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold text-dark-blue-400">Hours Logged</h3>
-                            <Button variant="link" visual="primary" size="sm" className="capitalize">View Timesheet</Button>
+                            <Link href="/earnings">
+                              <Button variant="link" visual="primary" size="sm" className="capitalize">View Timesheet</Button>
+                            </Link>
                           </div>
                           <div className="flex items-center justify-between gap-2 drop-shadow-[0px_1px_4px_rgba(0,0,0,0.03)] rounded-lg">
                             {[
@@ -377,7 +382,7 @@ export default function ActiveProjectPage() {
                             </div>
                           ))}
                           {/* View Team */}
-                          <div className="flex items-center gap-3 cursor-pointer group">
+                          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveTab("team")}>
                             <div className="flex items-center justify-center size-10 rounded-full border-2 border-gray-300 bg-white flex-none">
                               <span className="text-xs font-medium text-gray-500">+5</span>
                             </div>
@@ -468,7 +473,7 @@ export default function ActiveProjectPage() {
                           )
                         })}
                       </div>
-                      <Button variant="outlined" visual="gray" size="sm" className="w-full justify-center mt-6">
+                      <Button variant="outlined" visual="gray" size="sm" className="w-full justify-center mt-6" onClick={() => setActiveTab("activity")}>
                         View More
                       </Button>
                     </div>
