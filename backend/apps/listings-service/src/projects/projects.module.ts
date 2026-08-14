@@ -5,6 +5,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ProjectsController } from './projects.controller';
 import { ProjectsInternalController } from './projects-internal.controller';
 import { ProjectsService } from './projects.service';
+import { RelatedTermsService } from './related-terms.service';
 import { Project } from './entities/project.entity';
 import { DELIVERABLES_ADAPTER } from '../project-sync/deliverables/deliverables.adapter';
 import { DeliverablesAdapterHeuristic } from '../project-sync/deliverables/deliverables.adapter.heuristic';
@@ -37,6 +38,7 @@ import { FaqAdapterHuggingFace } from '../publish/faq/faq.adapter.huggingface';
   controllers: [ProjectsController, ProjectsInternalController],
   providers: [
     ProjectsService,
+    RelatedTermsService,
     DeliverablesAdapterHeuristic,
     DeliverablesAdapterHuggingFace,
     { provide: DELIVERABLES_ADAPTER, useExisting: DeliverablesAdapterHuggingFace },
