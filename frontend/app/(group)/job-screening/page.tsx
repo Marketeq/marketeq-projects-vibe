@@ -1352,7 +1352,7 @@ export default function JobScreeningPage() {
                       <div className="flex items-center gap-[10px]">
                         <div className="flex items-center gap-2">
                           <ReqCategoryIcon id="skills" />
-                          <span className="text-[14px] font-bold leading-[17px] text-dark-blue-400">
+                          <span className="text-sm font-bold leading-[17px] text-dark-blue-400">
                             Skills
                           </span>
                         </div>
@@ -1364,7 +1364,7 @@ export default function JobScreeningPage() {
                             className="shrink-0 text-primary-500"
                             trackClassName="stroke-gray-100"
                           />
-                          <span className="whitespace-nowrap text-[12px] font-medium leading-[15px] text-dark-blue-400">
+                          <span className="whitespace-nowrap text-xs font-medium leading-[15px] text-dark-blue-400">
                             40% match
                           </span>
                         </div>
@@ -1376,7 +1376,7 @@ export default function JobScreeningPage() {
                             className="flex items-center gap-1 rounded-full bg-gray-100 px-[7px] py-1"
                           >
                             <Check className="size-[15px] shrink-0 text-primary-500" />
-                            <span className="whitespace-nowrap text-[12px] font-medium leading-[15px] text-gray-700">
+                            <span className="whitespace-nowrap text-xs font-medium leading-[15px] text-gray-700">
                               {skill}
                             </span>
                           </span>
@@ -1405,90 +1405,120 @@ export default function JobScreeningPage() {
 
                 {/* Dheeraj's Profile */}
                 <div className="flex flex-col gap-[26px]">
-                  <h2 className="text-[20px] font-bold leading-[24px] text-dark-blue-400">
+                  <h2 className="text-xl font-bold leading-6 text-dark-blue-400">
                     {selectedCandidate.name}&apos;s Profile
                   </h2>
 
                   {/* Portfolio images */}
-                  <div className="flex flex-col gap-3">
-                    <div className="flex gap-5">
-                      {[1, 2, 3].map((i) => (
-                        <div
-                          key={`portfolio-${i}`}
-                          className="flex-1 overflow-hidden rounded-lg border border-gray-200"
-                        >
-                          <div className="h-[144px] w-full bg-gradient-to-br from-blue-900 via-purple-600 to-pink-500" />
-                        </div>
-                      ))}
-                    </div>
-                    {/* View More divider */}
-                    <div className="flex items-center gap-1">
-                      <div className="h-px flex-1 bg-gray-200" />
-                      <span className="text-[12px] font-semibold leading-[20px] text-gray-500">
-                        View More
-                      </span>
-                      <div className="h-px flex-1 bg-gray-200" />
-                    </div>
-                  </div>
+                  <ExpandableSection
+                    previewContent={
+                      <div className="flex gap-5">
+                        {[1, 2, 3].map((i) => (
+                          <div
+                            key={`portfolio-${i}`}
+                            className="flex-1 overflow-hidden rounded-lg border border-gray-200"
+                          >
+                            <div className="h-[144px] w-full bg-gradient-to-br from-blue-900 via-purple-600 to-pink-500" />
+                          </div>
+                        ))}
+                      </div>
+                    }
+                    expandedContent={
+                      <div className="flex gap-5">
+                        {[4, 5, 6].map((i) => (
+                          <div
+                            key={`portfolio-${i}`}
+                            className="flex-1 overflow-hidden rounded-lg border border-gray-200"
+                          >
+                            <div className="h-[144px] w-full bg-gradient-to-br from-indigo-900 via-blue-600 to-cyan-500" />
+                          </div>
+                        ))}
+                      </div>
+                    }
+                    dividerStyle
+                  />
 
                   {/* Featured Clients + Certifications */}
                   <div className="flex flex-col gap-8">
                     {/* Featured Clients */}
                     <div className="flex flex-col gap-3">
-                      <span className="text-[14px] font-bold leading-[17px] text-dark-blue-400">
+                      <span className="text-sm font-bold leading-[17px] text-dark-blue-400">
                         Featured Clients
                       </span>
-                      <div className="flex flex-wrap items-center gap-6">
-                        {["Dropbox", "Microsoft", "Adobe", "Nasdaq"].map(
-                          (client) => (
-                            <span
-                              key={client}
-                              className="flex items-center gap-[6px] text-[14px] font-semibold text-dark-blue-400"
-                            >
-                              <span className="text-[16px]">
-                                {client === "Dropbox" && "⬡"}
-                                {client === "Microsoft" && "⊞"}
-                                {client === "Adobe" && "A"}
-                                {client === "Nasdaq" && "N"}
-                              </span>
-                              {client}
-                            </span>
-                          )
-                        )}
+                      <div className="flex flex-wrap items-center content-center gap-6">
+                        {[
+                          { name: "Dropbox", domain: "dropbox.com", width: 94 },
+                          { name: "Microsoft", domain: "microsoft.com", width: 96 },
+                          { name: "Adobe", domain: "adobe.com", width: 75 },
+                          { name: "Nasdaq", domain: "nasdaq.com", width: 84 },
+                        ].map((client) => (
+                          <div key={client.name} className="flex items-center gap-1.5">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`https://logo.clearbit.com/${client.domain}`}
+                              alt={client.name}
+                              className="h-5 w-auto object-contain"
+                              style={{
+                                filter: "brightness(0) saturate(100%) invert(17%) sepia(30%) saturate(2000%) hue-rotate(190deg) brightness(90%) contrast(90%)",
+                                maxWidth: client.width,
+                              }}
+                            />
+                          </div>
+                        ))}
                       </div>
                     </div>
 
                     {/* Certifications */}
                     <div className="flex flex-col gap-3">
-                      <span className="text-[14px] font-bold leading-[17px] text-dark-blue-400">
+                      <span className="text-sm font-bold leading-[17px] text-dark-blue-400">
                         Certifications
                       </span>
-                      <div className="flex flex-wrap items-center gap-6">
+                      <div className="flex flex-wrap items-center content-center gap-6">
                         {[
                           {
                             name: "Adobe Certified Professional",
-                            color: "#E6001F",
+                            logoUrl: "https://logo.clearbit.com/adobe.com",
+                            bgColor: "#E6001F",
                           },
                           {
                             name: "Google UX Design Certificate",
-                            color: "#4285F4",
+                            logoUrl: "https://logo.clearbit.com/google.com",
+                            bgColor: "#4285F4",
                           },
                           {
                             name: "Certified Wordpress Developer",
-                            color: "#028CB0",
+                            logoUrl: "https://logo.clearbit.com/wordpress.org",
+                            bgColor: "#028CB0",
                           },
                         ].map((cert) => (
                           <div
                             key={cert.name}
-                            className="flex items-center gap-[6px] rounded-[3px]"
+                            className="flex items-center gap-1.5 rounded-[3px]"
                           >
                             <div
-                              className="flex size-7 items-center justify-center rounded-[3px] text-[10px] font-bold text-white"
-                              style={{ backgroundColor: cert.color }}
+                              className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-[3px]"
+                              style={{ backgroundColor: cert.bgColor }}
                             >
-                              {cert.name.charAt(0)}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={cert.logoUrl}
+                                alt={cert.name}
+                                className="size-[18px] object-contain"
+                                style={{ filter: "brightness(0) invert(1)" }}
+                                onError={(e) => {
+                                  const target = e.currentTarget
+                                  target.style.display = "none"
+                                  const fallback = target.nextElementSibling as HTMLElement
+                                  if (fallback) fallback.style.display = "flex"
+                                }}
+                              />
+                              <span
+                                className="hidden items-center justify-center text-[10px] font-bold text-white"
+                              >
+                                {cert.name.charAt(0)}
+                              </span>
                             </div>
-                            <span className="text-[14px] font-medium leading-[17px] text-dark-blue-400">
+                            <span className="text-sm font-medium leading-[17px] text-dark-blue-400">
                               {cert.name}
                             </span>
                           </div>
@@ -1498,66 +1528,95 @@ export default function JobScreeningPage() {
                   </div>
 
                   {/* Work Experience */}
-                  <div className="flex flex-col gap-[7px]">
-                    <div className="flex flex-col gap-3">
-                      <span className="text-[14px] font-bold leading-[17px] text-dark-blue-400">
-                        Work Experience
-                      </span>
+                  <ExpandableSection
+                    previewContent={
+                      <div className="flex flex-col gap-3">
+                        <span className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                          Work Experience
+                        </span>
+                        <div className="flex gap-5">
+                          {[
+                            { title: "Service Advisor", duration: "3 yrs, 2 mo", company: "Pacific Motorsports" },
+                            { title: "Technical Consultant", duration: "2 yrs, 8 mo", company: "Accenture" },
+                            { title: "Sales Engineer", duration: "1 yr, 6 mo", company: "Oracle" },
+                          ].map((job) => (
+                            <div
+                              key={job.title}
+                              className="flex flex-1 flex-col justify-center rounded-lg border border-[#EAECF0] bg-white p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                            >
+                              <div className="flex flex-col gap-2">
+                                <span className="text-sm font-semibold leading-5 text-dark-blue-400">
+                                  {job.title}
+                                </span>
+                                <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
+                                  {job.duration}
+                                </span>
+                                <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
+                                  {job.company}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    }
+                    expandedContent={
                       <div className="flex gap-5">
-                        {[1, 2, 3].map((i) => (
+                        {[
+                          { title: "Senior Advisor", duration: "2 yrs, 4 mo", company: "AutoNation" },
+                          { title: "Account Manager", duration: "1 yr, 10 mo", company: "Salesforce" },
+                          { title: "Business Analyst", duration: "3 yrs", company: "Deloitte" },
+                        ].map((job) => (
                           <div
-                            key={`work-${i}`}
-                            className="flex flex-1 flex-col justify-center rounded-lg border border-gray-200 p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                            key={job.title}
+                            className="flex flex-1 flex-col justify-center rounded-lg border border-[#EAECF0] bg-white p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
                           >
                             <div className="flex flex-col gap-2">
-                              <span className="text-[14px] font-semibold leading-[20px] text-dark-blue-400">
-                                Service Advisor
+                              <span className="text-sm font-semibold leading-5 text-dark-blue-400">
+                                {job.title}
                               </span>
-                              <span className="text-[12px] font-normal leading-[15px] text-dark-blue-400">
-                                3 yrs, 2 mo
+                              <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
+                                {job.duration}
                               </span>
-                              <span className="text-[12px] font-normal leading-[15px] text-dark-blue-400">
-                                Pacific Motorsports
+                              <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
+                                {job.company}
                               </span>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                    <span className="text-[12px] font-semibold leading-[20px] text-gray-500">
-                      View More
-                    </span>
-                  </div>
+                    }
+                  />
 
                   {/* Education */}
                   <div className="flex flex-col gap-[7px]">
                     <div className="flex flex-col gap-3">
-                      <span className="text-[14px] font-bold leading-[17px] text-dark-blue-400">
+                      <span className="text-sm font-bold leading-[17px] text-dark-blue-400">
                         Education
                       </span>
                       <div className="flex gap-5">
-                        <div className="flex flex-1 flex-col justify-center rounded-lg border border-gray-200 p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]">
+                        <div className="flex flex-1 flex-col justify-center rounded-lg border border-[#EAECF0] bg-white p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]">
                           <div className="flex flex-col gap-2">
-                            <span className="text-[14px] font-semibold leading-[20px] text-dark-blue-400">
+                            <span className="text-sm font-semibold leading-5 text-dark-blue-400">
                               Master&apos;s of Science
                             </span>
-                            <span className="text-[12px] font-normal leading-[15px] text-dark-blue-400">
+                            <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
                               Business Management
                             </span>
-                            <span className="text-[12px] font-normal leading-[15px] text-dark-blue-400">
+                            <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
                               2013 - 2015
                             </span>
                           </div>
                         </div>
-                        <div className="flex flex-1 flex-col justify-center rounded-lg border border-gray-200 p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]">
+                        <div className="flex flex-1 flex-col justify-center rounded-lg border border-[#EAECF0] bg-white p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]">
                           <div className="flex flex-col gap-2">
-                            <span className="text-[14px] font-semibold leading-[20px] text-dark-blue-400">
+                            <span className="text-sm font-semibold leading-5 text-dark-blue-400">
                               Bachelor&apos;s of Science
                             </span>
-                            <span className="text-[12px] font-normal leading-[15px] text-dark-blue-400">
+                            <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
                               Computer Science
                             </span>
-                            <span className="text-[12px] font-normal leading-[15px] text-dark-blue-400">
+                            <span className="text-xs font-normal leading-[15px] text-dark-blue-400">
                               2013 - 2015
                             </span>
                           </div>
@@ -1569,22 +1628,22 @@ export default function JobScreeningPage() {
                   </div>
 
                   {/* Project History */}
-                  <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="flex items-start gap-x-[50px]">
+                  <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-12">
                       {/* Left: title + rating */}
-                      <div className="flex flex-1 flex-col gap-y-1.5 basis-[147px]">
-                        <h2 className="text-xl font-bold leading-none text-dark-blue-400">
+                      <div className="flex shrink-0 flex-col gap-1.5">
+                        <h2 className="text-xl font-bold leading-6 text-dark-blue-400">
                           Project History
                         </h2>
                         <RatingGroupRoot
-                          className="flex-row gap-x-1.5 mt-1.5"
+                          className="flex-row gap-1.5"
                           allowHalf
                           count={5}
                           defaultValue={4}
                           disabled
                         >
-                          <RatingGroupLabel size="sm">4.9</RatingGroupLabel>
-                          <RatingGroupControl>
+                          <RatingGroupLabel className="text-sm font-medium leading-none tracking-tight text-dark-blue-400">4.9</RatingGroupLabel>
+                          <RatingGroupControl className="gap-0.5">
                             <RatingGroupContext>
                               {({ items }) =>
                                 items.map((item) => (
@@ -1592,9 +1651,9 @@ export default function JobScreeningPage() {
                                     <RatingGroupItemContext>
                                       {({ half }) =>
                                         half ? (
-                                          <Star className="size-[18px] fill-primary-500/50 text-primary-500" />
+                                          <Star className="size-4.5 fill-primary-500/50 text-primary-500" />
                                         ) : (
-                                          <Star className="size-[18px] fill-primary-500 text-primary-500" />
+                                          <Star className="size-4.5 fill-primary-500 text-primary-500" />
                                         )
                                       }
                                     </RatingGroupItemContext>
@@ -1605,13 +1664,13 @@ export default function JobScreeningPage() {
                             <RatingGroupHiddenInput />
                           </RatingGroupControl>
                         </RatingGroupRoot>
-                        <span className="text-xs leading-6 text-dark-blue-400 underline transition duration-300 hover:text-primary-500 cursor-pointer">
+                        <span className="cursor-pointer text-xs font-normal leading-6 text-dark-blue-400 underline transition duration-300 hover:text-primary-500">
                           23 ratings
                         </span>
                       </div>
 
                       {/* Center: rating bars */}
-                      <div className="flex flex-1 flex-col gap-y-1 basis-[304px]">
+                      <div className="flex flex-1 flex-col gap-3">
                         {[
                           { level: 5, percent: 80, count: 53 },
                           { level: 4, percent: 10, count: 42 },
@@ -1621,13 +1680,13 @@ export default function JobScreeningPage() {
                         ].map((bar) => (
                           <div
                             key={`bar-${bar.level}`}
-                            className="flex items-center gap-x-2"
+                            className="flex items-center gap-2"
                           >
-                            <span className="text-xs font-semibold text-dark-blue-400">
+                            <span className="text-xs font-normal text-dark-blue-400">
                               {bar.level}
                             </span>
-                            <Progress className="flex-auto" value={bar.percent} />
-                            <span className="text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400">
+                            <Progress className="flex-1" value={bar.percent} />
+                            <span className="inline-flex items-center gap-1 text-xs font-normal text-dark-blue-400">
                               {bar.percent}% <span className="font-extralight">({bar.count})</span>
                             </span>
                           </div>
@@ -1635,7 +1694,7 @@ export default function JobScreeningPage() {
                       </div>
 
                       {/* Right: category ratings */}
-                      <div className="flex flex-1 flex-col basis-[304px] space-y-2">
+                      <div className="flex shrink-0 flex-col justify-between gap-1.5 self-stretch">
                         {[
                           { label: "Communication Level", score: 4.3 },
                           { label: "Responsiveness", score: 4.5 },
@@ -1645,14 +1704,14 @@ export default function JobScreeningPage() {
                         ].map((cat) => (
                           <div
                             key={cat.label}
-                            className="flex items-center justify-between"
+                            className="flex items-center justify-between gap-8"
                           >
-                            <span className="text-xs font-semibold leading-5 text-gray-500 underline transition duration-300 hover:text-gray-600 cursor-pointer">
+                            <span className="cursor-pointer text-xs font-semibold leading-5 text-gray-500 underline transition duration-300 hover:text-gray-600">
                               {cat.label}
                             </span>
-                            <div className="flex items-center gap-x-1">
-                              <Star className="size-3.5 fill-primary-500 text-primary-500" />
-                              <span className="text-[13px] font-medium leading-none text-dark-blue-400">
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Star className="size-4 fill-primary-500 text-primary-500 drop-shadow-sm" />
+                              <span className="text-sm font-medium leading-none text-dark-blue-400">
                                 {cat.score}
                               </span>
                             </div>
@@ -1684,6 +1743,65 @@ export default function JobScreeningPage() {
           savedPos={notesPanelPos}
           onPosChange={setNotesPanelPos}
         />
+      )}
+    </div>
+  )
+}
+
+// ---------- expandable section ----------
+
+function ExpandableSection({
+  previewContent,
+  expandedContent,
+  dividerStyle,
+}: {
+  previewContent: React.ReactNode
+  expandedContent: React.ReactNode
+  dividerStyle?: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState(0)
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.scrollHeight)
+    }
+  }, [expanded])
+
+  return (
+    <div className="flex flex-col">
+      {previewContent}
+      <div
+        style={{
+          maxHeight: expanded ? contentHeight : 0,
+          opacity: expanded ? 1 : 0,
+          transition: "max-height 200ms ease-in-out, opacity 150ms ease-in-out",
+          overflow: "hidden",
+        }}
+      >
+        <div ref={contentRef} className="pt-5">
+          {expandedContent}
+        </div>
+      </div>
+      {dividerStyle ? (
+        <div className="mt-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-gray-200" />
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs font-semibold leading-5 text-gray-500 underline-offset-2 transition-colors duration-300 hover:text-dark-blue-400 hover:underline"
+          >
+            {expanded ? "View Less" : "View More"}
+          </button>
+          <div className="h-px flex-1 bg-gray-200" />
+        </div>
+      ) : (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-[7px] self-start text-xs font-semibold leading-5 text-gray-500 underline-offset-2 transition-colors duration-300 hover:text-dark-blue-400 hover:underline"
+        >
+          {expanded ? "View Less" : "View More"}
+        </button>
       )}
     </div>
   )
@@ -1977,7 +2095,7 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "like" ? null : "like")}
-                    className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-gray-500 hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "like" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
@@ -1993,7 +2111,7 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "neutral" ? null : "neutral")}
-                    className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-gray-500 hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "neutral" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10" />
@@ -2017,7 +2135,7 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "dislike" ? null : "dislike")}
-                    className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-gray-500 hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "dislike" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
@@ -2037,7 +2155,7 @@ function DetailActionBar({
                   onClick={() => onSuperLike?.()}
                   className="flex size-[35px] items-center justify-center rounded-full border border-[#D0D5DD] bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 hover:bg-[#F2F4F7] hover:text-[#101828]"
                 >
-                  <Star className={`size-[15px] ${superLiked ? "fill-[#306CFE] text-[#306CFE]" : "text-[#667085]"}`} />
+                  <Star className={`size-[15px] ${superLiked ? "fill-[#306CFE] text-[#306CFE]" : "text-gray-500"}`} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="rounded-md bg-white px-[9px] py-1 text-xs font-semibold text-gray-700 shadow-lg">
@@ -2393,7 +2511,7 @@ function MatchIndicator({
           className="shrink-0 text-primary-500"
           trackClassName="stroke-gray-100"
         />
-        <span className="whitespace-nowrap text-[12px] font-medium leading-[15px] text-dark-blue-400">
+        <span className="whitespace-nowrap text-xs font-medium leading-[15px] text-dark-blue-400">
           {percent}% match
         </span>
       </>
@@ -2419,7 +2537,7 @@ function RequirementCategory({
       <div className="flex items-center gap-[10px]">
         <div className="flex items-center gap-2">
           <ReqCategoryIcon id={category.iconId} />
-          <span className="whitespace-nowrap text-[14px] font-bold leading-[17px] text-dark-blue-400">
+          <span className="whitespace-nowrap text-sm font-bold leading-[17px] text-dark-blue-400">
             {category.label}
           </span>
         </div>
@@ -2429,7 +2547,7 @@ function RequirementCategory({
         />
       </div>
       {category.requirement && (
-        <span className="text-[12px] font-normal leading-[15px] text-gray-500">
+        <span className="text-xs font-normal leading-[15px] text-gray-500">
           {category.requirement}
         </span>
       )}
@@ -2447,7 +2565,7 @@ function RequirementCategory({
               <X className="size-[15px] shrink-0 text-error-500" />
             )}
             <span
-              className={`whitespace-nowrap text-[12px] font-medium leading-[15px] ${
+              className={`whitespace-nowrap text-xs font-medium leading-[15px] ${
                 badge.matched ? "text-gray-700" : "text-error-500"
               }`}
             >
@@ -2572,7 +2690,7 @@ function FullWidthCandidateCard({
             <div className="flex items-center bg-white">
               <button
                 onClick={() => onVote?.(vote === "like" ? null : "like")}
-                className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-gray-500 hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M4.375 6.875l2.5-5.625a1.875 1.875 0 0 1 1.875 1.875V5.5h3.532a1.25 1.25 0 0 1 1.222 1.503l-1.035 4.84a1.25 1.25 0 0 1-1.222.907H4.375m0-5.875v5.875m0-5.875H2.5a.625.625 0 0 0-.625.625v4.625a.625.625 0 0 0 .625.625h1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
@@ -2580,7 +2698,7 @@ function FullWidthCandidateCard({
               </button>
               <button
                 onClick={() => onVote?.(vote === "neutral" ? null : "neutral")}
-                className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-gray-500 hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <circle cx="7.5" cy="7.5" r="5.625" stroke="currentColor" strokeWidth="1.25" />
@@ -2591,7 +2709,7 @@ function FullWidthCandidateCard({
               </button>
               <button
                 onClick={() => onVote?.(vote === "dislike" ? null : "dislike")}
-                className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-gray-500 hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M10.625 8.125l-2.5 5.625a1.875 1.875 0 0 1-1.875-1.875V9.5H2.718a1.25 1.25 0 0 1-1.222-1.503l1.035-4.84A1.25 1.25 0 0 1 3.753 2.25h6.872m0 5.875V2.25m0 5.875H12.5a.625.625 0 0 0 .625-.625V2.875A.625.625 0 0 0 12.5 2.25h-1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
@@ -2602,7 +2720,7 @@ function FullWidthCandidateCard({
               onClick={() => onSuperLike?.()}
               className="flex size-[35px] items-center justify-center rounded-full border border-[#D0D5DD] bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 hover:bg-[#F2F4F7] hover:text-[#101828]"
             >
-              <Star className={`size-[15px] ${superLiked ? "fill-[#306CFE] text-[#306CFE]" : "text-[#667085]"}`} />
+              <Star className={`size-[15px] ${superLiked ? "fill-[#306CFE] text-[#306CFE]" : "text-gray-500"}`} />
             </button>
           </div>
 
