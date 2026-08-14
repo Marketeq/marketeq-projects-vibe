@@ -574,6 +574,7 @@ export default function JobScreeningPage() {
   const [candidateSuperLikes, setCandidateSuperLikes] = useState<Set<string>>(new Set())
   const [candidateNotes, setCandidateNotes] = useState<Record<string, string>>({})
   const [notesOpen, setNotesOpen] = useState(false)
+  const [notesPanelPos, setNotesPanelPos] = useState<{ x: number; y: number } | null>(null)
   const [sortBy, setSortBy] = useState("recent")
 
   const activeFilterCount = [
@@ -1662,6 +1663,8 @@ export default function JobScreeningPage() {
           value={candidateNotes[selectedCandidate.id] ?? ""}
           onChange={(v) => setCandidateNotes((prev) => ({ ...prev, [selectedCandidate.id]: v }))}
           onClose={() => setNotesOpen(false)}
+          savedPos={notesPanelPos}
+          onPosChange={setNotesPanelPos}
         />
       )}
     </div>
@@ -1741,13 +1744,17 @@ function FloatingNotesPanel({
   value,
   onChange,
   onClose,
+  savedPos,
+  onPosChange,
 }: {
   value: string
   onChange: (v: string) => void
   onClose: () => void
+  savedPos: { x: number; y: number } | null
+  onPosChange: (pos: { x: number; y: number }) => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 300 })
+  const [pos, setPos] = useState(savedPos ?? { x: window.innerWidth - 450, y: window.innerHeight - 300 })
   const dragging = useRef(false)
   const dragOffset = useRef({ x: 0, y: 0 })
   const [snapping, setSnapping] = useState(false)
@@ -1800,7 +1807,9 @@ function FloatingNotesPanel({
       if (!dragging.current) return
       dragging.current = false
       setSnapping(true)
-      setPos(snapToCorner(e.clientX - dragOffset.current.x, e.clientY - dragOffset.current.y))
+      const snapped = snapToCorner(e.clientX - dragOffset.current.x, e.clientY - dragOffset.current.y)
+      setPos(snapped)
+      onPosChange(snapped)
       setTimeout(() => setSnapping(false), 300)
     }
     window.addEventListener("mousemove", onMouseMove)
