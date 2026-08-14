@@ -52,6 +52,14 @@ import {
   Button,
   Checkbox,
   CircularProgress,
+  Progress,
+  RatingGroupRoot,
+  RatingGroupLabel,
+  RatingGroupControl,
+  RatingGroupItem,
+  RatingGroupContext,
+  RatingGroupItemContext,
+  RatingGroupHiddenInput,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -1561,34 +1569,49 @@ export default function JobScreeningPage() {
                   </div>
 
                   {/* Project History */}
-                  <div className="rounded-lg border border-gray-200 p-6 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]">
-                    <div className="flex items-start justify-between gap-[50px]">
+                  <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                    <div className="flex items-start gap-x-[50px]">
                       {/* Left: title + rating */}
-                      <div className="flex flex-col gap-[6px]">
-                        <span className="text-[20px] font-bold leading-[24px] text-dark-blue-400">
+                      <div className="flex flex-1 flex-col gap-y-1.5 basis-[147px]">
+                        <h2 className="text-xl font-bold leading-none text-dark-blue-400">
                           Project History
-                        </span>
-                        <div className="flex items-start gap-[6px]">
-                          <span className="text-[14px] font-medium leading-[17px] tracking-[-1px] text-dark-blue-400">
-                            4.9
-                          </span>
-                          <div className="flex items-start gap-[2px]">
-                            {[1, 2, 3, 4].map((s) => (
-                              <Star
-                                key={`star-filled-${s}`}
-                                className="size-[18px] fill-primary-500 text-primary-500"
-                              />
-                            ))}
-                            <Star className="size-[18px] fill-primary-500/30 text-primary-500" />
-                          </div>
-                        </div>
-                        <span className="text-[12px] font-normal leading-[24px] text-dark-blue-400 underline">
+                        </h2>
+                        <RatingGroupRoot
+                          className="flex-row gap-x-1.5 mt-1.5"
+                          allowHalf
+                          count={5}
+                          defaultValue={4}
+                          disabled
+                        >
+                          <RatingGroupLabel size="sm">4.9</RatingGroupLabel>
+                          <RatingGroupControl>
+                            <RatingGroupContext>
+                              {({ items }) =>
+                                items.map((item) => (
+                                  <RatingGroupItem key={item} index={item}>
+                                    <RatingGroupItemContext>
+                                      {({ half }) =>
+                                        half ? (
+                                          <Star className="size-[18px] fill-primary-500/50 text-primary-500" />
+                                        ) : (
+                                          <Star className="size-[18px] fill-primary-500 text-primary-500" />
+                                        )
+                                      }
+                                    </RatingGroupItemContext>
+                                  </RatingGroupItem>
+                                ))
+                              }
+                            </RatingGroupContext>
+                            <RatingGroupHiddenInput />
+                          </RatingGroupControl>
+                        </RatingGroupRoot>
+                        <span className="text-xs leading-6 text-dark-blue-400 underline transition duration-300 hover:text-primary-500 cursor-pointer">
                           23 ratings
                         </span>
                       </div>
 
                       {/* Center: rating bars */}
-                      <div className="flex min-w-[200px] flex-col gap-3">
+                      <div className="flex flex-1 flex-col gap-y-1 basis-[304px]">
                         {[
                           { level: 5, percent: 80, count: 53 },
                           { level: 4, percent: 10, count: 42 },
@@ -1598,28 +1621,21 @@ export default function JobScreeningPage() {
                         ].map((bar) => (
                           <div
                             key={`bar-${bar.level}`}
-                            className="flex items-center gap-2"
+                            className="flex items-center gap-x-2"
                           >
-                            <span className="w-2 text-[12px] font-normal text-dark-blue-400">
+                            <span className="text-xs font-semibold text-dark-blue-400">
                               {bar.level}
                             </span>
-                            <div className="relative h-2 flex-1 rounded-full bg-gray-100">
-                              {bar.percent > 0 && (
-                                <div
-                                  className="absolute left-0 top-0 h-2 rounded-full bg-primary-500"
-                                  style={{ width: `${bar.percent}%` }}
-                                />
-                              )}
-                            </div>
-                            <span className="w-[53px] text-[12px] font-normal text-dark-blue-400">
-                              {bar.percent}% ({bar.count})
+                            <Progress className="flex-auto" value={bar.percent} />
+                            <span className="text-xs font-semibold leading-[21px] inline-flex items-center gap-x-1 text-dark-blue-400">
+                              {bar.percent}% <span className="font-extralight">({bar.count})</span>
                             </span>
                           </div>
                         ))}
                       </div>
 
                       {/* Right: category ratings */}
-                      <div className="flex flex-col gap-[6px]">
+                      <div className="flex flex-1 flex-col basis-[304px] space-y-2">
                         {[
                           { label: "Communication Level", score: 4.3 },
                           { label: "Responsiveness", score: 4.5 },
@@ -1629,14 +1645,14 @@ export default function JobScreeningPage() {
                         ].map((cat) => (
                           <div
                             key={cat.label}
-                            className="flex items-center justify-between gap-[53px]"
+                            className="flex items-center justify-between"
                           >
-                            <span className="text-[12px] font-semibold leading-[20px] text-gray-500 underline">
+                            <span className="text-xs font-semibold leading-5 text-gray-500 underline transition duration-300 hover:text-gray-600 cursor-pointer">
                               {cat.label}
                             </span>
-                            <div className="flex items-center gap-1 rounded shadow-[0px_0.75px_1.5px_rgba(16,24,40,0.05)]">
-                              <Star className="size-[15px] fill-primary-500 text-primary-500" />
-                              <span className="text-[14px] font-medium leading-[17px] text-dark-blue-400">
+                            <div className="flex items-center gap-x-1">
+                              <Star className="size-3.5 fill-primary-500 text-primary-500" />
+                              <span className="text-[13px] font-medium leading-none text-dark-blue-400">
                                 {cat.score}
                               </span>
                             </div>
