@@ -245,10 +245,10 @@ Reverts the offending merge so \`${BRANCH}\` returns to a known-good state.
 
 ### What happens next
 1. CTO (@CTorres9800) merges this auto-revert PR to restore \`${BRANCH}\`
-2. The original PR #${PR_NUMBER} has been **closed and labeled \`auto-reverted\`** — it is dead
+2. The original PR #${PR_NUMBER} has been **labeled \`auto-reverted\`** — do NOT re-merge it
 3. The author must **rebase their branch** on the updated \`${BRANCH}\` and open a **new PR**
 4. The new PR must pass ALL checks (including branch freshness: zero commits behind) before merge
-5. Re-merging the old PR is NOT allowed — the branch is stale and the PR is closed
+5. The source branch and code are preserved — nothing is deleted
 
 ### Why this exists
 Per Code Review SOP, red checks mean "do not merge". On the free GitHub org plan we cannot technically block the Merge button — so this workflow undoes bypasses post-hoc.
@@ -262,14 +262,11 @@ EOF
             gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
               -X POST -f "labels[]=auto-reverted" -f "labels[]=sop-violation" 2>/dev/null || true
 
-          # Close the original PR's source branch to prevent re-merge
-          # (The PR is already merged so we can't "close" it, but we delete the head branch
-          # to force the author to create a fresh rebased branch)
-          HEAD_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")
-          if [ -n "$HEAD_BRANCH" ] && [ "$HEAD_BRANCH" != "$BRANCH" ]; then
-            echo "Deleting stale source branch: $HEAD_BRANCH"
-            git push origin --delete "$HEAD_BRANCH" 2>/dev/null || true
-          fi
+          # Look up the source branch name for the tracking issue
+          HEAD_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "unknown")
+
+          # NOTE: We do NOT delete the source branch. The code must be preserved.
+          # The author rebases this branch and opens a new PR.
 
           # Open an issue tracking the violation
           gh issue create \
@@ -287,13 +284,13 @@ ${FAILED_LIST}
 **Actions taken automatically:**
 1. Revert PR opened to restore \`${BRANCH}\`
 2. Original PR labeled \`auto-reverted\`
-3. Source branch \`${HEAD_BRANCH}\` deleted to prevent re-merge
+3. Source branch \`${HEAD_BRANCH}\` preserved (code is NOT deleted)
 
 **Author must:**
-1. Create a new branch from current \`${BRANCH}\`
-2. Cherry-pick or reapply their changes
-3. Ensure zero commits behind \`${BRANCH}\`
-4. Open a new PR that passes all checks
+1. Rebase \`${HEAD_BRANCH}\` on the updated \`${BRANCH}\`: \`git fetch origin ${BRANCH} && git rebase origin/${BRANCH}\`
+2. Force-push the rebased branch: \`git push --force-with-lease\`
+3. Open a new PR from the rebased branch
+4. Ensure zero commits behind \`${BRANCH}\` before merging
 
 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
 EOF
