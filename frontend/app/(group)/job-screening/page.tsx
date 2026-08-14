@@ -72,6 +72,7 @@ import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
+  Label,
   Textarea,
   TooltipContent,
   TooltipProvider,
@@ -1852,12 +1853,12 @@ function FloatingNotesPanel({
 
       {/* Notes label + textarea */}
       <div className="flex flex-1 flex-col gap-1.5">
-        <label className="text-sm font-medium text-gray-700">Notes</label>
+        <Label size="sm">Notes</Label>
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="What makes them stand out?"
-          className="!h-[190px] resize-none rounded-[5px]"
+          className="!h-[190px]"
         />
       </div>
     </div>
