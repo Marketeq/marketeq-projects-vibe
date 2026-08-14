@@ -265,7 +265,7 @@ function ProjectListingCard({
         <div className="flex items-start justify-between gap-4">
           <NextLink
             href={computedHref}
-            className="max-w-[195px] text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
+            className="max-w-[195px] line-clamp-2 text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
           >
             {title || "The Ultimate Mobile App Experience"}
           </NextLink>
