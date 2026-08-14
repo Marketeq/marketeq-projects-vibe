@@ -11,7 +11,7 @@ name: Post-Merge SOP Audit
 
 on:
   push:
-    branches: [dev-main, staging, live-mvp]
+    branches: [dev-main, staging, live]
 
 permissions:
   contents: write
@@ -29,6 +29,16 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 50
+
+      - name: Resolve code-review team members
+        id: team
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Dynamically fetch team members so we never hardcode names
+          MEMBERS=$(gh api orgs/Marketeq/teams/code-review/members --jq '[.[].login] | join(",")' 2>/dev/null || echo "CTorres9800")
+          echo "members=$MEMBERS" >> "$GITHUB_OUTPUT"
+          echo "Code-review team: $MEMBERS"
 
       - name: Detect forced push
         id: force
@@ -49,7 +59,7 @@ jobs:
           gh issue create \
             --title "🚨 URGENT: forced push to ${{ github.ref_name }} by @${{ github.actor }}" \
             --label "urgent,force-push-violation" \
-            --assignee "CTorres9800" \
+            --assignee "${{ steps.team.outputs.members }}" \
             --body "$(cat <<EOF
 ## 🚨 Forced push detected
 
@@ -98,7 +108,7 @@ EOF
           gh issue create \
             --title "🚨 Direct push to ${{ github.ref_name }} bypassed PR review" \
             --label "urgent,sop-violation" \
-            --assignee "CTorres9800" \
+            --assignee "${{ steps.team.outputs.members }}" \
             --body "$(cat <<EOF
 ## Direct push bypass
 
@@ -136,7 +146,7 @@ EOF
           CHECKS=$(echo "$PR_JSON" | jq -c '.statusCheckRollup[]? | {name, status, conclusion}')
 
           FAILED=()
-          for needed in "Jenkins / SOP Check" "Jenkins / AI Breakage Detector" "Jenkins / Secret Scan" "Jenkins / Login Gate" "Jenkins / Code Review"; do
+          for needed in "Jenkins / SOP Check" "Jenkins / AI Breakage Detector" "Jenkins / Secret Scan" "Jenkins / Login Gate" "Jenkins / Code Review" "Branch Must Be Up-to-Date"; do
             STATUS=$(echo "$PR_JSON" | jq -r --arg n "$needed" '.statusCheckRollup[]? | select(.name == $n) | .conclusion // "missing"' | head -n1)
             if [ -z "$STATUS" ] || [ "$STATUS" = "missing" ]; then
               FAILED+=("$needed (not found)")
@@ -202,7 +212,7 @@ This PR was merged to \`${BRANCH}\` by @${{ github.actor }} even though one or m
 
 ${FAILED_LIST}
 
-Per Code Review SOP §6, this is an **unauthorized merge bypass**. An automatic revert PR is being opened. Only the CTO (@CTorres9800) may decide to re-merge this work — and only after every failing check is resolved.
+Per Code Review SOP §6, this is an **unauthorized merge bypass**. An automatic revert PR is being opened. Only @Marketeq/code-review may decide to re-merge this work — and only after every failing check is resolved.
 
 🤖 Auto-flagged by \`.github/workflows/post-merge-audit.yml\`
 EOF
@@ -215,7 +225,7 @@ EOF
             gh issue create \
               --title "🚨 Cannot auto-revert PR #${PR_NUMBER} (SOP bypass) — manual action required" \
               --label "urgent,sop-violation" \
-              --assignee "CTorres9800" \
+              --assignee "${{ steps.team.outputs.members }}" \
               --body "Could not automatically revert commit ${COMMIT_SHA} (PR #${PR_NUMBER}) because of follow-on commits. Please manually revert. Failing checks:\n\n${FAILED_LIST}"
             exit 1
           fi
@@ -227,9 +237,9 @@ EOF
             --base "$BRANCH" \
             --head "$REVERT_BRANCH" \
             --title "[SOP AUTO-REVERT] Revert #${PR_NUMBER} — merged despite failing checks" \
-            --assignee "CTorres9800" \
+            --reviewer "Marketeq/code-review" \
             --body "$(cat <<EOF
-## 🚨 Automatic SOP-violation revert
+## Automatic SOP-violation revert
 
 PR #${PR_NUMBER} was merged to \`${BRANCH}\` by @${{ github.actor }} despite one or more required SOP checks failing.
 
@@ -244,14 +254,55 @@ ${FAILED_LIST}
 Reverts the offending merge so \`${BRANCH}\` returns to a known-good state.
 
 ### What happens next
-- CTO (@CTorres9800) reviews this auto-revert
-- If the original intent was legitimate, the author fixes the failing checks on a new branch and re-opens a PR
-- This auto-revert is merged after CTO confirmation
+1. @Marketeq/code-review team merges this auto-revert PR to restore \`${BRANCH}\`
+2. The original PR #${PR_NUMBER} has been **labeled \`auto-reverted\`** — do NOT re-merge it
+3. The author must **rebase their branch** on the updated \`${BRANCH}\` and open a **new PR**
+4. The new PR must pass ALL checks (including branch freshness: zero commits behind) before merge
+5. The source branch and code are preserved — nothing is deleted
 
 ### Why this exists
 Per Code Review SOP, red checks mean "do not merge". On the free GitHub org plan we cannot technically block the Merge button — so this workflow undoes bypasses post-hoc.
 
-🤖 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
+Auto-opened by \`.github/workflows/post-merge-audit.yml\`
+EOF
+)"
+
+          # Label the original PR as auto-reverted so it's clearly dead
+          gh pr edit "$PR_NUMBER" --add-label "auto-reverted,sop-violation" 2>/dev/null || \
+            gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
+              -X POST -f "labels[]=auto-reverted" -f "labels[]=sop-violation" 2>/dev/null || true
+
+          # Look up the source branch name for the tracking issue
+          HEAD_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "unknown")
+
+          # NOTE: We do NOT delete the source branch. The code must be preserved.
+          # The author rebases this branch and opens a new PR.
+
+          # Open an issue tracking the violation
+          gh issue create \
+            --title "SOP Violation: PR #${PR_NUMBER} auto-reverted — branch was not up-to-date" \
+            --label "auto-reverted,sop-violation" \
+            --assignee "${{ steps.team.outputs.members }}" \
+            --body "$(cat <<EOF
+## Branch Freshness Violation
+
+PR #${PR_NUMBER} by @${AUTHOR} was merged to \`${BRANCH}\` while failing required checks.
+
+**Failing checks:**
+${FAILED_LIST}
+
+**Actions taken automatically:**
+1. Revert PR opened to restore \`${BRANCH}\`
+2. Original PR labeled \`auto-reverted\`
+3. Source branch \`${HEAD_BRANCH}\` preserved (code is NOT deleted)
+
+**Author must:**
+1. Rebase \`${HEAD_BRANCH}\` on the updated \`${BRANCH}\`: \`git fetch origin ${BRANCH} && git rebase origin/${BRANCH}\`
+2. Force-push the rebased branch: \`git push --force-with-lease\`
+3. Open a new PR from the rebased branch
+4. Ensure zero commits behind \`${BRANCH}\` before merging
+
+Auto-opened by \`.github/workflows/post-merge-audit.yml\`
 EOF
 )"
 

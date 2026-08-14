@@ -6851,7 +6851,7 @@ export default function PaymentPage() {
                             <button
                               key={bankOption.id}
                               type="button"
-                              className="flex h-[118px] items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-center shadow-sm transition hover:border-primary-300 hover:shadow-md"
+                              className="flex h-[118px] items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-center shadow-sm transition hover:border-primary-300"
                               disabled={isBankConnecting}
                               onClick={() =>
                                 handleStripeLinkBankSelect(bankOption.id)

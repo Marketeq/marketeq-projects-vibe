@@ -1,1194 +1,1013 @@
 # COMPONENTS.md -- Marketeq Design System Catalog
 
-> **RULE: NEVER build custom UI components. ONLY use existing components from `@/components/ui`. ONLY use existing Tailwind classes. Always search this catalog and Storybook first. Zero exceptions.**
+> **ALL components in this file originate from Storybook. Storybook is the single source of truth for all UI on this platform.**
 
-This file catalogs every component in the design system at `frontend/components/ui/`. Use this as the definitive reference before building any UI.
-
----
-
-## Table of Contents
-
-- [Accordion](#accordion)
-- [Alert](#alert)
-- [ApplePayCard / GooglePayCard](#applepaycard--googlepaycard)
-- [Autocomplete](#autocomplete)
-- [Avatar](#avatar)
-- [AvatarGroup](#avatargroup)
-- [Badge](#badge)
-- [BadgeGroup](#badgegroup)
-- [Breadcrumb](#breadcrumb)
-- [Button](#button)
-- [ButtonGroup](#buttongroup)
-- [Calendar](#calendar)
-- [Card](#card)
-- [Carousel](#carousel)
-- [Checkbox](#checkbox)
-- [CheckboxGroup](#checkboxgroup)
-- [Clipboard](#clipboard)
-- [Combobox](#combobox)
-- [Command](#command)
-- [CommandPalette](#commandpalette)
-- [CreditDebitCardArticle](#creditdebitcardarticle)
-- [DatePicker](#datepicker)
-- [Dialog](#dialog)
-- [Dropdown](#dropdown)
-- [DropdownMenu](#dropdownmenu)
-- [Dropzone](#dropzone)
-- [Editable](#editable)
-- [ErrorMessage](#errormessage)
-- [Favorite](#favorite)
-- [HelperText](#helpertext)
-- [HoverCard](#hovercard)
-- [IconButton](#iconbutton)
-- [ImageEditor](#imageeditor)
-- [Input](#input)
-- [InputGroup](#inputgroup)
-- [Label](#label)
-- [Listbox](#listbox)
-- [Map (GoogleMap)](#map-googlemap)
-- [NumberInput](#numberinput)
-- [PercentageInput](#percentageinput)
-- [PinInput](#pininput)
-- [Popover](#popover)
-- [Progress](#progress)
-- [RadioGroup](#radiogroup)
-- [RatingGroup](#ratinggroup)
-- [Reorder](#reorder)
-- [RmDialog](#rmdialog)
-- [RoundedButton](#roundedbutton)
-- [ScrollArea](#scrollarea)
-- [SearchField](#searchfield)
-- [Select](#select)
-- [Sidebar](#sidebar)
-- [Slider](#slider)
-- [Spinner](#spinner)
-- [Step](#step)
-- [StepIndicator](#stepindicator)
-- [Stepper](#stepper)
-- [Switch](#switch)
-- [Table](#table)
-- [Tabs](#tabs)
-- [TagsInput](#tagsinput)
-- [TextInput](#textinput)
-- [Textarea](#textarea)
-- [TimeField](#timefield)
-- [Toast](#toast)
-- [Toggle](#toggle)
-- [ToggleGroup](#togglegroup)
-- [Tooltip](#tooltip)
-- [Transitions](#transitions)
-
----
-
-## Accordion
-
-**Import:** `@/components/ui/accordion`
-
-Collapsible content sections built on Radix Accordion.
-
-**Exports:** `Accordion`, `AccordionItem`, `AccordionTrigger`, `AccordionContent`, `DisclosureContent`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `innerClassName` | `AccordionContent` | `string` | Class for the inner content wrapper |
-
-- `AccordionContent` includes border-top, padding, and slide animation.
-- `DisclosureContent` is a simpler variant without border or padding, only slide animation.
-
----
-
-## Alert
-
-**Import:** `@/components/ui/alert`
-
-Dismissible alert banner with icon, title, and description.
-
-**Exports:** `Alert`, `AlertContent`, `AlertIcon`, `AlertTitle`, `AlertDescription`, `CloseButton`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `variant` | `Alert` | `"default" \| "primary" \| "error" \| "warning" \| "success"` | `"default"` | Color scheme |
-| `open` | `Alert` | `boolean` | - | Controlled open state |
-| `onOpenChange` | `Alert` | `(open: boolean) => void` | - | Controlled callback |
-
----
-
-## ApplePayCard / GooglePayCard
-
-**Import:** `@/components/ui/apple-pay-card`
-
-Pre-built payment method display cards.
-
-**Exports:** `ApplePayCard`, `GooglePayCard`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `onRemove` | `() => void` | Remove button handler |
-| `amountToBePaid` | `string` | Displayed amount |
-
----
-
-## Autocomplete
-
-**Import:** `@/components/ui/autcomplete`
-
-Searchable dropdown built on Headless UI Combobox.
-
-**Exports:** `AutocompleteRoot`, `Autocomplete`, `AutocompleteLabel`, `AutocompleteTrigger`, `AutocompleteInput`, `AutocompleteButton`, `AutocompleteOptions`, `AutocompleteOption`
-
-**Also exports:** `LocationAutocomplete` (from `location-autocomplete.tsx`) -- pre-built Google Places location search.
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `invalid` | `AutocompleteInput` | `boolean` | Error state styling |
-
-- Default width: `w-[320px]` on `AutocompleteRoot`.
-
----
-
-## Avatar
-
-**Import:** `@/components/ui/avatar`
-
-User avatar with image, fallback initials, and online indicator. Radix-based.
-
-**Exports:** `Avatar`, `AvatarImage`, `AvatarFallback`, `AvatarFallbackIcon`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `size` | `Avatar` | `"xs" \| "sm" \| "md" \| "lg" \| "xl" \| "2xl" \| "3xl"` | - | Avatar size |
-| `isOnline` | `Avatar` | `boolean` | - | Shows green online badge |
-
----
-
-## AvatarGroup
-
-**Import:** `@/components/ui/avatar-group`
-
-Stacked avatar group with overflow count.
-
-**Exports:** `AvatarRoot`, `AvatarGroup`, `AvatarGroupButton`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `size` | `AvatarGroup` | `"xs" \| "sm" \| "md"` | - | Size of avatars |
-| `max` | `AvatarGroup` | `number` | - | Max visible avatars |
-| `excess` | `AvatarGroup` | `number` | - | Override excess count |
-| `excessClassName` | `AvatarGroup` | `string` | - | Class for +N badge |
-
----
-
-## Badge
-
-**Import:** `@/components/ui/badge`
-
-Inline status/tag badge with CVA variants.
-
-**Exports:** `Badge`, `badgeVariants`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `visual` | `"gray" \| "purple" \| "error" \| "warning" \| "success" \| "sky" \| "primary" \| "indigo" \| "pink" \| "rose" \| "orange"` | `"gray"` | Color scheme |
-| `size` | `"sm" \| "md" \| "lg"` | `"sm"` | Badge size |
-| `variant` | `"rounded" \| "circular"` | `"rounded"` | Border radius style |
-| `asChild` | `boolean` | - | Radix Slot pattern |
-
----
-
-## BadgeGroup
-
-**Import:** `@/components/ui/badge-group`
-
-Groups badges with overflow count.
-
-**Exports:** `BadgeGroup`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `max` | `number` | `3` | Max visible badges |
-| `excessClassName` | `string` | - | Class for +N text |
-
----
-
-## Breadcrumb
-
-**Import:** `@/components/ui/breadcrumb`
-
-Navigation breadcrumb trail.
-
-**Exports:** `Breadcrumb`, `BreadcrumbItem`, `BreadcrumbSeparator`, `BreadcrumbLink`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `separator` | `Breadcrumb` | `ReactNode` | `"/"` | Separator character |
-| `spacing` | `Breadcrumb` | `string` | - | Gap between items |
-| `isCurrentPage` | `BreadcrumbItem` | `boolean` | - | Marks active page |
-
----
-
-## Button
-
-**Import:** `@/components/ui/button`
-
-Primary action button with CVA variants.
-
-**Exports:** `Button`, `buttonVariants`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `visual` | `"primary" \| "error" \| "gray"` | `"primary"` | Color scheme |
-| `variant` | `"filled" \| "light" \| "outlined" \| "ghost" \| "link"` | `"filled"` | Button style |
-| `size` | `"sm" \| "md" \| "lg" \| "xl" \| "2xl"` | `"sm"` | Button size |
-| `asChild` | `boolean` | - | Radix Slot pattern |
-| `leftIcon` | `ReactNode` | - | Icon before text |
-| `rightIcon` | `ReactNode` | - | Icon after text |
-| `loading` | `boolean` | - | Shows loading spinner |
-| `loadingIcon` | `ReactNode` | - | Custom loading icon |
-
----
-
-## ButtonGroup
-
-**Import:** `@/components/ui/button-group`
-
-Groups buttons in a row or column.
-
-**Exports:** `ButtonGroup`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `direction` | `"vertical" \| "horizontal"` | - | Layout direction |
-| `asChild` | `boolean` | - | Radix Slot pattern |
-
-- Uses `grid gap-3` layout.
-
----
-
-## Calendar
-
-**Import:** `@/components/ui/calendar`
-
-Date selection calendars built on react-aria-components.
-
-**Exports:** `Calendar`, `RangeCalendar`, `DualCalendar`, `DoubleCalendar`, `DateRangeCalendar`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `value` | `Calendar` | `Date` | Selected date |
-| `onValueChange` | `Calendar` | `(date: Date) => void` | Selection handler |
-| `value` | `RangeCalendar` | `RangeValue` | `{ start: Date, end: Date }` |
-| `onValueChange` | `RangeCalendar` | `(range: RangeValue) => void` | Range selection handler |
-
-- `Calendar` includes a date text input and preset date selector.
-- `DualCalendar` / `DoubleCalendar` show two months side-by-side.
-
----
-
-## Card
-
-**Import:** `@/components/ui/card`
-
-Container cards for content display.
-
-**Exports (card.tsx):** `Card` -- simple bordered container with hover ring effect.
-
-**Exports (action-card.tsx):** `ActionCardRoot`, `ActionCardIcon`, `ActionCardContent`, `ActionCardTitle`, `ActionCardDescription`
-
-**Exports (article.tsx):** `Article`, `ArticleIcon`, `ArticleTitle`, `ArticleDescription`, `ArticleContent`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `variant` | `Article` | `"default" \| "outlined" \| "destructive"` | Visual style |
-| `isDragging` | `Article` | `boolean` | Drag state |
-| `isError` | `Article` | `boolean` | Error state |
-| `isSelected` | `Article` | `boolean` | Selected state |
-| `isGrabbed` | `Article` | `boolean` | Grab state |
-| `isOnCanvas` | `Article` | `boolean` | Canvas state |
-| `destructive` | `Article` | `boolean` | Destructive state |
-
-**Exports (version-card.tsx):** `VersionCardRoot`, `VersionCardHeader`, `VersionCardFooter`, `VersionCardTitle`, `VersionCardDescription`
-
----
-
-## Carousel
-
-**Import:** `@/components/ui/carousel`
-
-Scrollable content carousel built on embla-carousel-react.
-
-**Exports:** `Carousel`, `CarouselContent`, `CarouselItem`, `CarouselPrevious`, `CarouselNext`, `CarouselNextTrigger`, `CarouselPreviousTrigger`, `useCarousel`, `CarouselApi`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `orientation` | `Carousel` | `"horizontal" \| "vertical"` | `"horizontal"` | Scroll direction |
-| `opts` | `Carousel` | `EmblaOptionsType` | - | Embla options |
-| `plugins` | `Carousel` | `EmblaPluginType[]` | - | Embla plugins |
-| `setApi` | `Carousel` | `(api: EmblaCarouselType) => void` | - | API ref callback |
-
----
-
-## Checkbox
-
-**Import:** `@/components/ui/checkbox`
-
-Checkbox input built on Radix Checkbox.
-
-**Exports (checkbox.tsx):** `Checkbox`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"sm" \| "md" \| "lg"` | - | Checkbox size |
-| `variant` | `"rounded" \| "circular"` | - | Border radius style |
-| `checked` | `boolean \| "indeterminate"` | - | Supports indeterminate |
-
-**Exports (checkbox-selector.tsx):** `CheckboxSelector`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"sm" \| "md" \| "lg"` | - | Selector size |
-| `left` | `(props) => ReactNode` | - | Left content render prop |
-
-- Card-style checkbox with content area.
-
----
-
-## CheckboxGroup
-
-**Import:** `@/components/ui/checkbox-group`
-
-Simple wrapper for grouping checkboxes.
-
-**Exports:** `CheckboxGroup`
-
-- Default layout: `space-y-2.5`.
-
----
-
-## Clipboard
-
-**Import:** `@/components/ui/clipboard`
-
-Copy-to-clipboard with visual feedback. Ark UI based.
-
-**Exports:** `ClipboardRoot`, `ClipboardLabel`, `ClipboardControl`, `ClipboardInput`, `ClipboardTrigger`, `ClipboardIndicator`
-
----
-
-## Combobox
-
-**Import:** `@/components/ui/combobox`
-
-Searchable select dropdown built on Headless UI Combobox.
-
-**Exports:** `Combobox`, `ComboboxTrigger`, `ComboboxInput`, `ComboboxLabel`, `ComboboxButton`, `ComboboxOptions`, `ComboboxOption`, `ComboboxPrimitive`, `comboboxInputVariants`, `comboboxButtonVariants`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `visual` | `ComboboxInput` | `"default" \| "error" \| "gray"` | `"default"` | Color scheme |
-| `size` | `ComboboxInput` | `"sm" \| "lg"` | - | Input size |
-| `invalid` | `ComboboxInput` | `boolean` | - | Error state |
-
-- Default width: `w-[224px]` on `Combobox`.
-
----
-
-## Command
-
-**Import:** `@/components/ui/command`
-
-Command palette / search list built on cmdk.
-
-**Exports:** `Command`, `CommandDialog`, `CommandInput`, `CommandList`, `CommandEmpty`, `CommandGroup`, `CommandItem`, `CommandShortcut`, `CommandSeparator`
-
-- Default width: `w-[346px]`.
-
----
-
-## CommandPalette
-
-**Import:** `@/components/ui/command-palette`
-
-Full command palette with dialog, built on cmdk + Radix Dialog.
-
-**Exports:** `CommandPalette`, `CommandPaletteTitle`, `CommandPaletteDialog`, `CommandPaletteHeader`, `CommandPaletteDialogClose`, `CommandPaletteDialogTrigger`, `CommandPaletteInput`, `CommandPaletteList`, `CommandPaletteEmpty`, `CommandPaletteGroup`, `CommandPaletteItem`, `CommandPaletteShortcut`, `CommandPaletteSeparator`, `CommandPaletteDialogContent`
-
-- Max width: `728px`. Grid layout for items.
-
----
-
-## CreditDebitCardArticle
-
-**Import:** `@/components/ui/credit-debit-card-article`
-
-Credit/debit card input forms with auto card-type detection.
-
-**Exports:** `CreditDebitCardArticle`, `CreditDebitCardArticle2`, `CreditDebitCardArticle3`, `CreditCardCvvOrCvc`
-
-- Default export: `CreditDebitCardArticle1`
-- Auto-detects: Visa, Amex, Discover, Mastercard.
-- Integrates with react-hook-form.
-
----
-
-## DatePicker
-
-**Import:** `@/components/ui/date-picker`
-
-Date selection popover combining Button + Calendar.
-
-**Exports:** `DatePicker`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `value` | `Date` | - | Selected date |
-| `onValueChange` | `(value: Date) => void` | - | Selection handler |
-| `placeholder` | `string` | `"Select a date"` | Placeholder text |
-| `inputClassName` | `string` | - | Trigger button class |
-| `indicator` | `ReactNode` | Calendar icon | Left icon |
-
----
-
-## Dialog
-
-**Import:** `@/components/ui/dialog`
-
-Modal dialog built on Radix Dialog.
-
-**Exports:** `Dialog`, `DialogTrigger`, `DialogOverlay`, `DialogContent`, `DialogHeader`, `DialogFooter`, `DialogTitle`, `DialogDescription`, `DialogClose`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `contentVariant` | `DialogContent` | `"default" \| "unanimated"` | `"default"` | Animation mode |
-
-- Default max-width: `480px`.
-- Auto-injects `sr-only` title if none provided (accessibility).
-
----
-
-## Dropdown
-
-**Import:** `@/components/ui/dropdown`
-
-Popover-based dropdown with search and multi-select. Combines Popover + cmdk.
-
-**Exports:** `DropdownPopover`, `DropdownPopoverTrigger`, `DropdownPopoverContent`, `DropdownCommand`, `DropdownCommandInput`, `DropdownCommandEmpty`, `DropdownCommandGroup`, `DropdownCommandItem`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `multiple` | `DropdownPopover` | `boolean` | Enable multi-select |
-| `selected` | `DropdownPopover` | `string[]` | Selected values |
-| `onSelectedChange` | `DropdownPopover` | `(selected: string[]) => void` | Selection handler |
-| `itemValue` | `DropdownCommandItem` | `string` | Item identifier |
-
----
-
-## DropdownMenu
-
-**Import:** `@/components/ui/dropdown-menu`
-
-Context/action menu built on Radix DropdownMenu.
-
-**Exports:** `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`, `DropdownMenuItem`, `DropdownMenuCheckboxItem`, `DropdownMenuCheckItem`, `DropdownMenuRadioItem`, `DropdownMenuRadioTrigger`, `DropdownMenuRadioCheckItem`, `DropdownMenuLabel`, `DropdownMenuSeparator`, `DropdownMenuShortcut`, `DropdownMenuGroup`, `DropdownMenuPortal`, `DropdownMenuSub`, `DropdownMenuSubContent`, `DropdownMenuSubTrigger`, `DropdownMenuRadioGroup`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `visual` | `DropdownMenuItem` | `"default" \| "destructive"` | `"default"` | Item color |
-
----
-
-## Dropzone
-
-**Import:** `@/components/ui/dropzone`
-
-File upload dropzone built on react-dropzone.
-
-**Exports:** `Dropzone`, `SquareShapeDropzone`, `CircularProgressDropzone`, `DropzoneState`, `CircularProgressDropzoneState`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `maxFiles` | `Dropzone` | `number` | - | Max file count |
-| `maxSize` | `Dropzone` | `number` | - | Max file size in bytes |
-| `value` | `Dropzone` | `File[]` | - | Controlled file list |
-| `onValueChange` | `Dropzone` | `(files: File[]) => void` | - | File change handler |
-| `onRetry` | `Dropzone` | `() => void` | - | Retry upload handler |
-| `acceptedExtensions` | `Dropzone` | `string[]` | - | Allowed file types |
-| `size` | `Dropzone` | `"sm" \| "lg"` | - | Dropzone size |
-| `icon` | `Dropzone` | `ReactNode` | - | Custom upload icon |
-
-- Includes upload progress, error states, and image preview.
-
----
-
-## Editable
-
-**Import:** `@/components/ui/editable`
-
-Inline text editing built on Ark UI Editable.
-
-**Exports:** `EditableRootProvider`, `EditableRoot`, `EditableLabel`, `EditableArea`, `EditableInput`, `EditablePreview`, `EditableControl`, `EditableCancelTrigger`, `EditableSubmitTrigger`, `EditableEditTrigger`
-
----
-
-## ErrorMessage
-
-**Import:** `@/components/ui/error-message`
-
-Form field error text.
-
-**Exports:** `ErrorMessage`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"xs" \| "sm" \| "md" \| "lg"` | - | Text size |
-
-- Default: `text-error-500`, `role="alert"`.
-
----
-
-## Favorite
-
-**Import:** `@/components/ui/favorite`
-
-Star toggle button for favoriting items.
-
-**Exports:** `Favorite`, `FavoriteRoot`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `value` | `boolean` | Controlled state |
-| `onValueChange` | `(value: boolean) => void` | Toggle handler |
-| `defaultValue` | `boolean` | Initial state |
-| `starClassName` | `string` | Star icon class |
-
----
-
-## HelperText
-
-**Import:** `@/components/ui/helper-text`
-
-Form field helper/hint text.
-
-**Exports:** `HelperText`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"xs" \| "sm" \| "md" \| "lg"` | - | Text size |
-
-- Default: `text-gray-500`.
-
----
-
-## HoverCard
-
-**Import:** `@/components/ui/hover-card`
-
-Content card that appears on hover. Radix-based.
-
-**Exports:** `HoverCard`, `HoverCardTrigger`, `HoverCardContent`
-
-- Default `openDelay`: 300ms.
-- Default width: `w-[346px]`.
-
----
-
-## IconButton
-
-**Import:** `@/components/ui/icon-button`
-
-Square icon-only button with CVA variants.
-
-**Exports:** `IconButton`, `iconButtonVariants`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `visual` | `"primary" \| "error" \| "gray"` | `"primary"` | Color scheme |
-| `variant` | `"filled" \| "light" \| "outlined" \| "ghost"` | `"filled"` | Button style |
-| `size` | `"sm" \| "md" \| "lg" \| "xl" \| "2xl"` | `"sm"` | Button size |
-| `asChild` | `boolean` | - | Radix Slot pattern |
-
----
-
-## ImageEditor
-
-**Import:** `@/components/ui/image-editor`
-
-Dialog-based image crop/rotate/zoom editor using framer-motion.
-
-**Exports:** `PictureEditor`, `ImageEditor`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `variant` | `PictureEditor` | `"avatar" \| "image"` | Crop shape |
-| `onValueChange` | `PictureEditor` | `(dataUrl: string) => void` | Cropped image output |
-| `onSaveImage` | `PictureEditor` | `(file: File) => void` | Save handler |
-| `startingPoint` | `PictureEditor` | `ReactNode` | Initial trigger content |
-| `defaultDataUrl` | `PictureEditor` | `string` | Pre-loaded image |
-| `editDialogTitle` | `PictureEditor` | `string` | Dialog title |
-| `fallbackInitials` | `PictureEditor` | `string` | Avatar fallback text |
-
----
-
-## Input
-
-**Import:** `@/components/ui/input`
-
-Text input field with CVA variants.
-
-**Exports (input.tsx):** `Input`, `inputVariants`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `variant` | `"error"` | - | Error state styling |
-| `isInvalid` | `boolean` | - | Alternative error prop |
-
-- Default: `h-11`, `rounded-[5px]`, `shadow-xs`.
-
-**Exports (input-addon.tsx):** `InputLeftAddon`, `InputRightAddon`
-
-**Exports (input-element.tsx):** `InputLeftElement`, `InputRightElement`
-
-- Elements are absolutely positioned inside an InputGroup.
-
----
-
-## InputGroup
-
-**Import:** `@/components/ui/input-group`
-
-Container that coordinates Input with addons and elements.
-
-**Exports:** `InputGroup`, `InputGroupProvider`, `useInputGroupContext`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `fieldHeight` | `string` | `"2.75rem"` | Input height |
-
-- Automatically adjusts Input padding and border-radius based on child InputLeftElement/InputRightElement/InputLeftAddon/InputRightAddon presence.
-
----
-
-## Label
-
-**Import:** `@/components/ui/label`
-
-Form field label built on Radix Label.
-
-**Exports:** `Label`, `labelVariants`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"xs" \| "sm" \| "md" \| "lg"` | - | Text size |
-
-- Default: `text-gray-800`, `font-medium`.
-
----
-
-## Listbox
-
-**Import:** `@/components/ui/listbox`
-
-Select dropdown built on Headless UI Listbox.
-
-**Exports:** `Listbox`, `ListboxLabel`, `ListboxContent`, `ListboxButton`, `ListboxOptions`, `ListboxOption`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `multiple` | `Listbox` | `boolean` | Multi-select mode |
-| `placeholder` | `ListboxButton` | `string` | Placeholder text |
-| `isInvalid` | `ListboxButton` | `boolean` | Error state |
-| `displayValue` | `ListboxButton` | `ReactNode` | Custom display |
-| `indicator` | `ListboxButton` | `boolean` | Show chevron |
-
-- Includes ScrollArea integration for long option lists.
-
----
-
-## Map (GoogleMap)
-
-**Import:** `@/components/ui/map`
-
-Google Maps embed iframe.
-
-**Exports:** `GoogleMap`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `location` | `string` | Location search query |
-| `latitude` | `number` | Lat coordinate |
-| `longitude` | `number` | Lng coordinate |
-| `title` | `string` | Iframe title |
-| `className` | `string` | Container class |
-
----
-
-## NumberInput
-
-**Import:** `@/components/ui/number-input`
-
-Numeric input with increment/decrement buttons. zag-js based.
-
-**Exports:** `NumberInput`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `value` | `number` | Controlled value |
-| `onValueChange` | `(value: number) => void` | Change handler |
-| `min` | `number` | Minimum value |
-| `max` | `number` | Maximum value |
-| `placeholder` | `string` | Placeholder text |
-| `header` | `(labelProps) => ReactNode` | Label render prop |
-| `groupClassName` | `string` | InputGroup class |
-| `className` | `string` | Input class |
-
----
-
-## PercentageInput
-
-**Import:** `@/components/ui/percentage-input`
-
-Percentage input with increment/decrement. zag-js based.
-
-**Exports:** `PercentageInput`
-
-- Same API as NumberInput.
-- Default `min=0`, `max=100`.
-- Increment/decrement buttons visible on hover.
-
----
-
-## PinInput
-
-**Import:** `@/components/ui/pin-input`
-
-PIN code input fields. zag-js based.
-
-**Exports:** `FourDigitPinInput`, `SixDigitPinInput`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"sm" \| "md" \| "lg"` | - | Input size |
-| `onValueComplete` | `(details) => void` | - | Called when all digits filled |
-
-- `SixDigitPinInput` includes a dash separator between digits 3 and 4.
-
----
-
-## Popover
-
-**Import:** `@/components/ui/popover`
-
-Floating content panel built on Radix Popover.
-
-**Exports:** `Popover`, `PopoverTrigger`, `PopoverContent`
-
-- Default width: `w-[346px]`.
-- Default `sideOffset`: 8px.
-
----
-
-## Progress
-
-**Import:** `@/components/ui/progress`
-
-Progress indicators.
-
-**Exports:** `Progress`, `CircularProgress`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `value` | `Progress` | `number` | Percentage (0-100) |
-| `size` | `CircularProgress` | `number` | Circle diameter |
-| `strokeWidth` | `CircularProgress` | `number` | Stroke width |
-| `value` | `CircularProgress` | `number` | Percentage |
-| `show` | `CircularProgress` | `boolean` | Show/hide |
-
-- `Progress` includes a tooltip bubble showing the current percentage.
-
----
-
-## RadioGroup
-
-**Import:** `@/components/ui/radio-group`
-
-Radio button group built on Radix RadioGroup.
-
-**Exports (radio-group.tsx):** `RadioGroup`, `RadioGroupItem`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `size` | `RadioGroupItem` | `"sm" \| "md" \| "lg"` | Radio size |
-
-**Exports (radio-group-item-selector.tsx):** `RadioGroupItemSelector`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `size` | `"sm" \| "md" \| "lg"` | Selector size |
-
-- Card-style radio with content area.
-
----
-
-## RatingGroup
-
-**Import:** `@/components/ui/rating-group`
-
-Star rating input built on Ark UI RatingGroup.
-
-**Exports:** `RatingGroupRoot`, `RatingGroupLabel`, `RatingGroupControl`, `RatingGroupContext`, `RatingGroupItem`
-
----
-
-## Reorder
-
-**Import:** `@/components/ui/reorder`
-
-Drag-to-reorder list built on framer-motion Reorder.
-
-**Exports:** `ReorderGroup`, `ReorderItem`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `children` | `ReorderItem` | `(dragControls: DragControls) => ReactNode` | Render prop with drag handle controls |
-
----
-
-## RmDialog
-
-**Import:** `@/components/ui/rm-dialog`
-
-Confirmation dialog for remove/delete actions.
-
-**Exports:** `RmDialog` (default)
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `trigger` | `ReactNode` | Trigger element |
-| `open` | `boolean` | Controlled open state |
-| `onOpenChange` | `(open: boolean) => void` | Open state handler |
-| `title` | `string` | Dialog title |
-| `description` | `string` | Confirmation message |
-| `onRemove` | `() => void` | Remove action handler |
-
----
-
-## RoundedButton
-
-**Import:** `@/components/ui/rounded-button`
-
-Circular button.
-
-**Exports:** `RoundedButton`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `variant` | `"primary" \| "secondary"` | - | Color scheme |
-| `size` | `"sm" \| "md"` | - | Button size |
-
----
-
-## ScrollArea
-
-**Import:** `@/components/ui/scroll-area` (directory is `scroll-aria`)
-
-Custom scrollbar container built on Radix ScrollArea.
-
-**Exports:** `ScrollArea`, `ScrollBar`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `scrollBar` | `ScrollArea` | `ReactNode` | Custom ScrollBar element |
-| `viewportClassName` | `ScrollArea` | `string` | Viewport wrapper class |
-| `viewportStyle` | `ScrollArea` | `CSSProperties` | Viewport inline styles |
-| `thumbClassName` | `ScrollBar` | `string` | Scrollbar thumb class |
-
----
-
-## SearchField
-
-**Import:** `@/components/ui/search-field`
-
-Search input with icon and button.
-
-**Exports:** `SearchField`, `SearchFieldInput`, `SearchFieldButton`
-
-- Reuses `comboboxInputVariants` and `comboboxButtonVariants`.
-- Default width: `w-[224px]`.
-
 ---
 
-## Select
+## HARD RULES (NON-NEGOTIABLE, ZERO EXCEPTIONS)
 
-**Import:** `@/components/ui/select`
-
-Select dropdown built on Radix Select.
-
-**Exports:** `Select`, `SelectGroup`, `SelectValue`, `SelectTrigger`, `SelectContent`, `SelectLabel`, `SelectItem`, `SelectSeparator`, `HeadlessSelectTrigger`, `HeadlessSelectIcon`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `invalid` | `SelectTrigger` | `boolean` | - | Error state |
-| `indicator` | `SelectTrigger` | `boolean` | `true` | Show chevron icon |
-
----
-
-## Sidebar
-
-**Import:** `@/components/ui/sidebar`
-
-Navigation sidebar.
-
-**Exports:** `Sidebar`, `SidebarHeader`, `SidebarContent` (and more)
-
-- Default width: `w-[70px]`.
-- Rendered as `<nav>` element.
-
----
-
-## Slider
-
-**Import:** `@/components/ui/slider`
-
-Range slider built on Radix Slider.
-
-**Exports:** `SliderRoot`, `SliderTrack`, `SliderThumb`, `SliderRange`, `Slider`
-
-- `Slider` is the pre-composed convenience component.
-- `SliderRoot`, `SliderTrack`, `SliderThumb`, `SliderRange` are individual building blocks.
-
----
-
-## Spinner
-
-**Import:** `@/components/ui/spinner`
-
-Loading spinner indicator.
-
-**Exports:** `Spinner`, `FullPageSpinner`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `size` | `Spinner` | `number` | SVG diameter |
-| `strokeWidth` | `Spinner` | `number` | Stroke width |
-| `value` | `Spinner` | `number` | Determinate progress |
-| `trackClassName` | `Spinner` | `string` | Background track class |
-
-- `FullPageSpinner` centers the spinner in full viewport.
-
----
-
-## Step
-
-**Import:** `@/components/ui/step`
-
-Checkout/wizard step indicator.
-
-**Exports:** `CheckoutStep` (default)
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `disabled` | `boolean` | Disabled state |
-| `label` | `string` | Step label text |
-| `index` | `number` | Step number |
-
----
-
-## StepIndicator
-
-**Import:** `@/components/ui/step-indicator`
-
-Circular numbered step indicator.
-
-**Exports:** `StepIndicator` (default)
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `disabled` | `boolean` | Disabled state |
-| `index` | `number` | Step number |
-| `state` | `"active" \| "disabled"` | Visual state |
-| `children` | `ReactNode` | Custom content |
-
----
-
-## Stepper
-
-**Import:** `@/components/ui/stepper`
-
-Multi-step wizard controller.
-
-**Exports:** `StepperProvider`, `useStepperContext`, `StepRootProvider`, `useStepRootContext`, `StepControl` (and more)
-
-- Provides context for managing step navigation state.
-
----
-
-## Switch
-
-**Import:** `@/components/ui/switch`
-
-Toggle switch built on Radix Switch.
-
-**Exports:** `Switch`
-
-| Prop | Type | Default | Notes |
-|------|------|---------|-------|
-| `size` | `"sm" \| "md" \| "lg"` | - | Switch size |
-| `visual` | `"blue" \| "gray"` | - | Color scheme |
-
----
-
-## Table
-
-**Import:** `@/components/ui/table`
-
-Standard HTML table with design system styling.
-
-**Exports:** `Table`, `TableHeader`, `TableBody`, `TableFooter`, `TableRow`, `TableHead`, `TableCell`, `TableCaption`
-
----
-
-## Tabs
-
-**Import:** `@/components/ui/tabs`
-
-Tab navigation built on Radix Tabs with framer-motion animations.
-
-**Exports:** `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` (and more)
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `unanimated` | `TabsTrigger` | `boolean` | Disable animation |
-| `layoutId` | `TabsTrigger` | `string` | framer-motion layout group |
-
----
-
-## TagsInput
-
-**Import:** `@/components/ui/tags-input`
-
-Tag/chip input with autocomplete suggestions. Ark UI based.
-
-**Exports:** `TagsInputRoot`, `TagsInputLabel`, `TagsInputControl`, `TagsInputItem`, `TagsInputItemPreview`, `TagsInputItemText`, `TagsInputItemDeleteTrigger`, `TagsInputItemInput`, `TagsInputInput`, `TagsInputClearTrigger`, `TagsInputContext`
-
-| Prop | Component | Type | Notes |
-|------|-----------|------|-------|
-| `invalid` | `TagsInputControl` | `boolean` | Error state |
-| `options` | `TagsInputInput` | `string[]` | Autocomplete suggestions |
-| `onInputValueChange` | `TagsInputInput` | `(value: string) => void` | Search handler |
-| `allowCreateOption` | `TagsInputInput` | `boolean` | Allow custom tags |
-| `portalDropdown` | `TagsInputInput` | `boolean` | Portal dropdown to body |
-
-- Integrates Command (cmdk) for suggestion filtering.
-- `TagsInputItemPreview` accepts Badge variant props (`size`, `visual`, `variant`).
-
----
-
-## TextInput
-
-**Import:** `@/components/ui/text-input`
-
-Enhanced text input with built-in validation and character count.
-
-**Exports:** `TextInput`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `onValueChange` | `(value: string) => void` | Simplified change handler |
-| `validate` | `(value: string) => boolean` | Input validation function |
-| `maxLength` | `number` | Character limit |
-
-- Uses `inputVariants` from Input.
-
----
-
-## Textarea
-
-**Import:** `@/components/ui/textarea`
-
-Multi-line text input.
-
-**Exports:** `Textarea`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `isInvalid` | `boolean` | Error state |
-
-- Default: `h-[128px]`, `resize-none`, `rounded-[5px]`.
-
----
-
-## TimeField
-
-**Import:** `@/components/ui/time-field`
-
-Time input built on react-aria-components.
-
-**Exports:** `TimeField`, `TimeFieldLabel`, `TimeFieldInput`, `TimeFieldSegment`
-
----
-
-## Toast
-
-**Import:** `@/components/ui/toast`
-
-Notification toasts built on Radix Toast.
-
-**Exports (toast.tsx):** `Toast`, `ToastProvider`, `ToastViewport`, `ToastAction`, `ToastClose`, `ToastTitle`, `ToastDescription`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `variant` | `Toast` | `"default" \| "destructive" \| "success"` | `"default"` | Toast style |
-
-**Exports (toaster.tsx):** `Toaster`
-
-**Exports (use-toast.tsx):** `useToast`, `toast`
-
----
-
-## Toggle
-
-**Import:** `@/components/ui/toggle`
-
-Toggle button. Direct re-export of Radix Toggle primitive.
-
-**Exports:** `Toggle`
-
----
-
-## ToggleGroup
-
-**Import:** `@/components/ui/toggle-group`
-
-Segmented control / toggle button group. Ark UI based.
-
-**Exports:** `ToggleGroupRoot`, `ToggleGroupItem`, `ToggleGroup`
-
-- Container style: `bg-gray-100` with rounded corners.
-- `ToggleGroup` is the pre-composed convenience component.
-
----
-
-## Tooltip
-
-**Import:** `@/components/ui/tooltip`
-
-Hover tooltip built on Radix Tooltip.
-
-**Exports:** `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider`, `TooltipArrow`
-
-| Prop | Component | Type | Default | Notes |
-|------|-----------|------|---------|-------|
-| `size` | `TooltipContent` | `"sm" \| "md"` | `"sm"` | Tooltip size |
-| `visual` | `TooltipContent` | `"white" \| "gray"` | `"gray"` | Color scheme |
-
----
+### Rule 1: ONLY use components listed in this file
+You may ONLY use components that are cataloged in this file. If a component is not listed here, it does not exist and you CANNOT use it. You CANNOT create new components. You CANNOT build custom UI elements. You CANNOT wrap HTML elements in custom abstractions. Every piece of UI must be composed from components in this file.
 
-## Transitions
+### Rule 2: Storybook components are READ-ONLY
+You NEVER modify, edit, override, extend, wrap, or change any component in `frontend/components/ui/`. You NEVER modify any file in `frontend/stories/`. You NEVER modify any shared component in `frontend/components/*.tsx`. You import them exactly as they are and use them exactly as they are. If a component does not do what you want, you find a different component from this file that does. You do NOT change the component to fit your needs.
 
-**Import:** `@/components/ui/transitions`
+### Rule 3: No custom UI components EVER
+You CANNOT create new `.tsx` files that export UI components. You CANNOT define inline component functions that render UI elements (except page-level compositions that ONLY compose components from this file). You CANNOT use raw HTML elements (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`, `<dialog>`) when a design system component exists in this file. The ONLY raw HTML allowed is structural elements (`<div>`, `<span>`, `<section>`, `<article>`, `<main>`, `<header>`, `<footer>`, `<nav>`, `<p>`, `<h1>`-`<h6>`, `<ul>`, `<li>`, `<a>`, `<img>`) for layout composition.
 
-Animation wrappers built on Headless UI Transition.
+### Rule 4: Only use existing Tailwind classes
+You ONLY use standard Tailwind utility classes that already exist. You do NOT create custom CSS. You do NOT add arbitrary values (e.g., `text-[13.5px]`) unless there is absolutely no standard Tailwind equivalent. You do NOT override component styles with `!important` unless documented in this file.
 
-**Exports:** `TileTransition`, `ScaleOutIn`
+### Rule 5: Pages are compositions of these components
+Every page in the app is a composition of components from this file. When building or modifying a page, you compose from Section 1 (base UI), Section 2 (shared modules), and Section 3 (page layouts from Storybook). Storybook page stories are the layout source of truth. You match them exactly.
 
-- `TileTransition`: horizontal slide in/out animation.
-- `ScaleOutIn`: scale + fade in/out animation. Props: `show` (boolean).
+### Rule 6: Before writing ANY UI code
+1. Search this file for an existing component that does what you need
+2. Check Storybook (`npm run storybook`) to see it rendered
+3. If a component exists, use it. If it does not exist, ask the user before proceeding.
+4. You NEVER proceed to build custom UI without confirming no suitable component exists in this file
+
+### Violation = Automatic Rejection
+Any PR or code change that creates custom UI components, modifies Storybook source components, or uses UI elements not in this file will be automatically rejected. No exceptions. No "just this once." No "temporary solution."
+
+---
+
+## SECTION 1: Base UI Components
+
+All base components live in `frontend/components/ui/` and are re-exported from the barrel `@/components/ui` (via `frontend/components/ui/index.ts`).
+
+---
+
+### Accordion
+- **Import**: `import { Accordion, AccordionItem, AccordionTrigger, AccordionContent, DisclosureContent } from "@/components/ui"`
+- **Key Props**: AccordionItem takes `value: string`; AccordionTrigger/AccordionContent are standard forwardRef divs
+- **Variants**: Built on Radix AccordionPrimitive
+- **Storybook**: `components/ui/accordion/`
+
+### Alert
+- **Import**: `import { Alert, AlertContent, AlertIcon, AlertTitle, AlertDescription, CloseButton } from "@/components/ui"`
+- **Key Props**: `variant?: "default" | "primary" | "error" | "warning" | "success"`, `value: boolean`, `onValueChange: (value: boolean) => void`
+- **Variants**: default, primary, error, warning, success
+- **Storybook**: `components/ui/alert/alert.stories.tsx` (Success)
+
+### ApplePayCard / GooglePayCard
+- **Import**: `import { ApplePayCard, GooglePayCard } from "@/components/ui"`
+- **Key Props**: `onRemove?: () => void`, `amountToBePaid: string`
+- **Variants**: Apple Pay, Google Pay
+- **Storybook**: N/A (no stories file)
+
+### Autocomplete
+- **Import**: `import { Autocomplete, AutocompleteLabel, AutocompleteTrigger, LocationAutocomplete } from "@/components/ui"`
+- **Directory**: `autcomplete` (sic)
+- **Key Props**: AutocompleteRoot: `value?, onChange?, multiple?, nullable?, defaultValue?`; LocationAutocomplete: `value?: string, onValueChange?: (val: string) => void, invalid?: boolean`
+- **Variants**: Default, Location-specific
+- **Storybook**: `components/ui/autcomplete/autocomplete.stories.tsx` (Default)
+
+### Avatar
+- **Import**: `import { Avatar, AvatarImage, AvatarFallback, AvatarFallbackIcon } from "@/components/ui"`
+- **Key Props**: `size?: "xs" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl"`, `src`, `alt`
+- **Variants**: xs (24px), sm (32px), md (40px), lg (48px), xl (56px), 2xl (64px), 3xl (96px); badge indicator; tooltip variant
+- **Storybook**: `components/ui/avatar/avatar.stories.tsx` (Default, Fallback, TooltipVariant)
+
+### AvatarGroup
+- **Import**: `import { AvatarGroup, AvatarRoot, AvatarGroupButton } from "@/components/ui"`
+- **Key Props**: `max?: number`, `excessClassName?: string`, `excess?: boolean`
+- **Variants**: Matches Avatar sizes (xs through 3xl)
+- **Storybook**: `components/ui/avatar-group/avatar-group.stories.tsx` (Xs)
+
+### Badge
+- **Import**: `import { Badge, badgeVariants } from "@/components/ui"`
+- **Key Props**: `asChild?: boolean`; uses `cva` variants
+- **Variants**: Default, DotIcon, ArrowRightIcon, ArrowUpIcon
+- **Storybook**: `components/ui/badge/badge.stories.tsx` (Default, DotIconVariant, ArrowRightIconVariant, ArrowUpIconVariant)
+
+### BadgeGroup
+- **Import**: `import { BadgeGroup } from "@/components/ui"`
+- **Key Props**: `max?: number`, `excessClassName?: string`
+- **Variants**: N/A
+- **Storybook**: N/A
+
+### Breadcrumb
+- **Import**: `import { Breadcrumb, BreadcrumbItem, BreadcrumbSeparator, BreadcrumbLink } from "@/components/ui"`
+- **Key Props**: `separator?: ReactNode`, `spacing?: string` (default `"0.25rem"`), `listClassName?: string`
+- **Styles**: 13px semibold, leading-6, gray-500, opacity-50, gap-2 (8px), capitalize. Home icon 18px with opacity-50. Separator "/" same styles. Links and separators hover from opacity-50 to opacity-100 with transition. Current page (`isCurrentPage`) stays at opacity-50 with `cursor-default` — NO hover effect (you're already on that page).
+- **Variants**: Default
+- **Storybook**: `components/ui/breadcrumb/breadcrumb.stories.tsx` (Default)
+
+### Button
+- **Import**: `import { Button, buttonVariants } from "@/components/ui"`
+- **Key Props**: `visual?: "primary" | "error" | "gray"`, `variant?: "filled" | "light" | "outlined" | "ghost" | "link"`, `size?: "sm" | "md" | "lg" | "xl" | "2xl"`, `asChild?: boolean`
+- **Variants**: 3 visuals x 5 variants x 5 sizes
+- **Storybook**: `components/ui/button/button.stories.tsx` (Primary)
+
+### ButtonGroup
+- **Import**: `import { ButtonGroup } from "@/components/ui"`
+- **Key Props**: Standard div props
+- **Variants**: Filled, Outlined
+- **Storybook**: `components/ui/button-group/button-group.stories.tsx` (Filled, Outlined)
+
+### Calendar
+- **Import**: `import { Calendar, RangeCalendar, DualCalendar, DoubleCalendar, DateRangeCalendar, type RangeValue } from "@/components/ui"`
+- **Key Props**: `value?: Date`, `onValueChange?: (value: Date) => void`, `focusedValue?: Date`, `onFocusedValueChange?: (value: Date) => void`, `className?: string`
+- **Variants**: Single, Range, Dual, Double, DateRange
+- **Storybook**: `components/ui/calendar/calendar.stories.tsx` (Default, RangeCalendarVariant, DualCalendarVariant, DoubleCalendarVariant, DateRangeCalendarVariant)
+
+### Card
+- **Import**: `import { Card } from "@/components/ui"`
+- **Key Props**: Standard div props
+- **Storybook**: N/A
+
+### VersionCard
+- **Import**: `import { VersionCardRoot, VersionCardHeader, VersionCardFooter, VersionCardTitle, VersionCardDescription } from "@/components/ui"` (re-exported from card index)
+- **Key Props**: Standard div props
+- **Storybook**: N/A
+
+### Article
+- **Import**: `import { Article } from "@/components/ui"` (re-exported from card index)
+- **Key Props**: `isDragging?: boolean`, `isError?: boolean`, `isSelected?: boolean`, `asChild?: boolean`, `isGrabbed?: boolean`, `isOnCanvas?: boolean`, `destructive?: boolean`, `variant?: "default" | "outlined" | "destructive"`
+- **Storybook**: N/A
+
+### ActionCard
+- **Import**: `import { ActionCardRoot, ActionCardIcon, ActionCardContent, ActionCardTitle, ActionCardDescription } from "@/components/ui"` (re-exported from card index)
+- **Key Props**: Standard div props per sub-component
+- **Storybook**: N/A
+
+### Carousel
+- **Import**: `import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, CarouselPreviousTrigger, CarouselNextTrigger, useCarousel, type CarouselApi } from "@/components/ui"`
+- **Key Props**: `opts?: CarouselOptions`, `plugins?: CarouselPlugin`, `orientation?: "horizontal" | "vertical"`, `setApi?: (api: CarouselApi) => void`
+- **Variants**: Horizontal, Vertical
+- **Storybook**: N/A
+
+### Checkbox
+- **Import**: `import { Checkbox } from "@/components/ui"`
+- **Key Props**: `size` (sm, md, lg via cva variants), standard checkbox props, `isInvalid`
+- **Variants**: sm, md, lg
+- **Storybook**: `components/ui/checkbox/checkbox.stories.tsx` (Sm, Md, Lg)
+
+### CheckboxSelector
+- **Import**: `import { CheckboxSelector } from "@/components/ui"` (re-exported from checkbox index)
+- **Key Props**: Uses cva variants for styling
+- **Storybook**: N/A
+
+### CheckboxGroup
+- **Import**: `import { CheckboxGroup } from "@/components/ui"`
+- **Key Props**: Standard div props for grouping checkboxes
+- **Variants**: SmLabel, MdLabel, LgLabel
+- **Storybook**: `components/ui/checkbox-group/checkbox-group.stories.tsx` (SmLabel, MdLabel, LgLabel)
+
+### Clipboard
+- **Import**: `import { ClipboardRoot, ClipboardLabel, ClipboardControl, ClipboardInput, ClipboardTrigger } from "@/components/ui"`
+- **Key Props**: Standard forwardRef props per sub-component
+- **Storybook**: `components/ui/clipboard/clipboard.stories.tsx` (Default)
+
+### Combobox
+- **Import**: `import { Combobox, ComboboxTrigger, ComboboxInput, ComboboxLabel, ComboboxButton, ComboboxOptions, ComboboxOption, ComboboxPrimitive, comboboxInputVariants, comboboxButtonVariants } from "@/components/ui"`
+- **Key Props**: `value?, onChange?, multiple?: boolean, nullable?: boolean, disabled?: boolean, defaultValue?, className?`
+- **Variants**: DefaultSm, DefaultSmRightIcon
+- **Storybook**: `components/ui/combobox/combobox.stories.tsx` (DefaultSm, DefaultSmRightIcon)
+
+### Command
+- **Import**: `import { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut, CommandSeparator } from "@/components/ui"`
+- **Key Props**: CommandDialog extends DialogProps
+- **Storybook**: `components/ui/command/command.stories.tsx` (Default)
+
+### CommandPalette
+- **Import**: `import { CommandPalette, CommandPaletteTitle, CommandPaletteDialog, CommandPaletteHeader, CommandPaletteDialogClose, CommandPaletteDialogTrigger, CommandPaletteInput, CommandPaletteList, CommandPaletteEmpty, CommandPaletteGroup, CommandPaletteItem, CommandPaletteShortcut, CommandPaletteSeparator, CommandPaletteDialogContent } from "@/components/ui"`
+- **Key Props**: `selected: string`, `onSelectedChange?: (value: string) => void`
+- **Storybook**: `components/ui/command-palette/command-palette.stories.tsx` (Default)
+
+### CreditDebitCardArticle
+- **Import**: `import { CreditDebitCardArticle1, CreditDebitCardArticle, CreditDebitCardArticle2, CreditDebitCardArticle3, CreditCardCvvOrCvc } from "@/components/ui"`
+- **Key Props**: `onEdit?: () => void`, `onRemove?: () => void`, `cardNumber?: string`, `saveDefaultPaymentMethod?: boolean`, `onChange?: () => void`
+- **Storybook**: N/A
+
+### DatePicker
+- **Import**: `import { DatePicker } from "@/components/ui"`
+- **Key Props**: `value?: Date`, `onValueChange?: (value: Date) => void`, `placeholder?: string`, `inputClassName?: string`, `indicator?: ReactNode`
+- **Storybook**: `components/ui/date-picker/date-picker.stories.tsx` (Default)
+
+### Dialog
+- **Import**: `import { Dialog, DialogTrigger, DialogOverlay, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from "@/components/ui"`
+- **Key Props**: DialogContent uses `dialogContentVariants` cva; built on Radix DialogPrimitive
+- **Storybook**: `components/ui/dialog/dialog.stories.tsx` (Default)
+
+### Dropdown (Popover-based)
+- **Import**: `import { DropdownPopover, DropdownPopoverTrigger, DropdownPopoverContent, DropdownCommand, DropdownCommandInput, DropdownCommandEmpty, DropdownCommandGroup, DropdownCommandItem } from "@/components/ui"`
+- **Key Props**: `selected?: string | number | Record<string, any> | any[]`, `onSelectedChange?: (...args: any[]) => void`, `multiple?: boolean`
+- **Storybook**: `components/ui/dropdown/dropdown.stories.tsx` (Default)
+
+### DropdownMenu
+- **Import**: `import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuGroup, DropdownMenuPortal, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuRadioGroup, DropdownMenuRadioCheckItem, DropdownMenuCheckItem, DropdownMenuRadioTrigger } from "@/components/ui"`
+- **Key Props**: Built on Radix DropdownMenuPrimitive
+- **Variants**: IconsDefault, ChevronDownDefault
+- **Storybook**: `components/ui/dropdown-menu/dropdown-menu.stories.tsx` (IconsDefault, ChevronDownDefault)
+
+### Dropzone
+- **Import**: `import { Dropzone, SquareShapeDropzone, CircularProgressDropzone, type DropzoneState, type CircularProgressDropzoneState, type Category, ONE_MB } from "@/components/ui"`
+- **Key Props**: Dropzone: file upload with progress; SquareShapeDropzone: square variant; CircularProgressDropzone: circular progress variant
+- **Variants**: Default, DefaultDestructive, SquareShape, CircularProgress
+- **Storybook**: `components/ui/dropzone/dropzone.stories.tsx` (Default, DefaultDestructive)
+
+### Editable
+- **Import**: `import { EditableRootProvider, EditableRoot, EditableLabel, EditableArea, EditableInput, EditablePreview, EditableControl, EditableCancelTrigger, EditableSubmitTrigger, EditableEditTrigger } from "@/components/ui"`
+- **Key Props**: Built on Ark UI EditablePrimitives
+- **Storybook**: `components/ui/editable/editable.stories.tsx` (Default)
+
+### ErrorMessage
+- **Import**: `import { ErrorMessage } from "@/components/ui"`
+- **Key Props**: Uses `errorMessageVariants` cva; standard span props
+- **Storybook**: N/A
+
+### Favorite
+- **Import**: `import { Favorite, FavoriteRoot } from "@/components/ui"`
+- **Key Props**: FavoriteRoot: `value?: boolean`, `onValueChange?: (value: boolean) => void`, `defaultValue?: boolean`, `children?: (options: { pressed: boolean }) => ReactNode`
+- **Storybook**: `components/ui/favorite/favorite.stories.tsx` (Default)
+
+### HelperText
+- **Import**: `import { HelperText } from "@/components/ui"`
+- **Key Props**: Uses `helperTextVariants` cva; standard span props
+- **Storybook**: N/A
+
+### HoverCard
+- **Import**: `import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui"`
+- **Key Props**: Built on Radix HoverCardPrimitive
+- **Storybook**: N/A
+
+### IconButton
+- **Import**: `import { IconButton } from "@/components/ui"`
+- **Key Props**: `visual?: "primary" | "error" | "gray"`, `variant?: "filled" | "light" | "outlined" | "ghost"`, `size?: "sm" | "md" | "lg" | "xl" | "2xl"`
+- **Variants**: 3 visuals x 4 variants x 5 sizes
+- **Storybook**: `components/ui/icon-button/icon-button.stories.tsx` (GoogleOutlined)
+
+### ImageEditor / PictureEditor
+- **Import**: `import { ImageEditor, PictureEditor } from "@/components/ui"`
+- **Key Props**: Internal state for scale, rotate, translate; frame sizes for avatar (238px) and image (324x202)
+- **Storybook**: N/A
+
+### Input
+- **Import**: `import { Input, inputVariants, InputLeftAddon, InputRightAddon, InputLeftElement, InputRightElement } from "@/components/ui"`
+- **Key Props**: `isInvalid?: boolean`; standard input HTML props
+- **Variants**: Base, BaseDestructive, LabeledBase
+- **Storybook**: `components/ui/input/input.stories.tsx` (Base, BaseDestructive, LabeledBase)
+
+### InputGroup
+- **Import**: `import { InputGroup, InputGroupProvider, useInputGroupContext } from "@/components/ui"`
+- **Key Props**: Wraps inputs with context provider
+- **Storybook**: N/A
+
+### Label
+- **Import**: `import { Label, labelVariants } from "@/components/ui"`
+- **Key Props**: Uses `labelVariants` cva; standard label HTML props
+- **Storybook**: N/A
+
+### Listbox
+- **Import**: `import { Listbox, ListboxLabel } from "@/components/ui"`
+- **Key Props**: `value?, defaultValue?, onChange?, className?, multiple?: boolean, disabled?: boolean`; generic `<T>` type parameter
+- **Storybook**: `components/ui/listbox/listbox.stories.tsx` (Default)
+
+### GoogleMap
+- **Import**: `import { GoogleMap } from "@/components/ui"`
+- **Key Props**: `location: string`, `latitude?: number`, `longitude?: number`, `title?: string`, `className?: string`
+- **Storybook**: N/A
+
+### NumberInput
+- **Import**: `import { NumberInput } from "@/components/ui"`
+- **Key Props**: `onValueChange?: (value: number) => void`, `value?: number`, `header?`, `min?: number`, `max?: number`, `placeholder?: string`, `groupClassName?: string`, `className?: string`
+- **Storybook**: `components/ui/number-input/number-input.stories.tsx` (Default)
+
+### PercentageInput
+- **Import**: `import { PercentageInput } from "@/components/ui"`
+- **Key Props**: `onValueChange?: (value: number) => void`, `value?: number`, `header?`, `min?: number`, `max?: number`, `placeholder?: string`, `groupClassName?: string`, `className?: string`
+- **Storybook**: `components/ui/percentage-input/percentage-input.stories.tsx` (Default)
+
+### PinInput
+- **Import**: `import { FourDigitPinInput, SixDigitPinInput } from "@/components/ui"`
+- **Key Props**: `placeholder?: string`, `pinInputClassName?: string`
+- **Variants**: FourDigit, SixDigit, LabeledFourDigit, LabeledHelperTextFourDigit, HelperTextFourDigit, LabeledSixDigit, LabeledHelperTextSixDigit
+- **Storybook**: `components/ui/pin-input/pin-input.stories.tsx` (FourDigit, SixDigit, LabeledFourDigit, LabeledHelperTextFourDigit, HelperTextFourDigit, LabeledSixDigitPinInput, LabeledHelperTextSixDigitPinInput)
+
+### Popover
+- **Import**: `import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui"`
+- **Key Props**: Built on Radix PopoverPrimitive
+- **Storybook**: `components/ui/popover/popover.stories.tsx` (Default)
+
+### Progress
+- **Import**: `import { Progress, CircularProgress } from "@/components/ui"`
+- **Key Props**: Progress: linear bar; CircularProgress: circular with size variants
+- **Variants**: CircularXs, CircularSm, CircularMd, CircularLg, CircularXl, Linear
+- **Storybook**: `components/ui/progress/progress.stories.tsx` (CircularXs, CircularSm, CircularMd, CircularLg, CircularXl, Linear)
+
+### RadioGroup
+- **Import**: `import { RadioGroup, RadioGroupItem, HeadlessRadioGroupItem, RadioGroupItemSelector } from "@/components/ui"`
+- **Key Props**: RadioGroupItem: size variants via cva; RadioGroupItemSelector: selector-style variant
+- **Variants**: SmLabel, MdLabel, LgLabel
+- **Storybook**: `components/ui/radio-group/radio-group.stories.tsx` (SmLabel, MdLabel, LgLabel)
+
+### RatingGroup
+- **Import**: `import { RatingGroupRoot, RatingGroupLabel, RatingGroupControl, RatingGroupItem, RatingGroupContext, RatingGroupItemContext, RatingGroupHiddenInput } from "@/components/ui"`
+- **Key Props**: Built on Ark UI RatingGroup primitives
+- **Storybook**: `components/ui/rating-group/rating-group.stories.tsx` (Default)
+
+### Reorder
+- **Import**: `import { ReorderGroup, ReorderItem } from "@/components/ui/reorder"`
+- **Note**: Not re-exported from `@/components/ui` barrel; import from `@/components/ui/reorder` directly
+- **Key Props**: ReorderGroup: `onReorder: (newOrder: any[]) => void`, `values: T[]`, `axis?: "y" | "x"`; ReorderItem: `value: T`, `className?`
+- **Storybook**: N/A
+
+### RmDialog
+- **Import**: `import { RmDialog } from "@/components/ui"`
+- **Key Props**: `trigger?`, `open?: boolean`, `onOpenChange?: (open: boolean) => void`, `title?: string`, `description?: string`, `onRemove?: () => void`
+- **Storybook**: N/A
+
+### RoundedButton
+- **Import**: `import { RoundedButton } from "@/components/ui"`
+- **Key Props**: Uses `roundedButtonVariants` cva
+- **Variants**: Primary, Secondary
+- **Storybook**: `components/ui/rounded-button/rounded-button.stories.tsx` (Primary, Secondary)
+
+### ScrollArea
+- **Import**: `import { ScrollArea, ScrollBar, ScrollAreaScrollbar, ScrollAreaThumb } from "@/components/ui"`
+- **Directory**: `scroll-aria` (sic)
+- **Key Props**: Built on Radix ScrollAreaPrimitive
+- **Variants**: Default, ScrollVariant, AlwaysVariant
+- **Storybook**: `components/ui/scroll-aria/scroll-aria.stories.tsx` (Default, ScrollVariant, AlwaysVariant)
+
+### SearchField
+- **Import**: `import { SearchField, SearchFieldInput, SearchFieldButton } from "@/components/ui"`
+- **Key Props**: Context-based search field with input and button sub-components
+- **Variants**: DefaultSm, DefaultSmRightIcon, DefaultLg, DefaultLgRightIcon, GraySm, GraySmRightIcon
+- **Storybook**: `components/ui/search-field/search-field.stories.tsx` (DefaultSm, DefaultSmRightIcon, DefaultLg, DefaultLgRightIcon, GraySm, GraySmRightIcon)
+
+### Select
+- **Import**: `import { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator, HeadlessSelectTrigger, HeadlessSelectIcon } from "@/components/ui"`
+- **Key Props**: Built on Radix SelectPrimitive
+- **Storybook**: N/A
+
+### Sidebar (UI)
+- **Import**: `import { Sidebar, SidebarContent, SidebarGroup, SidebarHeader, SidebarItem } from "@/components/ui"`
+- **Key Props**: SidebarItem is a forwardRef component; others are standard div wrappers
+- **Storybook**: N/A
+
+### Slider
+- **Import**: `import { Slider, SliderRoot, SliderTrack, SliderThumb, SliderRange } from "@/components/ui"`
+- **Key Props**: Standard slider props; Slider is a composed version, SliderRoot/Track/Thumb/Range are primitives
+- **Storybook**: `components/ui/slider/slider.stories.tsx` (Default)
+
+### Spinner
+- **Import**: `import { Spinner, SpinnerPositioner } from "@/components/ui"`
+- **Key Props**: `size?: number`, `strokeWidth?: number`, `value?: number`, `trackClassName?: string`, `className?: string`
+- **Variants**: Default, Positioned
+- **Storybook**: `components/ui/spinner/spinner.stories.tsx` (Default, Positioned)
+
+### CheckoutStep
+- **Import**: `import { CheckoutStep } from "@/components/ui"`
+- **Key Props**: `disabled?: boolean`, `label?: string`, `index: number`
+- **Storybook**: N/A
+
+### StepIndicator
+- **Import**: `import { StepIndicator } from "@/components/ui"`
+- **Key Props**: `disabled?: boolean`, `index: number`, `state?: "active" | "disabled"`, `className?: string`
+- **Storybook**: N/A
+
+### Stepper
+- **Import**: `import { StepperProvider, useStepperContext, StepRootProvider, useStepRootContext, StepControl, StepProvider, useStepContext, Step } from "@/components/ui"`
+- **Key Props**: StepperContext: `nextStep, prevStep, setStep, toggleStepValidation`; StepRootContext: `hasPreviousStep, hasNextStep, currentStep, totalSteps, stepsState`; StepContext: `toggleValidation, index, status ("completed" | "incomplete" | "active")`
+- **Storybook**: N/A
+
+### Switch
+- **Import**: `import { Switch } from "@/components/ui"`
+- **Key Props**: Standard switch props with size variants
+- **Variants**: Sm, Md, Lg; with/without label
+- **Storybook**: `components/ui/switch/switch.stories.tsx` (Sm, Md, Lg, SmLabel)
+
+### Table
+- **Import**: `import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from "@/components/ui"`
+- **Key Props**: Standard HTML table element wrappers; works with `@tanstack/react-table` columnHelper
+- **Storybook**: `components/ui/table/table.stories.tsx` (Default)
+
+### Tabs
+- **Import**: `import { Tabs, TabsList, TabsTrigger, TabsContent, DisclosureTrigger, contentVariants, contentTransition } from "@/components/ui"`
+- **Key Props**: `value: string`, `onValueChange: (value: string) => void`, `unanimated?: boolean`; animated content transitions
+- **Variants**: Base, Expanded, Icons
+- **Storybook**: `components/ui/tabs/tabs.stories.tsx` (Base, Expanded, Icons)
+
+### TagsInput
+- **Import**: `import { TagsInputRoot, TagsInputLabel, TagsInputControl, TagsInputItem, TagsInputItemPreview, TagsInputItemText, TagsInputItemDeleteTrigger, TagsInputItemInput, TagsInputInput, TagsInputClearTrigger } from "@/components/ui"`
+- **Key Props**: Built on Ark UI TagsInput primitives
+- **Storybook**: N/A
+
+### TextInput
+- **Import**: `import { TextInput } from "@/components/ui"`
+- **Key Props**: `type?: "email" | "password" | "search" | "tel" | "text" | "url"`, `onValueChange?: (value: string) => void`, `value?: string`, `validate?: (value: string) => boolean`
+- **Storybook**: `components/ui/text-input/text-input.stories.tsx` (Default)
+
+### Textarea
+- **Import**: `import { Textarea } from "@/components/ui"`
+- **Key Props**: `isInvalid?: boolean`; extends standard `TextareaHTMLAttributes`
+- **Variants**: Base, LabeledBase, HelperTextBase, LabeledHelperTextBase
+- **Storybook**: `components/ui/textarea/textarea.stories.tsx` (Base, LabeledBase, HelperTextBase, LabeledHelperTextBase)
+
+### TimeField
+- **Import**: `import { TimeField, TimeFieldLabel, TimeFieldInput, TimeFieldSegment } from "@/components/ui"`
+- **Key Props**: Time input with segmented fields (hours, minutes, AM/PM)
+- **Storybook**: `components/ui/time-field/time-field.stories.tsx` (Default)
+
+### Toast
+- **Import**: `import { Toast, ToastProvider, ToastViewport, ToastTitle, ToastDescription, ToastClose, ToastAction, Toaster, type ToastProps, type ToastActionElement } from "@/components/ui"`
+- **Hook**: `import { useToast, toast } from "@/components/ui"` (from `use-toast` re-export)
+- **Key Props**: `id, title?, description?, action?`; toastVariants cva for styling
+- **Storybook**: `components/ui/toast/toast.stories.tsx` (Default, Success)
+
+### Toggle
+- **Import**: `import { Toggle } from "@/components/ui"`
+- **Key Props**: Built on Radix TogglePrimitive.Root
+- **Storybook**: N/A
+
+### ToggleGroup
+- **Import**: `import { ToggleGroup, ToggleGroupRoot, ToggleGroupItem } from "@/components/ui"`
+- **Key Props**: ToggleGroupRoot and ToggleGroupItem are forwardRef components
+- **Storybook**: `components/ui/toggle-group/toggle-group.stories.tsx` (Default)
+
+### Tooltip
+- **Import**: `import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, TooltipArrow } from "@/components/ui"`
+- **Key Props**: TooltipContent uses `tooltipContentVariants` cva; built on Radix TooltipPrimitive
+- **Variants**: Sm, Md
+- **Storybook**: `components/ui/tooltip/tooltip.stories.tsx` (Sm, Md)
+
+### Transitions
+- **Import**: `import { TileTransition, ScaleOutIn } from "@/components/ui"`
+- **Key Props**: Animation wrapper components (forwardRef)
+- **Storybook**: N/A
+
+---
+
+## SECTION 2: Shared Components & Modules
+
+These are reusable composed modules built from base UI components. Located at `frontend/components/*.tsx`.
+
+---
+
+### AccountNotFoundShowcase
+- **File**: `account-not-found-showcaset.tsx` (sic)
+- **Import**: `import { AccountNotFoundShowcase } from "@/components/account-not-found-showcaset"`
+- **Exports**: `AccountNotFoundShowcase`
+
+### AccountSidebars
+- **File**: `account-sidebars.tsx`
+- **Import**: `import { ... } from "@/components/account-sidebars"`
+- **Exports**: Sidebar navigation components for account pages; uses `SidebarItem` type with badge formatting
+- **Dependencies**: NextLink, Badge, IconButton, useInboxThreads
+
+### ActiveSessionsModal
+- **File**: `active-sessions-modal.tsx`
+- **Import**: `import { ... } from "@/components/active-sessions-modal"`
+- **Exports**: Session management modal showing active devices (Monitor, Smartphone, Tablet)
+- **Dependencies**: AuthAPI, device icons, cookies
+
+### AddManualTimeDialog
+- **File**: `add-manual-time-dialog.tsx`
+- **Import**: `import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"`
+- **Exports**: `AddManualTimeDialog`
+- **Key Props**: Dialog for manual time entry with contract/task selection
+- **Constants**: `MAX_DURATION_HOURS = 12`, `MAX_PAST_DAYS = 90`, `MAX_NOTES_LENGTH = 500`
+
+### AllTeamMembersGrid
+- **File**: `all-team-members-grid.tsx`
+- **Import**: `import { AllTeamMembersGrid } from "@/components/all-team-members-grid"`
+- **Exports**: `AllTeamMembersGrid`
+- **Key Props**: `AllTeamMembersGridProps` interface
+
+### BillingSectionHeader
+- **File**: `billing-section-header.tsx`
+- **Import**: `import { billingTabs, type BillingTabValue, getActiveBillingTab } from "@/components/billing-section-header"`
+- **Exports**: `billingTabs`, `BillingTabValue`, `getActiveBillingTab`
+- **Dependencies**: Tabs, TabsList, TabsTrigger, useRouter, usePathname
+
+### BillingTransactionsContent
+- **File**: `billing-transactions-content.tsx`
+- **Import**: `import { BillingTransactionsContent } from "@/components/billing-transactions-content"`
+- **Exports**: `BillingTransactionsContent`
+
+### Blocks / Blocks1
+- **File**: `blocks.tsx` / `blocks-1.tsx`
+- **Import**: `import { Blocks } from "@/components/blocks"` / `import { Blocks1 } from "@/components/blocks-1"`
+- **Exports**: `Blocks`, `Blocks1` (SVG icon components)
+
+### CalBookingButton
+- **File**: `cal-booking-button.tsx`
+- **Import**: `import { ... } from "@/components/cal-booking-button"`
+- **Exports**: Cal.com booking integration button
+- **Key Props**: Extends `ButtonProps`; embeds Cal.com modal for "deep-dive-discovery-call"
+
+### CaseStudyBuilder
+- **File**: `case-study-builder.tsx`
+- **Import**: `import { ... } from "@/components/case-study-builder"`
+- **Exports**: Case study editing components with reducer-based state
+
+### CategoryBanner
+- **File**: `category-banner.tsx`
+- **Import**: `import { CategoryBanner } from "@/components/category-banner"`
+- **Exports**: `CategoryBanner`
+- **Key Props**: `CategoryBannerProps` interface
+
+### Chat
+- **File**: `chat.tsx`
+- **Import**: `import { ... } from "@/components/chat"`
+- **Exports**: Chat UI components (bubbles, message input, online status)
+- **Dependencies**: apiFetch, auth, conversations, Ably online users, cva, date-fns
+
+### CheckoutNavigation
+- **File**: `checkout-navigation.tsx`
+- **Import**: `import { ... } from "@/components/checkout-navigation"`
+- **Exports**: Checkout step navigation with StepIndicator
+- **Key Props**: `CheckoutStepNumber = 1 | 2 | 3`
+
+### CounterOfferDialog
+- **File**: `counter-offer-dialog.tsx`
+- **Import**: `import { ... } from "@/components/counter-offer-dialog"`
+- **Exports**: `CounterOfferDialogVariant`, `CounterOfferDialogProps`
+- **Key Props**: Dialog for counter-offering on proposals
+
+### CreditCardInput
+- **File**: `credit-card-input.tsx`
+- **Import**: `import { Visa, ... } from "@/components/credit-card-input"`
+- **Exports**: `Visa` (SVG), Mastercard detection, credit card input with auto-formatting
+
+### DashboardAmount
+- **File**: `dashboard-amount.tsx`
+- **Import**: `import { DashboardAmount } from "@/components/dashboard-amount"`
+- **Exports**: `DashboardAmount`
+
+### DashboardFooter
+- **File**: `dashboard-footer.tsx`
+- **Import**: `import { DashboardFooter } from "@/components/dashboard-footer"`
+- **Exports**: `DashboardFooter`
+- **Key Props**: `className?: string`; social icons (Instagram, Facebook, LinkedIn, X)
+
+### EditProfileModals
+- **File**: `edit-profile-modals.tsx`
+- **Import**: `import { ... } from "@/components/edit-profile-modals"`
+- **Exports**: Profile editing modal components (about, experience, education, skills, certifications)
+- **Dependencies**: react-hook-form, zod, date-fns, CurrencyInput, UserAPI
+
+### EmojiPicker
+- **File**: `emoji-picker.tsx`
+- **Import**: `import { ... } from "@/components/emoji-picker"`
+- **Exports**: Emoji picker with category tabs and search
+
+### HireMeButton
+- **File**: `hire-me-button.tsx`
+- **Import**: `import { ... } from "@/components/hire-me-button"`
+- **Exports**: Hire me CTA button
+
+### InboxComps
+- **File**: `inbox-comps.tsx`
+- **Import**: `import { EditContextProvider, useEditContext } from "@/components/inbox-comps"`
+- **Exports**: `EditContextProvider`, `useEditContext`
+
+### InviteWindow
+- **File**: `invite-window.tsx`
+- **Import**: `import { ... } from "@/components/invite-window"`
+- **Exports**: Team/project invitation window
+
+### LikeDislike
+- **File**: `like-dislike.tsx`
+- **Import**: `import { LikeDislike } from "@/components/like-dislike"`
+- **Exports**: `LikeDislike`
+
+### ListingCard
+- **File**: `listing-card.tsx`
+- **Import**: `import { ... } from "@/components/listing-card"`
+- **Exports**: Project/service listing card
+
+### ListingCardCompact
+- **File**: `listing-card-compact.tsx`
+- **Import**: `import { ListingCardCompact } from "@/components/listing-card-compact"`
+- **Exports**: `ListingCardCompact`
+- **Key Props**: `ListingCardCompactProps` interface
+
+### MagicLinkSentShowcase
+- **File**: `magic-link-sent-showcase.tsx`
+- **Import**: `import { MagicLinkSentShowcase } from "@/components/magic-link-sent-showcase"`
+- **Exports**: `MagicLinkSentShowcase`
+
+### MarketeqIcon1
+- **File**: `marketeq-icon-1.tsx`
+- **Import**: `import { MarketeqIcon1 } from "@/components/marketeq-icon-1"`
+- **Exports**: `MarketeqIcon1` (SVG icon)
+
+### MarketplaceFooter
+- **File**: `marketplace-footer.tsx`
+- **Import**: `import { ... } from "@/components/marketplace-footer"`
+- **Exports**: Marketplace page footer
+- **Key Props**: `MarketplaceFooterProps` type
+
+### Money
+- **File**: `money.tsx`
+- **Import**: `import { Money } from "@/components/money"`
+- **Exports**: `Money` (SVG icon)
+
+### MoreInfoForm
+- **File**: `more-info-form.tsx`
+- **Import**: `import { ... } from "@/components/more-info-form"`
+- **Exports**: Additional profile info form
+
+### NProgressBar
+- **File**: `n-progress-bar.tsx`
+- **Import**: `import { NProgressBar } from "@/components/n-progress-bar"`
+- **Exports**: `NProgressBar` (page transition progress bar)
+
+### NavigationForm
+- **File**: `navigation-form.tsx`
+- **Import**: `import { NavigationForm, type SessionChoice } from "@/components/navigation-form"`
+- **Exports**: `NavigationForm`, `SessionChoice` (`"stay-logged-in" | "sign-out-others"`)
+
+### NextImage
+- **File**: `next-image.tsx`
+- **Import**: `import NextImage from "@/components/next-image"`
+- **Exports**: `NextImage` (default export, forwardRef wrapper around Next.js Image)
+
+### NextLink
+- **File**: `next-link.tsx`
+- **Import**: `import NextLink from "@/components/next-link"`
+- **Exports**: `NextLink` (default export, forwardRef wrapper around Next.js Link)
+
+### NotificationPreferences
+- **File**: `notification-preferences.tsx`
+- **Import**: `import NotificationPreferences from "@/components/notification-preferences"`
+- **Exports**: `NotificationPreferences` (default export)
+
+### OfferFlowDialog
+- **File**: `offer-flow-dialog.tsx`
+- **Import**: `import { OfferFlowDialog, type OfferFlowDialogVariant } from "@/components/offer-flow-dialog"`
+- **Exports**: `OfferFlowDialogVariant`, `OfferFlowDialogProps`
+
+### OfferHistoryDialog
+- **File**: `offer-history-dialog.tsx`
+- **Import**: `import { OfferHistoryDialog } from "@/components/offer-history-dialog"`
+- **Exports**: `OfferHistoryDialog`
+- **Key Props**: `OfferHistoryDialogProps` interface
+
+### OwnCombobox
+- **File**: `own-combobox.tsx`
+- **Import**: `import { Command, CommandDialog } from "@/components/own-combobox"`
+- **Exports**: `Command`, `CommandDialog` (custom combobox implementation)
+
+### PhoneNumberInput
+- **File**: `phone-number-input.tsx`
+- **Import**: `import { PhoneNumberInput, phoneUtil, isPhoneValid } from "@/components/phone-number-input"`
+- **Exports**: `PhoneNumberInput`, `phoneUtil`, `isPhoneValid`
+- **Key Props**: Generic `<TFormValues extends FieldValues>` for react-hook-form integration
+
+### ReadMoreLess
+- **File**: `read-more-less.tsx`
+- **Import**: `import { ReadMoreLess, ReadMoreLessRoot } from "@/components/read-more-less"`
+- **Exports**: `ReadMoreLess`, `ReadMoreLessRoot`
+
+### ResetPasswordForm
+- **File**: `reset-password-form.tsx`
+- **Import**: `import { ResetPasswordForm } from "@/components/reset-password-form"`
+- **Exports**: `ResetPasswordForm`
+
+### RichTextEditor
+- **File**: `rich-text-editor.tsx`
+- **Import**: `import { ... } from "@/components/rich-text-editor"`
+- **Exports**: Rich text editor component
+
+### SaveTalentButton
+- **File**: `save-talent-button.tsx`
+- **Import**: `import { SaveTalentButton } from "@/components/save-talent-button"`
+- **Exports**: `SaveTalentButton`
+- **Key Props**: `userId: string`
+
+### SearchCard
+- **File**: `search-card.tsx`
+- **Import**: `import { SearchCard } from "@/components/search-card"`
+- **Exports**: `SearchCard`
+
+### SearchCardLandscape
+- **File**: `search-card-landscape.tsx`
+- **Import**: `import { SearchCardLandscape } from "@/components/search-card-landscape"`
+- **Exports**: `SearchCardLandscape`
+
+### SecuritySettings
+- **File**: `security-settings.tsx`
+- **Import**: `import { ... } from "@/components/security-settings"`
+- **Exports**: Security settings panel (password, 2FA, sessions)
+
+### SettingsSidebar
+- **File**: `settings-sidebar.tsx`
+- **Import**: `import SettingsSidebar, { settingsTabItems, type SettingsTabId } from "@/components/settings-sidebar"`
+- **Exports**: `SettingsSidebar` (default), `settingsTabItems`, `SettingsTabId`
+
+### ShowMoreLess
+- **File**: `show-more-less.tsx`
+- **Import**: `import { ShowMoreLessRoot, ShowMoreLessRootProvider, useShowMoreLessRootContext } from "@/components/show-more-less"`
+- **Exports**: `ShowMoreLessRoot`, `ShowMoreLessRootProvider`, `useShowMoreLessRootContext`
+
+### Swiper
+- **File**: `swiper.tsx`
+- **Import**: `import { SwiperRoot, ... } from "@/components/swiper"`
+- **Exports**: `SwiperRoot` and swiper context
+
+### TalentCardLandscape
+- **File**: `talent-card-landscape.tsx`
+- **Import**: `import { TalentCardLandscape } from "@/components/talent-card-landscape"`
+- **Exports**: `TalentCardLandscape`
+
+### TalentDashboardComps
+- **File**: `talent-dashboard-comps.tsx`
+- **Import**: `import { ... } from "@/components/talent-dashboard-comps"`
+- **Exports**: Talent dashboard UI sub-components
+
+### TalentProfileCard
+- **File**: `talent-profile-card.tsx`
+- **Import**: `import { ... } from "@/components/talent-profile-card"`
+- **Exports**: Talent profile card; uses `TalentProfile` interface
+
+### TalentProfileComps
+- **File**: `talent-profile-comps.tsx`
+- **Import**: `import { ... } from "@/components/talent-profile-comps"`
+- **Exports**: Talent profile sub-components (sections, skills, experience)
+
+### TalentSearchCard
+- **File**: `talent-search-card.tsx`
+- **Import**: `import { ... } from "@/components/talent-search-card"`
+- **Exports**: Talent search result card with default skills array
+
+### TalentSearchCardLandscape
+- **File**: `talent-search-card-landscape.tsx`
+- **Import**: `import { TalentSearchCardLandscape } from "@/components/talent-search-card-landscape"`
+- **Exports**: `TalentSearchCardLandscape`
+- **Key Props**: `TalentSearchCardLandscapeProps` interface
+
+### ThreeHorizontalLines
+- **File**: `three-horizontal-lines.tsx`
+- **Import**: `import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"`
+- **Exports**: `ThreeHorizontalLines` (SVG icon)
+
+### ThumbsDown
+- **File**: `thumbs-down.tsx`
+- **Import**: `import { ... } from "@/components/thumbs-down"`
+- **Exports**: `ThumbsDownToggle`
+
+### ThumbsUp
+- **File**: `thumbs-up.tsx`
+- **Import**: `import { ... } from "@/components/thumbs-up"`
+- **Exports**: `ThumbsUpToggle`
+
+### TimezoneSync
+- **File**: `timezone-sync.tsx`
+- **Import**: `import { ... } from "@/components/timezone-sync"`
+- **Exports**: Background timezone sync component
+- **Constants**: `SYNC_TTL_MS = 6h`, `CHECK_INTERVAL_MS = 15m`
+
+### TransactionsComps
+- **File**: `transactions-comps.tsx`
+- **Import**: `import { ... } from "@/components/transactions-comps"`
+- **Exports**: Transaction list/table sub-components
+
+### Triangles
+- **File**: `triangles.tsx`
+- **Import**: `import { Triangles } from "@/components/triangles"`
+- **Exports**: `Triangles` (SVG decorative element)
+
+### TwoFactorSetup
+- **File**: `two-factor-setup.tsx`
+- **Import**: `import { ... } from "@/components/two-factor-setup"`
+- **Exports**: OTP input and 2FA setup flow
+
+### UpdatePasswordForm
+- **File**: `update-password-form.tsx`
+- **Import**: `import { ... } from "@/components/update-password-form"`
+- **Exports**: Password update form with zod validation
+
+### WithdrawFundsDialog
+- **File**: `withdraw-funds-dialog.tsx`
+- **Import**: `import { ... } from "@/components/withdraw-funds-dialog"`
+- **Exports**: Multi-step withdrawal dialog (amount, method, summary, verify)
+- **Steps**: `"amount" | "method" | "summary" | "verify"`
+
+---
+
+## SECTION 3: Page-Level Storybook Components
+
+These are full page layouts and complex multi-section components defined in Storybook. They are the SOURCE OF TRUTH for page layouts. Located at `frontend/stories/*.stories.tsx`.
+
+---
+
+### Ask Question
+- **File**: `stories/ask-question.stories.tsx`
+- **Storybook Title**: "Ask Question"
+- **Stories**: `SignUp`
+
+### Authentication
+- **File**: `stories/auth.stories.tsx`
+- **Storybook Title**: "Authentication"
+- **Stories**: `SignUp`
+
+### Case Study Builder Comps
+- **File**: `stories/case-study-builder-comps.stories.tsx`
+- **Storybook Title**: "Case Study Builder Comps"
+- **Stories**: `Toolbar`, `BlockToolbar`, `BlockImageToolbar`, `ToBeAdded`, `FlexibleToolbar`, `InitialBlock`, `TemplateDialog`, `Addened`, `BlockWithCols`, `SplitCard`, `ClientView`, `EditingPlayground`
+
+### Categories L1
+- **File**: `stories/categories-l1.stories.tsx`
+- **Storybook Title**: "Categories-L1"
+- **Stories**: `Default`
+
+### Categories L1 - Projects
+- **File**: `stories/categories-l1-projects.stories.tsx`
+- **Storybook Title**: "Categories-L1/Projects"
+- **Stories**: `Default`
+
+### Categories L1 - Services
+- **File**: `stories/categories-l1-services.stories.tsx`
+- **Storybook Title**: "Categories-L1/Services"
+- **Stories**: `Default`
+
+### Categories L1 - Talent
+- **File**: `stories/categories-l1-talent.stories.tsx`
+- **Storybook Title**: "Categories-L1/Talent"
+- **Stories**: `Default`
+
+### Categories L1 - Teams
+- **File**: `stories/categories-l1-teams.stories.tsx`
+- **Storybook Title**: "Categories-L1/Teams"
+- **Stories**: `Default`
+
+### Categories L2
+- **File**: `stories/categories-l2.stories.tsx`
+- **Storybook Title**: "Categories-L2"
+- **Stories**: `Default`
+
+### Categories L2 - Projects
+- **File**: `stories/categories-l2-projects.stories.tsx`
+- **Storybook Title**: "Categories-L2/Projects"
+- **Stories**: `Default`
+
+### Categories L2 - Services
+- **File**: `stories/categories-l2-services.stories.tsx`
+- **Storybook Title**: "Categories-L2/Services"
+- **Stories**: `Default`
+
+### Categories L2 - Talent
+- **File**: `stories/categories-l2-talent.stories.tsx`
+- **Storybook Title**: "Categories-L2/Talent"
+- **Stories**: `Default`
+
+### Categories L2 - Teams
+- **File**: `stories/categories-l2-teams.stories.tsx`
+- **Storybook Title**: "Categories-L2/Teams"
+- **Stories**: `Default`
+
+### Categories L3
+- **File**: `stories/categories-l3.stories.tsx`
+- **Storybook Title**: "Categories-L3"
+- **Stories**: `Default`
+
+### Categories L3 - Projects
+- **File**: `stories/categories-l3-projects.stories.tsx`
+- **Storybook Title**: "Categories-L3/Projects"
+- **Stories**: `Default`
+
+### Categories L3 - Talent
+- **File**: `stories/categories-l3-talent.stories.tsx`
+- **Storybook Title**: "Categories-L3/Talent"
+- **Stories**: `Default`
+
+### Categories L3 - Teams
+- **File**: `stories/categories-l3-teams.stories.tsx`
+- **Storybook Title**: "Categories-L3/teams"
+- **Stories**: `Default`
+
+### Checkout
+- **File**: `stories/checkout.stories.tsx`
+- **Storybook Title**: "Checkout"
+- **Stories**: `StepIndicator`, `Step`, `UserGroup`, `Navigation`, `ProjectDetails`, `Visa`, `Discover`, `Amex`, `ACH`, `AvailableBalance`, `EditScope`, `AddTask`, `EditTeam`, `ReplaceTeamMember`
+
+### Client Onboarding
+- **File**: `stories/client-onboarding.stories.tsx`
+- **Storybook Title**: "Client Onboarding"
+- **Stories**: `Default`, `DescribeYourTeam`, `ShareYourGoals`, `InviteYourTeam`, `CreateYourUsername`, `OutlineYourInterests`, `LastStep`
+
+### Client View Components
+- **File**: `stories/client-view-comps.stories.tsx`
+- **Storybook Title**: "Client View Components"
+- **Stories**: `Card`
+
+### Complete My Profile
+- **File**: `stories/complete-my-profile.stories.tsx`
+- **Storybook Title**: "Complete My Profile"
+- **Stories**: `Default`, `StatusDialog`, `MoreInfoDialog`, `AboutMeDialog`, `SkillsDialog`, `WorkExperienceDialog`, `EducationDialog`, `Portfolio`, `Congratulations`, `SaveWorkEducation`, `DeleteWorkExperience`, `SaveEducationQualification`, `DeleteEducation`, `WorkExperienceCard`, `EducationCard`
+
+### Complete My Profile Implementation
+- **File**: `stories/complete-my-profile-implementation.stories.tsx`
+- **Storybook Title**: "Complete My Profile Implementation"
+- **Stories**: `AboutMeDialog`, `MoreInfoDialog`, `Availability`, `WorkExperienceDialog`, `EducationDialog`, `Languages`, `Skills`, `IndustryExpertise`, `Certifications`, `AffiliatedTeams`, `AffiliatedTeams1`, `MyOffers`
+
+### Counter Offer Dialog
+- **File**: `stories/counter-offer-dialog.stories.tsx`
+- **Storybook Title**: "Counter Offer Dialog"
+- **Stories**: `Default`, `RateDropdownCustom`, `CustomRate`, `DurationDropdownCustom`, `DurationDropdownSelected`, `RateDropdownSelected`, `CustomDuration`
+
+### Desktop Time Tracker
+- **File**: `stories/desktop-tracker.stories.tsx`
+- **Storybook Title**: "Desktop Time Tracker"
+- **Stories**: `AppIdle`, `AppTracking`, `AppWithTasks`, `AllTasksView`, `NewTask`, `AccountMenuStory`, `CompactTimerIdle`, `CompactTimerActive`, `SearchStates`, `TimerDisplayLarge`, `TimerDisplaySmall`, `TimerControlsIdle`, `TimerControlsActive`, `ContractEntryCollapsed`, `ContractEntryEmpty`, `ContractEntryWithTasks`
+
+### Emoji Picker
+- **File**: `stories/emoji-picker.stories.tsx`
+- **Storybook Title**: "EmojiPicker"
+- **Stories**: `Default`
+
+### File Attachments
+- **File**: `stories/file-attachments.stories.tsx`
+- **Storybook Title**: "File Attachments"
+- **Stories**: `Default`
+
+### Inbox
+- **File**: `stories/inbox.stories.tsx`
+- **Storybook Title**: "Inbox"
+- **Stories**: `Bubble`, `YourBubble`, `ChatDefault`, `ChatActive`, `BubbleWithPicture`, `BubbleWithLink`, `BubbleWithLinkBlack`
+- **Exports**: `EditContextProvider`, `useEditContext` (also used by inbox-comps.tsx)
+
+### Message Forwarding
+- **File**: `stories/message-forwarding.stories.tsx`
+- **Storybook Title**: "Message Forwarding"
+- **Stories**: `MessageForwardingLimitDialog`
+
+### Offer Flow Dialog
+- **File**: `stories/offer-flow-dialog.stories.tsx`
+- **Storybook Title**: "Offer Flow Dialog"
+- **Stories**: `OfferDetails`, `AcceptOfferEmpty`, `AcceptOfferReady`, `DeclineOfferEmpty`, `DeclineOfferReady`
+
+### Offer History Dialog
+- **File**: `stories/offer-history-dialog.stories.tsx`
+- **Storybook Title**: "Offer History Dialog"
+- **Stories**: `Collapsed`, `Expanded`
+
+### Pay in Installments
+- **File**: `stories/pay-in-installaments.stories.tsx` (sic)
+- **Storybook Title**: "Pay in Installments"
+- **Stories**: `BankCardSelected`, `CreditDebitSelected`
+
+### Project Details
+- **File**: `stories/project-details.stories.tsx`
+- **Storybook Title**: "Project Details"
+- **Stories**: `Default`
+
+### Project Details - Steps Section
+- **File**: `stories/project-details-steps-section.stories.tsx`
+- **Storybook Title**: "Project details / Steps section"
+- **Stories**: `FromGatewayFixture`, `DefaultViewModel`, `FromMergedGatewayPayload`
+
+### Publish Project
+- **File**: `stories/publish-project.stories.tsx`
+- **Storybook Title**: "PublishProject"
+- **Stories**: `Sidebar`, `Header`, `BottomBar`, `ProjectInfo`, `Media`, `ProjectScopeTip`, `ProjectScope`, `PublishMarketPlaceEmptyState`, `PhaseName`, `TaskName`, `Duration`, `DeletePhase`, `SaveExit`, `Empty1`, `Empty2`, `Empty3`
+
+### Sidebar (Page-Level)
+- **File**: `stories/sidebar.stories.tsx`
+- **Storybook Title**: "Sidebar"
+- **Stories**: `Sidebar`, `Sidebar1`, `Sidebar2`, `Sidebar3`, `Sidebar4`, `Sidebar5`, `Sidebar6`, `ConfirmationScreen`, `ThankYou`, `NextSteps`
+
+### Similar Projects
+- **File**: `stories/similar-projects.stories.tsx`
+- **Storybook Title**: "Similar Projects"
+- **Stories**: `Default`
+
+### Talent Onboarding
+- **File**: `stories/talent-onboarding.stories.tsx`
+- **Storybook Title**: "Talent Onboarding"
+- **Stories**: `IntroduceYourself`, `CreateYourUsername`, `ShareYourLocation`, `ShowcaseYourTalent`, `SetYourPreferences`, `LastStep`
+
+### Talent Profile
+- **File**: `stories/talent-profile.stories.tsx`
+- **Storybook Title**: "Talent Profile"
+- **Stories**: `Default`, `Offers`
+
+### Talent Profile 1
+- **File**: `stories/talent-profile-1.stories.tsx`
+- **Storybook Title**: "Talent Profile 1"
+- **Stories**: `Layout`, `TopMostHeader`, `SaveButton`, `SectionSearchBar`, `Default`, `Offers`
+
+### Talent Profile 2
+- **File**: `stories/talent-profile-2.stories.tsx`
+- **Storybook Title**: "Talent Profile 2"
+- **Stories**: `Default`, `Offers`
+
+### Talent Profile Components
+- **File**: `stories/talent-profile-comps.stories.tsx`
+- **Storybook Title**: "Talent Profile Components"
+- **Stories**: `Footer`, `Sidebar`, `Layout`, `SearchBar`, `TopMostHeader`, `SaveButton`, `SectionSearchBar`
+
+### Time Selector
+- **File**: `stories/time-selector.stories.tsx`
+- **Storybook Title**: "Time Selector"
+- **Stories**: `Default`
+
+### Video Player Modal
+- **File**: `stories/video-player-modal.stories.tsx`
+- **Storybook Title**: "Video Player Modal"
+- **Stories**: `Default`

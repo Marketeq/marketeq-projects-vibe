@@ -216,15 +216,31 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 - **Auth**: JWT + Passport (Google, LinkedIn OAuth); cookies `access_token` / `refresh_token` / `session_id`
 - **Deployment**: Render (backend), Vercel (frontend)
 
-## Frontend Design System (non-negotiable)
-**Before writing ANY frontend UI, read `frontend/COMPONENTS.md`.**
+## Frontend Design System (ABSOLUTE LAW — ZERO EXCEPTIONS)
 
-- **NEVER** use raw HTML elements (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`) when a design system component exists
-- **ALWAYS** import from `@/components/ui` — the full catalog is in `frontend/COMPONENTS.md`
-- **ALWAYS** check `frontend/COMPONENTS.md` for available props/variants before adding custom styles
-- If a component needs a height/size override, use Tailwind's `!important` modifier (e.g., `!h-[190px]`) to beat component defaults
-- Raw `<label>` is only acceptable as a checkbox/radio click wrapper, never as a form field label (use `Label` component)
-- When in doubt, run `npm run storybook` to see component examples
+**`frontend/COMPONENTS.md` is the ONLY source of allowed UI components. Every component in it comes from Storybook. Storybook is the single source of truth for all UI.**
+
+### What you MUST do:
+- **READ `frontend/COMPONENTS.md` before writing ANY frontend UI** — every time, no shortcuts
+- **ONLY use components listed in `frontend/COMPONENTS.md`** — base UI, shared modules, and page layouts
+- **Import components exactly as they are** — from `@/components/ui`, `@/components/*.tsx`, or `@/stories/*.stories.tsx`
+- **Match Storybook page layouts exactly** when building pages — Storybook stories are the layout source of truth
+- **Run `npm run storybook`** to see how components look and behave before using them
+
+### What you MUST NEVER do:
+- **NEVER create custom UI components** — no new component files, no inline UI component functions, no wrappers, no abstractions
+- **NEVER modify Storybook components** — `frontend/components/ui/`, `frontend/components/*.tsx`, and `frontend/stories/` are READ-ONLY. You import as-is, never edit
+- **NEVER use raw HTML elements** (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`, `<dialog>`) when a design system component exists
+- **NEVER use arbitrary Tailwind values** (e.g., `text-[13.5px]`) when a standard Tailwind class exists
+- **NEVER build UI that is not composed from components in `frontend/COMPONENTS.md`**
+
+### If a component you need does not exist in COMPONENTS.md:
+1. Stop. Do not build it.
+2. Ask the user what component to use.
+3. The user will either point you to an existing component you missed, or approve a new addition to Storybook (which is their decision, not yours).
+
+### Violation = Automatic Rejection
+Any code that creates custom UI components, modifies Storybook source, or uses elements not in COMPONENTS.md is automatically rejected.
 
 ## Code Standards (non-negotiable)
 - TypeScript strict mode everywhere

@@ -62,13 +62,15 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
         {section.items.map((item) => {
           const Icon = item.icon
 
+          const isActive = pathname === item.href || pathname?.startsWith(item.href + "/")
+
           return (
             <NextLink
               key={item.label}
               className={linkClass(item.href)}
               href={item.href}
             >
-              <Icon className="size-[18px] text-dark-blue-400/50" />
+              <Icon className={cn("size-[18px]", isActive ? "text-primary-500" : "text-dark-blue-400/50")} />
               {item.label}
               {item.badge && (
                 <Badge

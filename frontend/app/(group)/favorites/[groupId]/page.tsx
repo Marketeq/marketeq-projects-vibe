@@ -104,7 +104,7 @@ const ProjectGridCard = ({
 
   return (
     <article
-      className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md transition-shadow cursor-pointer"
+      className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
         router.push(detailHref)
@@ -211,7 +211,7 @@ const ProjectListCard = ({
 
   return (
     <div
-      className="flex md:flex-row flex-col border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg hover:shadow-md transition-shadow cursor-pointer"
+      className="flex md:flex-row flex-col border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
         router.push(detailHref)

@@ -987,7 +987,6 @@ function SearchInner({
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* List/Grid view toggle — temporarily hidden
                 <ToggleGroupRoot
                   value={value}
                   onValueChange={(details) => setValue(details.value)}
@@ -999,7 +998,6 @@ function SearchInner({
                     <List className="size-4 lg:size-6" />
                   </ToggleGroupItem>
                 </ToggleGroupRoot>
-                */}
               </div>
             </div>
           </div>
