@@ -5082,7 +5082,7 @@ export const OverviewTab = ({
                               .map((bank) => (
                                 <div
                                   key={bank.name}
-                                  className={`flex items-center justify-center border rounded-lg cursor-pointer hover:border-primary-400 hover:shadow-sm transition-all ${(addForm as any)._stripePickedBank === bank.name ? "border-primary-500 ring-2 ring-primary-200" : "border-gray-200"}`}
+                                  className={`flex items-center justify-center border rounded-lg cursor-pointer hover:border-primary-400 transition-all ${(addForm as any)._stripePickedBank === bank.name ? "border-primary-500 ring-2 ring-primary-200" : "border-gray-200"}`}
                                   style={{ height: "100px", padding: "16px" }}
                                   onClick={() =>
                                     setAddForm(

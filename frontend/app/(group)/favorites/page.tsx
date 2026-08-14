@@ -118,7 +118,7 @@ const ProjectGroupCard = ({
 
   return (
     <article
-      className="bg-white border rounded-lg border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+      className="bg-white border rounded-lg border-gray-200 cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
         if (wasDialogRecentlyClosed()) return
@@ -196,7 +196,7 @@ const ProjectGroupListCard = ({
 
   return (
     <div
-      className="flex md:flex-row flex-col md:gap-x-10 border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg cursor-pointer hover:shadow-md transition-shadow"
+      className="flex md:flex-row flex-col md:gap-x-10 border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
         if (wasDialogRecentlyClosed()) return
@@ -321,7 +321,7 @@ const TalentCard = ({
 
   return (
     <article
-      className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] cursor-pointer hover:shadow-md transition-shadow"
+      className="relative bg-white py-[25px] px-5 lg:p-[35px] lg:pb-[25px] rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
         if (wasDialogRecentlyClosed()) return
