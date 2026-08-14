@@ -62,10 +62,10 @@ export class RelatedTermsService {
     if (vocab.length === 0) return [];
 
     const query = own.join(', ').trim();
+    const results: string[] = [];
     if (query && this.apiKey) {
       try {
-        const semantic = await this.semantic(query, vocab, limit);
-        if (semantic.length > 0) return semantic;
+        results.push(...(await this.semantic(query, vocab, limit)));
       } catch (err) {
         this.logger.warn(
           `HF related ${kind} failed, using heuristic: ${
@@ -74,7 +74,18 @@ export class RelatedTermsService {
         );
       }
     }
-    return this.heuristic(own, vocab, limit);
+
+    if (results.length < limit) {
+      const seen = new Set(results.map((t) => t.toLowerCase()));
+      for (const term of this.heuristic(own, vocab, limit)) {
+        if (results.length >= limit) break;
+        const key = term.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(term);
+      }
+    }
+    return results;
   }
 
   private async semantic(
