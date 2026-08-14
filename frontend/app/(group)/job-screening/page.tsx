@@ -1292,7 +1292,7 @@ export default function JobScreeningPage() {
                 </div>
 
                 {/* Message from candidate */}
-                <div className="flex flex-col gap-2 rounded-lg border-2 border-gray-200 p-6">
+                <div className="mt-6 flex flex-col gap-2 rounded-lg border-2 border-gray-200 p-6">
                   <div className="flex flex-col gap-2 rounded-[12px_12px_12px_0px] bg-[rgba(22,97,246,0.04)] p-5">
                     <p className="text-sm font-bold leading-[17px] text-dark-blue-400">
                       {selectedCandidate.name}
