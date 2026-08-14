@@ -57,18 +57,18 @@ export function NumberInput({
           placeholder={placeholder}
           {...api.getInputProps()}
         />
-        <InputRightElement className="inset-y-0.5 w-7 flex-col justify-between">
+        <InputRightElement className="inset-y-0 w-7 flex-col justify-center gap-y-0.5 border-l border-gray-200">
           <button
-            className="flex-none rounded-sm bg-gray-100 px-1.5 py-1 focus-visible:outline-none"
-            {...api.getDecrementTriggerProps()}
-          >
-            <ChevronDown className="h-2.5 w-2.5 text-gray-500" />
-          </button>
-          <button
-            className="flex-none rounded-sm bg-gray-100 px-1.5 py-1 focus-visible:outline-none"
+            className="flex-none px-2 py-0.5 focus-visible:outline-none"
             {...api.getIncrementTriggerProps()}
           >
-            <ChevronUp className="h-2.5 w-2.5 text-gray-500" />
+            <ChevronUp className="h-3 w-3 text-gray-500" />
+          </button>
+          <button
+            className="flex-none px-2 py-0.5 focus-visible:outline-none"
+            {...api.getDecrementTriggerProps()}
+          >
+            <ChevronDown className="h-3 w-3 text-gray-500" />
           </button>
         </InputRightElement>
       </InputGroup>

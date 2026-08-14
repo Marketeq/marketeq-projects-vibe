@@ -15,6 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { SubmitHandler, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 import { Button } from "./ui"
+import { Spinner } from "./ui/spinner/spinner"
 import { Input, InputRightElement } from "./ui/input"
 import { InputGroup } from "./ui/input-group"
 import { Label } from "./ui/label"
@@ -50,8 +51,10 @@ type UpdatePasswordFormValues = z.infer<typeof updatePasswordFormSchema>
 
 export const UpdatePasswordForm = ({
   onSubmit: onSubmitProp,
+  isLoading = false,
 }: {
   onSubmit?: (values: UpdatePasswordFormValues) => void
+  isLoading?: boolean
 }) => {
   const {
     register,
@@ -230,9 +233,9 @@ export const UpdatePasswordForm = ({
           </div>
 
           <div className="mt-2">
-            <Button disabled={!isValid}>
-              <Check className="size-[15px]" />
-              Save Password
+            <Button disabled={!isValid || isLoading}>
+              {isLoading ? <Spinner size={18} strokeWidth={3} /> : <Check className="size-[15px]" />}
+              {isLoading ? "Saving..." : "Save Password"}
             </Button>
           </div>
         </div>

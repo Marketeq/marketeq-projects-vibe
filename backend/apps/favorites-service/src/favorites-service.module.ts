@@ -17,7 +17,7 @@ import { FavoritesController } from './controllers/favorites.controller';
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         entities: [Favorite, FavoriteGroup],
-        synchronize: config.get('NODE_ENV') !== 'production',
+        synchronize: false,
         ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),

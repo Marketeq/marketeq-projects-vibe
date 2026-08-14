@@ -37,6 +37,14 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/services/debug',
   '/v1/projects',
   '/v1/services',
+  // PS-14 §5: the withdrawal magic-link lands the contractor here straight
+  // from their email — must work fully logged out, on any device (AC-18.05/
+  // 18.06). Same reasoning as the webhooks/oauth-callback entries below:
+  // payout-service's own @Public() on this route is powerless against this
+  // upstream gateway check. The token itself (query param) is the real
+  // credential; verify-email hashes and validates it server-side.
+  '/v1/payouts/verify-email',
+  '/v1/payouts/verify',
 ])
 
 // Only explicitly allowed dynamic routes are public.
