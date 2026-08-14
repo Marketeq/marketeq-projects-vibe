@@ -60,6 +60,7 @@ import {
   Favorite,
   FavoriteRoot,
   IconButton,
+  Input,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -1291,41 +1292,41 @@ export default function JobScreeningPage() {
                 </div>
 
                 {/* Message from candidate */}
-                <div className="border-b border-gray-200 py-6">
-                  <div className="rounded-lg bg-[#f0f4ff] p-5">
-                    <p className="text-sm font-bold text-dark-blue-400">
-                      Message from the candidate
+                <div className="flex flex-col gap-2 rounded-lg border-2 border-gray-200 p-6">
+                  <div className="flex flex-col gap-2 rounded-[12px_12px_12px_0px] bg-[rgba(22,97,246,0.04)] p-5">
+                    <p className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                      {selectedCandidate.name}
                     </p>
-                    <p className="mt-2 text-sm font-normal text-dark-blue-400">
+                    <p className="text-sm font-normal leading-[17px] text-dark-blue-400">
                       {selectedCandidate.candidateMessage}
                     </p>
                   </div>
-                  <p className="mt-3 text-xs text-dark-blue-400">
-                    <span className="font-normal">Received</span>{" "}
-                    <span className="font-semibold">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-normal leading-[140%] text-gray-500">Sent</span>
+                    <span className="text-[11px] font-semibold leading-[140%] text-gray-500">
                       {selectedCandidate.messageReceivedAt}
                     </span>
-                  </p>
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="relative">
-                      <Avatar className="size-10 shrink-0">
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <Avatar className="size-11">
                         <AvatarImage
                           src={selectedCandidate.avatar}
                           alt="You"
                         />
                         <AvatarFallback>Y</AvatarFallback>
                       </Avatar>
-                      <span className="absolute bottom-0 left-7 size-3 rounded-full border-2 border-white bg-success-500" />
+                      <span className="absolute bottom-0 right-0 size-[11px] rounded-[5.5px] border-[1.65px] border-white bg-success-500" />
                     </div>
                     <div className="relative flex-1">
-                      <input
+                      <Input
                         type="text"
                         placeholder="Reply..."
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 pr-10 text-sm text-dark-blue-400 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none"
+                        className="pr-10"
                       />
-                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-500">
+                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300 hover:text-primary-500">
                         <Send03 className="size-4" />
                       </button>
                     </div>
@@ -2618,9 +2619,9 @@ function FullWidthCandidateCard({
         </div>
 
         {/* Right section - job requirements grid */}
-        <div className="flex min-w-0 flex-1 flex-col gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-8">
           {/* Top row: 3 columns */}
-          <div className="flex justify-between gap-3">
+          <div className="flex justify-between gap-8">
             {jobRequirementColumns[0].map((cat) => (
               <div key={cat.label} className="flex-1">
                 <RequirementCategory category={cat} />
@@ -2628,7 +2629,7 @@ function FullWidthCandidateCard({
             ))}
           </div>
           {/* Middle row: 2 columns (experience, industries) + empty */}
-          <div className="flex justify-between gap-3">
+          <div className="flex justify-between gap-8">
             {jobRequirementColumns[1].map((cat) => (
               <div key={cat.label} className="flex-1">
                 <RequirementCategory category={cat} />
@@ -2637,7 +2638,7 @@ function FullWidthCandidateCard({
             <div className="flex-1" />
           </div>
           {/* Bottom row: 3 columns (pay rate, languages, country) */}
-          <div className="flex justify-between gap-3">
+          <div className="flex justify-between gap-8">
             {jobRequirementColumns[2].map((cat) => (
               <div key={cat.label} className="flex-1">
                 <RequirementCategory category={cat} />
