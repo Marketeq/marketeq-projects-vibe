@@ -30,6 +30,16 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 50
 
+      - name: Resolve code-review team members
+        id: team
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Dynamically fetch team members so we never hardcode names
+          MEMBERS=$(gh api orgs/Marketeq/teams/code-review/members --jq '[.[].login] | join(",")' 2>/dev/null || echo "CTorres9800")
+          echo "members=$MEMBERS" >> "$GITHUB_OUTPUT"
+          echo "Code-review team: $MEMBERS"
+
       - name: Detect forced push
         id: force
         env:
@@ -49,7 +59,7 @@ jobs:
           gh issue create \
             --title "🚨 URGENT: forced push to ${{ github.ref_name }} by @${{ github.actor }}" \
             --label "urgent,force-push-violation" \
-            --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
+            --assignee "${{ steps.team.outputs.members }}" \
             --body "$(cat <<EOF
 ## 🚨 Forced push detected
 
@@ -98,7 +108,7 @@ EOF
           gh issue create \
             --title "🚨 Direct push to ${{ github.ref_name }} bypassed PR review" \
             --label "urgent,sop-violation" \
-            --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
+            --assignee "${{ steps.team.outputs.members }}" \
             --body "$(cat <<EOF
 ## Direct push bypass
 
@@ -215,7 +225,7 @@ EOF
             gh issue create \
               --title "🚨 Cannot auto-revert PR #${PR_NUMBER} (SOP bypass) — manual action required" \
               --label "urgent,sop-violation" \
-              --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
+              --assignee "${{ steps.team.outputs.members }}" \
               --body "Could not automatically revert commit ${COMMIT_SHA} (PR #${PR_NUMBER}) because of follow-on commits. Please manually revert. Failing checks:\n\n${FAILED_LIST}"
             exit 1
           fi
@@ -272,7 +282,7 @@ EOF
           gh issue create \
             --title "SOP Violation: PR #${PR_NUMBER} auto-reverted — branch was not up-to-date" \
             --label "auto-reverted,sop-violation" \
-            --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
+            --assignee "${{ steps.team.outputs.members }}" \
             --body "$(cat <<EOF
 ## Branch Freshness Violation
 
