@@ -1745,6 +1745,7 @@ function FloatingNotesPanel({
   const [pos, setPos] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 300 })
   const dragging = useRef(false)
   const dragOffset = useRef({ x: 0, y: 0 })
+  const [snapping, setSnapping] = useState(false)
 
   const snapToCorner = (x: number, y: number) => {
     const w = 426
@@ -1757,12 +1758,13 @@ function FloatingNotesPanel({
     const top = pad
     const bottom = window.innerHeight - h - pad
 
-    // 8 snap targets: 4 corners + 4 edge midpoints
+    // 9 snap targets: 4 corners + 4 edge midpoints + center
     const targets = [
       { x: left, y: top },           // top-left
       { x: centerX, y: top },        // top-center
       { x: right, y: top },          // top-right
       { x: left, y: centerY },       // middle-left
+      { x: centerX, y: centerY },    // center
       { x: right, y: centerY },      // middle-right
       { x: left, y: bottom },        // bottom-left
       { x: centerX, y: bottom },     // bottom-center
@@ -1792,7 +1794,9 @@ function FloatingNotesPanel({
     const onMouseUp = (e: MouseEvent) => {
       if (!dragging.current) return
       dragging.current = false
+      setSnapping(true)
       setPos(snapToCorner(e.clientX - dragOffset.current.x, e.clientY - dragOffset.current.y))
+      setTimeout(() => setSnapping(false), 300)
     }
     window.addEventListener("mousemove", onMouseMove)
     window.addEventListener("mouseup", onMouseUp)
@@ -1806,7 +1810,7 @@ function FloatingNotesPanel({
     <div
       ref={panelRef}
       className="fixed z-50 flex w-[426px] flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_24px_48px_-12px_rgba(16,24,40,0.18)]"
-      style={{ left: pos.x, top: pos.y }}
+      style={{ left: pos.x, top: pos.y, transition: snapping ? "left 300ms ease-out, top 300ms ease-out" : "none" }}
     >
       {/* Top drag handle */}
       <div
