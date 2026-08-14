@@ -331,7 +331,7 @@ export default function ActiveProjectPage() {
                         <div className="border border-gray-200 rounded-lg p-6 space-y-6">
                           <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold text-dark-blue-400">Hours Logged</h3>
-                            <Link href="/earnings">
+                            <Link href="/time-tracking">
                               <Button variant="link" visual="primary" size="sm" className="capitalize">View Timesheet</Button>
                             </Link>
                           </div>
@@ -485,8 +485,235 @@ export default function ActiveProjectPage() {
                 <TabsContent value="scope"><div className="mt-6 text-sm text-gray-500">Scope content</div></TabsContent>
                 <TabsContent value="team"><div className="mt-6 text-sm text-gray-500">Team content</div></TabsContent>
                 <TabsContent value="files"><div className="mt-6 text-sm text-gray-500">Files content</div></TabsContent>
-                <TabsContent value="contract"><div className="mt-6 text-sm text-gray-500">Contract content</div></TabsContent>
-                <TabsContent value="activity"><div className="mt-6 text-sm text-gray-500">Activity content</div></TabsContent>
+                <TabsContent value="contract">
+                  <div className="mt-6 bg-white border border-gray-200 rounded-lg">
+                    {/* Project Summary */}
+                    <div className="p-6 space-y-8">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-bold text-dark-blue-400 leading-6">Project Summary</h2>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-light text-gray-400">Project Status</span>
+                          <span className="px-2 py-0.5 text-xs font-medium text-success-500 bg-success-50 rounded-full">Active</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                          <p className="text-xs font-medium text-gray-400 leading-[160%]">Project Team</p>
+                          <AvatarGroup size="md" max={5} excess excessClassName="!border-gray-300 !text-gray-500 !text-xs !font-medium !bg-white !size-11">
+                            {sampleMembers.slice(0, 6).map((m, i) => (
+                              <Avatar key={i} size="md" className="hover:ring-0 active:ring-0 !size-11">
+                                <AvatarImage src={m.avatar} alt={m.name} />
+                                <AvatarFallback>{m.name[0]}</AvatarFallback>
+                              </Avatar>
+                            ))}
+                          </AvatarGroup>
+                        </div>
+                        <div className="space-y-3">
+                          <p className="text-xs font-medium text-gray-400 leading-[160%]">Client</p>
+                          <Avatar size="md" className="hover:ring-0 active:ring-0 !size-11">
+                            <AvatarImage src="/man.jpg" alt="Client" />
+                            <AvatarFallback>C</AvatarFallback>
+                          </Avatar>
+                        </div>
+                      </div>
+
+                      <div className="space-y-[26px]">
+                        <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Order Number</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">12345678</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Project Type</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">Web App</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%] flex items-center gap-1">Start Date <HelpCircle className="size-3 text-gray-400" /></p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">Feb 5th, 2025</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%] flex items-center gap-1">End Date <HelpCircle className="size-3 text-gray-400" /></p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">Sep 4th, 2025</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border border-gray-300 rounded-lg p-[15px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-400 leading-[160%]"><span>Project Duration</span> <span className="font-bold text-dark-blue-400">4 months, 6 days</span></p>
+                          <p className="text-xs font-medium text-gray-400 leading-[160%] text-right"><span>Remaining</span> <span className="font-bold text-dark-blue-400">1 month, 6 days</span></p>
+                        </div>
+                        <div className="h-2 bg-gray-300 rounded opacity-80 overflow-hidden">
+                          <div className="h-full bg-primary-500 rounded" style={{ width: "75%" }} />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-400 leading-[160%]">Scope Summary</p>
+                          <button className="text-[10px] font-semibold text-primary-500 capitalize" onClick={() => setActiveTab("scope")}>View Scope</button>
+                        </div>
+                        <p className="text-sm text-gray-500 leading-6">
+                          Lorem ipsum dolor sit amet consectetur adipiscing elit. Quisque faucibus ex sapien vitae pellen metus bibebibe
+                          Quisque faucibus ex sapien dolor sit amet. Duis aute irure dolor in reprehenderit in voluptate velit esse cillvelit a
+                          dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deseru...
+                        </p>
+                        <button className="text-xs font-semibold text-gray-500">Read More</button>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-200" />
+
+                    {/* Client Payment */}
+                    <div className="p-6 space-y-8">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-dark-blue-400 leading-6">Client Payment</h2>
+                        <span className="px-2 py-0.5 text-xs font-medium text-warning-700 bg-warning-50 rounded-full">Pending</span>
+                      </div>
+
+                      <div className="space-y-[26px]">
+                        <div className="grid grid-cols-2 gap-[26px]">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Payment Type</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">Installment Plan - $4,000 per week</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Total Project Value</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">$94,000</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-[26px]">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Payments to Date</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">$74,000</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Remaining Balance</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">$12,000</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-200" />
+
+                    {/* Time & Earnings */}
+                    <div className="p-6 space-y-8">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-bold text-dark-blue-400 leading-6">Time & Earnings</h2>
+                        <Link href="/earnings">
+                          <span className="text-[10px] font-semibold text-primary-500 capitalize">View Earnings History</span>
+                        </Link>
+                      </div>
+
+                      <div className="space-y-[26px]">
+                        <div className="grid grid-cols-2 gap-8">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%]">Your Hours Tracked</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">12h 45m</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-5">Your Earnings to Date</p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">$45,000</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-8">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%] flex items-center gap-0.5">Overtime <HelpCircle className="size-3 text-gray-400" /></p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">Not allowed</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-gray-400 leading-[160%] flex items-center gap-0.5">Manual Time <HelpCircle className="size-3 text-gray-400" /></p>
+                            <p className="text-base font-bold text-dark-blue-400 leading-5">Not allowed</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-200" />
+
+                    {/* Footer */}
+                    <div className="p-6 flex justify-center">
+                      <p className="text-xs text-gray-400 leading-[160%] text-center">
+                        This contract is governed by Marketeq's{" "}
+                        <span className="text-primary-500 cursor-pointer">Terms of Service</span>,{" "}
+                        <span className="text-primary-500 cursor-pointer">Privacy Policy</span>,{" "}
+                        <span className="text-primary-500 cursor-pointer">Dispute Policy</span>, and{" "}
+                        <span className="text-primary-500 cursor-pointer">Work Protection Guidelines</span>.
+                      </p>
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent value="activity">
+                  <div className="mt-6 bg-white border border-gray-200 rounded-lg p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-lg font-bold text-dark-blue-400">Activity</h2>
+                      <IconButton variant="ghost" visual="gray" size="sm">
+                        <MoreHorizontal className="size-4" />
+                      </IconButton>
+                    </div>
+                    <div className="relative space-y-0">
+                      <div className="absolute left-4 top-10 bottom-4 w-px bg-gray-200" />
+                      {activityItems.map((item, i) => {
+                        const Icon = item.icon
+                        return (
+                          <div key={i} className="flex items-start gap-3 relative py-2.5">
+                            {item.isAvatar ? (
+                              <Avatar size="sm" className="hover:ring-0 active:ring-0 flex-none mt-0.5 z-10 !size-8">
+                                <AvatarImage src="/man.jpg" alt={item.title} />
+                                <AvatarFallback>{item.title[0]}</AvatarFallback>
+                              </Avatar>
+                            ) : Icon ? (
+                              <div className={`flex items-center justify-center size-8 rounded-full flex-none mt-0.5 z-10 ${activityCategoryStyles[item.category]?.bg || "bg-gray-100"}`}>
+                                <Icon className={`size-4 ${activityCategoryStyles[item.category]?.icon || "text-gray-500"}`} />
+                              </div>
+                            ) : (
+                              <div className="size-8 flex-none" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-dark-blue-400">{item.title}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">{item.date}</p>
+                              {item.title === "Amir Khan" && (
+                                <div className="mt-2">
+                                  <p className="text-sm text-gray-600 leading-relaxed">
+                                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore
+                                    magna aliqua.
+                                  </p>
+                                  <div className="flex items-center gap-3 mt-3 px-3 py-2 border border-gray-200 rounded-lg">
+                                    <File06 className="size-5 text-gray-400" />
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-dark-blue-400">Marketeq Sanity Nextjs</p>
+                                      <p className="text-xs text-gray-400">53.27 kB  pdf</p>
+                                    </div>
+                                    <IconButton variant="ghost" visual="gray" size="sm">
+                                      <MoreHorizontal className="size-4" />
+                                    </IconButton>
+                                  </div>
+                                </div>
+                              )}
+                              {item.title === "4 project members joined" && (
+                                <div className="flex items-center gap-1 mt-2">
+                                  {[1, 2, 3].map((j) => (
+                                    <Avatar key={j} size="sm" className="hover:ring-0 active:ring-0">
+                                      <AvatarImage src="/man.jpg" alt="member" />
+                                      <AvatarFallback>M</AvatarFallback>
+                                    </Avatar>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </TabsContent>
               </Tabs>
             </div>
 
