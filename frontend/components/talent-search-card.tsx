@@ -177,7 +177,7 @@ export const TalentSearchCard = ({
   )
 
   return (
-    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col min-h-[440px] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
+    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col min-h-[440px]">
       <div className="p-5">
         <div className="relative">
           <NextLink href={profileHref} className="block">
@@ -187,7 +187,7 @@ export const TalentSearchCard = ({
                 sizes="25vw"
                 fill
                 loading={imageLoading}
-                className="object-cover"
+                className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
                 alt={name}
               />
             </div>

@@ -268,18 +268,17 @@ export default function MyJobsPage() {
                         ].map((job) => (
                           <Card
                             key={job.id}
-                            className="overflow-hidden hover:border-gray-200 hover:ring-0"
+                            className="overflow-hidden"
                           >
                             <div className="w-full p-5">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <Button
-                                    variant="link"
-                                    visual="gray"
-                                    className="h-auto px-0 text-left text-lg font-semibold leading-normal text-dark-blue-400 hover:underline"
+                                  <NextLink
+                                    href="/job-screening"
+                                    className="text-lg font-semibold leading-normal text-dark-blue-400 hover:underline"
                                   >
                                     {job.title}
-                                  </Button>
+                                  </NextLink>
                                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                     {job.meta.map((item, index) => (
                                       <span
@@ -368,7 +367,7 @@ export default function MyJobsPage() {
             </div>
 
             <div className="space-y-6">
-              <Card className="w-full hover:border-gray-200 hover:ring-0">
+              <Card className="w-full">
                 <div className="w-full p-6">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-base font-semibold text-dark-blue-400">

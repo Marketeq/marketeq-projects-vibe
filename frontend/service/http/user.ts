@@ -154,6 +154,14 @@ export const UserAPI = {
   removeCertification: (certId: string) =>
     AxiosRequest.del(`${USER_BASE}/v1/certifications/${certId}`),
 
+  // Certification Issuers
+  getCertificationIssuers: () =>
+    AxiosRequest.get(`${USER_BASE}/v1/certification-issuers`),
+  searchCertificationIssuers: (query: string) =>
+    AxiosRequest.get(`${USER_BASE}/v1/certification-issuers/search?q=${encodeURIComponent(query)}`),
+  resolveCertificationLogos: (certifications: Array<{ name: string; issuer?: string }>) =>
+    AxiosRequest.post(`${USER_BASE}/v1/certification-issuers/resolve-logos`, { certifications }),
+
   // Industries
   addIndustry: (data: IndustryPayload) =>
     AxiosRequest.post(`${USER_BASE}/v1/industries`, data),
