@@ -49,7 +49,7 @@ jobs:
           gh issue create \
             --title "🚨 URGENT: forced push to ${{ github.ref_name }} by @${{ github.actor }}" \
             --label "urgent,force-push-violation" \
-            --assignee "CTorres9800" \
+            --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
             --body "$(cat <<EOF
 ## 🚨 Forced push detected
 
@@ -98,7 +98,7 @@ EOF
           gh issue create \
             --title "🚨 Direct push to ${{ github.ref_name }} bypassed PR review" \
             --label "urgent,sop-violation" \
-            --assignee "CTorres9800" \
+            --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
             --body "$(cat <<EOF
 ## Direct push bypass
 
@@ -202,7 +202,7 @@ This PR was merged to \`${BRANCH}\` by @${{ github.actor }} even though one or m
 
 ${FAILED_LIST}
 
-Per Code Review SOP §6, this is an **unauthorized merge bypass**. An automatic revert PR is being opened. Only the CTO (@CTorres9800) may decide to re-merge this work — and only after every failing check is resolved.
+Per Code Review SOP §6, this is an **unauthorized merge bypass**. An automatic revert PR is being opened. Only @Marketeq/code-review may decide to re-merge this work — and only after every failing check is resolved.
 
 🤖 Auto-flagged by \`.github/workflows/post-merge-audit.yml\`
 EOF
@@ -215,7 +215,7 @@ EOF
             gh issue create \
               --title "🚨 Cannot auto-revert PR #${PR_NUMBER} (SOP bypass) — manual action required" \
               --label "urgent,sop-violation" \
-              --assignee "CTorres9800" \
+              --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
               --body "Could not automatically revert commit ${COMMIT_SHA} (PR #${PR_NUMBER}) because of follow-on commits. Please manually revert. Failing checks:\n\n${FAILED_LIST}"
             exit 1
           fi
@@ -227,7 +227,7 @@ EOF
             --base "$BRANCH" \
             --head "$REVERT_BRANCH" \
             --title "[SOP AUTO-REVERT] Revert #${PR_NUMBER} — merged despite failing checks" \
-            --assignee "CTorres9800" \
+            --reviewer "Marketeq/code-review" \
             --body "$(cat <<EOF
 ## Automatic SOP-violation revert
 
@@ -244,7 +244,7 @@ ${FAILED_LIST}
 Reverts the offending merge so \`${BRANCH}\` returns to a known-good state.
 
 ### What happens next
-1. CTO (@CTorres9800) merges this auto-revert PR to restore \`${BRANCH}\`
+1. @Marketeq/code-review team merges this auto-revert PR to restore \`${BRANCH}\`
 2. The original PR #${PR_NUMBER} has been **labeled \`auto-reverted\`** — do NOT re-merge it
 3. The author must **rebase their branch** on the updated \`${BRANCH}\` and open a **new PR**
 4. The new PR must pass ALL checks (including branch freshness: zero commits behind) before merge
@@ -272,7 +272,7 @@ EOF
           gh issue create \
             --title "SOP Violation: PR #${PR_NUMBER} auto-reverted — branch was not up-to-date" \
             --label "auto-reverted,sop-violation" \
-            --assignee "CTorres9800" \
+            --assignee "CTorres9800,manu042k,MytreshR,Jagadesh001ops" \
             --body "$(cat <<EOF
 ## Branch Freshness Violation
 
