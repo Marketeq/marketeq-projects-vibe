@@ -1959,7 +1959,7 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "like" ? null : "like")}
-                    className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "like" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
@@ -1975,7 +1975,7 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "neutral" ? null : "neutral")}
-                    className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "neutral" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10" />
@@ -1999,7 +1999,7 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "dislike" ? null : "dislike")}
-                    className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "dislike" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
@@ -2554,7 +2554,7 @@ function FullWidthCandidateCard({
             <div className="flex items-center bg-white">
               <button
                 onClick={() => onVote?.(vote === "like" ? null : "like")}
-                className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M4.375 6.875l2.5-5.625a1.875 1.875 0 0 1 1.875 1.875V5.5h3.532a1.25 1.25 0 0 1 1.222 1.503l-1.035 4.84a1.25 1.25 0 0 1-1.222.907H4.375m0-5.875v5.875m0-5.875H2.5a.625.625 0 0 0-.625.625v4.625a.625.625 0 0 0 .625.625h1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
@@ -2562,7 +2562,7 @@ function FullWidthCandidateCard({
               </button>
               <button
                 onClick={() => onVote?.(vote === "neutral" ? null : "neutral")}
-                className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <circle cx="7.5" cy="7.5" r="5.625" stroke="currentColor" strokeWidth="1.25" />
@@ -2573,7 +2573,7 @@ function FullWidthCandidateCard({
               </button>
               <button
                 onClick={() => onVote?.(vote === "dislike" ? null : "dislike")}
-                className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:bg-[#F2F4F7] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M10.625 8.125l-2.5 5.625a1.875 1.875 0 0 1-1.875-1.875V9.5H2.718a1.25 1.25 0 0 1-1.222-1.503l1.035-4.84A1.25 1.25 0 0 1 3.753 2.25h6.872m0 5.875V2.25m0 5.875H12.5a.625.625 0 0 0 .625-.625V2.875A.625.625 0 0 0 12.5 2.25h-1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
