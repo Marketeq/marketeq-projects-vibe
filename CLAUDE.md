@@ -216,6 +216,16 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 - **Auth**: JWT + Passport (Google, LinkedIn OAuth); cookies `access_token` / `refresh_token` / `session_id`
 - **Deployment**: Render (backend), Vercel (frontend)
 
+## Frontend Design System (non-negotiable)
+**Before writing ANY frontend UI, read `frontend/COMPONENTS.md`.**
+
+- **NEVER** use raw HTML elements (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`) when a design system component exists
+- **ALWAYS** import from `@/components/ui` — the full catalog is in `frontend/COMPONENTS.md`
+- **ALWAYS** check `frontend/COMPONENTS.md` for available props/variants before adding custom styles
+- If a component needs a height/size override, use Tailwind's `!important` modifier (e.g., `!h-[190px]`) to beat component defaults
+- Raw `<label>` is only acceptable as a checkbox/radio click wrapper, never as a form field label (use `Label` component)
+- When in doubt, run `npm run storybook` to see component examples
+
 ## Code Standards (non-negotiable)
 - TypeScript strict mode everywhere
 - All DTOs must use `class-validator` decorators
