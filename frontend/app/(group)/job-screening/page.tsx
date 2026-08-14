@@ -560,7 +560,6 @@ export default function JobScreeningPage() {
   const [payRateRange, setPayRateRange] = useState<[number, number]>([0, 300])
   const [candidateStatus, setCandidateStatus] = useState("all")
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
-  const [matchScoreOpen, setMatchScoreOpen] = useState(false)
   const [candidateVotes, setCandidateVotes] = useState<Record<string, "like" | "neutral" | "dislike" | null>>({})
   const [candidateSuperLikes, setCandidateSuperLikes] = useState<Set<string>>(new Set())
 
