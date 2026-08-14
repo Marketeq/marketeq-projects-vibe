@@ -2383,11 +2383,11 @@ function MatchIndicator({
   }
   if (type === "match") {
     return (
-      <CheckCircle className="size-5 shrink-0 text-success-500" />
+      <CheckCircle className="size-5 shrink-0 text-success-500" strokeWidth={1.6} />
     )
   }
   return (
-    <XCircle className="size-5 shrink-0 text-error-500" />
+    <XCircle className="size-5 shrink-0 text-error-500" strokeWidth={1.6} />
   )
 }
 
