@@ -1839,7 +1839,7 @@ function FloatingNotesPanel({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="What makes them stand out?"
-          className="h-[190px] flex-1 resize-none rounded-[5px]"
+          className="!h-[190px] resize-none rounded-[5px]"
         />
       </div>
     </div>
