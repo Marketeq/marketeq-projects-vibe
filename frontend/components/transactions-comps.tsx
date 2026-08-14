@@ -13,6 +13,7 @@ import {
   getBalance,
   getEarningDetail,
   getEarnings,
+  getEarningsFilterOptions,
   getEarningsSummary,
 } from "@/service/http/earnings"
 import { UserAPI } from "@/service/http/user"
@@ -46,6 +47,7 @@ import {
   Plus,
   RefreshCcw01,
   Search,
+  SearchMd,
   Settings02,
   SlashCircle01,
   Trash01,
@@ -58,7 +60,7 @@ import {
   StripeDefault,
 } from "@blend-metrics/icons/payment-methods"
 import { type Stripe as StripeJSInstance, loadStripe } from "@stripe/stripe-js"
-import { format as formatDate, formatDistanceToNowStrict } from "date-fns"
+import { format as formatDate, formatDistanceToNowStrict, parseISO } from "date-fns"
 import { QRCodeSVG } from "qrcode.react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
@@ -70,6 +72,7 @@ import {
 import { Label } from "@/components/ui/label/label"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Logo3 } from "@/components/icons"
+import { FilterEntityAvatar } from "@/components/icons/filter-entity-avatar"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { useToast } from "@/components/ui"
@@ -88,6 +91,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DoubleCalendar,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -95,6 +99,9 @@ import {
   IconButton,
   Input,
   NumberInput,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   ScrollArea,
   SearchField,
   SearchFieldButton,
@@ -174,7 +181,7 @@ const DollarSignIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
 // baked in (unlike @blend-metrics/icons' PayPalDefault, which draws both and
 // made a clean circular/square badge impossible — see PaypalCircleIcon and
 // getMethodIcon's PAYPAL case below for the two badge shapes this feeds).
-const PaypalIcon = ({ className }: { className?: string }) => (
+export const PaypalIcon = ({ className }: { className?: string }) => (
   <svg
     viewBox="0 0 20 20"
     className={cn("shrink-0", className)}
@@ -565,7 +572,7 @@ const CRYPTO_PROVIDER_ICON: Record<
   BINANCE: BinanceProviderIcon,
 }
 
-const CryptoProviderIcon = ({
+export const CryptoProviderIcon = ({
   provider,
   className,
 }: {
@@ -740,29 +747,24 @@ function BankLogo({
     )
   }
 
-  const initials = (bankName || "BK")
-    .split(" ")
-    .map((w: string) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
   return (
     <div
       style={{
         width: size,
         height: size,
         borderRadius: 8,
-        background: "#117ACA",
+        background: "white",
+        border: "1px solid #E5E7EB",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "white",
-        fontWeight: 700,
-        fontSize: size * 0.35,
         flexShrink: 0,
       }}
     >
-      {initials}
+      <BankIcon
+        className="text-gray-800"
+        style={{ width: size * 0.5, height: size * 0.5 }}
+      />
     </div>
   )
 }
@@ -1867,6 +1869,80 @@ const formatMethodOptionLabel = (m: any): string => {
       .join(" ")
   }
   return m.nickname || m.displayLabel || m.methodType
+}
+
+function splitMethodLabel(m: {
+  methodType?: string
+  nickname?: string | null
+  displayLabel?: string | null
+  paypalEmail?: string | null
+  wiseAccountId?: string | null
+  payoneerPayeeId?: string | null
+  cryptoAddress?: string | null
+  cryptoProvider?: string | null
+}): { name: string; sub: string } {
+  if (m.methodType === "PAYPAL") {
+    const email = m.paypalEmail ?? emailFromDisplayLabel(m.displayLabel)
+    return { name: m.nickname || "PayPal", sub: email ? maskEmail(email) : "" }
+  }
+  if (m.methodType === "WISE") {
+    const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
+    return { name: m.nickname || "Wise", sub: id ? maskId(id) : "" }
+  }
+  if (m.methodType === "PAYONEER") {
+    const id = m.payoneerPayeeId ?? emailFromDisplayLabel(m.displayLabel)
+    return { name: m.nickname || "Payoneer", sub: id ? maskId(id) : "" }
+  }
+  if (m.methodType === "CRYPTO") {
+    const address = m.cryptoAddress
+      ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
+      : (m.displayLabel ?? "")
+    return {
+      name: m.nickname || m.cryptoProvider || "Crypto Wallet",
+      sub: address,
+    }
+  }
+  const label = m.nickname
+    ? `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`.trim()
+    : m.displayLabel || "Bank Account"
+  const maskMatch = label.match(/^(.*?)\s*(••••\d+|\.{3,4}\d+)$/)
+  if (maskMatch) {
+    return {
+      name: maskMatch[1].trim(),
+      sub: maskMatch[2].replace(/•+/g, "..."),
+    }
+  }
+  return { name: label, sub: "" }
+}
+
+function FilterMethodIcon({
+  method,
+}: {
+  method: { methodType?: string; nickname?: string | null; displayLabel?: string | null; cryptoProvider?: string | null }
+}) {
+  const wrap = (child: React.ReactNode) => (
+    <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+      {child}
+    </span>
+  )
+  if (method.methodType === "PAYPAL") return wrap(<PaypalIcon className="size-5" />)
+  if (method.methodType === "WISE")
+    return wrap(<WiseGlyphV2 className="size-5" />)
+  if (method.methodType === "CRYPTO")
+    return (
+      <CryptoProviderIcon
+        provider={method.cryptoProvider || ""}
+        className="size-8"
+      />
+    )
+  if (
+    method.methodType === "MARKETEQ_DEBIT_CARD" ||
+    method.methodType === "TEQ_COIN"
+  ) {
+    return wrap(<BankIcon className="size-5 text-primary-600" />)
+  }
+  const bankName = method.nickname || method.displayLabel || ""
+  return <BankLogo bankName={bankName} size={32} />
 }
 
 // ─── Overview Tab ───────────────────────────────────────────────────────
@@ -3815,7 +3891,11 @@ export const OverviewTab = ({
                         </span>
                       )}
                     </div>
-                    <Badge visual="primary" size="sm" className="shrink-0">
+                    <Badge
+                      visual="primary"
+                      size="sm"
+                      className="shrink-0 bg-primary-50 text-primary-600"
+                    >
                       Default
                     </Badge>
                   </div>
@@ -3970,7 +4050,11 @@ export const OverviewTab = ({
                         </Badge>
                       )}
                       {m.isDefault ? (
-                        <Badge visual="primary" size="sm" className="mr-2">
+                        <Badge
+                          visual="primary"
+                          size="sm"
+                          className="mr-2 bg-primary-50 text-primary-600"
+                        >
                           Default
                         </Badge>
                       ) : m.verificationStatus === "verified" ? (
@@ -3978,7 +4062,7 @@ export const OverviewTab = ({
                           variant="link"
                           visual="gray"
                           size="sm"
-                          className="mr-2 font-semibold text-[#22376B] underline underline-offset-4"
+                          className="mr-2 font-semibold text-gray-500 underline underline-offset-4 hover:text-[#22376B]"
                           onClick={() => requestSetDefault(m)}
                         >
                           Make Default
@@ -4722,7 +4806,17 @@ export const OverviewTab = ({
                                 "Transfer in 1–3 business days",
                                 "Charges flat $1–$2 per withdrawal",
                               ],
-                              icon: <WiseIconV2 className="size-5" />,
+                              // Same bare-glyph-in-square-chip treatment as
+                              // Connected Accounts' getMethodIcon WISE case —
+                              // not the circular green badge (WiseIconV2 on
+                              // its own here double-wraps inside the default
+                              // circular wrapper below).
+                              icon: (
+                                <div className="size-9 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
+                                  <WiseGlyphV2 className="w-1/2 h-1/2" />
+                                </div>
+                              ),
+                              selfContained: true,
                             },
                             {
                               type: "PAYONEER",
@@ -9329,7 +9423,7 @@ function TablePagination({
   )
 }
 
-// US-23: chip labels must match the dateRange <SelectItem> copy verbatim.
+// US-23: chip labels must match the date-range picker copy verbatim.
 const EARNINGS_DATE_RANGE_LABELS: Record<string, string> = {
   all_time: "All Time",
   today: "Today",
@@ -9339,15 +9433,203 @@ const EARNINGS_DATE_RANGE_LABELS: Record<string, string> = {
   this_month: "This Month",
   last_month: "Last Month",
   this_year: "This Year",
+  last_year: "Last Year",
+  custom: "Custom range",
+}
+
+const DATE_PRESET_TO_API: Record<string, string> = {
+  "all time": "all_time",
+  today: "today",
+  yesterday: "yesterday",
+  "this week": "this_week",
+  "last week": "last_week",
+  "this month": "this_month",
+  "last month": "last_month",
+  "this year": "this_year",
+  "last year": "last_year",
+  "custom range": "custom",
+}
+
+const DATE_API_TO_PRESET: Record<string, string> = {
+  all_time: "all time",
+  today: "today",
+  yesterday: "yesterday",
+  this_week: "this week",
+  last_week: "last week",
+  this_month: "this month",
+  last_month: "last month",
+  this_year: "this year",
+  last_year: "last year",
+  custom: "custom range",
 }
 
 export interface EarningsFilters {
   dateRange: string
+  startDate?: string
+  endDate?: string
   entryType: string
   statusFilter: string
   search: string
   projectId: string
   clientId: string
+}
+
+const FILTER_CHIP_CLASS =
+  "h-9 gap-x-2 bg-white text-sm font-medium text-gray-800 hover:bg-white"
+
+const FILTER_SELECT_CHIP_CLASS =
+  "h-9 w-auto bg-white px-3.5 py-0 text-sm font-medium text-gray-800 data-[placeholder]:text-gray-800 [&>span]:text-sm [&>span]:font-medium [&>span]:text-gray-800 [&>svg]:size-4 [&>svg]:text-gray-800"
+
+function toAtHandle(value?: string | null) {
+  if (!value) return ""
+  const trimmed = value.trim()
+  if (!trimmed) return ""
+  if (trimmed.startsWith("@")) return trimmed
+  return "@" + trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
+
+function FilterSearchMenu({
+  label,
+  searchPlaceholder,
+  value,
+  onValueChange,
+  items,
+  layout = "stacked",
+}: {
+  label: string
+  searchPlaceholder: string
+  value: string
+  onValueChange: (id: string) => void
+  items: {
+    id: string
+    title: string
+    handle?: string | null
+    avatarUrl?: string | null
+    icon?: React.ReactNode
+  }[]
+  layout?: "stacked" | "inline"
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const selected = items.find((item) => item.id === value)
+  const q = query.trim().toLowerCase()
+  const filtered =
+    q === ""
+      ? items
+      : items.filter((item) => {
+          const extra = item.handle ?? ""
+          return (
+            item.title.toLowerCase().includes(q) ||
+            extra.toLowerCase().includes(q)
+          )
+        })
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery("")
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="outlined"
+          visual="gray"
+          size="sm"
+          className={FILTER_CHIP_CLASS}
+        >
+          {selected?.title ?? label}
+          <ChevronDown className="size-4 text-gray-800" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          inputRef.current?.focus()
+        }}
+        className="z-[80] w-[300px] overflow-hidden rounded-xl border border-gray-200 bg-white p-0 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+      >
+        <div className="flex items-center gap-2 border-b border-gray-200 px-3.5 py-2.5">
+          <Search className="size-4 shrink-0 text-gray-400" />
+          <input
+            ref={inputRef}
+            className="m-0 h-5 w-full border-none bg-transparent p-0 text-sm text-gray-900 shadow-none outline-none ring-0 placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none"
+            placeholder={searchPlaceholder}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <ScrollArea viewportClassName="max-h-[280px]">
+          <div className="py-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-gray-400">No matches</p>
+            ) : (
+              filtered.map((item) => {
+                const subtitle =
+                  layout === "inline"
+                    ? (item.handle ?? "")
+                    : toAtHandle(item.handle) || toAtHandle(item.title)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3.5 py-2 text-left hover:bg-gray-50",
+                      item.id === value && "bg-gray-50"
+                    )}
+                    onClick={() => {
+                      onValueChange(item.id === value ? "" : item.id)
+                      setOpen(false)
+                    }}
+                  >
+                    {item.icon ? (
+                      item.icon
+                    ) : item.avatarUrl ? (
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarImage src={item.avatarUrl} alt={item.title} />
+                        <AvatarFallback className="bg-transparent p-0">
+                          <FilterEntityAvatar />
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <FilterEntityAvatar />
+                    )}
+                    {layout === "inline" ? (
+                      <span className="min-w-0 truncate text-sm">
+                        <span className="font-medium text-gray-800">
+                          {item.title}
+                        </span>
+                        {subtitle ? (
+                          <span className="font-normal text-gray-500">
+                            {" "}
+                            {subtitle}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="min-w-0 leading-[1.2]">
+                        <span className="block truncate text-sm font-semibold text-gray-900">
+                          {item.title}
+                        </span>
+                        {subtitle ? (
+                          <span className="block truncate text-xs font-normal text-gray-400">
+                            {subtitle}
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export const EarningsTab = ({
@@ -9368,6 +9650,9 @@ export const EarningsTab = ({
   const [earningsError, setEarningsError] = React.useState(false)
   // US-24.02 QA spec: default/reset date range is "this_month", not "all_time".
   const [dateRange, setDateRange] = React.useState("this_month")
+  const [dateFrom, setDateFrom] = React.useState("")
+  const [dateTo, setDateTo] = React.useState("")
+  const [datePickerOpen, setDatePickerOpen] = React.useState(false)
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
   const [projectId, setProjectId] = React.useState("")
@@ -9375,19 +9660,14 @@ export const EarningsTab = ({
   const [dateSortOrder, setDateSortOrder] = React.useState<"asc" | "desc">(
     "desc"
   )
-  // Figma "All Projects"/"All Clients" — options accumulated from loaded rows
-  // (no dedicated filter-options endpoint yet).
-  const projectOptionsRef = React.useRef(
-    new Map<string, { id: string; name: string }>()
-  )
-  const clientOptionsRef = React.useRef(
-    new Map<string, { id: string; label: string }>()
-  )
+  // Figma "All Projects"/"All Clients" — options fetched from
+  // GET /earnings/filters (see the useEffect below), covering the
+  // contractor's full contract history.
   const [projectOptions, setProjectOptions] = React.useState<
-    { id: string; name: string }[]
+    { id: string; name: string; handle?: string | null }[]
   >([])
   const [clientOptions, setClientOptions] = React.useState<
-    { id: string; label: string }[]
+    { id: string; label: string; handle?: string | null }[]
   >([])
 
   // US-30 (F-05 Entry Detail Drawer), opened from history rows here too — a
@@ -9444,6 +9724,11 @@ export const EarningsTab = ({
       sortBy: "workStartAt",
       sortOrder: dateSortOrder,
     }
+    if (dateRange === "custom" && dateFrom && dateTo) {
+      q.dateRange = "custom"
+      q.startDate = dateFrom
+      q.endDate = dateTo
+    }
     if (entryType) q.entryType = entryType
     if (statusFilter) q.status = statusFilter
     if (projectId) q.projectId = projectId
@@ -9459,6 +9744,8 @@ export const EarningsTab = ({
   }, [
     viewMode,
     dateRange,
+    dateFrom,
+    dateTo,
     currentPage,
     entryType,
     statusFilter,
@@ -9472,43 +9759,21 @@ export const EarningsTab = ({
     loadEarnings()
   }, [loadEarnings])
 
-  // Grow All Projects / All Clients option lists from each page of results.
+  // All Projects / All Clients option lists — fetched once from the
+  // contractor's full contract history (GET /earnings/filters), not derived
+  // from whichever earnings rows the current date-range filter happens to
+  // return. The old row-derived approach meant the dropdown was empty
+  // whenever the active filters returned zero rows (e.g. default "This
+  // Month" filter on an account with no earnings this month), even though
+  // the contractor has real project/client history outside that window.
   useEffect(() => {
-    if (!earningsResult?.data?.length) return
-    let changed = false
-    for (const row of earningsResult.data) {
-      if (row.project?.id && row.project.name) {
-        if (!projectOptionsRef.current.has(row.project.id)) {
-          projectOptionsRef.current.set(row.project.id, {
-            id: row.project.id,
-            name: row.project.name,
-          })
-          changed = true
-        }
-      }
-      if (row.project?.clientId && row.project.clientHandle) {
-        if (!clientOptionsRef.current.has(row.project.clientId)) {
-          clientOptionsRef.current.set(row.project.clientId, {
-            id: row.project.clientId,
-            label: row.project.clientHandle,
-          })
-          changed = true
-        }
-      }
-    }
-    if (changed) {
-      setProjectOptions(
-        [...projectOptionsRef.current.values()].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        )
-      )
-      setClientOptions(
-        [...clientOptionsRef.current.values()].sort((a, b) =>
-          a.label.localeCompare(b.label)
-        )
-      )
-    }
-  }, [earningsResult])
+    getEarningsFilterOptions()
+      .then((opts) => {
+        setProjectOptions(opts.projects)
+        setClientOptions(opts.clients)
+      })
+      .catch((e) => console.error("Failed to load project/client filter options:", e))
+  }, [])
 
   // US-23/US-24: chips + Clear All. dateRange excluded — "this_month" is the
   // default and isn't a contractor-applied filter to display as a chip.
@@ -9521,9 +9786,14 @@ export const EarningsTab = ({
       ? [
           {
             key: "dateRange",
-            label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange,
+            label:
+              dateRange === "custom" && dateFrom && dateTo
+                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                : (EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange),
             onRemove: () => {
               setDateRange("this_month")
+              setDateFrom("")
+              setDateTo("")
               setCurrentPage(1)
             },
           },
@@ -9595,6 +9865,8 @@ export const EarningsTab = ({
   const hasActiveFilters = activeFilterChips.length > 0
   const clearAllFilters = React.useCallback(() => {
     setDateRange("this_month")
+    setDateFrom("")
+    setDateTo("")
     setEntryType("")
     setStatusFilter("")
     setProjectId("")
@@ -9608,6 +9880,8 @@ export const EarningsTab = ({
   useEffect(() => {
     onFiltersChange?.({
       dateRange,
+      startDate: dateFrom,
+      endDate: dateTo,
       entryType,
       statusFilter,
       search: searchQuery.length >= 2 ? searchQuery : "",
@@ -9617,6 +9891,8 @@ export const EarningsTab = ({
   }, [
     onFiltersChange,
     dateRange,
+    dateFrom,
+    dateTo,
     entryType,
     statusFilter,
     searchQuery,
@@ -9773,68 +10049,84 @@ export const EarningsTab = ({
           <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
         </ToggleGroupRoot>
 
-        <Select
-          value={dateRange}
-          onValueChange={(v) => {
-            setDateRange(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
-            <Calendar className="size-4 mr-1" />
-            <SelectValue placeholder="All Time" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all_time">All Time</SelectItem>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="yesterday">Yesterday</SelectItem>
-            <SelectItem value="this_week">This Week</SelectItem>
-            <SelectItem value="last_week">Last Week</SelectItem>
-            <SelectItem value="this_month">This Month</SelectItem>
-            <SelectItem value="last_month">Last Month</SelectItem>
-            <SelectItem value="this_year">This Year</SelectItem>
-          </SelectContent>
-        </Select>
+        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              className={FILTER_CHIP_CLASS}
+            >
+              <Calendar className="size-4 text-gray-800" />
+              {dateRange === "custom" && dateFrom && dateTo
+                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                : (EARNINGS_DATE_RANGE_LABELS[dateRange] ?? "This Month")}
+              <ChevronDown className="size-4 text-gray-800" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            align="start"
+            collisionPadding={16}
+          >
+            {datePickerOpen ? (
+              <DoubleCalendar
+                key={`${dateRange}-${dateFrom}-${dateTo}`}
+                preset={DATE_API_TO_PRESET[dateRange] ?? "this month"}
+                value={
+                  dateFrom && dateTo
+                    ? { start: parseISO(dateFrom), end: parseISO(dateTo) }
+                    : undefined
+                }
+                onCancel={() => setDatePickerOpen(false)}
+                onApply={(range, preset) => {
+                  if (preset === "custom range" && !range) return
+                  const next = DATE_PRESET_TO_API[preset] ?? "this_month"
+                  setDateRange(next)
+                  if (next === "custom" && range) {
+                    setDateFrom(formatDate(range.start, "yyyy-MM-dd"))
+                    setDateTo(formatDate(range.end, "yyyy-MM-dd"))
+                  } else {
+                    setDateFrom("")
+                    setDateTo("")
+                  }
+                  setCurrentPage(1)
+                  setDatePickerOpen(false)
+                }}
+              />
+            ) : null}
+          </PopoverContent>
+        </Popover>
 
-        <Select
-          value={projectId || "all-projects"}
-          onValueChange={(v) => {
-            setProjectId(v === "all-projects" ? "" : v)
+        <FilterSearchMenu
+          label="All Projects"
+          searchPlaceholder="Find projects"
+          value={projectId}
+          onValueChange={(id) => {
+            setProjectId(id)
             setCurrentPage(1)
           }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[120px]">
-            <SelectValue placeholder="All Projects" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-projects">All Projects</SelectItem>
-            {projectOptions.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          items={projectOptions.map((p) => ({
+            id: p.id,
+            title: p.name,
+            handle: p.handle,
+          }))}
+        />
 
-        <Select
-          value={clientId || "all-clients"}
-          onValueChange={(v) => {
-            setClientId(v === "all-clients" ? "" : v)
+        <FilterSearchMenu
+          label="All Clients"
+          searchPlaceholder="Find clients"
+          value={clientId}
+          onValueChange={(id) => {
+            setClientId(id)
             setCurrentPage(1)
           }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
-            <SelectValue placeholder="All Clients" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-clients">All Clients</SelectItem>
-            {clientOptions.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          items={clientOptions.map((c) => ({
+            id: c.id,
+            title: c.label,
+            handle: c.handle,
+          }))}
+        />
 
         <Select
           value={entryType || "all-entry-types"}
@@ -9843,7 +10135,7 @@ export const EarningsTab = ({
             setCurrentPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[130px]">
+          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[130px]")}>
             <SelectValue placeholder="All Entry Types" />
           </SelectTrigger>
           <SelectContent>
@@ -9860,7 +10152,7 @@ export const EarningsTab = ({
             setCurrentPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
+          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[110px]")}>
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -9876,6 +10168,7 @@ export const EarningsTab = ({
               <Search className="size-4" />
             </SearchFieldButton>
             <SearchFieldInput
+              className={searchQuery ? "pr-9" : undefined}
               placeholder="Find transactions"
               value={searchQuery}
               onChange={(e) => {
@@ -9883,31 +10176,23 @@ export const EarningsTab = ({
                 setCurrentPage(1)
               }}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                className="absolute right-2.5 inset-y-0 my-auto text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setSearchQuery("")
+                  setCurrentPage(1)
+                }}
+              >
+                <XCircle className="size-4" />
+              </button>
+            )}
           </SearchField>
         </div>
       </div>
 
-      {/* US-23/US-24: active filter chips + Clear All */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-2">
-          {activeFilterChips.map((chip) => (
-            <button
-              key={chip.key}
-              onClick={chip.onRemove}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-25 px-3 py-1 text-xs font-medium text-dark-blue-400 hover:bg-gray-50"
-            >
-              {chip.label}
-              <X className="size-3 text-gray-400" />
-            </button>
-          ))}
-          <button
-            onClick={clearAllFilters}
-            className="text-xs font-medium text-primary-600 hover:underline"
-          >
-            Clear All
-          </button>
-        </div>
-      )}
 
       {/* Table */}
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
@@ -10105,11 +10390,6 @@ export const EarningsTab = ({
                     {viewMode === "daily" && (
                       <TableCell className="text-sm text-gray-500">
                         <div>{row.durationLabel}</div>
-                        {row.entryType === "manual" && (
-                          <Badge visual="warning" size="sm" className="mt-1">
-                            Manual
-                          </Badge>
-                        )}
                       </TableCell>
                     )}
                     {viewMode === "weekly" && (
@@ -10143,11 +10423,6 @@ export const EarningsTab = ({
                         {row.status === "paid" && (
                           <Badge visual="success" size="sm">
                             Paid
-                          </Badge>
-                        )}
-                        {row.status === "confirmed" && (
-                          <Badge visual="primary" size="sm">
-                            Confirmed
                           </Badge>
                         )}
                         {row.status === "failed" && (
@@ -10707,10 +10982,14 @@ export interface PayoutDepositStatus {
 
 export interface PayoutsFilters {
   dateRange: string
+  dateFrom?: string
+  dateTo?: string
   statusFilter: string
   depositMethodId: string
   search: string
 }
+
+const PAYOUT_DATE_RANGE_LABELS = EARNINGS_DATE_RANGE_LABELS
 
 export const PayoutsTab = ({
   onDepositStatusChange,
@@ -10728,6 +11007,9 @@ export const PayoutsTab = ({
   // resolvePayoutDateRange/depositMethodId in payout.service.ts) instead of
   // the previously-removed inert selectors.
   const [dateRange, setDateRange] = useState("all_time")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [depositMethodId, setDepositMethodId] = useState("")
   const [accountOptions, setAccountOptions] = useState<DepositMethodOption[]>(
     []
@@ -10873,7 +11155,13 @@ export const PayoutsTab = ({
         })
         if (statusFilter) qs.set("status", statusFilter)
         if (searchQuery.trim().length >= 2) qs.set("search", searchQuery.trim())
-        if (dateRange !== "all_time") qs.set("dateRange", dateRange)
+        if (dateRange === "custom" && dateFrom && dateTo) {
+          qs.set("dateRange", "custom")
+          qs.set("from", dateFrom)
+          qs.set("to", dateTo)
+        } else if (dateRange !== "all_time") {
+          qs.set("dateRange", dateRange)
+        }
         if (depositMethodId) qs.set("depositMethodId", depositMethodId)
         const res = await payoutFetch(`/payouts?${qs.toString()}`)
         const data = await res.json()
@@ -10890,7 +11178,7 @@ export const PayoutsTab = ({
         if (!silent) setLoading(false)
       }
     },
-    [currentPage, statusFilter, searchQuery, dateRange, depositMethodId]
+    [currentPage, statusFilter, searchQuery, dateRange, dateFrom, dateTo, depositMethodId]
   )
 
   useEffect(() => {
@@ -10902,11 +11190,13 @@ export const PayoutsTab = ({
   useEffect(() => {
     onFiltersChange?.({
       dateRange,
+      dateFrom,
+      dateTo,
       statusFilter,
       depositMethodId,
       search: searchQuery.trim().length >= 2 ? searchQuery.trim() : "",
     })
-  }, [onFiltersChange, dateRange, statusFilter, depositMethodId, searchQuery])
+  }, [onFiltersChange, dateRange, dateFrom, dateTo, statusFilter, depositMethodId, searchQuery])
 
   // AC-29.01/29.02/29.03: poll every 15s (no flicker — silent refetch) as long as
   // any row on this page hasn't reached a terminal status. No SSE/WebSocket infra
@@ -11042,47 +11332,74 @@ export const PayoutsTab = ({
       {/* Filters Row — Status, Date Range, and Account are all real, server-side
           filters wired to the fetch (see payout.service.ts listPayouts). */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Select
-          value={dateRange}
-          onValueChange={(v) => {
-            setDateRange(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
-            <Calendar className="size-4 mr-1" />
-            <SelectValue placeholder="All Time" />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(EARNINGS_DATE_RANGE_LABELS)
-              .filter(([v]) => v !== "yesterday" && v !== "last_week")
-              .map(([v, label]) => (
-                <SelectItem key={v} value={v}>
-                  {label}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
+        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              className={FILTER_CHIP_CLASS}
+            >
+              <Calendar className="size-4 text-gray-800" />
+              {dateRange === "custom" && dateFrom && dateTo
+                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                : (PAYOUT_DATE_RANGE_LABELS[dateRange] ?? "All Time")}
+              <ChevronDown className="size-4 text-gray-800" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            align="start"
+            collisionPadding={16}
+          >
+            {datePickerOpen ? (
+            <DoubleCalendar
+              key={`${dateRange}-${dateFrom}-${dateTo}`}
+              preset={DATE_API_TO_PRESET[dateRange] ?? "all time"}
+              value={
+                dateFrom && dateTo
+                  ? { start: parseISO(dateFrom), end: parseISO(dateTo) }
+                  : undefined
+              }
+              onCancel={() => setDatePickerOpen(false)}
+              onApply={(range, preset) => {
+                if (preset === "custom range" && !range) return
+                const next = DATE_PRESET_TO_API[preset] ?? "all_time"
+                setDateRange(next)
+                if (next === "custom" && range) {
+                  setDateFrom(formatDate(range.start, "yyyy-MM-dd"))
+                  setDateTo(formatDate(range.end, "yyyy-MM-dd"))
+                } else {
+                  setDateFrom("")
+                  setDateTo("")
+                }
+                setCurrentPage(1)
+                setDatePickerOpen(false)
+              }}
+            />
+            ) : null}
+          </PopoverContent>
+        </Popover>
 
-        <Select
-          value={depositMethodId || "all-accounts"}
-          onValueChange={(v) => {
-            setDepositMethodId(v === "all-accounts" ? "" : v)
+        <FilterSearchMenu
+          label="All Accounts"
+          searchPlaceholder="Find accounts"
+          layout="inline"
+          value={depositMethodId}
+          onValueChange={(id) => {
+            setDepositMethodId(id)
             setCurrentPage(1)
           }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[150px]">
-            <SelectValue placeholder="All Accounts" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-accounts">All Accounts</SelectItem>
-            {accountOptions.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {formatMethodOptionLabel(m)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          items={accountOptions.map((m) => {
+            const { name, sub } = splitMethodLabel(m)
+            return {
+              id: m.id,
+              title: name,
+              handle: sub,
+              icon: <FilterMethodIcon method={m} />,
+            }
+          })}
+        />
 
         <Select
           value={statusFilter || "all-statuses"}
@@ -11091,7 +11408,7 @@ export const PayoutsTab = ({
             setCurrentPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[160px]">
+          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[160px]")}>
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -11104,99 +11421,51 @@ export const PayoutsTab = ({
           </SelectContent>
         </Select>
 
-        {hasActiveFilters && (
-          <>
-            {dateRange !== "all_time" && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange}
-                <button
-                  onClick={() => {
-                    setDateRange("all_time")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            {depositMethodId && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {accountOptions.find((m) => m.id === depositMethodId)
-                  ?.nickname ||
-                  accountOptions.find((m) => m.id === depositMethodId)
-                    ?.displayLabel ||
-                  "Account"}
-                <button
-                  onClick={() => {
-                    setDepositMethodId("")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            {statusFilter && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {PAYOUT_STATUS_FILTER_OPTIONS.find(
-                  (o) => o.value === statusFilter
-                )?.label ?? statusFilter}
-                <button
-                  onClick={() => {
-                    setStatusFilter("")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            {searchQuery.length >= 2 && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {`"${searchQuery}"`}
-                <button
-                  onClick={() => {
-                    setSearchQuery("")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => {
-                setStatusFilter("")
-                setSearchQuery("")
-                setDateRange("all_time")
-                setDepositMethodId("")
-                setCurrentPage(1)
-              }}
-            >
-              Clear All
-            </Button>
-          </>
-        )}
+        <Button
+          variant="link"
+          size="sm"
+          className="shrink-0 font-semibold text-primary-600"
+          onClick={() => {
+            setStatusFilter("")
+            setSearchQuery("")
+            setDateRange("all_time")
+            setDateFrom("")
+            setDateTo("")
+            setDepositMethodId("")
+            setCurrentPage(1)
+          }}
+        >
+          Clear All
+        </Button>
 
         <div className="ml-auto">
-          <SearchField>
-            <SearchFieldButton>
-              <Search className="size-4" />
-            </SearchFieldButton>
+          <SearchField className="w-[448px]">
             <SearchFieldInput
-              placeholder="Find transactions"
+              size="lg"
+              className={searchQuery ? "pr-[42px]" : undefined}
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
                 setCurrentPage(1)
               }}
             />
+            <SearchFieldButton size="lg">
+              <SearchMd className="h-5 w-5" />
+            </SearchFieldButton>
+            {searchQuery && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                className="absolute right-3 inset-y-0 my-auto text-gray-400 hover:text-gray-500"
+                onClick={() => {
+                  setSearchQuery("")
+                  setCurrentPage(1)
+                }}
+              >
+                <XCircle className="size-5" />
+              </button>
+            )}
           </SearchField>
         </div>
       </div>
@@ -11207,8 +11476,7 @@ export const PayoutsTab = ({
           <TableHeader>
             <TableRow>
               <TableHead>Amount</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>External Account</TableHead>
               <TableHead>Initiated on</TableHead>
               <TableHead>Est. Arrival</TableHead>
               <TableHead className="w-10"></TableHead>
@@ -11218,7 +11486,7 @@ export const PayoutsTab = ({
             {loading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={5}>
                     <div className="h-5 bg-gray-100 rounded animate-pulse" />
                   </TableCell>
                 </TableRow>
@@ -11226,7 +11494,7 @@ export const PayoutsTab = ({
             ) : loadError ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={5}
                   className="text-center py-6 text-sm text-red-600"
                 >
                   {loadError}{" "}
@@ -11243,7 +11511,7 @@ export const PayoutsTab = ({
               // search — "Clear Search" only clears the search term, not
               // the status filter.
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-16">
+                <TableCell colSpan={5} className="text-center py-16">
                   <p className="text-sm font-semibold text-dark-blue-400">
                     0 Results for &quot;{searchQuery}&quot;
                   </p>
@@ -11268,7 +11536,7 @@ export const PayoutsTab = ({
             ) : payouts.length === 0 && hasActiveFilters ? (
               // EC-51: "no results for this filter" is distinct from "no history at all"
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-10">
+                <TableCell colSpan={5} className="text-center py-10">
                   <p className="text-sm text-gray-500">
                     No results for this filter.
                   </p>
@@ -11277,6 +11545,8 @@ export const PayoutsTab = ({
                     onClick={() => {
                       setStatusFilter("")
                       setDateRange("all_time")
+                      setDateFrom("")
+                      setDateTo("")
                       setDepositMethodId("")
                       setCurrentPage(1)
                     }}
@@ -11289,7 +11559,7 @@ export const PayoutsTab = ({
               // AC-27.01: empty state distinct from an error state
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={5}
                   className="text-center py-10 text-sm text-gray-400"
                 >
                   No payouts yet. Your completed payouts will appear here.
@@ -11297,7 +11567,6 @@ export const PayoutsTab = ({
               </TableRow>
             ) : (
               payouts.map((row) => {
-                const badge = getPayoutStatusBadge(row.status)
                 return (
                   <TableRow
                     key={row.id}
@@ -11313,19 +11582,6 @@ export const PayoutsTab = ({
                         <span className="text-sm text-gray-500">
                           {row.methodLabel ?? row.methodType ?? "—"}
                         </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <Badge visual={badge.visual} size="sm">
-                          {badge.label}
-                        </Badge>
-                        {/* AC-27.06: visually distinguish scheduled from manual payouts */}
-                        {row.trigger === "scheduled" && (
-                          <Badge visual="gray" size="sm">
-                            Scheduled
-                          </Badge>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-gray-500">

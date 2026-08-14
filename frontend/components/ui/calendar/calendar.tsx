@@ -9,6 +9,9 @@ import { RadioGroup, RadioGroupItem } from "@radix-ui/react-radio-group"
 import { SelectTrigger } from "@radix-ui/react-select"
 import {
   addMonths,
+  endOfMonth,
+  endOfWeek,
+  endOfYear,
   format,
   isToday,
   isValid,
@@ -311,6 +314,17 @@ export interface RangeValue<T = Date> {
   end: T
 }
 
+function calendarDateToLocalDate(date: CalendarDate) {
+  return new Date(date.year, date.month - 1, date.day)
+}
+
+function rangeDayKey(range?: RangeValue) {
+  if (!range?.start || !range?.end || !isValid(range.start) || !isValid(range.end)) {
+    return ""
+  }
+  return `${format(range.start, "yyyy-MM-dd")}|${format(range.end, "yyyy-MM-dd")}`
+}
+
 const convertToRangeValue = (
   options?: RangeValue
 ): RangeValue<CalendarDate> | undefined => {
@@ -346,15 +360,15 @@ const RangeCalendar = ({
     (value: RangeValue<CalendarDate> | null) => {
       if (!value) return
       onValueChangeRef.current?.({
-        start: new Date(value.start.toString()),
-        end: new Date(value.end.toString()),
+        start: calendarDateToLocalDate(value.start),
+        end: calendarDateToLocalDate(value.end),
       })
     },
     []
   )
 
   const onFocusChange = React.useCallback((value: CalendarDate) => {
-    onFocusedValueChangeRef.current?.(new Date(value.toString()))
+    onFocusedValueChangeRef.current?.(calendarDateToLocalDate(value))
   }, [])
 
   // Memoize so AriaRangeCalendar receives stable object references when dates haven't changed.
@@ -465,16 +479,35 @@ const DualCalendar = ({
   // re-fire onChange, creating an infinite loop.
   const [state, setState] = React.useState<RangeValue | undefined>(value)
 
+  React.useEffect(() => {
+    const nextKey = rangeDayKey(value)
+    setState((prev) => (rangeDayKey(prev) === nextKey ? prev : value))
+    setDate({
+      start:
+        value?.start && isValid(value.start)
+          ? format(value.start, "LLL d, yyyy")
+          : "",
+      end:
+        value?.end && isValid(value.end)
+          ? format(value.end, "LLL d, yyyy")
+          : "",
+    })
+  }, [rangeDayKey(value)])
+
   const onValueChangeRef = React.useRef(onValueChange)
   onValueChangeRef.current = onValueChange
+  const stateRef = React.useRef(state)
+  stateRef.current = state
 
   const handleSelectionChange = React.useCallback((newValue: RangeValue) => {
+    const nextKey = rangeDayKey(newValue)
+    if (rangeDayKey(stateRef.current) === nextKey) return
     setState(newValue)
-    onValueChangeRef.current?.(newValue)
     setDate({
       end: format(newValue.end, "LLL d, yyyy"),
       start: format(newValue.start, "LLL d, yyyy"),
     })
+    onValueChangeRef.current?.(newValue)
   }, [])
 
   // Second calendar starts one month ahead and manages its own focused month independently
@@ -649,8 +682,52 @@ const Sidebar = ({
       >
         All time
       </RadioGroupItem>
+      <RadioGroupItem
+        value="custom range"
+        className="focus:outline-none rounded-md flex items-center py-2.5 text-sm data-[state=checked]:bg-gray-50 hover:bg-gray-100 font-medium text-gray-700 px-4"
+      >
+        Custom range
+      </RadioGroupItem>
     </RadioGroup>
   )
+}
+
+function startOfLocalDay(d: Date) {
+  const next = new Date(d)
+  next.setHours(0, 0, 0, 0)
+  return next
+}
+
+function rangeForSidebarPreset(preset: string): RangeValue | undefined {
+  const today = startOfLocalDay(new Date())
+  switch (preset) {
+    case "today":
+      return { start: today, end: today }
+    case "yesterday": {
+      const y = subDays(today, 1)
+      return { start: y, end: y }
+    }
+    case "this week":
+      return { start: startOfWeek(today), end: today }
+    case "last week": {
+      const last = subWeeks(today, 1)
+      return { start: startOfWeek(last), end: endOfWeek(last) }
+    }
+    case "this month":
+      return { start: startOfMonth(today), end: today }
+    case "last month": {
+      const last = subMonths(today, 1)
+      return { start: startOfMonth(last), end: endOfMonth(last) }
+    }
+    case "this year":
+      return { start: startOfYear(today), end: today }
+    case "last year": {
+      const last = subYears(today, 1)
+      return { start: startOfYear(last), end: endOfYear(last) }
+    }
+    default:
+      return undefined
+  }
 }
 
 const DoubleCalendar = ({
@@ -658,11 +735,19 @@ const DoubleCalendar = ({
   onValueChange,
   focusedValue,
   onFocusedValueChange,
+  preset,
+  onPresetChange,
+  onCancel,
+  onApply,
 }: {
   value?: RangeValue
   onValueChange?: (value: RangeValue) => void
   focusedValue?: Date
-  onFocusedValueChange?: () => void
+  onFocusedValueChange?: (value: Date | undefined) => void
+  preset?: string
+  onPresetChange?: (value: string) => void
+  onCancel?: () => void
+  onApply?: (value: RangeValue | undefined, preset: string) => void
 }) => {
   const [focusedValueState, setFocusedValueState] = useControllableState<
     Date | undefined
@@ -670,55 +755,49 @@ const DoubleCalendar = ({
     value: focusedValue,
     onChange: onFocusedValueChange,
   })
+  const [presetState, setPresetState] = React.useState(preset ?? "all time")
+  const [rangeState, setRangeState] = React.useState<RangeValue | undefined>(
+    value ?? rangeForSidebarPreset(preset ?? "all time")
+  )
 
-  const handleChange = (value: string) => {
-    const today = new Date()
-    switch (value) {
-      case "today":
-        setFocusedValueState(today)
-        break
-
-      case "yesterday":
-        setFocusedValueState(subDays(today, 1))
-        break
-
-      case "this week":
-        setFocusedValueState(startOfWeek(today))
-        break
-
-      case "last week":
-        setFocusedValueState(startOfWeek(subWeeks(today, 1)))
-        break
-
-      case "this month":
-        setFocusedValueState(startOfMonth(today))
-        break
-
-      case "last month":
-        setFocusedValueState(startOfMonth(subMonths(today, 1)))
-        break
-
-      case "this year":
-        setFocusedValueState(startOfYear(today))
-        break
-
-      case "last year":
-        setFocusedValueState(startOfYear(subYears(today, 1)))
-        break
-
-      case "all time":
-        setFocusedValueState(today)
-        break
+  const handlePreset = (next: string) => {
+    setPresetState(next)
+    onPresetChange?.(next)
+    if (next === "custom range") return
+    const computed = rangeForSidebarPreset(next)
+    setRangeState(computed)
+    if (computed) {
+      onValueChange?.(computed)
+      setFocusedValueState(computed.start)
     }
+  }
+
+  const handleRange = (next: RangeValue) => {
+    setRangeState((prev) => {
+      if (rangeDayKey(prev) === rangeDayKey(next)) return prev
+      setPresetState("custom range")
+      onPresetChange?.("custom range")
+      onValueChange?.(next)
+      return next
+    })
   }
 
   return (
     <DualCalendar
       focusedValue={focusedValueState}
       onFocusedValueChange={setFocusedValueState}
-      value={value}
-      onValueChange={onValueChange}
-      left={() => <Sidebar onValueChange={handleChange} />}
+      value={rangeState}
+      onValueChange={handleRange}
+      onCancel={onCancel}
+      onApply={() =>
+        onApply?.(
+          presetState === "all time" ? undefined : rangeState,
+          presetState
+        )
+      }
+      left={() => (
+        <Sidebar value={presetState} onValueChange={handlePreset} />
+      )}
     />
   )
 }
