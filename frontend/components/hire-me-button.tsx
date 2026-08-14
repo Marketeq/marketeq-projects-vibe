@@ -2606,6 +2606,23 @@ export function OfferDialog({
                         return
                       }
 
+                      if (error?.response?.status === 429) {
+                        // ERR-009: rate-limited is a different signal from
+                        // "something broke" (ERR-006 below), so it gets its
+                        // own copy — same toast shape/duration as every
+                        // other toast in this file. setIsSubmittingOffer(false)
+                        // already ran at the top of this catch block, so the
+                        // CTA re-enables and every piece of form state is
+                        // untouched — nothing here resets or clears it.
+                        toast({
+                          variant: "destructive",
+                          description:
+                            "You're sending too quickly. Please wait a moment and try again.",
+                          duration: 5000,
+                        })
+                        return
+                      }
+
                       // ERR-006: every other failure (5xx, network) is a
                       // toast, not inline — the modal stays open so the
                       // client can just press Send Offer again.
