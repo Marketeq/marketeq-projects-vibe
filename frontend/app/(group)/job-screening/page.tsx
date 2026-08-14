@@ -72,6 +72,7 @@ import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
+  Textarea,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
@@ -395,10 +396,18 @@ const skillOptions = [
 
 const candidateStatusOptions = [
   { label: "All Candidates", value: "all" },
-  { label: "Shortlisted", value: "shortlisted" },
+  { label: "Liked", value: "shortlisted" },
   { label: "Interview Scheduled", value: "interview" },
   { label: "Offer Sent", value: "offer" },
   { label: "New Applicants", value: "new" },
+]
+
+const sortOptions = [
+  { label: "Apply Date (Newest)", value: "recent" },
+  { label: "Newest", value: "new" },
+  { label: "Favorites", value: "favorites" },
+  { label: "Liked", value: "liked" },
+  { label: "Disliked", value: "disliked" },
 ]
 
 const experienceLevels = [
@@ -563,6 +572,9 @@ export default function JobScreeningPage() {
   const [allFiltersOpen, setAllFiltersOpen] = useState(false)
   const [candidateVotes, setCandidateVotes] = useState<Record<string, "like" | "neutral" | "dislike" | null>>({})
   const [candidateSuperLikes, setCandidateSuperLikes] = useState<Set<string>>(new Set())
+  const [candidateNotes, setCandidateNotes] = useState<Record<string, string>>({})
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [sortBy, setSortBy] = useState("recent")
 
   const activeFilterCount = [
     matchScoreRange[0] > 50 || matchScoreRange[1] < 100,
@@ -730,7 +742,7 @@ export default function JobScreeningPage() {
                         ? "bg-gray-50 text-dark-blue-400"
                         : role.status === "Closed"
                           ? "cursor-default text-gray-400"
-                          : "text-gray-500 hover:bg-gray-50 hover:text-dark-blue-400"
+                          : "text-gray-500 transition-colors duration-300 hover:bg-gray-50 hover:text-dark-blue-400"
                     }`}
                   >
                     <span className="text-[13px] font-medium">
@@ -756,7 +768,7 @@ export default function JobScreeningPage() {
             <div className="flex items-center gap-3">
               <Button
                 size="md"
-                className="h-10 rounded-[5px] bg-primary-50 px-4 text-sm font-semibold text-primary-500 hover:bg-primary-100"
+                className="h-10 rounded-[5px] bg-primary-50 px-4 text-sm font-semibold text-primary-500 transition-colors duration-300 hover:bg-primary-100"
               >
                 <MagicWand01 className="size-[15px]" />
                 Magic Hire
@@ -780,12 +792,12 @@ export default function JobScreeningPage() {
       <div className="mx-[140px] flex min-h-[calc(100vh-68px)] flex-col border-b border-l border-r border-gray-200 bg-white">
         {/* Filter bar — sticky, pins when title scrolls away */}
         <div className={`sticky top-0 z-20 bg-white ${isHeaderSticky ? "shadow-sm" : ""}`}>
-          <div className={`flex items-center justify-between border-gray-200 px-6 py-3 ${isHeaderSticky ? "border-b" : "border-y"}`}>
+          <div className={`flex items-center justify-between border-gray-200 pl-3 pr-6 py-3 ${isHeaderSticky ? "border-b" : "border-y"}`}>
             <div className="flex items-center gap-[14px]">
               {/* All Candidates / status filter */}
               <Popover open={statusDropdownOpen} onOpenChange={setStatusDropdownOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
+                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs transition-all duration-300 data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
                     {candidateStatusOptions.find((o) => o.value === candidateStatus)?.label ?? "All Candidates"}
                     <Badge size="sm" className={`ml-1 rounded-full px-1.5 text-xs font-medium group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500 ${candidateStatus !== "all" ? "bg-primary-50 text-primary-500" : "bg-gray-100 text-gray-500"}`}>50</Badge>
                   </Button>
@@ -795,7 +807,7 @@ export default function JobScreeningPage() {
                     <button
                       key={opt.value}
                       onClick={() => { setCandidateStatus(opt.value); setStatusDropdownOpen(false) }}
-                      className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${candidateStatus === opt.value ? "bg-primary-50 font-medium text-primary-500" : "text-gray-700 hover:bg-gray-50"}`}
+                      className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-300 ${candidateStatus === opt.value ? "bg-primary-50 font-medium text-primary-500" : "text-gray-700 hover:bg-gray-50"}`}
                     >
                       {candidateStatus === opt.value && <Check className="size-3.5 text-primary-500" />}
                       {opt.label}
@@ -807,7 +819,7 @@ export default function JobScreeningPage() {
               {/* Match Score filter */}
               <Popover open={matchScoreOpen} onOpenChange={setMatchScoreOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${matchScoreRange[0] > 50 || matchScoreRange[1] < 100 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
+                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs transition-all duration-300 data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${matchScoreRange[0] > 50 || matchScoreRange[1] < 100 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
                     Match Score
                     {(matchScoreRange[0] > 50 || matchScoreRange[1] < 100) ? (
                       <Badge size="sm" className="ml-1 rounded-full bg-primary-50 px-1.5 text-xs font-medium text-primary-500 group-data-[state=open]:bg-gray-200 group-data-[state=open]:text-gray-500">
@@ -840,7 +852,7 @@ export default function JobScreeningPage() {
                         <button
                           key={preset.label}
                           onClick={() => { setMatchScoreRange([preset.min, 100]); setMatchScoreOpen(false) }}
-                          className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${matchScoreRange[0] === preset.min && matchScoreRange[1] === 100 ? "bg-primary-50 font-medium text-primary-500" : "text-gray-700 hover:bg-gray-50"}`}
+                          className={`rounded-md px-3 py-2 text-left text-sm transition-colors duration-300 ${matchScoreRange[0] === preset.min && matchScoreRange[1] === 100 ? "bg-primary-50 font-medium text-primary-500" : "text-gray-700 hover:bg-gray-50"}`}
                         >
                           {preset.label}
                         </button>
@@ -883,7 +895,7 @@ export default function JobScreeningPage() {
               {/* All Filters */}
               <Popover open={allFiltersOpen} onOpenChange={setAllFiltersOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${activeFilterCount > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
+                  <Button variant="outlined" visual="gray" size="sm" className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs transition-all duration-300 data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${activeFilterCount > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}>
                     {activeFilterCount > 0 ? (
                       <>
                         All Filters
@@ -1019,6 +1031,24 @@ export default function JobScreeningPage() {
                   </div>
                 </PopoverContent>
               </Popover>
+
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => {
+                    setMatchScoreRange([50, 100])
+                    setSelectedEducation(new Set())
+                    setSelectedSkills(new Set())
+                    setSelectedExperience(new Set())
+                    setSelectedAvailability(new Set())
+                    setSelectedLanguages(new Set())
+                    setSelectedRating(0)
+                    setPayRateRange([0, 300])
+                  }}
+                  className="text-sm font-medium text-gray-500 transition-colors duration-300 hover:text-primary-500"
+                >
+                  Clear All
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -1027,7 +1057,7 @@ export default function JobScreeningPage() {
                 <div className="mr-2 flex items-center gap-3">
                   <Button
                     size="md"
-                    className="h-10 rounded-[5px] bg-primary-50 px-4 text-sm font-semibold text-primary-500 hover:bg-primary-100"
+                    className="h-10 rounded-[5px] bg-primary-50 px-4 text-sm font-semibold text-primary-500 transition-colors duration-300 hover:bg-primary-100"
                   >
                     <MagicWand01 className="size-[15px]" />
                     Magic Hire
@@ -1045,23 +1075,39 @@ export default function JobScreeningPage() {
                 </div>
               )}
               {!isHeaderSticky && (
-                <button className="flex items-center gap-2 rounded-[5px] px-[14px] py-2 text-sm font-semibold text-gray-500">
-                  Recent Activity
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                  >
-                    <path
-                      d="M14 3.99984H8.66667M4 13.3332L4 2.6665M6 11.3332L4 13.3332L2 11.3332M12.9333 6.84428H8.66667M10.0889 9.68873H8.66667"
-                      stroke="#667085"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-2 rounded-[5px] px-[14px] py-2 text-sm font-semibold text-gray-500 transition-colors duration-300 hover:text-dark-blue-400">
+                      {sortOptions.find((o) => o.value === sortBy)?.label ?? "Recent Activity"}
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                      >
+                        <path
+                          d="M14 3.99984H8.66667M4 13.3332L4 2.6665M6 11.3332L4 13.3332L2 11.3332M12.9333 6.84428H8.66667M10.0889 9.68873H8.66667"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[180px] rounded-lg border-gray-100 px-0 py-1 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]">
+                    {sortOptions.map((opt) => (
+                      <DropdownMenuItem
+                        key={opt.value}
+                        onClick={() => setSortBy(opt.value)}
+                        className={`flex items-center justify-between px-3 py-[10px] text-[13px] leading-[13px] font-medium capitalize ${sortBy === opt.value ? "text-primary-500" : "text-gray-500"}`}
+                      >
+                        {opt.label}
+                        {sortBy === opt.value && <Check className="size-3.5 text-primary-500" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           </div>
@@ -1143,9 +1189,8 @@ export default function JobScreeningPage() {
                             <span className="text-xl font-bold text-dark-blue-400">
                               {selectedCandidate.name}
                             </span>
-                            <span className="text-base font-light text-gray-500">@</span>
                             <span className="text-base font-light text-dark-blue-400">
-                              {selectedCandidate.handle.replace("@", "")}
+                              {selectedCandidate.handle}
                             </span>
                           </div>
                           <div className="flex items-center gap-[4.8px]">
@@ -1213,6 +1258,10 @@ export default function JobScreeningPage() {
                           return next
                         })
                       }}
+                      note={candidateNotes[selectedCandidate.id] ?? ""}
+                      onNoteChange={(v) => setCandidateNotes((prev) => ({ ...prev, [selectedCandidate.id]: v }))}
+                      notesOpen={notesOpen}
+                      onNotesOpenChange={setNotesOpen}
                     />
                   </div>
                 </div>
@@ -1601,6 +1650,15 @@ export default function JobScreeningPage() {
         onOpenChange={setHireDialogOpen}
         profile={null}
       />
+
+      {/* Floating Notes Panel */}
+      {notesOpen && selectedCandidate && (
+        <FloatingNotesPanel
+          value={candidateNotes[selectedCandidate.id] ?? ""}
+          onChange={(v) => setCandidateNotes((prev) => ({ ...prev, [selectedCandidate.id]: v }))}
+          onClose={() => setNotesOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -1627,7 +1685,7 @@ function FilterCheckboxDropdown({
           variant="outlined"
           visual="gray"
           size="sm"
-          className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${selected.size > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}
+          className={`group h-9 rounded-[5px] px-[10px] text-sm font-semibold shadow-xs transition-all duration-300 data-[state=open]:border-dashed data-[state=open]:border-gray-300 data-[state=open]:bg-gray-100 data-[state=open]:text-gray-500 ${selected.size > 0 ? "border-primary-500 text-primary-500" : "border-gray-300 text-gray-800"}`}
         >
           {label}
           {selected.size > 0 ? (
@@ -1670,6 +1728,120 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
     <div className="border-b border-gray-100 px-4 py-4">
       <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</span>
       <div className="flex flex-col gap-0.5">{children}</div>
+    </div>
+  )
+}
+
+function FloatingNotesPanel({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onClose: () => void
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x: window.innerWidth - 450, y: window.innerHeight - 300 })
+  const dragging = useRef(false)
+  const dragOffset = useRef({ x: 0, y: 0 })
+
+  const snapToCorner = (x: number, y: number) => {
+    const w = 426
+    const h = 264
+    const pad = 16
+    const centerX = (window.innerWidth - w) / 2
+    const centerY = (window.innerHeight - h) / 2
+    const left = pad
+    const right = window.innerWidth - w - pad
+    const top = pad
+    const bottom = window.innerHeight - h - pad
+
+    // 8 snap targets: 4 corners + 4 edge midpoints
+    const targets = [
+      { x: left, y: top },           // top-left
+      { x: centerX, y: top },        // top-center
+      { x: right, y: top },          // top-right
+      { x: left, y: centerY },       // middle-left
+      { x: right, y: centerY },      // middle-right
+      { x: left, y: bottom },        // bottom-left
+      { x: centerX, y: bottom },     // bottom-center
+      { x: right, y: bottom },       // bottom-right
+    ]
+
+    let closest = targets[0]
+    let minDist = Infinity
+    for (const t of targets) {
+      const d = (t.x - x) ** 2 + (t.y - y) ** 2
+      if (d < minDist) { minDist = d; closest = t }
+    }
+    return closest
+  }
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    dragging.current = true
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging.current) return
+      setPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y })
+    }
+    const onMouseUp = (e: MouseEvent) => {
+      if (!dragging.current) return
+      dragging.current = false
+      setPos(snapToCorner(e.clientX - dragOffset.current.x, e.clientY - dragOffset.current.y))
+    }
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={panelRef}
+      className="fixed z-50 flex w-[426px] flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_24px_48px_-12px_rgba(16,24,40,0.18)]"
+      style={{ left: pos.x, top: pos.y }}
+    >
+      {/* Top drag handle */}
+      <div
+        className="absolute left-1/2 top-[10px] -translate-x-1/2 cursor-grab opacity-50 transition-opacity duration-300 hover:opacity-100 active:cursor-grabbing"
+        onMouseDown={onMouseDown}
+      >
+        <svg width="33" height="8" viewBox="0 0 33 8" fill="none"><g><path d="M0.342 2.2C0.123 1.981 0 1.684 0 1.375C0 1.066 0.123 0.769 0.342 0.55C0.561 0.331 0.857 0.208 1.167 0.208C1.476 0.208 1.773 0.331 1.992 0.55C2.211 0.769 2.334 1.066 2.334 1.375C2.334 1.684 2.211 1.981 1.992 2.2C1.773 2.419 1.476 2.542 1.167 2.542C0.857 2.542 0.561 2.419 0.342 2.2Z" fill="#667085"/><path d="M0.342 7.45C0.123 7.231 0 6.934 0 6.625C0 6.316 0.123 6.019 0.342 5.8C0.561 5.581 0.857 5.458 1.167 5.458C1.476 5.458 1.773 5.581 1.992 5.8C2.211 6.019 2.334 6.316 2.334 6.625C2.334 6.934 2.211 7.231 1.992 7.45C1.773 7.669 1.476 7.792 1.167 7.792C0.857 7.792 0.561 7.669 0.342 7.45Z" fill="#667085"/><path d="M4.675 2.2C4.456 1.981 4.333 1.684 4.333 1.375C4.333 1.066 4.456 0.769 4.675 0.55C4.894 0.331 5.19 0.208 5.5 0.208C5.809 0.208 6.106 0.331 6.325 0.55C6.544 0.769 6.667 1.066 6.667 1.375C6.667 1.684 6.544 1.981 6.325 2.2C6.106 2.419 5.809 2.542 5.5 2.542C5.19 2.542 4.894 2.419 4.675 2.2Z" fill="#667085"/><path d="M4.675 7.45C4.456 7.231 4.333 6.934 4.333 6.625C4.333 6.316 4.456 6.019 4.675 5.8C4.894 5.581 5.19 5.458 5.5 5.458C5.809 5.458 6.106 5.581 6.325 5.8C6.544 6.019 6.667 6.316 6.667 6.625C6.667 6.934 6.544 7.231 6.325 7.45C6.106 7.669 5.809 7.792 5.5 7.792C5.19 7.792 4.894 7.669 4.675 7.45Z" fill="#667085"/><path d="M9.008 2.2C8.79 1.981 8.667 1.684 8.667 1.375C8.667 1.066 8.79 0.769 9.008 0.55C9.227 0.331 9.524 0.208 9.833 0.208C10.143 0.208 10.44 0.331 10.658 0.55C10.877 0.769 11 1.066 11 1.375C11 1.684 10.877 1.981 10.658 2.2C10.44 2.419 10.143 2.542 9.833 2.542C9.524 2.542 9.227 2.419 9.008 2.2Z" fill="#667085"/><path d="M9.008 7.45C8.79 7.231 8.667 6.934 8.667 6.625C8.667 6.316 8.79 6.019 9.008 5.8C9.227 5.581 9.524 5.458 9.833 5.458C10.143 5.458 10.44 5.581 10.658 5.8C10.877 6.019 11 6.316 11 6.625C11 6.934 10.877 7.231 10.658 7.45C10.44 7.669 10.143 7.792 9.833 7.792C9.524 7.792 9.227 7.669 9.008 7.45Z" fill="#667085"/><path d="M13.342 2.2C13.123 1.981 13 1.684 13 1.375C13 1.066 13.123 0.769 13.342 0.55C13.561 0.331 13.857 0.208 14.167 0.208C14.476 0.208 14.773 0.331 14.992 0.55C15.211 0.769 15.334 1.066 15.334 1.375C15.334 1.684 15.211 1.981 14.992 2.2C14.773 2.419 14.476 2.542 14.167 2.542C13.857 2.542 13.561 2.419 13.342 2.2Z" fill="#667085"/><path d="M13.342 7.45C13.123 7.231 13 6.934 13 6.625C13 6.316 13.123 6.019 13.342 5.8C13.561 5.581 13.857 5.458 14.167 5.458C14.476 5.458 14.773 5.581 14.992 5.8C15.211 6.019 15.334 6.316 15.334 6.625C15.334 6.934 15.211 7.231 14.992 7.45C14.773 7.669 14.476 7.792 14.167 7.792C13.857 7.792 13.561 7.669 13.342 7.45Z" fill="#667085"/><path d="M17.675 2.2C17.456 1.981 17.333 1.684 17.333 1.375C17.333 1.066 17.456 0.769 17.675 0.55C17.894 0.331 18.19 0.208 18.5 0.208C18.809 0.208 19.106 0.331 19.325 0.55C19.544 0.769 19.667 1.066 19.667 1.375C19.667 1.684 19.544 1.981 19.325 2.2C19.106 2.419 18.809 2.542 18.5 2.542C18.19 2.542 17.894 2.419 17.675 2.2Z" fill="#667085"/><path d="M17.675 7.45C17.456 7.231 17.333 6.934 17.333 6.625C17.333 6.316 17.456 6.019 17.675 5.8C17.894 5.581 18.19 5.458 18.5 5.458C18.809 5.458 19.106 5.581 19.325 5.8C19.544 6.019 19.667 6.316 19.667 6.625C19.667 6.934 19.544 7.231 19.325 7.45C19.106 7.669 18.809 7.792 18.5 7.792C18.19 7.792 17.894 7.669 17.675 7.45Z" fill="#667085"/><path d="M22.008 2.2C21.79 1.981 21.667 1.684 21.667 1.375C21.667 1.066 21.79 0.769 22.008 0.55C22.227 0.331 22.524 0.208 22.833 0.208C23.143 0.208 23.44 0.331 23.658 0.55C23.877 0.769 24 1.066 24 1.375C24 1.684 23.877 1.981 23.658 2.2C23.44 2.419 23.143 2.542 22.833 2.542C22.524 2.542 22.227 2.419 22.008 2.2Z" fill="#667085"/><path d="M22.008 7.45C21.79 7.231 21.667 6.934 21.667 6.625C21.667 6.316 21.79 6.019 22.008 5.8C22.227 5.581 22.524 5.458 22.833 5.458C23.143 5.458 23.44 5.581 23.658 5.8C23.877 6.019 24 6.316 24 6.625C24 6.934 23.877 7.231 23.658 7.45C23.44 7.669 23.143 7.792 22.833 7.792C22.524 7.792 22.227 7.669 22.008 7.45Z" fill="#667085"/><path d="M26.342 2.2C26.123 1.981 26 1.684 26 1.375C26 1.066 26.123 0.769 26.342 0.55C26.561 0.331 26.857 0.208 27.167 0.208C27.476 0.208 27.773 0.331 27.992 0.55C28.211 0.769 28.334 1.066 28.334 1.375C28.334 1.684 28.211 1.981 27.992 2.2C27.773 2.419 27.476 2.542 27.167 2.542C26.857 2.542 26.561 2.419 26.342 2.2Z" fill="#667085"/><path d="M26.342 7.45C26.123 7.231 26 6.934 26 6.625C26 6.316 26.123 6.019 26.342 5.8C26.561 5.581 26.857 5.458 27.167 5.458C27.476 5.458 27.773 5.581 27.992 5.8C28.211 6.019 28.334 6.316 28.334 6.625C28.334 6.934 28.211 7.231 27.992 7.45C27.773 7.669 27.476 7.792 27.167 7.792C26.857 7.792 26.561 7.669 26.342 7.45Z" fill="#667085"/><path d="M30.675 2.2C30.456 1.981 30.333 1.684 30.333 1.375C30.333 1.066 30.456 0.769 30.675 0.55C30.894 0.331 31.19 0.208 31.5 0.208C31.809 0.208 32.106 0.331 32.325 0.55C32.544 0.769 32.667 1.066 32.667 1.375C32.667 1.684 32.544 1.981 32.325 2.2C32.106 2.419 31.809 2.542 31.5 2.542C31.19 2.542 30.894 2.419 30.675 2.2Z" fill="#667085"/><path d="M30.675 7.45C30.456 7.231 30.333 6.934 30.333 6.625C30.333 6.316 30.456 6.019 30.675 5.8C30.894 5.581 31.19 5.458 31.5 5.458C31.809 5.458 32.106 5.581 32.325 5.8C32.544 6.019 32.667 6.316 32.667 6.625C32.667 6.934 32.544 7.231 32.325 7.45C32.106 7.669 31.809 7.792 31.5 7.792C31.19 7.792 30.894 7.669 30.675 7.45Z" fill="#667085"/></g></svg>
+      </div>
+
+      {/* Left drag handle */}
+      <div
+        className="absolute left-[9px] top-1/2 -translate-y-1/2 cursor-grab opacity-50 transition-opacity duration-300 hover:opacity-100 active:cursor-grabbing"
+        onMouseDown={onMouseDown}
+      >
+        <svg width="8" height="33" viewBox="0 0 8 33" fill="none"><g><path d="M5.8 0.342C6.019 0.123 6.315 0 6.625 0C6.934 0 7.231 0.123 7.45 0.342C7.669 0.56 7.792 0.857 7.792 1.167C7.792 1.476 7.669 1.773 7.45 1.992C7.231 2.21 6.934 2.333 6.625 2.333C6.315 2.333 6.019 2.21 5.8 1.992C5.581 1.773 5.458 1.476 5.458 1.167C5.458 0.857 5.581 0.56 5.8 0.342Z" fill="#667085"/><path d="M0.55 0.342C0.769 0.123 1.065 0 1.375 0C1.684 0 1.981 0.123 2.2 0.342C2.419 0.56 2.542 0.857 2.542 1.167C2.542 1.476 2.419 1.773 2.2 1.992C1.981 2.21 1.684 2.333 1.375 2.333C1.065 2.333 0.769 2.21 0.55 1.992C0.331 1.773 0.208 1.476 0.208 1.167C0.208 0.857 0.331 0.56 0.55 0.342Z" fill="#667085"/><path d="M5.8 4.675C6.019 4.456 6.315 4.333 6.625 4.333C6.934 4.333 7.231 4.456 7.45 4.675C7.669 4.894 7.792 5.191 7.792 5.5C7.792 5.81 7.669 6.106 7.45 6.325C7.231 6.544 6.934 6.667 6.625 6.667C6.315 6.667 6.019 6.544 5.8 6.325C5.581 6.106 5.458 5.81 5.458 5.5C5.458 5.191 5.581 4.894 5.8 4.675Z" fill="#667085"/><path d="M0.55 4.675C0.769 4.456 1.065 4.333 1.375 4.333C1.684 4.333 1.981 4.456 2.2 4.675C2.419 4.894 2.542 5.191 2.542 5.5C2.542 5.81 2.419 6.106 2.2 6.325C1.981 6.544 1.684 6.667 1.375 6.667C1.065 6.667 0.769 6.544 0.55 6.325C0.331 6.106 0.208 5.81 0.208 5.5C0.208 5.191 0.331 4.894 0.55 4.675Z" fill="#667085"/><path d="M5.8 9.008C6.019 8.79 6.315 8.667 6.625 8.667C6.934 8.667 7.231 8.79 7.45 9.008C7.669 9.227 7.792 9.524 7.792 9.833C7.792 10.143 7.669 10.44 7.45 10.658C7.231 10.877 6.934 11 6.625 11C6.315 11 6.019 10.877 5.8 10.658C5.581 10.44 5.458 10.143 5.458 9.833C5.458 9.524 5.581 9.227 5.8 9.008Z" fill="#667085"/><path d="M0.55 9.008C0.769 8.79 1.065 8.667 1.375 8.667C1.684 8.667 1.981 8.79 2.2 9.008C2.419 9.227 2.542 9.524 2.542 9.833C2.542 10.143 2.419 10.44 2.2 10.658C1.981 10.877 1.684 11 1.375 11C1.065 11 0.769 10.877 0.55 10.658C0.331 10.44 0.208 10.143 0.208 9.833C0.208 9.524 0.331 9.227 0.55 9.008Z" fill="#667085"/><path d="M5.8 13.342C6.019 13.123 6.315 13 6.625 13C6.934 13 7.231 13.123 7.45 13.342C7.669 13.56 7.792 13.857 7.792 14.167C7.792 14.476 7.669 14.773 7.45 14.992C7.231 15.21 6.934 15.333 6.625 15.333C6.315 15.333 6.019 15.21 5.8 14.992C5.581 14.773 5.458 14.476 5.458 14.167C5.458 13.857 5.581 13.56 5.8 13.342Z" fill="#667085"/><path d="M0.55 13.342C0.769 13.123 1.065 13 1.375 13C1.684 13 1.981 13.123 2.2 13.342C2.419 13.56 2.542 13.857 2.542 14.167C2.542 14.476 2.419 14.773 2.2 14.992C1.981 15.21 1.684 15.333 1.375 15.333C1.065 15.333 0.769 15.21 0.55 14.992C0.331 14.773 0.208 14.476 0.208 14.167C0.208 13.857 0.331 13.56 0.55 13.342Z" fill="#667085"/><path d="M5.8 17.675C6.019 17.456 6.315 17.333 6.625 17.333C6.934 17.333 7.231 17.456 7.45 17.675C7.669 17.894 7.792 18.191 7.792 18.5C7.792 18.81 7.669 19.106 7.45 19.325C7.231 19.544 6.934 19.667 6.625 19.667C6.315 19.667 6.019 19.544 5.8 19.325C5.581 19.106 5.458 18.81 5.458 18.5C5.458 18.191 5.581 17.894 5.8 17.675Z" fill="#667085"/><path d="M0.55 17.675C0.769 17.456 1.065 17.333 1.375 17.333C1.684 17.333 1.981 17.456 2.2 17.675C2.419 17.894 2.542 18.191 2.542 18.5C2.542 18.81 2.419 19.106 2.2 19.325C1.981 19.544 1.684 19.667 1.375 19.667C1.065 19.667 0.769 19.544 0.55 19.325C0.331 19.106 0.208 18.81 0.208 18.5C0.208 18.191 0.331 17.894 0.55 17.675Z" fill="#667085"/><path d="M5.8 22.008C6.019 21.79 6.315 21.667 6.625 21.667C6.934 21.667 7.231 21.79 7.45 22.008C7.669 22.227 7.792 22.524 7.792 22.833C7.792 23.143 7.669 23.44 7.45 23.658C7.231 23.877 6.934 24 6.625 24C6.315 24 6.019 23.877 5.8 23.658C5.581 23.44 5.458 23.143 5.458 22.833C5.458 22.524 5.581 22.227 5.8 22.008Z" fill="#667085"/><path d="M0.55 22.008C0.769 21.79 1.065 21.667 1.375 21.667C1.684 21.667 1.981 21.79 2.2 22.008C2.419 22.227 2.542 22.524 2.542 22.833C2.542 23.143 2.419 23.44 2.2 23.658C1.981 23.877 1.684 24 1.375 24C1.065 24 0.769 23.877 0.55 23.658C0.331 23.44 0.208 23.143 0.208 22.833C0.208 22.524 0.331 22.227 0.55 22.008Z" fill="#667085"/><path d="M5.8 26.342C6.019 26.123 6.315 26 6.625 26C6.934 26 7.231 26.123 7.45 26.342C7.669 26.56 7.792 26.857 7.792 27.167C7.792 27.476 7.669 27.773 7.45 27.992C7.231 28.21 6.934 28.333 6.625 28.333C6.315 28.333 6.019 28.21 5.8 27.992C5.581 27.773 5.458 27.476 5.458 27.167C5.458 26.857 5.581 26.56 5.8 26.342Z" fill="#667085"/><path d="M0.55 26.342C0.769 26.123 1.065 26 1.375 26C1.684 26 1.981 26.123 2.2 26.342C2.419 26.56 2.542 26.857 2.542 27.167C2.542 27.476 2.419 27.773 2.2 27.992C1.981 28.21 1.684 28.333 1.375 28.333C1.065 28.333 0.769 28.21 0.55 27.992C0.331 27.773 0.208 27.476 0.208 27.167C0.208 26.857 0.331 26.56 0.55 26.342Z" fill="#667085"/><path d="M5.8 30.675C6.019 30.456 6.315 30.333 6.625 30.333C6.934 30.333 7.231 30.456 7.45 30.675C7.669 30.894 7.792 31.191 7.792 31.5C7.792 31.81 7.669 32.106 7.45 32.325C7.231 32.544 6.934 32.667 6.625 32.667C6.315 32.667 6.019 32.544 5.8 32.325C5.581 32.106 5.458 31.81 5.458 31.5C5.458 31.191 5.581 30.894 5.8 30.675Z" fill="#667085"/><path d="M0.55 30.675C0.769 30.456 1.065 30.333 1.375 30.333C1.684 30.333 1.981 30.456 2.2 30.675C2.419 30.894 2.542 31.191 2.542 31.5C2.542 31.81 2.419 32.106 2.2 32.325C1.981 32.544 1.684 32.667 1.375 32.667C1.065 32.667 0.769 32.544 0.55 32.325C0.331 32.106 0.208 31.81 0.208 31.5C0.208 31.191 0.331 30.894 0.55 30.675Z" fill="#667085"/></g></svg>
+      </div>
+
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        className="absolute right-[10px] top-[10px] flex size-7 items-center justify-center rounded-md transition-colors duration-300 hover:bg-gray-100"
+      >
+        <X className="size-4 text-gray-500" />
+      </button>
+
+      {/* Notes label + textarea */}
+      <div className="flex flex-1 flex-col gap-1.5">
+        <label className="text-sm font-medium text-gray-700">Notes</label>
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="What makes them stand out?"
+          className="h-[190px] flex-1 resize-none rounded-[5px]"
+        />
+      </div>
     </div>
   )
 }
@@ -1741,6 +1913,10 @@ function DetailActionBar({
   onVote,
   superLiked,
   onSuperLike,
+  note,
+  onNoteChange,
+  notesOpen,
+  onNotesOpenChange,
 }: {
   candidate: (typeof mockCandidates)[number]
   onToggleMinimize?: () => void
@@ -1749,6 +1925,10 @@ function DetailActionBar({
   onVote?: (v: "like" | "neutral" | "dislike" | null) => void
   superLiked?: boolean
   onSuperLike?: () => void
+  note?: string
+  onNoteChange?: (v: string) => void
+  notesOpen?: boolean
+  onNotesOpenChange?: (v: boolean) => void
 }) {
   return (
     <div className="flex items-center justify-between">
@@ -1761,28 +1941,35 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "like" ? null : "like")}
-                    className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:text-dark-blue-400"}`}
                   >
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                      <path d="M4.375 6.875l2.5-5.625a1.875 1.875 0 0 1 1.875 1.875V5.5h3.532a1.25 1.25 0 0 1 1.222 1.503l-1.035 4.84a1.25 1.25 0 0 1-1.222.907H4.375m0-5.875v5.875m0-5.875H2.5a.625.625 0 0 0-.625.625v4.625a.625.625 0 0 0 .625.625h1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "like" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+                      <path d="M7 10v12" stroke={vote === "like" ? "white" : "currentColor"} />
                     </svg>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="rounded-md bg-white px-[9px] py-1 text-xs font-semibold text-gray-700 shadow-lg">
-                  Shortlist
+                  Like
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "neutral" ? null : "neutral")}
-                    className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:text-dark-blue-400"}`}
                   >
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                      <circle cx="7.5" cy="7.5" r="5.625" stroke="currentColor" strokeWidth="1.25" />
-                      <circle cx="5.625" cy="6.25" r="0.625" fill="currentColor" />
-                      <circle cx="9.375" cy="6.25" r="0.625" fill="currentColor" />
-                      <path d="M5.625 9.375a2.5 2.5 0 0 0 3.75 0" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "neutral" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M15 10V9" />
+                      <path d="M9 10V9" />
+                      <path d="M8 16h8" stroke={vote === "neutral" ? "white" : "currentColor"} strokeWidth={vote === "neutral" ? 1.75 : 1.25} />
+                      {vote === "neutral" && (
+                        <>
+                          <path d="M15 10V9" stroke="white" strokeWidth="1.75" />
+                          <path d="M9 10V9" stroke="white" strokeWidth="1.75" />
+                        </>
+                      )}
                     </svg>
                   </button>
                 </TooltipTrigger>
@@ -1794,10 +1981,11 @@ function DetailActionBar({
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => onVote?.(vote === "dislike" ? null : "dislike")}
-                    className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                    className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-dark-blue-400" : "text-[#667085] hover:text-dark-blue-400"}`}
                   >
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                      <path d="M10.625 8.125l-2.5 5.625a1.875 1.875 0 0 1-1.875-1.875V9.5H2.718a1.25 1.25 0 0 1-1.222-1.503l1.035-4.84A1.25 1.25 0 0 1 3.753 2.25h6.872m0 5.875V2.25m0 5.875H12.5a.625.625 0 0 0 .625-.625V2.875A.625.625 0 0 0 12.5 2.25h-1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill={vote === "dislike" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
+                      <path d="M17 14V2" stroke={vote === "dislike" ? "white" : "currentColor"} />
                     </svg>
                   </button>
                 </TooltipTrigger>
@@ -1811,7 +1999,7 @@ function DetailActionBar({
               <TooltipTrigger asChild>
                 <button
                   onClick={() => onSuperLike?.()}
-                  className="flex size-[35px] items-center justify-center rounded-full border border-[#D0D5DD] bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors hover:bg-[#F2F4F7] hover:text-[#101828]"
+                  className="flex size-[35px] items-center justify-center rounded-full border border-[#D0D5DD] bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 hover:bg-[#F2F4F7] hover:text-[#101828]"
                 >
                   <Star className={`size-[15px] ${superLiked ? "fill-[#306CFE] text-[#306CFE]" : "text-[#667085]"}`} />
                 </button>
@@ -1835,6 +2023,7 @@ function DetailActionBar({
           variant="outlined"
           visual="gray"
           className="size-[35px] rounded-full border-gray-300 shadow-xs"
+          onClick={() => onNotesOpenChange?.(!notesOpen)}
         >
           <FilePlus02 className="size-[15px]" />
         </IconButton>
@@ -2343,7 +2532,7 @@ function FullWidthCandidateCard({
             <div className="flex items-center bg-white">
               <button
                 onClick={() => onVote?.(vote === "like" ? null : "like")}
-                className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center rounded-l-[5px] border border-r-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "like" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M4.375 6.875l2.5-5.625a1.875 1.875 0 0 1 1.875 1.875V5.5h3.532a1.25 1.25 0 0 1 1.222 1.503l-1.035 4.84a1.25 1.25 0 0 1-1.222.907H4.375m0-5.875v5.875m0-5.875H2.5a.625.625 0 0 0-.625.625v4.625a.625.625 0 0 0 .625.625h1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
@@ -2351,7 +2540,7 @@ function FullWidthCandidateCard({
               </button>
               <button
                 onClick={() => onVote?.(vote === "neutral" ? null : "neutral")}
-                className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center border border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "neutral" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <circle cx="7.5" cy="7.5" r="5.625" stroke="currentColor" strokeWidth="1.25" />
@@ -2362,7 +2551,7 @@ function FullWidthCandidateCard({
               </button>
               <button
                 onClick={() => onVote?.(vote === "dislike" ? null : "dislike")}
-                className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
+                className={`flex size-[35px] items-center justify-center rounded-r-[5px] border border-l-0 border-[#D0D5DD] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 ${vote === "dislike" ? "bg-[#F2F4F7] text-[#101828]" : "text-[#667085] hover:text-dark-blue-400"}`}
               >
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M10.625 8.125l-2.5 5.625a1.875 1.875 0 0 1-1.875-1.875V9.5H2.718a1.25 1.25 0 0 1-1.222-1.503l1.035-4.84A1.25 1.25 0 0 1 3.753 2.25h6.872m0 5.875V2.25m0 5.875H12.5a.625.625 0 0 0 .625-.625V2.875A.625.625 0 0 0 12.5 2.25h-1.875" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
@@ -2371,7 +2560,7 @@ function FullWidthCandidateCard({
             </div>
             <button
               onClick={() => onSuperLike?.()}
-              className="flex size-[35px] items-center justify-center rounded-full border border-[#D0D5DD] bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors hover:bg-[#F2F4F7] hover:text-[#101828]"
+              className="flex size-[35px] items-center justify-center rounded-full border border-[#D0D5DD] bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors duration-300 hover:bg-[#F2F4F7] hover:text-[#101828]"
             >
               <Star className={`size-[15px] ${superLiked ? "fill-[#306CFE] text-[#306CFE]" : "text-[#667085]"}`} />
             </button>
