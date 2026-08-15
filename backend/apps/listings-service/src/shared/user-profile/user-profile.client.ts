@@ -13,6 +13,7 @@ export interface HydratedTeamMember {
   skills: string[];
   isLead: boolean;
   isOnline: boolean;
+  role: 'owner' | 'member';
 }
 
 @Injectable()
@@ -41,8 +42,12 @@ export class UserProfileClient {
 
   async hydrateTeam(
     ids: string[] | null | undefined,
+    ownerId?: string | null,
   ): Promise<HydratedTeamMember[]> {
-    const unique = Array.from(new Set((ids ?? []).filter(Boolean)));
+    const owner = ownerId ? [String(ownerId)] : [];
+    const unique = Array.from(
+      new Set([...owner, ...(ids ?? [])].filter(Boolean)),
+    );
     if (unique.length === 0) return [];
 
     const profiles = await Promise.all(unique.map((id) => this.getById(id)));
@@ -61,6 +66,8 @@ export class UserProfileClient {
               skills: Array.isArray(p.skills) ? p.skills : [],
               isLead: idx === 0,
               isOnline: false,
+              role:
+                ownerId && String(p.id) === String(ownerId) ? 'owner' : 'member',
             }
           : null,
       )
