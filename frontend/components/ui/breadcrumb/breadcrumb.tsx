@@ -21,7 +21,7 @@ const Breadcrumb = React.forwardRef<
   }
 >(
   (
-    { children, listClassName, separator = "/", spacing = "1.25rem", ...props },
+    { children, listClassName, separator = "/", spacing = "0.25rem", ...props },
     ref
   ) => {
     const validChildren = getValidChildren(children)
@@ -36,7 +36,7 @@ const Breadcrumb = React.forwardRef<
     return (
       <nav aria-label="breadcrumb" ref={ref} {...props}>
         <BreadcrumbProvider value={{ separator, spacing }}>
-          <ol className={cn("flex items-center", listClassName)}>{clones}</ol>
+          <ol className={cn("flex items-center gap-2", listClassName)}>{clones}</ol>
         </BreadcrumbProvider>
       </nav>
     )
@@ -54,7 +54,7 @@ const BreadcrumbSeparator = React.forwardRef<
   return (
     <span
       className={cn(
-        "mx-[var(--mx,1.25rem)] text-base font-semibold leading-5 text-gray-500",
+        "mx-[var(--mx,0.25rem)] text-[13px] font-semibold leading-6 text-gray-500 opacity-50 hover:opacity-100 transition-opacity",
         className
       )}
       {...props}
@@ -83,7 +83,7 @@ const BreadcrumbLink = React.forwardRef<
       <span
         aria-current="page"
         className={cn(
-          "text-sm font-semibold leading-5 text-gray-black",
+          "text-[13px] font-semibold leading-6 text-gray-500 opacity-50 capitalize cursor-default",
           className
         )}
         {...props}
@@ -95,7 +95,7 @@ const BreadcrumbLink = React.forwardRef<
   return (
     <a
       ref={ref}
-      className={cn("text-sm font-semibold leading-6 text-gray-500", className)}
+      className={cn("text-[13px] font-semibold leading-6 text-gray-500 opacity-50 hover:opacity-100 transition-opacity capitalize", className)}
       href={href}
       {...props}
     />

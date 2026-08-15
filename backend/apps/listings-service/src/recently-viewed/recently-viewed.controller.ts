@@ -36,7 +36,6 @@ export class RecentlyViewedController {
   }
 
   @Get('recommended')
-  @UseGuards(JwtAuthGuard)
   getRecommended(@Req() req: any, @Query('limit') limit?: string) {
     const userId = req.user?.sub ?? req.user?.id ?? req.user?.userId;
     return this.service.getRecommended(userId, limit ? parseInt(limit, 10) : 8);
