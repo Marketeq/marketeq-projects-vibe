@@ -2992,7 +2992,10 @@ function Default() {
                                                     )}
                                                 </div>
                                                 <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                                  {exp.company}
+                                                  {exp.company
+                                                    ? exp.company.charAt(0).toUpperCase() +
+                                                      exp.company.slice(1)
+                                                    : ""}
                                                 </p>
                                                 <div className="mt-1.5 inline-flex items-center gap-x-2">
                                                   <span className="text-xs leading-none text-dark-blue-400">
