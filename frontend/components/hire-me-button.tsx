@@ -1411,7 +1411,28 @@ export function OfferDialog({
                         <Button
                           variant="outlined"
                           visual="gray"
-                          onClick={() => setOfferSent(false)}
+                          onClick={() => {
+                            // FR-13/AC-20.1: this used to be
+                            // setOfferSent(false), reopening the draft form.
+                            // AC-20.1 says "review the SENT offer details" —
+                            // the draft form is what's being edited, not
+                            // what was sent. The checkout confirmation
+                            // page's own heading ("Please confirm your offer
+                            // details below") is what actually reviews the
+                            // submitted offer, and it's also the only entry
+                            // point into the Stripe flow anywhere in the app
+                            // (see the T4-B report) — this redirect used to
+                            // fire unconditionally on success; now it only
+                            // fires from here, so it can't be skipped.
+                            onOpenChange(false)
+                            const nextSearchParams = new URLSearchParams()
+                            nextSearchParams.set("rate", selectedRate)
+                            nextSearchParams.set("schedule", schedule)
+                            nextSearchParams.set("duration", selectedDuration)
+                            router.push(
+                              `/talent-checkout/${checkoutSlug}?${nextSearchParams.toString()}`
+                            )
+                          }}
                         >
                           Review Your Offer
                         </Button>
@@ -2509,7 +2530,12 @@ export function OfferDialog({
               </div>
             ) : null}
           </div>
-          {isOfferDetailsStep && !startDateCalendarOpen ? (
+          {isOfferDetailsStep && !startDateCalendarOpen && !offerSent ? (
+            // FR-13: without !offerSent this footer (live Send Offer button
+            // included) would render underneath the Offer Sent screen —
+            // nothing else resets schedule/selectedContractId/etc. when
+            // offerSent flips true, so isOfferDetailsStep stays true. Never
+            // visible before because offerSent was never reachable.
             <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-4">
               {/* ERR-007: inline, not a toast (that's ERR-006 below). The
               Change Contract button above is the recovery path this error
@@ -2635,8 +2661,25 @@ export function OfferDialog({
                       return
                     }
                     setIsSubmittingOffer(false)
+
+                    // FR-13: a real successful submission — show Offer Sent
+                    // instead of closing and redirecting. The dialog stays
+                    // open (no onOpenChange(false) here); offerSent flips
+                    // currentScreen to "offer-sent" via the ternary above,
+                    // and the footer below is now gated on !offerSent so it
+                    // doesn't render underneath this screen.
+                    onSaveOffer?.({ selectedRate, schedule, selectedDuration })
+                    setOfferSent(true)
+                    return
                   }
 
+                  // Reached only when there's no real submission to call
+                  // "successful": isStepFour (new-contract path — T2-14,
+                  // POST /contract-groups was never wired) and isEditMode
+                  // (editing an ALREADY-sent offer, not sending a new one —
+                  // "Offer Sent!" copy would be wrong here regardless of
+                  // wiring). Both keep exactly today's behaviour; FR-13 only
+                  // changes the path above that actually submits something.
                   onSaveOffer?.({ selectedRate, schedule, selectedDuration })
                   onOpenChange(false)
                   if (!isEditMode) {
