@@ -92,12 +92,16 @@ export default function TransactionsPage() {
         const params = new URLSearchParams({ format })
         if (isPayouts) {
           if (payoutsFilters.dateRange && payoutsFilters.dateRange !== "all_time") params.set("dateRange", payoutsFilters.dateRange)
+          if (payoutsFilters.dateFrom) params.set("from", payoutsFilters.dateFrom)
+          if (payoutsFilters.dateTo) params.set("to", payoutsFilters.dateTo)
           if (payoutsFilters.statusFilter) params.set("status", payoutsFilters.statusFilter)
           if (payoutsFilters.depositMethodId) params.set("depositMethodId", payoutsFilters.depositMethodId)
           if (payoutsFilters.search) params.set("search", payoutsFilters.search)
         } else {
           params.set("currency", "USD")
           if (earningsFilters.dateRange) params.set("dateRange", earningsFilters.dateRange)
+          if (earningsFilters.startDate) params.set("startDate", earningsFilters.startDate)
+          if (earningsFilters.endDate) params.set("endDate", earningsFilters.endDate)
           if (earningsFilters.entryType) params.set("entryType", earningsFilters.entryType)
           if (earningsFilters.statusFilter) params.set("status", earningsFilters.statusFilter)
           if (earningsFilters.projectId) params.set("projectId", earningsFilters.projectId)
