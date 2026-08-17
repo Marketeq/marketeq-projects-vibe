@@ -23,6 +23,11 @@ const svc = (name, port, extraEnv) => ({
   env: { PORT: port, NODE_ENV: 'development', ...extraEnv },
 });
 
+// npm-launched services: on Windows PM2 hands `npm` to Node, which then tries to
+// parse npm.cmd as JavaScript ("SyntaxError: Unexpected token ':'"). Use the .cmd
+// launcher and interpreter:'none' so PM2 execs it directly. No-op on macOS/Linux.
+const npmLauncher = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
 // Some services compile with nested paths (tsconfig rootDir differences)
 const svcNested = (name, port, extraEnv) => ({
   ...svc(name, port, extraEnv),
@@ -53,11 +58,15 @@ module.exports = {
     svc('search-service', 3007),
     svc('earnings-service', 3026),
     svc('payout-service', 3022),
-    svc('offer-service', 3025),
+    // Port must match OFFER_SERVICE_URL in api-gateway proxy.controller.ts and the
+    // offer-service entry in boot-all.js (both 3011). It was 3025 here, so the
+    // gateway proxied /offers to a port nothing was listening on.
+    svcNested('offer-service', 3011),
     svc('resume-parsing-service', 3028),
     {
       name: 'cms-service',
-      script: 'npm',
+      script: npmLauncher,
+      interpreter: 'none',
       args: 'run start:dev',
       cwd: `${__dirname}/apps/cms-service`,
       autorestart: true,
@@ -68,7 +77,8 @@ module.exports = {
     },
     {
       name: 'scheduling-service',
-      script: 'npm',
+      script: npmLauncher,
+      interpreter: 'none',
       args: 'run start:dev',
       cwd: `${__dirname}/apps/scheduling-service`,
       autorestart: true,
