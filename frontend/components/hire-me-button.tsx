@@ -823,6 +823,15 @@ export function OfferDialog({
       Number(customHours) <= CUSTOM_HOURS_MAX[customFrequency] &&
       customFrequency
     )
+  // AC-13.1: "A contract title input field is displayed and required" — doc
+  // 04 §6 places it on the Send Offer screen, which is isStepThree here,
+  // not just isStepFour. The input was only ever wired to isStepFour; this
+  // is closing that gap against the spec, not adding a new field. Excluded
+  // for edit mode (selectedContract is always the static placeholder there,
+  // and edit mode never calls addContractGroupMember) and for the
+  // zero-existing-contracts case (selectedContract is null, isStepThree is
+  // true only via T1-10's `!hasExistingContracts` fallthrough — there's no
+  // group to title a membership against).
   const isExistingContractOfferStep =
     isStepThree && !isEditMode && Boolean(selectedContract)
   const isOfferReady =
@@ -832,7 +841,8 @@ export function OfferDialog({
           selectedContractId &&
           selectedRate &&
           selectedDuration &&
-          selectedStartDateAction
+          selectedStartDateAction &&
+          (!isExistingContractOfferStep || contractTitle.trim())
         )
       : isStepFour
         ? Boolean(
@@ -840,7 +850,9 @@ export function OfferDialog({
           )
         : false) && !isCustomScheduleIncomplete
   const contractTitleError =
-    showValidationErrors && isStepFour && !contractTitle.trim()
+    showValidationErrors &&
+    (isStepFour || isExistingContractOfferStep) &&
+    !contractTitle.trim()
       ? "Please enter a contract title."
       : null
   const selectedRateError =
@@ -1744,8 +1756,11 @@ export function OfferDialog({
                         </div>
                       ) : null}
 
-                      {isStepFour ? (
-                        <div className="mt-6">
+                      {/* AC-13.1 / doc 04 §6: required on the Send Offer
+                      screen, which is isStepThree here too, not just
+                      isStepFour — see isExistingContractOfferStep above. */}
+                      {isStepFour || isExistingContractOfferStep ? (
+                        <div className={isStepFour ? "mt-6" : undefined}>
                           <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Contract Title
                           </h2>
@@ -2408,7 +2423,7 @@ export function OfferDialog({
                     try {
                       await addContractGroupMember(selectedContract.id, {
                         talentId: hiredTalentId,
-                        title: selectedContract.title,
+                        title: contractTitle.trim(),
                         // T2-14 report: fabricated — see offerRates' own
                         // comment above. Not the talent's real rate.
                         rate: parseFabricatedRateValue(selectedRate) ?? 0,
